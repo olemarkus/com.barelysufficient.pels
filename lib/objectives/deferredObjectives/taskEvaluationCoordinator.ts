@@ -82,8 +82,7 @@ import {
 } from './frozenDiagnostic';
 import { buildFrozenHorizonPlan, type FrozenReadInputs } from './frozenHorizonPlan';
 import {
-  buildFreshDiagnostic,
-  buildHorizonUnavailableDiagnostic,
+  buildFreshDiagnostic, buildHorizonUnavailableDiagnostic, withAwaitingPricesPlanning,
 } from './freshDiagnostic';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 
@@ -523,11 +522,13 @@ const buildDeferredObjectiveDiagnostic = (
   ].includes(true);
   const replan = replanRequested && horizonAvailable;
   if (!frozenFallback && rawPolicyHorizon.reasonCode !== null) {
-    // Bootstrap (or empty/all-elapsed commitment) with no usable horizon (transient
-    // `objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
-    return buildHorizonUnavailableDiagnostic(
+    // Bootstrap (or empty/all-elapsed commitment) with no usable horizon
+    // (`objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
+    // Before the next day's prices are published this is the normal state of a task
+    // due the next day, so the task still governs its device (`withAwaitingPricesPlanning`).
+    return withAwaitingPricesPlanning(buildHorizonUnavailableDiagnostic(
       buildTaskDiagnosticBase(snapshot, task), progress, rawPolicyHorizon, task, powerTracker,
-    );
+    ), horizonInputs.priceHorizon, nowMs);
   }
   const policyHorizon = rawPolicyHorizon.reasonCode === null ? rawPolicyHorizon : EMPTY_POLICY_HORIZON;
 
