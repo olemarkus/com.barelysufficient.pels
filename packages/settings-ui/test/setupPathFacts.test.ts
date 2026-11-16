@@ -345,14 +345,16 @@ describe('setup path facts', () => {
       expect(devicesStep(facts)).toMatchObject({ status: 'done', detail: '1 device managed' });
     });
 
+    const unchosenCharger = {
+      id: 'charger', deviceClass: 'evcharger', deviceType: 'onoff', powerCapable: true, isEvCharger: true,
+    };
+
     it('keeps the Devices step open while a charger beside it waits unchosen', async () => {
       const { facts, state } = await load();
       state.devicesLoaded = true;
+      state.dryRun = true;
       // PELS manages the battery by itself; the charger is the owner's to choose.
-      state.latestDevices = [
-        battery,
-        { id: 'charger', deviceClass: 'evcharger', deviceType: 'onoff', powerCapable: true },
-      ] as typeof state.latestDevices;
+      state.latestDevices = [battery, unchosenCharger] as typeof state.latestDevices;
       state.managedMap = {};
       state.batteryControl = { status: 'resolved', devices: {} };
       facts.publishSetupPower(RECEIVED);
@@ -363,6 +365,34 @@ describe('setup path facts', () => {
       });
       state.managedMap = { charger: true };
       expect(devicesStep(facts)).toMatchObject({ status: 'done' });
+    });
+
+    it('finishes on the battery beside an unmanaged plug or thermostat', async () => {
+      const { facts, state } = await load();
+      state.devicesLoaded = true;
+      state.dryRun = true;
+      state.latestDevices = [
+        battery,
+        { id: 'plug', deviceClass: 'socket', deviceType: 'onoff', powerCapable: true, isEvCharger: false },
+        { id: 'thermostat', deviceClass: 'thermostat', deviceType: 'temperature', isEvCharger: false },
+      ] as typeof state.latestDevices;
+      state.managedMap = {};
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(false, { ...running, capacityEnabled: false });
+      expect(devicesStep(facts)).toMatchObject({ status: 'done', detail: '1 device PELS may limit' });
+    });
+
+    it('does not reopen setup for a battery home already running live beside an unmanaged charger', async () => {
+      const { facts, state } = await load();
+      state.devicesLoaded = true;
+      state.dryRun = false;
+      state.latestDevices = [battery, unchosenCharger] as typeof state.latestDevices;
+      state.managedMap = {};
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(false, { ...running, capacityEnabled: false, dryRun: false });
+      expect(devicesStep(facts)).toMatchObject({ status: 'done', detail: '1 device PELS may limit' });
     });
 
     it('is limitable only while PELS can drive it and its Power-limit control is on', async () => {

@@ -243,13 +243,15 @@ const isSetupDeviceActionable = (deviceId: string): boolean => {
 };
 
 /**
- * Devices PELS could run that the owner left unmanaged, while the only
- * actionable managed devices are home batteries (managed by default, so not
- * the owner's choice); 0 once the owner has chosen any other device.
+ * EV chargers PELS could run that the owner left unmanaged, while the home is
+ * still simulating and the only actionable managed devices are home batteries
+ * (managed by default, so not the owner's choice); 0 once the owner has chosen
+ * any other device. A home already running live is set up: leaving its charger
+ * unmanaged is the owner's choice, so its setup path does not reopen.
  */
 const countUnchosenBesideBattery = (knownIds: ReadonlySet<string>, actionableIds: readonly string[]): number => {
-  if (actionableIds.length === 0 || !actionableIds.every(isHomeBatteryDeviceId)) return 0;
-  return state.latestDevices.filter((device) => knownIds.has(device.id) && !isHomeBatteryDeviceId(device.id)
+  if (!state.dryRun || actionableIds.length === 0 || !actionableIds.every(isHomeBatteryDeviceId)) return 0;
+  return state.latestDevices.filter((device) => knownIds.has(device.id) && device.isEvCharger === true
     && !resolveManagedState(device.id) && resolveDeviceManageability(device).canManage).length;
 };
 
