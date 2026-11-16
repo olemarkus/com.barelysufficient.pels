@@ -7,8 +7,8 @@ import type {
 } from '../../packages/contracts/src/settingsUi/plan';
 import type { SupportReportSection, SupportReportValue } from '../../packages/contracts/src/supportReport';
 import type {
-  DeviceDescriptor, EvObservedProbe, MeasuredPowerObservedProbe, ObservedDeviceState, StateOfChargeObservedProbe,
-  SteppedLoadDescriptorProbe, TemperatureObservedProbe,
+  ChargerPhaseCurrentsObservedProbe, DeviceDescriptor, EvObservedProbe, MeasuredPowerObservedProbe,
+  ObservedDeviceState, StateOfChargeObservedProbe, SteppedLoadDescriptorProbe, TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
@@ -16,7 +16,7 @@ import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/state
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
-import type { DevicePlanDevice } from '../plan/planTypes';
+import type { DevicePlan, DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 
@@ -47,7 +47,7 @@ export type SupportReportDeviceSnapshot = Pick<DeviceDescriptor,
   | 'expectedPowerKw' | 'expectedPowerSource' | 'controlModel' | 'flowBacked' | 'budgetExempt'
   | 'controlAdapter'>
   & Pick<ObservedDeviceState, 'available' | 'lastUpdated' | 'binaryControl' | 'targets'>
-  & EvObservedProbe
+  & EvObservedProbe & ChargerPhaseCurrentsObservedProbe
   & MeasuredPowerObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe & TemperatureObservedProbe;
 
 const reportDeviceMeasurements = (device: SupportReportDeviceSnapshot): Record<string, SupportReportValue> => ({
@@ -95,6 +95,47 @@ export const reportDeviceSnapshot = (device: SupportReportDeviceSnapshot): Suppo
     } : {}),
   },
 });
+
+/** Watts PELS plans per amp, from the lowest charging step of the profile it plans with. */
+const plannedWattsPerAmp = (device: SupportReportDeviceSnapshot): number | undefined => {
+  if (!isSteppedLoadSnapshot(device)) return undefined;
+  const step = device.steppedLoadProfile.steps.find((entry) => (entry.planningCurrentA ?? 0) > 0);
+  return step?.planningCurrentA ? Math.round(step.planningPowerW / step.planningCurrentA) : undefined;
+};
+
+/**
+ * Main's chargers as solar charging sees them: whether "Charge on solar
+ * surplus" is on, the watts PELS plans per amp and its current step, beside
+ * the draw and per-phase currents the charger reports. A charger that draws on
+ * fewer phases than PELS plans for shows here as planned watts well above the
+ * draw. The activity rows hold the same draw at each change in the day.
+ */
+export const reportEvChargers = (
+  plan: DevicePlan,
+  snapshotOf: (deviceId: string) => SupportReportDeviceSnapshot | undefined,
+): SupportReportSection | null => {
+  const chargers = plan.devices.filter((device) => device.isEvCharger);
+  if (chargers.length === 0) return null;
+  return {
+    title: 'Current EV chargers',
+    values: {
+      chargers: chargers.map((device) => {
+        const snapshot = snapshotOf(device.id);
+        return {
+          id: device.id,
+          name: device.name,
+          chargeOnSolarSurplus: device.surplusTracking,
+          ...present('reportedStepId', device.reportedStepId),
+          ...(snapshot ? {
+            ...present('plannedWattsPerAmp', plannedWattsPerAmp(snapshot)),
+            ...(hasObservedMeasuredPower(snapshot) ? { measuredPowerKw: snapshot.measuredPowerKw } : {}),
+            ...(snapshot.chargerPhaseCurrentsA ? { phaseCurrentsA: [...snapshot.chargerPhaseCurrentsA] } : {}),
+          } : {}),
+        };
+      }),
+    },
+  };
+};
 
 export const reportDeviceDecision = (device: DevicePlanDevice): SupportReportSection => ({
   title: 'Current device plan',
