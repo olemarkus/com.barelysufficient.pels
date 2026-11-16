@@ -100,6 +100,12 @@ Every report lists the devices on the Homey (`Current Homey devices`, at most 50
 name, class, the providing app (`ownerUri`), driver, availability, and whether PELS
 manages it, read from Homey at capture. A log names a device by id only, and why a write
 fails often depends on the app behind it. A failed read is a visible omission.
+Every report also states the app's memory (`App memory`): Homey's own reading from the
+app's `/usage` route (RSS, PSS, shared pages, swap), read fresh at capture or the last
+accepted one with its age; the process's page faults and peak RSS; and V8's heap and
+compiled code. Homey's memory warning acts on that RSS, which the app sandbox cannot
+read itself, and reports from many homes are compared on it, low use included. Without
+a Homey reading the section keeps V8's view and the omission says so.
 The current collector does not dump settings, credentials or raw Homey devices into
 the message, and of stdout only the structured lines it kept. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.

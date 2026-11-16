@@ -4,7 +4,9 @@ import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';
 import { getDebugEmitter, getLogger } from '../logging/logger';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { reclaimHeapPages } from './heapReclaim';
+import { type AppMemoryUsageSampler, captureAppMemorySnapshot } from './appMemoryFootprint';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
 const emitPerfDebug = getDebugEmitter('perf', 'perf');
@@ -21,6 +23,8 @@ type StartResourceWarningListenersParams = {
   // HomeyEmitter shape directly, not the HomeyRuntime port. The full injected
   // instance structurally satisfies it.
   homey: HomeyEmitter;
+  // Homey's own reading of this app's memory, which the sandbox cannot read itself.
+  memoryUsage: AppMemoryUsageSampler;
 };
 
 const summarizeDuration = (
@@ -271,6 +275,12 @@ const createHeapReclaimer = (): HeapReclaimer => {
   };
 };
 
+const readWarningCount = (payload: unknown): number | null => (
+  isUnknownRecord(payload) && typeof payload.count === 'number' && Number.isFinite(payload.count)
+    ? payload.count
+    : null
+);
+
 // The WARNING itself is never throttled — every one is still logged, because
 // the arrival rate is itself the signal. Only the context is rationed, and a
 // record that goes without says how many preceded it, so a reader can tell a
@@ -280,9 +290,10 @@ const createWarnLogger = (
   budget: WarningContextBudget,
 ): ((payload: unknown) => void) => {
   return (payload: unknown): void => {
-    const data = (payload && typeof payload === 'object') ? payload as { count?: unknown; limit?: unknown } : {};
-    const count = typeof data.count === 'number' && Number.isFinite(data.count) ? data.count : null;
-    const limit = typeof data.limit === 'number' && Number.isFinite(data.limit) ? data.limit : null;
+    const count = readWarningCount(payload);
+    const limit = isUnknownRecord(payload) && typeof payload.limit === 'number' && Number.isFinite(payload.limit)
+      ? payload.limit
+      : null;
     if (count === 1) return;
     const nowMs = Date.now();
     const { withContext, suppressedContext } = budget.claim(nowMs);
@@ -299,10 +310,60 @@ const createWarnLogger = (
   };
 };
 
+/**
+ * How often the footprint line is written without a warning.
+ *
+ * Half-hourly is enough to show the climb toward Homey's warning line across a
+ * day (the growth is a few MB an hour, sometimes in steps) while adding only 48
+ * short lines to a day's log.
+ */
+const FOOTPRINT_INTERVAL_MS = 30 * 60_000;
+
+/**
+ * How often a memory warning may ask Homey for a fresh reading.
+ *
+ * Warnings come every 10 s in a run; one reading per run segment is what a
+ * reader needs to see how far over the line the app is, and each one is a
+ * local HTTP request made while memory is tight.
+ */
+const FOOTPRINT_WARNING_MIN_INTERVAL_MS = 30_000;
+
+type FootprintTrigger = 'memwarn' | 'interval';
+
+const createFootprintRecorder = (memoryUsage: AppMemoryUsageSampler) => {
+  let lastWarningReadAtMs: number | null = null;
+  const record = (trigger: FootprintTrigger, warningCount: number | null): void => {
+    captureAppMemorySnapshot(memoryUsage).then((snapshot) => {
+      resourceWarningLogger.info({
+        event: 'app_memory_footprint',
+        trigger,
+        ...(warningCount === null ? {} : { warningCount }),
+        ...snapshot,
+      });
+    }).catch((error: unknown) => {
+      resourceWarningLogger.warn({
+        event: 'app_memory_footprint_failed',
+        trigger,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+  return {
+    onWarning(payload: unknown, nowMs: number): void {
+      if (lastWarningReadAtMs !== null && nowMs - lastWarningReadAtMs < FOOTPRINT_WARNING_MIN_INTERVAL_MS) return;
+      lastWarningReadAtMs = nowMs;
+      record('memwarn', readWarningCount(payload));
+    },
+    onInterval(): void {
+      record('interval', null);
+    },
+  };
+};
+
 export const startResourceWarningListeners = (
   params: StartResourceWarningListenersParams,
 ): (() => void) | undefined => {
-  const { homey: emitter } = params;
+  const { homey: emitter, memoryUsage } = params;
   if (!emitter || typeof emitter.on !== 'function') return undefined;
 
   // One budget for both listeners — see `WarningContextBudget`. Created per
@@ -311,6 +372,7 @@ export const startResourceWarningListeners = (
   const contextBudget = createWarningContextBudget();
   const cpuwarn = createWarnLogger('cpuwarn', contextBudget);
   const logMemwarn = createWarnLogger('memwarn', contextBudget);
+  const footprint = createFootprintRecorder(memoryUsage);
   // The warning is logged first, so its perf payload records the state the
   // platform actually objected to; the reclaim then answers it. The first
   // warning of a run (`count === 1`) goes unlogged but still answered — it is
@@ -323,6 +385,8 @@ export const startResourceWarningListeners = (
       // The diagnostic walks traces and spans at the moment memory is tightest;
       // if that ever throws, the one lever that answers the warning still runs.
       reclaimer.reclaim('memwarn', Date.now());
+      // Asked after the reclaim, so the reading shows what the collection could not give back.
+      footprint.onWarning(payload, Date.now());
     }
   };
   const unload = (): void => {
@@ -334,9 +398,12 @@ export const startResourceWarningListeners = (
   emitter.on('unload', unload);
   const backstop = setInterval(() => reclaimer.reclaim('interval', Date.now()), HEAP_RECLAIM_INTERVAL_MS);
   backstop.unref();
+  const footprintTimer = setInterval(() => footprint.onInterval(), FOOTPRINT_INTERVAL_MS);
+  footprintTimer.unref();
 
   return () => {
     clearInterval(backstop);
+    clearInterval(footprintTimer);
     if (typeof emitter.off === 'function') {
       emitter.off('cpuwarn', cpuwarn);
       emitter.off('memwarn', memwarn);

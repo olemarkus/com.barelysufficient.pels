@@ -106,7 +106,13 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
 4. **Heap maintenance** (`lib/diagnostics/resourceWarnings.ts`). Scheduled
    `heap_pages_reclaimed` events use the `perf` debug topic. Warning-triggered reclaims
    remain at info, and resource warnings and unavailable-collector warnings keep their
-   existing severity.
+   existing severity. `app_memory_footprint` stays at info every 30 minutes and after a
+   memory warning (at most once per 30 s): it carries Homey's own reading of the app's
+   RSS, shared pages and swap (`lib/diagnostics/appMemoryFootprint.ts`), which the app
+   sandbox cannot read for itself, with page faults and V8's heap and compiled code. The
+   log survives a restart, so a daily report shows the climb toward Homey's memory
+   warning line up to the restart; the report's `App memory` section states the moment
+   of capture.
 
 5. **Native stepped step reports** (`lib/device/transport/nativeSteppedRealtime.ts`).
    Each realtime report that changes a native device's reported step logs

@@ -29,6 +29,8 @@ import type {
 import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { ScheduleEntry, SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
+import type { AppMemoryUsageSampler } from '../../lib/diagnostics/appMemoryFootprint';
+import { APP_MEMORY_REPORT_TITLE } from '../../lib/diagnostics/supportReportEvidence';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const request: SupportReportRequest = {
@@ -75,15 +77,47 @@ const objectiveStore = (tasks: Record<string, unknown> = {}): ObjectiveSettingsS
 const noCycle = () => undefined;
 type HeatingObservations = Pick<HeatingShadowCollector, 'readDaily'>;
 const noHeating: HeatingObservations = { readDaily: () => undefined };
+// Homey's reading of the app, as its `/usage` route answers it.
+const appUsage = { atMs: now, rssMb: 139.5, pssMb: 84.4, sharedCleanMb: 55.1, swapMb: 0 };
+const appMemoryReading = (usage: typeof appUsage | null = appUsage) => partialDouble<AppMemoryUsageSampler>({
+  refresh: async () => usage,
+  latest: () => usage,
+});
 const source = (
   app: SupportReportApp, objectives = objectiveStore(), readCycle: (deviceId: string) => SmartTaskCycleRecord | undefined = noCycle,
-  heating: HeatingObservations = noHeating,
-) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle, heating), {
+  heating: HeatingObservations = noHeating, appMemory = appMemoryReading(),
+) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle, heating, appMemory), {
   manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
 const values = (report: SupportReportEvidence, title: string) => (
   report.sections.find((section) => section.title === title)?.values
 );
+
+describe('app memory', () => {
+  // Reports from many homes are compared on memory, so every kind of report
+  // carries it, whatever its subject or trigger.
+  it('states Homey\'s reading of the app and V8\'s heap in every report', async () => {
+    const appRequest: SupportReportRequest = { ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day' };
+    for (const [req, trigger] of [[request, 'owner'], [appRequest, 'daily'], [appRequest, 'event']] as const) {
+      const report = await source(currentHost()).capture(req, now, trigger);
+      expect(values(report, APP_MEMORY_REPORT_TITLE)).toMatchObject({
+        usage: { rssMb: 139.5, pssMb: 84.4, sharedCleanMb: 55.1, swapMb: 0, ageSec: expect.any(Number) },
+        faults: { maxRssMb: expect.any(Number), minorFaults: expect.any(Number), majorFaults: expect.any(Number) },
+        heap: { heapUsedMb: expect.any(Number), heapTotalMb: expect.any(Number), codeMb: expect.any(Number) },
+      });
+      expect(report.omissions).not.toContain('Homey\'s reading of the app\'s memory is unavailable.');
+    }
+  });
+
+  it('keeps V8\'s view and says so when Homey has not answered', async () => {
+    const report = await source(currentHost(), objectiveStore(), noCycle, noHeating, appMemoryReading(null))
+      .capture(request, now);
+    const memory = values(report, APP_MEMORY_REPORT_TITLE);
+    expect(memory).toMatchObject({ heap: { heapUsedMb: expect.any(Number) } });
+    expect(memory).not.toHaveProperty('usage');
+    expect(report.omissions).toContain('Homey\'s reading of the app\'s memory is unavailable.');
+  });
+});
 
 describe('daily heating observations', () => {
   const appRequest: SupportReportRequest = { ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day' };
@@ -368,7 +402,7 @@ describe('support report evidence capture', () => {
     host.getDailyBudgetUiPayload = () => ({ kind: 'budget', payload: { todayKey: day.dateKey, days: { [day.dateKey]: day } } });
     const settings = { get: vi.fn(), getKeys: vi.fn(), set: vi.fn() };
     const homey = { app: host, manifest: { version: '3.21.0', apiKey: 'manifest-secret' }, version: '12.0.0', settings };
-    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle, noHeating), homey)
+    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle, noHeating, appMemoryReading()), homey)
       .capture(request, now);
     expect(values(report, 'Current app-wide prices')).toMatchObject({ importPrice: 42, level: 'cheap' });
     expect(values(report, 'Current app-wide price source')).toEqual({ scheme: 'norway', selection: 'chosen' });

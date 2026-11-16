@@ -4,6 +4,7 @@ import { TeardownRegistry } from '../../lib/utils/teardownRegistry';
 import { partialDouble } from '../helpers/partialDouble';
 import type { AppContext } from '../../lib/app/appContext';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
+import type { AppMemoryUsageSampler } from '../../lib/diagnostics/appMemoryFootprint';
 
 /**
  * `WeatherCollector.start()` returns `() => this.stop()` — a closure over the
@@ -25,7 +26,9 @@ const buildCollectorDouble = (): { collector: WeatherCollector; isRunning: () =>
 };
 
 const buildController = (teardown: TeardownRegistry): BackgroundTasksController => (
-  new BackgroundTasksController(partialDouble<AppContext>({}), teardown)
+  new BackgroundTasksController(
+    partialDouble<AppContext>({}), teardown, partialDouble<AppMemoryUsageSampler>({}),
+  )
 );
 
 describe('BackgroundTasksController teardown ordering', () => {

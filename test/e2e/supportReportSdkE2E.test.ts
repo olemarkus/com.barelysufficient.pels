@@ -40,9 +40,13 @@ describe('manual report through the app API and Homey boundary', () => {
         ? { items: [{ type: 'cumulative', id: 'meter-main', values: { W: 5000 } }] }
         : originalGet(path)
     ));
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, options) => (
-      httpResponse(options?.method === 'POST' ? '70f408bd-ec4a-495b-858a-966532d6d2b8' : { origin: 'appstore' })
-    ));
+    const MB = 1024 * 1024;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (url, options) => {
+      if (String(url).endsWith('/usage')) {
+        return httpResponse({ mem: { rss: 139.5 * MB, pss: 84.4 * MB, sharedClean: 55.1 * MB, pssSwap: 0 } });
+      }
+      return httpResponse(options?.method === 'POST' ? '70f408bd-ec4a-495b-858a-966532d6d2b8' : { origin: 'appstore' });
+    });
     vi.stubGlobal('fetch', fetchMock);
     const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
@@ -60,6 +64,13 @@ describe('manual report through the app API and Homey boundary', () => {
     }
     // The heater has no smart task, and the report says so rather than leaving it out.
     expect(carried.sections).toContainEqual({ title: 'Current smart task', values: { exists: false } });
+    // Every report states the app's memory as Homey measures it.
+    expect(carried.sections).toContainEqual({
+      title: 'App memory',
+      values: expect.objectContaining({
+        usage: expect.objectContaining({ rssMb: 139.5, sharedCleanMb: 55.1, swapMb: 0 }),
+      }),
+    });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     const id = preview.report.document.id;
     const sent = await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
