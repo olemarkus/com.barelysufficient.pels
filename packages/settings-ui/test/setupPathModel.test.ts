@@ -158,6 +158,19 @@ describe('setup path', () => {
     expect(statuses({ ...facts, hardCap: { state: 'disabled' } })).toContain('hardCap:done');
   });
 
+  it('offers a French home its subscribed power under Main fuse instead of a measured-peak question', () => {
+    const facts: SetupPathFacts = { ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1,
+      market: { state: 'resolved', country: 'FR' } };
+    expect(detailOf(facts, 'hardCap')).toContain('Set your subscribed power in kVA under Main fuse');
+    expect(detailOf(facts, 'hardCap')).toContain('French household grid charges depend on your subscribed power');
+    expect(detailOf(facts, 'hardCap')).not.toContain('Charged for your highest hourly');
+    const off: SetupPathFacts = { ...facts, hardCap: { state: 'disabled' } };
+    expect(detailOf(off, 'hardCap')).toBe('Power limits off. '
+      + 'Set your subscribed power in kVA under Main fuse so PELS keeps the home within your contract.');
+    expect(resolveSetupSteps(off).steps.find((step) => step.id === 'hardCap')?.target)
+      .toEqual({ panel: 'limits', anchor: '#settings-main-fuse-enabled' });
+  });
+
   it('sells no single market in its lede', () => {
     // The first setup supports either solar use or measured-peak control.
     expect(pathOf(freshInstall)?.lede).toBe(

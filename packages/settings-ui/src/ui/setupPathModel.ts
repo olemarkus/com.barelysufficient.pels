@@ -185,30 +185,45 @@ const MEASURED_PEAK_QUESTION = 'Charged for your highest hourly or 15-minute ave
 const MEASURED_PEAK_OFFER = 'Charged for your highest hourly or 15-minute average grid import? '
   + 'Turn on Capacity limit and set your hard cap.';
 
-const DUTCH_CONNECTION_TARIFF = 'Dutch household grid charges depend on connection size, not measured peaks. '
-  + 'You can turn off Capacity limit and still use prices and solar.';
-
-// Dutch homes are offered Main fuse in place of a grid import limit (owner
-// ruling): what the connection carries is the limit they think in.
-const DUTCH_MAIN_FUSE_OFFER = 'Set your main fuse so PELS keeps the home within what your connection carries.';
+// Dutch and French homes are offered Main fuse in place of a grid import limit
+// (owner ruling for the Netherlands): what the connection carries, or the power
+// the contract subscribes, is the limit they think in. Each market's offer and
+// why measured peaks do not apply there.
+type MainFuseMarketCopy = { offer: string; tariff: string };
+const MAIN_FUSE_MARKETS: Readonly<Record<string, MainFuseMarketCopy>> = {
+  NL: {
+    offer: 'Set your main fuse so PELS keeps the home within what your connection carries.',
+    tariff: 'Dutch household grid charges depend on connection size, not measured peaks. '
+      + 'You can turn off Capacity limit and still use prices and solar.',
+  },
+  FR: {
+    offer: 'Set your subscribed power in kVA under Main fuse so PELS keeps the home within your contract.',
+    tariff: 'French household grid charges depend on your subscribed power, not measured peaks. '
+      + 'You can turn off Capacity limit and still use prices and solar.',
+  },
+};
 
 const startsWithCapacityOff = (market: SettingsUiHubMarketRead): boolean => (
   market.state === 'resolved' && market.country !== 'NO' && market.country !== 'BE'
 );
 
-const isMainFuseMarket = (market: SettingsUiHubMarketRead): boolean => (
-  market.state === 'resolved' && market.country === 'NL'
+const mainFuseMarketCopy = (market: SettingsUiHubMarketRead): MainFuseMarketCopy | null => (
+  market.state === 'resolved' ? MAIN_FUSE_MARKETS[market.country] ?? null : null
 );
+
+/** A market whose homes think in their connection or subscription, and are offered Main fuse. */
+export const isMainFuseMarket = (market: SettingsUiHubMarketRead): boolean => mainFuseMarketCopy(market) !== null;
 
 // What an unchosen cap adds after the running default. Every Norwegian household
 // pays for its measured hourly peaks, so asking would only make the owner answer
-// the same yes; the step names the running default and stops. Dutch bills call
-// the connection-size charge a capacity tariff too, so the Netherlands gets the
+// the same yes; the step names the running default and stops. Dutch and French
+// bills charge by connection or subscription size, so those markets get the
 // distinction spelled out. Everywhere else the answer depends on the grid company.
 const resolveUnsetCapacityGuidance = (market: SettingsUiHubMarketRead): string | null => {
   if (market.state !== 'resolved') return MEASURED_PEAK_QUESTION;
   if (market.country === 'NO') return null;
-  return isMainFuseMarket(market) ? `${DUTCH_MAIN_FUSE_OFFER} ${DUTCH_CONNECTION_TARIFF}` : MEASURED_PEAK_QUESTION;
+  const copy = mainFuseMarketCopy(market);
+  return copy ? `${copy.offer} ${copy.tariff}` : MEASURED_PEAK_QUESTION;
 };
 
 const resolveHardCapDetail = (facts: SetupPathFacts): string => {
@@ -219,10 +234,9 @@ const resolveHardCapDetail = (facts: SetupPathFacts): string => {
     const running = formatCapacityDetail(hardCap);
     return guidance === null ? running : `${running}. ${guidance}`;
   }
-  // A fresh Dutch install has both limits off, so the offer belongs here too.
-  if (hardCap.state === 'disabled' && isMainFuseMarket(market)) {
-    return `${formatLimitsSummary(hardCap)}. ${DUTCH_MAIN_FUSE_OFFER}`;
-  }
+  // A fresh Dutch or French install has both limits off, so the offer belongs here too.
+  const copy = mainFuseMarketCopy(market);
+  if (hardCap.state === 'disabled' && copy) return `${formatLimitsSummary(hardCap)}. ${copy.offer}`;
   if (hardCap.state === 'disabled' && startsWithCapacityOff(market)) {
     return `${formatLimitsSummary(hardCap)}. ${MEASURED_PEAK_OFFER}`;
   }

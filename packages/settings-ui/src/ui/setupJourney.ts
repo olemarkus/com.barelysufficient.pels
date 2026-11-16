@@ -18,6 +18,7 @@ import {
   isSetupDeviceLimitable,
 } from './setupPathFacts.ts';
 import type { SetupStep, SetupPath } from './setupPathModel.ts';
+import { isMainFuseMarket } from './setupPathModel.ts';
 import {
   currentSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
   acknowledgeSetupSaveFailures,
@@ -293,14 +294,14 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
   return fact?.detail ?? null;
 };
 
-// Dutch households pay by connection size, so the open Limits step offers the
-// way out its detail explains, in one tap. A new Dutch install starts with
-// Capacity limit off; this is for one from before that default, still running
-// the built-in 10 kW. Here the switch moves only when the owner taps.
+// Dutch and French households pay by connection or subscription size, so the
+// open Limits step offers the way out its detail explains, in one tap. A new
+// install there starts with Capacity limit off; this is for one from before that
+// default, still running the built-in 10 kW. Here the switch moves only when the
+// owner taps.
 const offersCapacityOff = (step: SetupJourneyStep, fact: SetupStep | undefined): boolean => {
   if (step !== 'hardCap' || fact === undefined || fact.status === 'done') return false;
-  const market = readSetupMarket();
-  return market.state === 'resolved' && market.country === 'NL';
+  return isMainFuseMarket(readSetupMarket());
 };
 
 // Optional choices are outside the four setup stages, so they show no count.
