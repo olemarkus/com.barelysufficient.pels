@@ -178,12 +178,23 @@ export const isBelgianHourlySetup = (market: SettingsUiHubMarketRead, hardCap: S
 const MEASURED_PEAK_QUESTION = 'Charged for your highest hourly or 15-minute average grid import? '
   + 'Set your hard cap, or turn off Capacity limit.';
 
+// Outside Norway and Belgium a new install starts with Capacity limit off, and
+// whether the home pays for its peaks depends on the grid company, so the step
+// says how to turn it on. In Norway and Belgium it starts on: a home there with
+// it off turned it off itself.
+const MEASURED_PEAK_OFFER = 'Charged for your highest hourly or 15-minute average grid import? '
+  + 'Turn on Capacity limit and set your hard cap.';
+
 const DUTCH_CONNECTION_TARIFF = 'Dutch household grid charges depend on connection size, not measured peaks. '
   + 'You can turn off Capacity limit and still use prices and solar.';
 
 // Dutch homes are offered Main fuse in place of a grid import limit (owner
 // ruling): what the connection carries is the limit they think in.
 const DUTCH_MAIN_FUSE_OFFER = 'Set your main fuse so PELS keeps the home within what your connection carries.';
+
+const startsWithCapacityOff = (market: SettingsUiHubMarketRead): boolean => (
+  market.state === 'resolved' && market.country !== 'NO' && market.country !== 'BE'
+);
 
 const isMainFuseMarket = (market: SettingsUiHubMarketRead): boolean => (
   market.state === 'resolved' && market.country === 'NL'
@@ -212,14 +223,17 @@ const resolveHardCapDetail = (facts: SetupPathFacts): string => {
   if (hardCap.state === 'disabled' && isMainFuseMarket(market)) {
     return `${formatLimitsSummary(hardCap)}. ${DUTCH_MAIN_FUSE_OFFER}`;
   }
+  if (hardCap.state === 'disabled' && startsWithCapacityOff(market)) {
+    return `${formatLimitsSummary(hardCap)}. ${MEASURED_PEAK_OFFER}`;
+  }
   return formatLimitsSummary(hardCap);
 };
+
+const BATTERY_ONLY_DEVICES_DETAIL = 'Your home battery is managed. Choose the other devices PELS should run';
 
 // A fact, never an instruction. Devices that cannot be limited (no power
 // reading) or that the owner chose not to limit are a finished choice; telling
 // that owner to go turn Limit on asks for something they did not come for.
-const BATTERY_ONLY_DEVICES_DETAIL = 'Your home battery is managed. Choose the other devices PELS should run';
-
 const resolveDevicesDetail = (facts: SetupPathFacts): string => {
   if (facts.actionableDeviceCount === 0) return 'Choose one device to start';
   if (facts.unchosenBesideBatteryCount > 0) return BATTERY_ONLY_DEVICES_DETAIL;
