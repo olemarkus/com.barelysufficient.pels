@@ -64,6 +64,17 @@ describe('setup Limits step by market', () => {
     expect(step.detail).toContain('main fuse');
   });
 
+  it('asks a fresh Swedish install with Capacity limit off whether it pays for its peaks', () => {
+    const limits = (country: string) => resolveSetupSteps({
+      ...facts({ state: 'resolved', country }) as object, hardCap: { state: 'disabled' },
+    } as never).steps.find((entry) => entry.id === 'hardCap')!;
+    expect(limits('SE').detail).toBe('Power limits off. Charged for your highest hourly or 15-minute average grid import? '
+      + 'Turn on Capacity limit and set your hard cap.');
+    // Norway and Belgium start with Capacity limit on; a home there with it off turned it off itself.
+    expect(limits('NO').detail).toBe('Power limits off');
+    expect(limits('BE').detail).toBe('Power limits off');
+  });
+
   it('leaves other markets as they were', () => {
     const step = limitsStep({ state: 'resolved', country: 'NO' });
     expect(step.detail).not.toContain('main fuse');
