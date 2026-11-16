@@ -816,19 +816,30 @@ once it is on (`data-shown-when-on`) shows only while it is on, for example
 automatically. …` and **Run on solar surplus**'s `If you switch it on yourself
 while there is no surplus, PELS will switch it off again.`
 
-### Device-page Override card
+### Device-page Temporary card (override, Smart task, schedules)
+
+The **Temporary** card sits directly under the status header on every device
+page (`deviceDetail/temporaryCard.ts`). It holds what applies to the device for a
+limited time and ends by itself, one Material list row each. The whole row is the
+tap target, with its action as the trailing word. The card is hidden when no row
+applies.
+
+| Row | Nothing active | Active |
+|---|---|---|
+| `Override` (managed thermostat) | `Hold a temperature until a time` · `Set` | `22° until 21:30`, or `22° until Sun 21:30` when it ends on a later day · `Change` |
+| `Smart task` (device that can carry one) | `Reach a target by a time, at the cheapest hours` · `Add` | `Target 65 °C · Ready by …` · `View` |
+| `Schedules` (device a schedule can act on, or one that has schedules) | `None for this device` · `Add` | `2 for this device · next Mon 06:00` · `View` |
 
 **Override** is one setting PELS holds on a device until a chosen time; today a
-temperature on a managed thermostat. The card is first on that device's page
-(`deviceDetail/overrideCard.ts`, copy in `deviceOverrideDraft.ts`).
-
-| State | Text |
-|---|---|
-| None in force | `Hold a temperature for a while. Prices and mode changes do not move it; power limits still apply.` + tonal `Set an override` |
-| Form | `Temperature (°C)`, `Ends`: `In 2 hours` / `At 08:00` / `Pick a time` (then `Date` and `Time`), the resolved end (`Ends today 21:48`, `Ends tomorrow 08:00`, `Ends Sun 18:00`), `Start override`, `Cancel` |
-| In force | `22° until 21:30`, or `22° until Sun 21:30` when it ends on a later day, `Then back to the mode target. Power limits still apply.` + `Change`, `End now` |
-| Changing one in force | The form opens on `Pick a time` with the override's own end, and its button reads `Save` |
-| Keep the new temperature selected | `Override is not available while this device is set to Keep the new temperature. Change it under When the temperature changes outside PELS.` |
+temperature. Its row opens a form in place of the list (copy in
+`deviceOverrideDraft.ts`): `Temperature (°C)`, `Ends`: `In 2 hours` / `At 08:00` /
+`Pick a time` (then `Date` and `Time`), the resolved end (`Ends today 21:48`,
+`Ends tomorrow 08:00`, `Ends Sun 18:00`), `Start override`, `Cancel`. Opened on
+an override in force, the form starts on `Pick a time` with that override's own
+end, its button reads `Save`, and it adds `End now`. With Keep the new
+temperature selected the row is plain text: `Override is not available while this
+device is set to Keep the new temperature. Change it under When the temperature
+changes outside PELS.`
 
 A new override starts from the device's target in the active mode. It ends `At
 08:00` by default from 15:00, `In 2 hours` earlier in the day. Form errors:
@@ -844,7 +855,7 @@ An override outranks a Smart task on the device, and three places say so. The
 form, when the device has an open task: `The Smart task on this device waits
 until the override ends.`, or, when the task's ready-by time comes before the
 chosen end, `The Smart task on this device ends without running: its ready-by
-time comes first.` The device page's Smart task box appends `· Waiting for the
+time comes first.` The Smart task row appends `· Waiting for the
 override to end` to the open task's line, or `· Ends without running: the
 override lasts past its ready-by time`. The New smart task page, for a device
 with one in force: `This device has an override until 21:30. A Smart task waits
@@ -861,9 +872,9 @@ row reads `<device> · Override 26 °C until 07:00`; the list filter adds
 kind. Its results: `Override started.`, `Skipped because this device already has
 an override.`, `Skipped because the override would already have ended.`, `Skipped
 because the device is set to Keep the new temperature.`; paused, it reads
-`Scheduled overrides for this device are off`. The Override card links to it with
-`Repeat on a schedule`, for a device a schedule can act on, opening it at the
-override's temperature.
+`Scheduled overrides for this device are off`. The Temporary card's Schedules row,
+while the device has none, opens a new schedule for it: an override at the
+temperature in force or the device's usual one when it has an Override row.
 
 ### Device-page limited temperature on a setpoint-only device
 
@@ -1465,8 +1476,8 @@ widget's field, preview, and error strings (`CREATE_SMART_TASK_WIDGET_COPY`).
 | Concept | Label |
 |---|---|
 | Smart tasks page action | `New smart task` |
-| Device page box (last on the page; hidden while checking and when the check fails), no task | `Smart task` / `Set a goal and when this device should reach it.` / `Add smart task` (text button) |
-| Device page box, open task | `Smart task` / `Target 65 °C · Ready by …` / `View task` (text button) |
+| Device page, Temporary card's Smart task row (absent while checking and when the check fails), no task | `Smart task` / `Reach a target by a time, at the cheapest hours` / `Add` |
+| Device page, Temporary card's Smart task row, open task | `Smart task` / `Target 65 °C · Ready by …` / `View` |
 | Picker prompt | `Choose the managed device the task is for.` |
 | Picker, no eligible device | `No device can take a smart task yet. Turn on Managed by PELS for a thermostat, water heater, EV charger, or an on/off device with a power reading.` |
 | Picker row, device with an open task | `Open its smart task` |

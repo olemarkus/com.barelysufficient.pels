@@ -1,4 +1,3 @@
-import { h, render } from 'preact';
 import type { DeviceOverride } from '../../../../shared-domain/src/settings/deviceOverrides.ts';
 import {
   getPrimaryTargetCapability, normalizeTargetCapabilityValue,
@@ -20,14 +19,15 @@ import { logSettingsError } from '../logging.ts';
 import { hasOpenSmartTask, resolveManagedState, state } from '../state.ts';
 import { getTargetCapabilityStep } from '../targetCapabilityStep.ts';
 import { showToast, showToastError } from '../toast.ts';
-import {
-  DeviceOverrideCard, type DeviceOverrideCardState, type OverrideScheduleLink,
+import type {
+  DeviceOverrideCardActions, DeviceOverrideCardState, OverrideScheduleLink,
 } from '../views/DeviceOverrideCard.tsx';
-import { isDeviceSmartTaskCandidate } from './smartTaskBox.ts';
 
 /**
- * The device page's Override card, first on a managed thermostat's page: start
- * a temperature override, see the one in force, end it early.
+ * The Override row of the device page's Temporary card (`temporaryCard.ts`), on
+ * a managed thermostat's page: start a temperature override, see the one in
+ * force, change it, end it early. This module holds the row's state and its
+ * form; the card paints it.
  *
  * The device's stored override lives in `deviceOverrideStore.ts`, which reads
  * and writes its `device_override.<deviceId>` key through the settings bridge;
@@ -44,8 +44,15 @@ type CardSession = {
 };
 
 let session: CardSession | null = null;
+// What the card last resolved to, for the Temporary card to paint; `null` when the row does not apply.
+let shown: DeviceOverrideCardState | null = null;
+let notify: () => void = () => {};
 
-const root = (): HTMLElement | null => document.getElementById('device-detail-override');
+/** The Override row's state for the open device, or `null` when it has none. */
+export const getDeviceOverrideCardState = (): DeviceOverrideCardState | null => shown;
+
+/** Called whenever the row's state changes. */
+export const onDeviceOverrideCardChange = (listener: () => void): void => { notify = listener; };
 
 const findDevice = (deviceId: string): SettingsUiDeviceDetailItem | undefined => (
   state.latestDevices.find((device) => device.id === deviceId)
@@ -91,42 +98,30 @@ const resolveCardState = (current: CardSession, device: SettingsUiDeviceDetailIt
   }
   const nowMs = Date.now();
   const active = activeOverride(current, nowMs);
-  const schedule = scheduleLink(device, active);
-  if (active === null) return { kind: 'idle', schedule };
-  return {
-    kind: 'active', schedule, busy: current.busy,
-    line: formatActiveOverride(active, nowMs, getHomeyTimezone()),
-  };
+  if (active === null) return { kind: 'idle' };
+  return { kind: 'active', busy: current.busy, line: formatActiveOverride(active, nowMs, getHomeyTimezone()) };
 };
 
 /**
- * The Repeat link, for a device a schedule can start an override on: the
- * devices the app lists for scheduled actions. It opens the schedule at the
- * override's temperature, or the device's usual one.
+ * What a new schedule for the open device starts as: an override at the
+ * temperature in force, or the device's usual one. `null` for a device with no
+ * Override row.
  */
-const scheduleLink = (
-  device: SettingsUiDeviceDetailItem,
-  active: DeviceOverride | null,
-): OverrideScheduleLink | null => (
-  isDeviceSmartTaskCandidate(device.id)
-    ? { deviceId: device.id, temperatureC: active?.setting.targetC ?? usualTemperature(device) }
-    : null
-);
+export const getDeviceOverrideScheduleLink = (): OverrideScheduleLink | null => {
+  if (!session || shown === null || shown.kind === 'blocked') return null;
+  const device = findDevice(session.deviceId);
+  if (!device) return null;
+  const active = activeOverride(session, Date.now());
+  return { deviceId: device.id, temperatureC: active?.setting.targetC ?? usualTemperature(device) };
+};
 
 const paint = (): void => {
-  const el = root();
-  if (!el || !session) return;
+  if (!session) return;
   const device = findDevice(session.deviceId);
   const applies = device !== undefined && hasLoadedDeviceOverride(session.deviceId)
     && supportsTemperatureDevice(device) && resolveManagedState(device.id);
-  const cardState = applies ? resolveCardState(session, device) : null;
-  if (cardState === null) {
-    el.hidden = true;
-    return;
-  }
-  const actions = { onStart, onEndNow, onDraftChange, onSave, onCancel };
-  render(h(DeviceOverrideCard, { state: cardState, actions }), el);
-  el.hidden = false;
+  shown = applies ? resolveCardState(session, device) : null;
+  notify();
 };
 
 /**
@@ -207,12 +202,12 @@ const onEndNow = (): void => {
   void write(session, { ...active, untilMs: Date.now() - CLOCK_ALLOWANCE_MS }, OVERRIDE_COPY.ended);
 };
 
-/** Paint the card for a device; a different device starts from a fresh read. */
+/** Resolve the row for a device; a different device starts from a fresh read. */
 export const renderDeviceOverrideCard = (deviceId: string): void => {
   if (session?.deviceId !== deviceId) {
     session = { deviceId, draft: null, changing: false, error: null, busy: false };
-    const el = root();
-    if (el) el.hidden = true;
+    shown = null;
+    notify();
     void loadDeviceOverride(deviceId);
     return;
   }
@@ -221,14 +216,13 @@ export const renderDeviceOverrideCard = (deviceId: string): void => {
 
 export const hideDeviceOverrideCard = (): void => {
   session = null;
-  const el = root();
-  if (el) el.hidden = true;
+  shown = null;
+  notify();
 };
 
-// The Repeat link follows the app's list of schedulable devices, read by the Smart task box.
-document.addEventListener('device-smart-task-candidates-changed', () => {
-  if (session && !session.busy) paint();
-});
+export const deviceOverrideCardActions: DeviceOverrideCardActions = {
+  onStart, onEndNow, onDraftChange, onSave, onCancel,
+};
 
 document.addEventListener(DEVICE_OVERRIDE_CHANGED_EVENT, (event) => {
   const { deviceId } = (event as CustomEvent<{ deviceId: string }>).detail;

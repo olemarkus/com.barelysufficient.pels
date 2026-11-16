@@ -2,8 +2,7 @@ import { renderChargerCurrentLimits } from './chargingCurrentLimits.tsx';
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
 import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
 import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
-import { hideDeviceSmartTaskBox, renderDeviceSmartTaskBox } from './smartTaskBox.ts';
-import { hideDeviceOverrideCard, renderDeviceOverrideCard } from './overrideCard.ts';
+import { hideDeviceTemporaryCard, renderDeviceTemporaryCard } from './temporaryCard.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailOverlay,
@@ -326,8 +325,7 @@ const refreshOpenDeviceDetail = () => {
   setDeviceDetailTitle(device.name);
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(currentDetailDeviceId);
-  renderDeviceSmartTaskBox(currentDetailDeviceId);
-  renderDeviceOverrideCard(currentDetailDeviceId);
+  renderDeviceTemporaryCard(currentDetailDeviceId);
   setDeviceDetailControlStates(currentDetailDeviceId, device);
   setDeviceDetailShedBehavior(currentDetailDeviceId, device, updateSetStepOptionLabel);
   renderDeviceDetailPowerModel(device);
@@ -367,8 +365,7 @@ export const openDeviceDetail = (deviceId: string) => {
   setDeviceDetailTitle(device.name);
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(deviceId);
-  renderDeviceSmartTaskBox(deviceId);
-  renderDeviceOverrideCard(deviceId);
+  renderDeviceTemporaryCard(deviceId);
   setDeviceDetailControlStates(deviceId, device);
   setDeviceDetailShedBehavior(deviceId, device, updateSetStepOptionLabel);
   renderDeviceDetailPowerModel(device);
@@ -404,8 +401,7 @@ export const closeDeviceDetail = () => {
   resetNativeWiringSetupDisclosure();
   resetDeviceDetailControlContest();
   hideDeviceDetailLiveStatus();
-  hideDeviceSmartTaskBox();
-  hideDeviceOverrideCard();
+  hideDeviceTemporaryCard();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;

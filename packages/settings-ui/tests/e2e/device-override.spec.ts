@@ -24,20 +24,30 @@ const readSetting = (page: Page, key: string) => page.evaluate(
 );
 
 const shot = async (page: Page, name: string) => {
-  if (SHOTS) await page.locator('#device-detail-override').screenshot({ path: `${SHOTS}/${name}.png` });
+  if (SHOTS) await page.locator('#device-detail-temporary').screenshot({ path: `${SHOTS}/${name}.png` });
 };
 
-test('a managed thermostat starts and ends a temperature override from its page', async ({ page }) => {
+const TASK_DEVICES_STUB = { apiHandlers: {
+  'GET /ui_smart_task_devices': () => ({ state: 'ready', devices: [{
+    deviceId: 'dev_heatpump', deviceName: 'Living Room Heat Pump', kind: 'temperature', group: 'heating',
+    unitSymbol: '°C', goalMin: 10, goalMax: 30, goalStep: 0.5, defaultGoal: 22, currentValue: 20,
+    supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [], overridable: true,
+  }] }),
+} };
+
+test('a managed thermostat starts, changes and ends a temperature override from its Temporary card', async ({ page }) => {
   await openDeviceDetail(page, 'dev_heatpump');
-  const card = page.locator('#device-detail-override');
+  const card = page.locator('#device-detail-temporary');
   await expect(card).toBeVisible();
-  await expect(card.getByRole('heading', { name: 'Override' })).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'Temporary' })).toBeVisible();
+  const row = card.locator('[data-override-action="start"]');
+  await expect(row).toContainText('Hold a temperature until a time');
   await shot(page, 'override-idle');
 
-  await card.locator('[data-override-action="start"]').click();
+  await row.click();
   // The form starts from the active mode's target, not the device's shifted setpoint.
   await expect(card.locator('[data-override-field="temperature"]')).toHaveJSProperty('value', '21');
-  await setMdValue(page, '#device-detail-override [data-override-field="temperature"]', '23');
+  await setMdValue(page, '#device-detail-temporary [data-override-field="temperature"]', '23');
   await card.getByRole('button', { name: 'In 2 hours' }).click();
   await expect(card.locator('[data-override-end-line]')).toHaveText(/^Ends (today|tomorrow) \d{2}:\d{2}$/u);
   await shot(page, 'override-form');
@@ -53,23 +63,24 @@ test('a managed thermostat starts and ends a temperature override from its page'
   expect(stored.untilMs - before).toBeGreaterThanOrEqual(2 * 60 * 60_000 - 5_000);
   expect(stored.untilMs - before).toBeLessThanOrEqual(2 * 60 * 60_000 + 60_000);
 
-  // Change opens on the override's own end, so saving a new temperature keeps it.
-  await card.getByRole('button', { name: 'Change' }).click();
-  await setMdValue(page, '#device-detail-override [data-override-field="temperature"]', '24');
+  // The row opens the override in force on its own end, so saving a new temperature keeps it.
+  await card.locator('[data-override-active]').click();
+  await setMdValue(page, '#device-detail-temporary [data-override-field="temperature"]', '24');
   await card.locator('[data-override-action="save"]').click();
   await expect(card.locator('[data-override-active]')).toContainText('24° until');
   const changed = await readSetting(page, 'device_override.dev_heatpump') as { untilMs: number };
   expect(Math.abs(changed.untilMs - stored.untilMs)).toBeLessThan(60_000);
 
+  await card.locator('[data-override-active]').click();
   await card.locator('[data-override-action="end"]').click();
-  await expect(card.locator('[data-override-action="start"]')).toHaveText('Set an override');
+  await expect(card.locator('[data-override-action="start"]')).toContainText('Hold a temperature until a time');
   const ended = await readSetting(page, 'device_override.dev_heatpump') as { untilMs: number };
   expect(ended.untilMs).toBeLessThanOrEqual(Date.now());
 });
 
 test('the override form asks for a date and time when the owner picks one', async ({ page }) => {
   await openDeviceDetail(page, 'dev_heatpump');
-  const card = page.locator('#device-detail-override');
+  const card = page.locator('#device-detail-temporary');
   await card.locator('[data-override-action="start"]').click();
   await card.getByRole('button', { name: 'Pick a time' }).click();
 
@@ -81,31 +92,32 @@ test('the override form asks for a date and time when the owner picks one', asyn
   await expect(card.getByRole('alert')).toHaveText('Choose an end time in the future.');
 });
 
-test('the Override card links to a new schedule that repeats an override for the device', async ({ page }) => {
-  // The link is offered for a device the app lists for scheduled actions.
-  await page.addInitScript(() => {
-    (window as unknown as { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = { apiHandlers: {
-      'GET /ui_smart_task_devices': () => ({ state: 'ready', devices: [{
-        deviceId: 'dev_heatpump', deviceName: 'Living Room Heat Pump', kind: 'temperature', group: 'heating',
-        unitSymbol: '°C', goalMin: 10, goalMax: 30, goalStep: 0.5, defaultGoal: 22, currentValue: 20,
-        supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [], overridable: true,
-      }] }),
-    } };
-  });
+test('the Schedules row opens a new schedule that repeats an override for the device', async ({ page }) => {
+  // The row is offered for a device the app lists for scheduled actions.
+  await page.addInitScript((stub) => {
+    (window as unknown as { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+      apiHandlers: { 'GET /ui_smart_task_devices': () => stub },
+    };
+  }, TASK_DEVICES_STUB.apiHandlers['GET /ui_smart_task_devices']());
   await openDeviceDetail(page, 'dev_heatpump');
-  const link = page.locator('#device-detail-override').getByText('Repeat on a schedule');
+  const card = page.locator('#device-detail-temporary');
+  const row = card.locator('[data-temporary-schedules]');
 
-  await expect(link).toHaveAttribute('data-schedule-device', 'dev_heatpump');
-  await expect(link).toHaveAttribute('data-schedule-action', 'override');
+  await expect(row).toContainText('None for this device');
+  await expect(card.locator('[data-smart-task-create="dev_heatpump"]'))
+    .toContainText('Reach a target by a time, at the cheapest hours');
+  await shot(page, 'temporary-three-rows');
+  await expect(row).toHaveAttribute('data-schedule-device', 'dev_heatpump');
+  await expect(row).toHaveAttribute('data-schedule-action', 'override');
   // The schedule opens at the active mode's target for the device.
-  await expect(link).toHaveAttribute('data-schedule-temperature', '21');
-  await link.click();
+  await expect(row).toHaveAttribute('data-schedule-temperature', '21');
+  await row.click();
   await expect(page.locator('#schedules-panel')).toBeVisible();
   await expect.poll(() => page.url()).toContain('scheduleAction=override');
   await expect.poll(() => page.url()).toContain('scheduleTemperature=21');
 });
 
-test('the Smart task box and the override form say an open task waits for the override', async ({ page }) => {
+test('the Smart task row and the override form say an open task waits for the override', async ({ page }) => {
   await page.addInitScript(() => {
     const hour = 60 * 60_000;
     (window as unknown as { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = { settings: {
@@ -116,12 +128,13 @@ test('the Smart task box and the override form say an open task waits for the ov
     } };
   });
   await openDeviceDetail(page, 'dev_heatpump');
+  const card = page.locator('#device-detail-temporary');
 
   // The task must be ready in 3 hours and the override lasts 5.
-  await expect(page.locator('#device-detail-smart-task'))
+  await expect(card.locator('[data-smart-task-view="dev_heatpump"]'))
     .toContainText('· Ends without running: the override lasts past its ready-by time');
-  const card = page.locator('#device-detail-override');
-  await card.getByRole('button', { name: 'Change' }).click();
+  await shot(page, 'temporary-task-and-override');
+  await card.locator('[data-override-active]').click();
   await card.getByRole('button', { name: 'In 2 hours' }).click();
   await expect(card.locator('[data-override-smart-task-note]'))
     .toHaveText('The Smart task on this device waits until the override ends.');

@@ -1053,9 +1053,10 @@
             <span id="device-detail-live-reason" class="plan-hero__subline device-detail-live-status__reason pels-text-status-line" hidden></span>
           </div>
         </div>
-        <!-- A temperature PELS holds until a chosen time (deviceDetail/overrideCard.ts).
-             First on a managed thermostat's page: it is the thing done from here in a hurry. -->
-        <section id="device-detail-override" class="pels-surface-card device-detail-override" hidden></section>
+        <!-- What applies to this device for a limited time: its override, its
+             Smart task and its schedules (deviceDetail/temporaryCard.ts). Directly
+             under the status header for every kind of device. -->
+        <section id="device-detail-temporary" class="pels-surface-card device-detail-temporary" hidden></section>
 
         <section class="detail-section" id="device-detail-modes-section">
           <details class="settings-collapse detail-collapse" open>
@@ -1728,11 +1729,6 @@
             </div>
           </details>
         </section>
-
-        <!-- The device's Smart task, or Add smart task (deviceDetail/smartTaskBox.ts).
-             Last on the page: most homes never use Smart tasks, and the page
-             is about power limiting. -->
-        <section id="device-detail-smart-task" class="pels-surface-card device-detail-smart-task" hidden></section>
 
         <section class="detail-section" id="device-detail-diagnostics-section">
           <details id="device-detail-diagnostics-disclosure" class="settings-collapse detail-collapse">

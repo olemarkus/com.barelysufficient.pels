@@ -30,8 +30,8 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 // - Battery: continuous planning, its Managed and Power-limit control switches,
 //   and its place in the priority order; none of a load's sections apply, so they are hidden
 //   here rather than by their own gates (`applyBatteryKindVisibility`).
-// - Smart task: after Setup for every kind. Most homes never use Smart tasks,
-//   and the page is about power limiting.
+// - The Temporary card (override, Smart task, schedules) is not in these lists:
+//   it stays directly under the status header for every kind.
 // Every list carries all sections so hidden, inapplicable ones keep a
 // stable DOM position (their own gates keep them hidden).
 const SECTION_IDS = {
@@ -45,7 +45,6 @@ const SECTION_IDS = {
   charging: 'device-detail-charging-section',
   car: 'device-detail-car-section',
   setup: 'device-detail-setup-section',
-  smartTask: 'device-detail-smart-task',
   activityLog: 'device-detail-activity-log-section',
   diagnostics: 'device-detail-diagnostics-section',
 } as const;
@@ -61,12 +60,12 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
   battery: ['batteryPlan', 'battery', 'activityLog', 'diagnostics'],
-  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'smartTask', 'activityLog', 'diagnostics'],
+  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'activityLog', 'diagnostics'],
   temperature: [
-    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics',
+    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics',
   ],
-  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
-  binary: ['shedding', 'surplus', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
+  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
+  binary: ['shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
 };
 
 const sectionOrderFor = (kind: DeviceDetailKind): readonly SectionKey[] => [

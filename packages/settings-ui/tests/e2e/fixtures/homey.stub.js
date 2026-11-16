@@ -2057,6 +2057,12 @@
       prices: buildPricesPayload(),
     }),
     'GET /ui_devices': (_body, query) => scopedDevicesHandler(query, {
+      // The Main home's schedules ride this payload, as in production. None by
+      // default; a spec that needs some serves its own (`schedules.spec.ts`).
+      schedules: settings.ui_devices_schedules ?? { ok: true, data: {
+        timeZone: 'Europe/Oslo', modes: ['Home', 'Away'],
+        controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] }, entries: [],
+      } },
       inverterDevices: [],
       continuousBatteryPlans: typeof initialOverrides.continuousBatteryPlans === 'function'
         ? initialOverrides.continuousBatteryPlans() : {},
