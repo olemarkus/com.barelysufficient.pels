@@ -128,7 +128,7 @@ export const handleDeferredDeadlineReached = (
     return;
   }
   // Cap-on → the planner owns the device on its normal lane once the task ends.
-  // So it does under a Flow's temporary temperature, which outranks the task:
+  // So it does under a temperature override, which outranks the task:
   // the plan holds the device at it and returns it to its mode target after, so
   // a fallback write here would only fight the plan.
   if (ctx.isCapacityControlEnabled(deviceId) || bindTemporaryTemperatureRead(ctx)(deviceId) !== null) {

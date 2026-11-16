@@ -24,7 +24,7 @@ Use **Set temporary temperature for device**. One card is enough: PELS ends the 
 1. Add **This Flow is started**, or any other trigger, such as a button.
 2. Add **Set temporary temperature for device**. Choose the thermostat, enter the temperature and the number of minutes (up to 1440, one day).
 
-PELS sets the thermostat to exactly that temperature, without price or solar adjustments, and the device card reads **Temporary temperature from a Flow**. When the time is up, PELS returns the thermostat to the target of whichever mode is active, with its adjustments. A mode change in the meantime does not end it, and neither does a Homey restart.
+PELS sets the thermostat to exactly that temperature, without price or solar adjustments, and the device card reads **Override**. When the time is up, PELS returns the thermostat to the target of whichever mode is active, with its adjustments. A mode change in the meantime does not end it, and neither does a Homey restart.
 
 Power limiting still applies: if PELS needs the power, it lowers the thermostat to its limit temperature and goes back to the temporary temperature when the limit ends.
 

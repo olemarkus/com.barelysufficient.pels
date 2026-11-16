@@ -57,8 +57,8 @@ export class DeferredObjectiveDecorationController {
     private readonly source: TaskEvaluationSource,
     private readonly getDeferredObjectiveSettings: () => DeferredObjectiveRoster | undefined,
     /**
-     * A Flow's temporary temperature is in force on the device
-     * (`lib/thermostat/temporaryTemperatureTargets.ts`). It outranks the task:
+     * A temperature override is in force on the device
+     * (`lib/overrides/deviceOverrides.ts`). It outranks the task:
      * the task keeps its plan, but this cycle it decides nothing for the device.
      */
     private readonly isTemporaryTemperatureActive: (deviceId: string) => boolean,
@@ -94,9 +94,9 @@ export class DeferredObjectiveDecorationController {
   }
 
   /**
-   * The decisions with every device a Flow's temporary temperature holds left
+   * The decisions with every device a temperature override holds left
    * out, so no floor, deferred hold, lent authority or hour claim reaches it.
-   * The task is not touched: once the temporary temperature ends, its next
+   * The task is not touched: once the override ends, its next
    * decision applies as usual.
    */
   private withoutSuspendedDevices(

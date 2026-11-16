@@ -20,11 +20,12 @@ describe('observation-origin mode edits', () => {
       state: 'resolved' as const, mode: 'Home', homeId, catalogHomeId: homeId,
     }));
     const isLimited = vi.fn(() => false);
+    const readOverrideC = vi.fn((): number | null => null);
     const service = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, reloadMain, () => [{ reloadModeCatalog: reloadArea }], (_id, value) => value,
-      isLimited, () => [], () => null,
+      isLimited, () => [], readOverrideC,
     );
-    return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited };
+    return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited, readOverrideC };
   };
 
   it('authorizes the normalized saved target rather than an old adjusted target', () => {
@@ -83,6 +84,20 @@ describe('observation-origin mode edits', () => {
     expect(reloadMain).not.toHaveBeenCalled();
 
     isLimited.mockReturnValue(false);
+    service.accept(adjustment);
+    expect(settings.get(key)).toEqual({ Home: { heater: 22, other: 19 }, Away: { heater: 15 } });
+  });
+
+  it('does not save a change made while a temperature override is in force', () => {
+    // The override ends by itself and the device returns to the mode's target,
+    // so a change during it must not become that target.
+    const { settings, key, service, reloadMain, readOverrideC } = start();
+    readOverrideC.mockReturnValue(24);
+    service.accept(adjustment);
+    expect(settings.get(key)).toEqual({ Home: { heater: 23.5, other: 19 }, Away: { heater: 15 } });
+    expect(reloadMain).not.toHaveBeenCalled();
+
+    readOverrideC.mockReturnValue(null);
     service.accept(adjustment);
     expect(settings.get(key)).toEqual({ Home: { heater: 22, other: 19 }, Away: { heater: 15 } });
   });

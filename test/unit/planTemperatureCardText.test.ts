@@ -138,7 +138,7 @@ describe('resolveTemperatureReasonLine', () => {
     };
 
     it('says why the target sits off the mode while it is in force', () => {
-      expect(resolveTemperatureReasonLine(running)).toBe('Temporary temperature from a Flow');
+      expect(resolveTemperatureReasonLine(running)).toBe('Override');
       expect(resolveTemperatureReasonLine({ ...running, temporaryTemperatureActive: false })).toBeNull();
     });
 

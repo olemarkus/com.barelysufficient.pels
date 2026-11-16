@@ -444,6 +444,17 @@ when the saved value no longer fits; it does not write the old mode enum. For a
 prior autonomous mode, its accepted native maximum is the production ceiling;
 a dormant zero setpoint does not mean that production should stop.
 
+## Device overrides
+
+`lib/overrides/deviceOverrides.ts` owns `device_override.<deviceId>`: one
+setting PELS holds on that device until a stored end time (`{ untilMs, setting }`,
+parsed by `packages/shared-domain/src/settings/deviceOverrides.ts`). The settings
+UI writes the key through the settings bridge; the temporary-temperature Flow
+cards go through the owner. An end time of now ends it early, and the owner
+removes a key a day after its override ended. A missing, unreadable or malformed
+key means no override. `temporary_temperature_targets` is the older single map,
+read until its entries have ended and never written.
+
 ## Simple schedules
 
 `lib/schedules/scheduleService.ts` owns named scheduled actions. Each definition

@@ -2,11 +2,7 @@ import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { ModeTargetSelection } from '../lib/home/modeDeviceTargetWrite';
 import { writeDevicePriceAdjustment } from '../lib/price/priceOptimizationSettingsStore';
 import { writeTemperatureControlMode } from '../lib/device/temperatureControlSettings';
-import {
-  endTemporaryTemperature,
-  MAX_TEMPORARY_TEMPERATURE_MINUTES,
-  startTemporaryTemperature,
-} from '../lib/thermostat/temporaryTemperatureTargets';
+import { endDeviceOverride, startDeviceOverride } from '../lib/overrides/deviceOverrides';
 import {
   MAX_PRICE_ADJUSTMENT_C,
   type PriceAdjustmentKind,
@@ -30,8 +26,8 @@ import {
  * the temperature changes outside PELS. Each card writes the setting through
  * its owner, which also holds the rules for what may be written; the card
  * parses its arguments and turns the owner's answer into a message. No card
- * holds state of its own; a temporary temperature carries its own end time, kept
- * by `lib/thermostat/temporaryTemperatureTargets.ts`.
+ * holds state of its own; a temporary temperature is a device override, which
+ * carries its own end time (`lib/overrides/deviceOverrides.ts`).
  */
 
 // The "When the temperature changes outside PELS" row shows for every
@@ -41,6 +37,9 @@ type DeviceGate = (device: DeviceDescriptorRead) => boolean;
 const isTemperatureDevice: DeviceGate = (device) => !device.isBatteryOrSolar && device.deviceType === 'temperature';
 
 const isManagedTemperatureDevice: DeviceGate = (device) => isTemperatureDevice(device) && device.managed;
+
+// The card's own duration range; an override started elsewhere may last longer.
+const MAX_TEMPORARY_TEMPERATURE_MINUTES = 24 * 60;
 
 const ACTIVE_MODE_OPTION = {
   id: 'active-mode',
@@ -72,8 +71,8 @@ function registerTemporaryTemperatureCards(deps: FlowCardDeps): void {
       throw new Error(`Duration must be a whole number of minutes from 1 to ${MAX_TEMPORARY_TEMPERATURE_MINUTES}.`);
     }
     const targetC = normalizeTemperature(deps, device.id, temperature);
-    const outcome = startTemporaryTemperature(
-      deps.homey.settings, device.id, { targetC, minutes }, deps.getNow().getTime(),
+    const outcome = startDeviceOverride(
+      deps.homey.settings, device.id, { setting: { type: 'temperature', targetC }, minutes }, deps.getNow().getTime(),
     );
     if (outcome === 'temperature_control_off') {
       throw new Error(`${device.name} is set to Keep the new temperature, so PELS does not set its temperature.`);
@@ -89,7 +88,7 @@ function registerTemporaryTemperatureCards(deps: FlowCardDeps): void {
   const end = deps.homey.flow.getActionCard('end_device_temporary_temperature');
   end.registerRunListener(async (args: unknown) => {
     const device = await requireDevice(args, deps, isManagedTemperatureDevice);
-    const outcome = endTemporaryTemperature(deps.homey.settings, device.id, deps.getNow().getTime());
+    const outcome = endDeviceOverride(deps.homey.settings, device.id, deps.getNow().getTime());
     if (outcome === 'unavailable') throw new Error('PELS could not end the temperature. Try again shortly.');
     logSettingSaved(deps, device, { setting: 'temporary_temperature_end', outcome });
     return true;
