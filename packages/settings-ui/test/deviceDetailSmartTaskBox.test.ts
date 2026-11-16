@@ -17,14 +17,13 @@ vi.mock('../src/ui/smartTaskCreate.ts', () => ({
   isSmartTaskCreateOpenFor: (deviceId: string) => deviceId === createOpenFor,
 }));
 const { state } = await import('../src/ui/state.ts');
-const { hideDeviceSmartTaskBox, renderDeviceSmartTaskBox } = await import('../src/ui/deviceDetail/smartTaskBox.ts');
-
-const box = (): HTMLElement => document.getElementById('device-detail-smart-task')!;
+const {
+  getDeviceSmartTaskRow, hideDeviceSmartTaskBox, renderDeviceSmartTaskBox,
+} = await import('../src/ui/deviceDetail/smartTaskBox.ts');
 const flush = async (): Promise<void> => { await new Promise((resolve) => { setTimeout(resolve, 0); }); };
 
-describe('device Smart task box', () => {
+describe('device Smart task row', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<section id="device-detail-smart-task" hidden></section>';
     callApiMock.mockReset();
     settingsLoaded = true;
     createOpenFor = null;
@@ -36,11 +35,9 @@ describe('device Smart task box', () => {
   it('stays hidden while checking, then offers Add once the candidate list includes the device', async () => {
     callApiMock.mockResolvedValue({ state: 'ready', devices: [{ deviceId: 'heater' }] });
     renderDeviceSmartTaskBox('heater');
-    expect(box().hidden).toBe(true);
+    expect(getDeviceSmartTaskRow()).toBeNull();
     await flush();
-    expect(box().hidden).toBe(false);
-    expect(box().querySelector('md-text-button[data-smart-task-create="heater"]')?.textContent)
-      .toBe('Add smart task');
+    expect(getDeviceSmartTaskRow()).toMatchObject({ kind: 'add', deviceId: 'heater' });
     expect(callApiMock).toHaveBeenCalledWith('GET', SETTINGS_UI_SMART_TASK_DEVICES_PATH);
   });
 
@@ -61,11 +58,11 @@ describe('device Smart task box', () => {
     expect(callApiMock).toHaveBeenCalledTimes(3);
   });
 
-  it('hides the box for a device no task can be created on', async () => {
+  it('has no row for a device no task can be created on', async () => {
     callApiMock.mockResolvedValue({ state: 'ready', devices: [{ deviceId: 'other' }] });
     renderDeviceSmartTaskBox('heater');
     await flush();
-    expect(box().hidden).toBe(true);
+    expect(getDeviceSmartTaskRow()).toBeNull();
   });
 
   it('shows the open task from state, with a way to it, without a request', () => {
@@ -74,31 +71,31 @@ describe('device Smart task box', () => {
       deadlineAtMs: Date.now() + 3_600_000,
     };
     renderDeviceSmartTaskBox('heater');
-    expect(box().textContent).toContain('Target 65 °C');
-    expect(box().textContent).toContain('Ready by');
-    expect(box().querySelector('md-text-button[data-smart-task-view="heater"]')?.textContent).toBe('View task');
+    const row = getDeviceSmartTaskRow();
+    expect(row).toMatchObject({ kind: 'open', deviceId: 'heater' });
+    expect(row?.line).toContain('Target 65 °C');
+    expect(row?.line).toContain('Ready by');
     expect(callApiMock).not.toHaveBeenCalled();
   });
 
   it('offers no Add before the stored tasks have loaded, which would read as none', () => {
     settingsLoaded = false;
     renderDeviceSmartTaskBox('heater');
-    expect(box().hidden).toBe(true);
+    expect(getDeviceSmartTaskRow()).toBeNull();
     expect(callApiMock).not.toHaveBeenCalled();
   });
 
   it('offers no Add while the device’s first task is being created, which would restart the draft', () => {
     createOpenFor = 'heater';
     renderDeviceSmartTaskBox('heater');
-    expect(box().hidden).toBe(true);
+    expect(getDeviceSmartTaskRow()).toBeNull();
     expect(callApiMock).not.toHaveBeenCalled();
   });
 
-  it('stays hidden when the candidate check fails', async () => {
+  it('has no row when the candidate check fails', async () => {
     callApiMock.mockRejectedValue(new Error('unavailable'));
     renderDeviceSmartTaskBox('heater');
     await flush();
-    expect(box().hidden).toBe(true);
-    expect(box().querySelector('[data-smart-task-create]')).toBeNull();
+    expect(getDeviceSmartTaskRow()).toBeNull();
   });
 });

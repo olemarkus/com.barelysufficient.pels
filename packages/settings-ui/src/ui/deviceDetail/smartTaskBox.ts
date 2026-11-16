@@ -13,10 +13,10 @@ import { formatOpenSmartTaskLine } from '../smartTaskSummary.ts';
 import { hasOpenSmartTask, state } from '../state.ts';
 
 /**
- * The device page's Smart task box, at the end of the page: the device's open
- * task with a link to it, or an Add smart task action when the device can carry
- * one. Most homes never use Smart tasks, so the box stays quiet: it shows
- * nothing until it has something to offer, and nothing when the check fails.
+ * The Smart task row of the device page's Temporary card (`temporaryCard.ts`):
+ * the device's open task with a way to it, or adding one when the device can
+ * carry a task. The row is absent until it has something to offer, and when the
+ * check fails. This module holds the row's state; the card paints it.
  *
  * The open task comes from `state.deferredObjectiveSettings`, which the
  * settings-change router keeps current, so the box repaints on every plan push
@@ -36,26 +36,26 @@ let readGeneration = 0;
 // The device whose page the box is on, while that page is open.
 let shownDeviceId: string | null = null;
 
-const box = (): HTMLElement | null => document.getElementById('device-detail-smart-task');
+/** The device's open task, or the offer to add one. */
+export type DeviceSmartTaskRow =
+  | { kind: 'open'; deviceId: string; line: string }
+  | { kind: 'add'; deviceId: string; line: string };
 
-const paint = (body: string, action: HTMLElement, deviceId: string): void => {
-  const root = box();
-  if (!root) return;
-  const heading = document.createElement('h3');
-  heading.className = 'pels-text-card-title';
-  heading.textContent = SMART_TASK_CREATE_PAGE_COPY.boxTitle;
-  const supporting = document.createElement('p');
-  supporting.className = 'pels-card-supporting';
-  supporting.textContent = body;
-  root.replaceChildren(heading, supporting, action);
-  root.append(textButton('Schedule a task', { openSchedules: '', scheduleDevice: deviceId }));
-  root.hidden = false;
+let row: DeviceSmartTaskRow | null = null;
+let notify: () => void = () => {};
+
+/** The Smart task row for the open device, or `null` when it has none. */
+export const getDeviceSmartTaskRow = (): DeviceSmartTaskRow | null => row;
+
+/** Called whenever the row changes. */
+export const onDeviceSmartTaskRowChange = (listener: () => void): void => { notify = listener; };
+
+const show = (next: DeviceSmartTaskRow | null): void => {
+  row = next;
+  notify();
 };
 
-const hide = (): void => {
-  const root = box();
-  if (root) root.hidden = true;
-};
+const hide = (): void => show(null);
 
 export const hideDeviceSmartTaskBox = (): void => {
   shownDeviceId = null;
@@ -64,21 +64,13 @@ export const hideDeviceSmartTaskBox = (): void => {
   hide();
 };
 
-const textButton = (label: string, data: Record<string, string>): HTMLElement => {
-  const button = document.createElement('md-text-button');
-  button.textContent = label;
-  Object.assign(button.dataset, data);
-  return button;
-};
-
 const paintOpenTask = (deviceId: string, entry: DeferredObjectiveSettingsEntry): void => {
   const line = formatOpenSmartTaskLine(entry);
   const override = getActiveDeviceOverride(deviceId, Date.now());
-  paint(
-    override ? `${line} · ${resolveOverrideSmartTaskBoxNote(override.untilMs, entry.deadlineAtMs)}` : line,
-    textButton(SMART_TASK_CREATE_PAGE_COPY.viewTask, { smartTaskView: deviceId }),
-    deviceId,
-  );
+  show({
+    kind: 'open', deviceId,
+    line: override ? `${line} · ${resolveOverrideSmartTaskBoxNote(override.untilMs, entry.deadlineAtMs)}` : line,
+  });
 };
 
 /** Reuse the device page's server-resolved eligibility for charger settings. */
@@ -133,11 +125,7 @@ export const renderDeviceSmartTaskBox = (deviceId: string): void => {
     return;
   }
   if (candidates.read.state === 'resolved' && candidates.read.deviceIds.has(deviceId)) {
-    paint(
-      SMART_TASK_CREATE_PAGE_COPY.addTaskHint,
-      textButton(SMART_TASK_CREATE_PAGE_COPY.addTask, { smartTaskCreate: deviceId }),
-      deviceId,
-    );
+    show({ kind: 'add', deviceId, line: SMART_TASK_CREATE_PAGE_COPY.addTaskHint });
     return;
   }
   hide();

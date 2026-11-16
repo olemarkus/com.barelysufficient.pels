@@ -3332,36 +3332,39 @@ md-filled-tonal-button.is-busy {
   color: var(--pels-text-supporting-color);
 }
 
-/* The device page's Smart task box, last on the page: a title, one line, and
- * a quiet text action at the start edge. */
-.device-detail-smart-task {
+/* The device page's Temporary card: a title over a Material list, one row per
+ * temporary thing, the whole row the tap target. The Override row's form
+ * replaces the list while it is open. */
+.device-detail-temporary {
   gap: var(--spacing-2);
   height: max-content;
 }
 
-.device-detail-smart-task > h3,
-.device-detail-smart-task > p {
+.device-detail-temporary > h3,
+.device-detail-temporary > p {
   margin: 0;
 }
 
-.device-detail-smart-task > md-text-button {
-  justify-self: start;
+.device-detail-temporary__list {
+  padding: 0;
+  background: transparent;
+  /* The rows sit on the card, flush with its title. */
+  margin-inline: calc(-1 * var(--spacing-3));
 }
 
-/* The device page's Override card: a title, one line or a short form, and
- * quiet text actions at the start edge. */
-.device-detail-override {
-  gap: var(--spacing-2);
-  height: max-content;
+.device-detail-temporary__row {
+  /* The trailing word is the row's action, so it reads at label size. */
+  --md-list-item-trailing-supporting-text-size: var(--pels-text-settings-label-font-size);
+  --md-list-item-trailing-supporting-text-color: var(--md-sys-color-primary);
 }
 
-.device-detail-override > h3,
-.device-detail-override > p {
-  margin: 0;
+.device-detail-temporary__row + .device-detail-temporary__row {
+  border-top: 1px solid var(--panel-border);
 }
 
-.device-detail-override > md-text-button {
-  justify-self: start;
+.device-detail-temporary__action {
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
 }
 
 .device-detail-override__form {

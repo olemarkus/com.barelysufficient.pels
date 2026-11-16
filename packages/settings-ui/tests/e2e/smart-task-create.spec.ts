@@ -122,19 +122,19 @@ test.describe('Create smart task from settings', () => {
     await expect(afterTask).toBeVisible();
   });
 
-  test('offers Add at the end of the device page and returns there on Back', async ({ page }) => {
+  test('offers Add in the device page\'s Temporary card and returns there on Back', async ({ page }) => {
     await openDevice(page);
     const overlay = page.locator('#device-detail-overlay');
-    const box = overlay.locator('#device-detail-smart-task');
-    await expect(box.getByRole('button', { name: 'Add smart task' })).toBeVisible();
+    const addRow = overlay.locator('#device-detail-temporary [data-smart-task-create]');
+    await expect(addRow).toContainText('Reach a target by a time, at the cheapest hours');
     await expect(overlay.locator('#device-detail-live-smart-task')).toHaveCount(0);
-    await box.getByRole('button', { name: 'Add smart task' }).click();
+    await addRow.click();
     const composer = page.locator('#smart-task-create-root');
     await expect(composer).toContainText('Connected 300');
     await composer.getByRole('button', { name: 'Back' }).click();
     await expect(overlay).toBeVisible();
     await expect(page.locator('#devices-panel')).toBeVisible();
-    await expect(box.getByRole('button', { name: 'Add smart task' })).toBeVisible();
+    await expect(addRow).toBeVisible();
 
     // Closing the reopened device page consumes its own history entry: the
     // owner stays on Devices instead of stepping back past it.
@@ -149,7 +149,7 @@ test('View task on the device page opens the task page and closes the device pag
   await page.setViewportSize({ width: 320, height: 900 });
   await openDevice(page);
   const overlay = page.locator('#device-detail-overlay');
-  await overlay.locator('#device-detail-smart-task').getByRole('button', { name: 'View task' }).click();
+  await overlay.locator('#device-detail-temporary [data-smart-task-view]').click();
   await expect.poll(() => page.url()).toContain('page=deadline-plan');
   await expect(overlay).toBeHidden();
   await expect(page.locator('#deadline-plan-panel .smart-task-actions')).toBeVisible();
@@ -190,10 +190,9 @@ test('capture smart task actions and composer in both host themes', async ({ bro
         await injectHomeyHostCss(devicePage);
         await installCreateStub(devicePage);
         await openDevice(devicePage);
-        const addBox = devicePage.locator('#device-detail-smart-task');
-        await expect(addBox.getByRole('button', { name: 'Add smart task' })).toBeVisible();
+        const addBox = devicePage.locator('#device-detail-temporary');
+        await expect(addBox.locator('[data-smart-task-create]')).toBeVisible();
         await addBox.scrollIntoViewIfNeeded();
-        expect(await addBox.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThan(100);
         await addBox.screenshot({ path: path.join(outDir, `device-add-${suffix}.png`) });
         await devicePage.screenshot({ path: path.join(outDir, `device-add-page-${suffix}.png`) });
 
@@ -209,8 +208,8 @@ test('capture smart task actions and composer in both host themes', async ({ bro
         const activeDevice = await context.newPage();
         await injectHomeyHostCss(activeDevice);
         await openDevice(activeDevice);
-        const activeBox = activeDevice.locator('#device-detail-smart-task');
-        await expect(activeBox.getByRole('button', { name: 'View task' })).toBeVisible();
+        const activeBox = activeDevice.locator('#device-detail-temporary');
+        await expect(activeBox.locator('[data-smart-task-view]')).toBeVisible();
         await activeBox.scrollIntoViewIfNeeded();
         await activeBox.screenshot({ path: path.join(outDir, `device-active-${suffix}.png`) });
         await activeDevice.screenshot({ path: path.join(outDir, `device-active-page-${suffix}.png`) });

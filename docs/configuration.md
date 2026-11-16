@@ -55,7 +55,7 @@ Hourly data is kept for 30 days. Daily totals are kept for one year. Resetting u
 
 ## Smart Tasks
 
-Smart tasks show devices with an active target and ready-by time. Tasks are created with **New smart task** on the Smart tasks page, **Add smart task** on a device page, Homey Flow cards, or the **Create smart task** dashboard widget, then shown in the settings UI so you can inspect the current plan and history.
+Smart tasks show devices with an active target and ready-by time. Tasks are created with **New smart task** on the Smart tasks page, the **Smart task** row of a device page's **Temporary** card, Homey Flow cards, or the **Create smart task** dashboard widget, then shown in the settings UI so you can inspect the current plan and history.
 
 | Card or view | What it does |
 | --- | --- |
@@ -116,6 +116,7 @@ Device detail sections. Each switch sits in the section it governs: **Price-base
 
 | Section | Shown for | What it contains |
 | --- | --- | --- |
+| **Temporary** | Devices that can take an override, a Smart task or a schedule | What applies for a limited time, one row each: **Override** (hold a temperature until a time, on thermostats), **Smart task** (add one, or view the one scheduled) and **Schedules** (add one, or see how many the device has and when the next runs). First on the page. |
 | **Charging** | Managed EV chargers | When and how much to charge: **Charge to a battery level** (with **Charge before the battery level is known**), charge boost, and **Charge on solar surplus**. |
 | **Car** | EV chargers | Which cars charge here, the battery level PELS reads from the car, and where the level comes from. |
 | **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes), and **When the temperature changes outside PELS**. |
@@ -125,7 +126,6 @@ Device detail sections. Each switch sits in the section it governs: **Price-base
 | **Power limiting** | All devices PELS can limit | **Power-limit control**, **Only PELS starts this device** and **Leave off until turned on again**; on an EV charger it is hidden while the charger is not managed. How far PELS may go when limiting this device — off, a limited temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. A device that reports whether it is heating or cooling gets a second limit, **Limited temperature when cooling**; see [Limited temperature for a heating and cooling device](/technical#limited-temperature-for-a-heating-and-cooling-device). |
 | **Battery** | Home batteries | Managed by PELS, power-limit control, and the battery's place in the priority order (**Reorder**). |
 | **Setup** | All devices except home batteries | Managed by PELS, budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not managed yet. |
-| **Smart task** | Devices that can take a task | **Add smart task**, or **View task** when one is scheduled. |
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 

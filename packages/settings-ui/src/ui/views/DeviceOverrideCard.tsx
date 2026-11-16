@@ -1,13 +1,13 @@
 import {
   OVERRIDE_COPY, OVERRIDE_MORNING_AT, type OverrideDraft, type OverrideEndChoice, type OverrideTemperatureRange,
 } from '../deviceOverrideDraft.ts';
-import { MdFilledButton, MdFilledTextField, MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
+import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJSX.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';
 
 export type DeviceOverrideCardState =
-  | { kind: 'idle'; schedule: OverrideScheduleLink | null }
+  | { kind: 'idle' }
   | { kind: 'blocked' }
-  | { kind: 'active'; schedule: OverrideScheduleLink | null; line: string; busy: boolean }
+  | { kind: 'active'; line: string; busy: boolean }
   | {
     kind: 'editing';
     draft: OverrideDraft;
@@ -22,7 +22,7 @@ export type DeviceOverrideCardState =
     smartTaskNote: string | null;
   };
 
-/** The schedule a card's Repeat link opens: an override for this device at this temperature. */
+/** The schedule the Temporary card's Schedules row opens: an override for this device at this temperature. */
 export type OverrideScheduleLink = { deviceId: string; temperatureC: number | null };
 
 export type DeviceOverrideCardActions = {
@@ -43,7 +43,8 @@ const inputValue = (event: Event): string => (event.currentTarget as HTMLInputEl
 
 type EditingState = Extract<DeviceOverrideCardState, { kind: 'editing' }>;
 
-const OverrideForm = ({ state, actions }: { state: EditingState; actions: DeviceOverrideCardActions }) => {
+/** The form the Override row opens: a new override, or a change to the one in force. */
+export const OverrideForm = ({ state, actions }: { state: EditingState; actions: DeviceOverrideCardActions }) => {
   const { draft, range, error, busy, smartTaskNote, endLine, changing } = state;
   return (
     <div class="device-detail-override__form">
@@ -74,6 +75,9 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
         <MdFilledButton type="button" disabled={busy} data-override-action="save" onClick={actions.onSave}>
           {changing ? OVERRIDE_COPY.saveChange : OVERRIDE_COPY.save}
         </MdFilledButton>
+        {changing && <MdTextButton type="button" disabled={busy} data-override-action="end" onClick={actions.onEndNow}>
+          {OVERRIDE_COPY.end}
+        </MdTextButton>}
         <MdTextButton type="button" disabled={busy} data-override-action="cancel" onClick={actions.onCancel}>
           {OVERRIDE_COPY.cancel}
         </MdTextButton>
@@ -81,44 +85,3 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
     </div>
   );
 };
-
-/** Opens a new schedule that starts an override for this device (`schedules.ts`). */
-const RepeatLink = ({ link }: { link: OverrideScheduleLink }) => (
-  <MdTextButton type="button" data-open-schedules="" data-schedule-device={link.deviceId}
-    data-schedule-action="override" data-schedule-temperature={link.temperatureC ?? undefined}>
-    {OVERRIDE_COPY.repeat}
-  </MdTextButton>
-);
-
-/** The device page's Override card: start one, see the one in force, end it. */
-export const DeviceOverrideCard = (
-  { state, actions }: { state: DeviceOverrideCardState; actions: DeviceOverrideCardActions },
-) => (
-  <>
-    <h3 class="pels-text-card-title">{OVERRIDE_COPY.title}</h3>
-    {state.kind === 'blocked' && <p class="pels-card-supporting">{OVERRIDE_COPY.blocked}</p>}
-    {state.kind === 'idle' && <>
-      <p class="pels-card-supporting">{OVERRIDE_COPY.hint}</p>
-      <div class="device-detail-override__actions">
-        <MdFilledTonalButton type="button" data-override-action="start" onClick={actions.onStart}>
-          {OVERRIDE_COPY.start}
-        </MdFilledTonalButton>
-        {state.schedule && <RepeatLink link={state.schedule} />}
-      </div>
-    </>}
-    {state.kind === 'active' && <>
-      <p class="pels-text-answer" data-override-active>{state.line}</p>
-      <p class="pels-card-supporting">{OVERRIDE_COPY.thenBack}</p>
-      <div class="device-detail-override__actions">
-        <MdTextButton type="button" disabled={state.busy} data-override-action="start" onClick={actions.onStart}>
-          {OVERRIDE_COPY.change}
-        </MdTextButton>
-        <MdTextButton type="button" disabled={state.busy} data-override-action="end" onClick={actions.onEndNow}>
-          {OVERRIDE_COPY.end}
-        </MdTextButton>
-        {state.schedule && <RepeatLink link={state.schedule} />}
-      </div>
-    </>}
-    {state.kind === 'editing' && <OverrideForm state={state} actions={actions} />}
-  </>
-);

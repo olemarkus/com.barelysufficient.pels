@@ -35,7 +35,6 @@ const SECTION_IDS = [
   'device-detail-charging-section',
   'device-detail-car-section',
   'device-detail-setup-section',
-  'device-detail-smart-task',
   'device-detail-diagnostics-section',
   'device-detail-activity-log-section',
 ];
@@ -225,13 +224,11 @@ describe('applyDeviceDetailSectionLayout', () => {
     expect(childIds('device-detail-setup-section')).toEqual(SETUP_ROW_ORDER);
   });
 
-  it('puts the Smart task box after Setup and before the activity log', async () => {
+  it('puts the activity log right after Setup', async () => {
     const { module } = await loadLayout();
     module.applyDeviceDetailSectionLayout(buildDevice());
     const order = sectionOrder();
-    expect(order.indexOf('device-detail-smart-task')).toBe(order.indexOf('device-detail-setup-section') + 1);
-    expect(order.indexOf('device-detail-smart-task'))
-      .toBeLessThan(order.indexOf('device-detail-activity-log-section'));
+    expect(order.indexOf('device-detail-activity-log-section')).toBe(order.indexOf('device-detail-setup-section') + 1);
   });
 
   it('re-applies when the resolved kind changes and skips when it does not', async () => {

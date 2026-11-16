@@ -654,7 +654,8 @@ test.describe('settings shell layout regressions', () => {
       await openApp(page, width);
       await openSettingsSection(page, 'devices');
       await page.getByRole('button', { name: 'Open settings for Zaptec Go', exact: true }).click();
-      const smartTask = page.locator('#device-detail-smart-task');
+      // The open task sits in the Temporary card, under the status header.
+      const smartTask = page.locator('#device-detail-temporary');
       const log = page.locator('#device-detail-activity-log-disclosure');
       const diagnostics = page.locator('#device-detail-diagnostics-disclosure');
       await expect(smartTask).toContainText('Target 80%');

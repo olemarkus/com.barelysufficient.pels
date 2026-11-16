@@ -6,7 +6,7 @@ import {
 } from '../dom.ts';
 import { bindSegmentedToSelect } from '../components.ts';
 import { renderDeviceDetailLiveStatus } from './liveStatus.ts';
-import { renderDeviceSmartTaskBox } from './smartTaskBox.ts';
+import { renderDeviceTemporaryCard } from './temporaryCard.ts';
 import {
   isDeviceDetailDiagnosticsExpanded,
   refreshDeviceDetailDiagnostics,
@@ -122,7 +122,7 @@ const resolveCreateSourceTab = (): string => (
 const initDeviceDetailSmartTaskChipHandler = (
   ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
 ) => {
-  document.getElementById('device-detail-smart-task')?.addEventListener('click', (event) => {
+  document.getElementById('device-detail-temporary')?.addEventListener('click', (event) => {
     if (!(event.target instanceof Element)) return;
     const create = event.target.closest<HTMLElement>('[data-smart-task-create]');
     if (create?.dataset.smartTaskCreate) {
@@ -205,7 +205,7 @@ const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext)
 
     // The live-status row tracks every plan push while the overlay is open.
     void renderDeviceDetailLiveStatus(deviceId);
-    renderDeviceSmartTaskBox(deviceId);
+    renderDeviceTemporaryCard(deviceId);
     if (isDeviceDetailDiagnosticsExpanded()) {
       void refreshDeviceDetailDiagnostics(deviceId, () => (
         ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
