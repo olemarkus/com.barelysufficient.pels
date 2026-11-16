@@ -833,8 +833,8 @@ Form errors: `Enter a temperature from 5 to 35 °C.` (`Enter a temperature.` whe
 the device declares no range), `Choose an end time in the future.`, `Choose an
 end time within seven days.`, `Choose a date and time that exists in the Homey
 time zone.` Toasts: `Override started.`, `Override ended.`, `Could not save the
-override.` The overview card's reason line reads `Override` while the plan keeps
-the device at it. The two Flow cards that start and end one are still titled
+override.` The overview card carries an `Override` chip beside its state chip
+while one is in force, limited or not, and no reason line for it. The two Flow cards that start and end one are still titled
 "temporary temperature".
 
 ### Device-page limited temperature on a setpoint-only device

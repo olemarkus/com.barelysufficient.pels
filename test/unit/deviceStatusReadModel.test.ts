@@ -64,6 +64,14 @@ describe('simulation action previews', () => {
     },
   );
 
+  it('marks a device with an override in force, also while it is limited', () => {
+    const kept = buildDeviceStatus({ ...modeTemperature(60, false), temporaryTemperatureActive: true }, false, 0);
+    expect(kept.override).toBe(true);
+    expect(kept.reason).toBeNull();
+    expect(buildDeviceStatus(runningPowerHold({ temporaryTemperatureActive: true }), false, 0).override).toBe(true);
+    expect(buildDeviceStatus(modeTemperature(60, false), false, 0)).not.toHaveProperty('override');
+  });
+
   it('does not use hypothetical wording for an ordinary live target change', () => {
     expect(buildDeviceStatus(modeTemperature(60, false), false, 0).reason).toBeNull();
   });

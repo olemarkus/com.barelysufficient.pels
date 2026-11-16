@@ -140,7 +140,7 @@ export function buildInitialPlanDevices(
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
       priceTargetShift: resolvePriceTargetShift(dev, context.temperatureSetpoints, plannedTarget),
-      temporaryTemperatureActive: isKeptAtTemporaryTemperature(dev, context.temperatureSetpoints, plannedTarget),
+      temporaryTemperatureActive: hasTemperatureOverride(dev, context.temperatureSetpoints),
       surplusCeilingStepId,
     });
     baseMs += Date.now() - t1;
@@ -199,15 +199,10 @@ function resolvePriceTargetShift(
   return plannedTarget === setpoints.keepC ? setpoints.keepPriceShift : NO_PRICE_TARGET_SHIFT;
 }
 
-/** The plan commands a temperature override: the kept setpoint, while one is in force. */
-function isKeptAtTemporaryTemperature(
-  dev: PlanInputDevice,
-  temperatureSetpoints: TemperatureSetpointsByDevice,
-  plannedTarget: ResolvedPlannedTarget,
-): boolean {
+/** A temperature override is in force on the device, whether or not a limit sits on top of it. */
+function hasTemperatureOverride(dev: PlanInputDevice, temperatureSetpoints: TemperatureSetpointsByDevice): boolean {
   if (!isTemperaturePlanDevice(dev)) return false;
-  const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
-  return setpoints.temporaryTemperatureActive && plannedTarget === setpoints.keepC;
+  return temperatureSetpointsFor(temperatureSetpoints, dev.id).temporaryTemperatureActive;
 }
 
 function isRecentlyRestored(lastRestoreMs: number | undefined, nowTs: number): boolean {
