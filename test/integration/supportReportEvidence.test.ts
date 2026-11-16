@@ -188,6 +188,34 @@ describe('support report evidence capture', () => {
     expect(host.deviceManager.getUiPickerDevices).not.toHaveBeenCalled();
   });
 
+  it('states for each charger whether it follows solar and what PELS plans per amp beside its draw', async () => {
+    const host = currentHost();
+    const charger = transportSnapshotFixture({
+      id: 'charger', name: 'Laadpaal', available: true, isEvCharger: true, targets: [],
+      expectedPowerKw: 1.38, expectedPowerSource: 'default',
+      measuredPowerKw: 1.84, measuredPowerObservedAtMs: now - 5_000, lastUpdated: now - 5_000,
+      // A one-phase car on a charger PELS plans on three phases.
+      chargerPhaseCurrentsA: [8, 0, 0],
+      steppedLoadProfile: { steps: [
+        { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+        { id: '6a', planningPowerW: 4_140, planningCurrentA: 6 },
+        { id: '8a', planningPowerW: 5_520, planningCurrentA: 8 },
+      ] },
+    });
+    host.deviceManager.getSnapshotByDeviceId = vi.fn((id: string) => (id === 'charger' ? charger : undefined));
+    const decision = buildPlanDevice({
+      id: 'charger', name: 'Laadpaal', isEvCharger: true, surplusTracking: true, reportedStepId: '8a',
+    });
+    host.planService = partialDouble<NonNullable<PelsHost['planService']>>({
+      getLatestPlanSnapshot: () => ({ generatedAtMs: now, meta: buildPlanMeta(), devices: [decision], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] }),
+    });
+    const report = await source(host).capture({ ...request, subject: { kind: 'app', homeId: 'main' } }, now);
+    expect(values(report, 'Current EV chargers')).toEqual({ chargers: [{
+      id: 'charger', name: 'Laadpaal', chargeOnSolarSurplus: true, reportedStepId: '8a',
+      plannedWattsPerAmp: 690, measuredPowerKw: 1.84, phaseCurrentsA: [8, 0, 0],
+    }] });
+  });
+
   it('keeps area configuration separate from an unavailable Main-only plan decision', async () => {
     const host = currentHost('cabin');
     const configuration = deviceDiagnosticConfigurationFixture();

@@ -31,7 +31,7 @@ import { selectSupportReportActivity, supportReportWindow } from './supportRepor
 import { SupportReportInputError } from './supportReportInput';
 import { LEARNED_RATES_REPORT_TITLE, reportLearnedRates } from './supportReportLearnedRates';
 import {
-  reportCapacitySettings, reportPhaseReading, type PhaseReadingEvidence,
+  reportCapacitySettings, reportEvChargers, reportPhaseReading, type PhaseReadingEvidence,
   reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
   reportDeviceSnapshot, reportHomePlan, reportEvChargingCurrent, type SupportReportDeviceSnapshot,
 } from './supportReportProjection';
@@ -245,6 +245,11 @@ const readHomeSections = (
   }),
   readSection('Current meter phases', () => (homeId === MAIN_HOME_ID
     ? reportPhaseReading(host.getPhaseReadingEvidence()) : null)),
+  readSection('Current EV chargers', () => {
+    // Main's committed plan is the only one that says which chargers follow solar.
+    const committed = homeId === MAIN_HOME_ID ? host.getLatestDevicePlan() : null;
+    return committed ? reportEvChargers(committed, (deviceId) => host.getDeviceSnapshot(deviceId)) : null;
+  }),
   readSection('Current daily budget', () => {
     // The current budget owner publishes Main only. Never substitute it for an area's budget.
     if (homeId !== MAIN_HOME_ID) return null;
