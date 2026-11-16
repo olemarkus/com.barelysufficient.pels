@@ -9,6 +9,30 @@ import type {
 import { withSteppedDiscriminant } from '../plan/planTypes';
 import { withoutTargetPowerReachability } from '../device/targetPowerReachability';
 
+type AllKeys<T> = T extends unknown ? keyof T : never;
+
+/**
+ * Fields of the runtime read that reach planner input although the planner
+ * contract does not declare them. Each is either planner input the contract
+ * should declare, or a field to strip below. Do not add to this list.
+ */
+type UndeclaredPlanInputField =
+  | 'associatedCar' | 'binaryControllable' | 'canSetControl' | 'capabilities' | 'controllable'
+  | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs' | 'lastFreshDataMs'
+  | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'planningPowerKw' | 'powerCapable'
+  | 'priority' | 'reportedStepObservedAtMs' | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge';
+
+type UnclassifiedField<T> = Exclude<AllKeys<T>, AllKeys<UnrankedPlanInputDevice> | UndeclaredPlanInputField>;
+
+/**
+ * Compiles only when every field left on the device is planner input or is
+ * listed in `UndeclaredPlanInputField`, so a new runtime field cannot reach the
+ * planner unnoticed: declare it in the planner contract or strip it.
+ */
+const classified = <T extends object>(
+  fields: T & ([UnclassifiedField<T>] extends [never] ? unknown : { unclassifiedField: UnclassifiedField<T> }),
+): T => fields;
+
 const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
   const {
     temperatureControlDisabled: _temperatureControlDisabled,
@@ -43,7 +67,7 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     acknowledgedStep: _acknowledgedStep,
     ...deviceFields
   } = device;
-  return deviceFields;
+  return classified(deviceFields);
 };
 
 /** Assemble producer-resolved facts as the structurally complete planner contract. */
