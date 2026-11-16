@@ -95,6 +95,16 @@ export type NativeCurrentControl = {
 };
 
 /**
+ * A device whose app steps its heating elements through one capability's
+ * levels (`max_power_*`). The ladder is the planning power of each level, or
+ * none when the device's levels cannot be sized.
+ */
+export type NativeLevelControl = {
+  capabilityId: string;
+  ladder(device: HomeyDeviceLike): SteppedLoadProfile | undefined;
+};
+
+/**
  * A claim capability a home battery's app offers: the value that hands the
  * battery to Homey (and so to PELS), and what a write the app rejected means
  * (`HomeBatteryControlSurface` claim `rejection`).
@@ -277,6 +287,7 @@ export type DeviceAdapter = {
   currentBindings(device: HomeyDeviceLike): ChargingCurrentBinding[];
   phaseBindings(device: HomeyDeviceLike): readonly ChargingPhaseBinding[];
   nativeCurrentControls: readonly NativeCurrentControl[];
+  nativeLevelControls: readonly NativeLevelControl[];
   /** How PELS drives this device when it is a home battery; read only for a battery. */
   homeBatteryBinding(device: HomeyDeviceLike): HomeBatteryBinding;
   /**

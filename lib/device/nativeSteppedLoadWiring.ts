@@ -23,14 +23,16 @@ import {
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { buildTargetPowerLadderSteps } from '../../packages/shared-domain/src/targetPowerLadder';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
+import { CONNECTED_200_STEPPED_LOAD_PROFILE, CONNECTED_300_STEPPED_LOAD_PROFILE } from './maxPowerLadders';
 
+export { CONNECTED_200_STEPPED_LOAD_PROFILE, CONNECTED_300_STEPPED_LOAD_PROFILE } from './maxPowerLadders';
 
 const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
   'max_power_3000',
   'max_power_2000',
   'max_power',
   // myUplink's Connected 120 and Connected Retrofit. Their element wattages
-  // vary by installation, so they have no fixed ladder below.
+  // vary by installation, so they have no fixed ladder.
   'max_power_2elem',
 ] as const;
 
@@ -44,15 +46,6 @@ const TARGET_POWER_PRESET_SETTING_KEYS = [
   'pelsTargetPowerPreset',
   'pels_target_power_preset',
 ] as const;
-const HOIAX_OWNER_URIS = new Set(['homey:app:no.hoiax']);
-const HOIAX_DRIVER_ID_PREFIXES = [
-  'homey:app:no.hoiax:',
-  'no.hoiax:',
-] as const;
-const HOIAX_DRIVER_IDS = new Set([
-  'homey:app:com.myuplink:hoiax',
-  'com.myuplink:hoiax',
-]);
 
 /** Canonical amp observation used by EV target-power profiles. */
 export const AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID = 'available_installation_current';
@@ -72,81 +65,16 @@ const NATIVE_WRITE_VALUES_BY_RANK = {
   high: { numeric: '3', named: 'high_power' },
 } as const;
 
-export const CONNECTED_300_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
-  steps: [
-    { id: 'off', planningPowerW: 0 },
-    { id: 'low', planningPowerW: 1250 },
-    { id: 'medium', planningPowerW: 1750 },
-    { id: 'max', planningPowerW: 3000 },
-  ],
-};
-
-export const CONNECTED_200_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
-  steps: [
-    { id: 'off', planningPowerW: 0 },
-    { id: 'low', planningPowerW: 700 },
-    { id: 'medium', planningPowerW: 1300 },
-    { id: 'max', planningPowerW: 2000 },
-  ],
-};
-
-const FIXED_HOIAX_LADDERS: Partial<Record<NativeSteppedLoadCapabilityId, SteppedLoadProfile>> = {
-  max_power_3000: CONNECTED_300_STEPPED_LOAD_PROFILE,
-  max_power_2000: CONNECTED_200_STEPPED_LOAD_PROFILE,
-  max_power: CONNECTED_200_STEPPED_LOAD_PROFILE,
-};
-
-// A Høiax heater reports the wattage of each of its two elements. The myUplink
-// app publishes them as read-only labels such as "1250W" (heater points 504
-// and 503); the no.hoiax app as `HeaterNomPower` and `HeaterNomPower2`.
-const HOIAX_ELEMENT_POWER_SETTING_PAIRS = [
-  ['status_504', 'status_503'],
-  ['HeaterNomPower', 'HeaterNomPower2'],
-] as const;
-const MAX_HOIAX_ELEMENT_POWER_W = 6000;
-const HOIAX_ELEMENT_POWER_TEXT = /^\s*(\d+(?:\.\d+)?)\s*w?\s*$/iu;
-
-function readHoiaxElementPowerW(value: unknown): number | undefined {
-  const text = typeof value === 'number' || typeof value === 'string' ? String(value) : undefined;
-  const match = text === undefined ? null : HOIAX_ELEMENT_POWER_TEXT.exec(text);
-  const watts = match?.[1] === undefined ? Number.NaN : Number(match[1]);
-  return Number.isFinite(watts) && watts > 0 && watts <= MAX_HOIAX_ELEMENT_POWER_W ? watts : undefined;
-}
-
-/**
- * The ladder the heater's own element wattages give: low runs the smaller
- * element, medium the larger, max both. The apps number the two elements
- * differently, so the levels are ordered by wattage rather than by point.
- * Two equal elements give one single-element rung.
- */
-function resolveHoiaxElementLadder(device: HomeyDeviceLike): SteppedLoadProfile | undefined {
-  const pair = HOIAX_ELEMENT_POWER_SETTING_PAIRS
-    .map(([firstKey, secondKey]) => [
-      readHoiaxElementPowerW(device.settings[firstKey]),
-      readHoiaxElementPowerW(device.settings[secondKey]),
-    ] as const)
-    .find((watts): watts is readonly [number, number] => watts[0] !== undefined && watts[1] !== undefined);
-  if (!pair) return undefined;
-  const lowW = Math.min(...pair);
-  const mediumW = Math.max(...pair);
-  const steps: SteppedLoadStep[] = [
-    { id: 'off', planningPowerW: 0 },
-    { id: 'low', planningPowerW: lowW },
-    { id: 'medium', planningPowerW: mediumW },
-    { id: 'max', planningPowerW: lowW + mediumW },
-  ];
-  return { steps: mediumW > lowW ? steps : steps.filter((step) => step.id !== 'medium') };
-}
-
-/** A Høiax heater's ladder, or none when its power levels cannot be sized. */
-function resolveHoiaxSteppedLoadProfile(
+/** The ladder of a device its integration steps through `max_power_*`, if any. */
+function resolveNativeLevelProfile(
   device: HomeyDeviceLike,
   capabilities: readonly string[],
 ): SteppedLoadProfile | undefined {
-  if (!isHoiaxDevice(device)) return undefined;
   const capabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
   if (capabilityId === undefined) return undefined;
-  return resolveHoiaxElementLadder(device) ?? FIXED_HOIAX_LADDERS[capabilityId];
+  return getDeviceAdapter(device).nativeLevelControls
+    .find((control) => control.capabilityId === capabilityId)
+    ?.ladder(device);
 }
 
 export function resolveNativeSteppedLoadCapabilityId(
@@ -161,7 +89,7 @@ export function isNativeSteppedLoadWiringCandidate(params: {
   capabilityObj?: DeviceCapabilityMap;
 }): boolean {
   const { device, capabilities, capabilityObj } = params;
-  if (resolveHoiaxSteppedLoadProfile(device, capabilities) !== undefined) return true;
+  if (resolveNativeLevelProfile(device, capabilities) !== undefined) return true;
   if (capabilityObj !== undefined && getDeviceAdapter(device).nativeCurrentControls
     .some((control) => control.accepts(device, capabilityObj))) return true;
   return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
@@ -234,8 +162,8 @@ export function resolveNativeSteppedLoadProfileSuggestion(params: {
   capabilityObj?: DeviceCapabilityMap;
 }): SteppedLoadProfile | undefined {
   if (!isNativeSteppedLoadWiringCandidate(params)) return undefined;
-  const hoiaxProfile = resolveHoiaxSteppedLoadProfile(params.device, params.capabilities);
-  if (hoiaxProfile) return hoiaxProfile;
+  const levelProfile = resolveNativeLevelProfile(params.device, params.capabilities);
+  if (levelProfile) return levelProfile;
   if (params.capabilities.includes('max_power_3000')) return CONNECTED_300_STEPPED_LOAD_PROFILE;
   if (params.capabilities.includes('max_power_2000') || params.capabilities.includes('max_power')) {
     return CONNECTED_200_STEPPED_LOAD_PROFILE;
@@ -316,8 +244,9 @@ export function stripNativeSteppedLoadControlCapabilities(params: {
   capabilities: readonly string[];
   capabilityObj?: DeviceCapabilityMap;
 }): string[] {
+  const levelControls = getDeviceAdapter(params.device).nativeLevelControls;
   return params.capabilities.filter((capabilityId) => {
-    if (isHoiaxDevice(params.device) && NATIVE_STEPPED_LOAD_CAPABILITY_SET.has(capabilityId)) return false;
+    if (levelControls.some((control) => control.capabilityId === capabilityId)) return false;
     return !(capabilityId === TARGET_POWER_CAPABILITY_ID && isTargetPowerSteppedLoadCandidate(params));
   });
 }
@@ -434,13 +363,6 @@ export function resolveNativeSteppedLoadObservationCapabilityId(params: {
     );
 }
 
-function isHoiaxDevice(device: HomeyDeviceLike): boolean {
-  if (HOIAX_OWNER_URIS.has(normalizeText(device.ownerUri))) return true;
-  const driverId = normalizeText(device.driverId);
-  return HOIAX_DRIVER_IDS.has(driverId)
-    || HOIAX_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
-}
-
 export function isTargetPowerSteppedLoadCandidate(params: {
   capabilities: readonly string[];
   capabilityObj?: Partial<DeviceCapabilityMap>;
@@ -549,10 +471,6 @@ export function resolveTargetPowerModeInvalidationAtMs(
   const mode = capabilityObj.target_power_mode;
   if (mode?.value !== 'device') return undefined;
   return toCapabilityTimestampMs(mode.lastUpdated);
-}
-
-function normalizeText(value: unknown): string {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
 function resolveRankForStep(profile: SteppedLoadProfile, step: SteppedLoadStep): NativeStepRank {

@@ -18,6 +18,7 @@ import { ocppServerAdapter } from './ocppServer';
 import { smaAdapter } from './sma';
 import { osoAdapter } from './oso';
 import { adaxAdapter } from './adax';
+import { hoiaxAdapter } from './hoiax';
 import { knxAdapter } from './knx';
 import { nibeMyUplinkAdapter } from './nibe';
 import { stiebelHeatPumpAdapter } from './stiebel';
@@ -43,7 +44,7 @@ const adapters: readonly DeviceAdapter[] = [
   wallboxAdapter, zaptecAdapter, futurehomeAdapter, aminaAdapter, goeAdapter, smappeeAdapter, ocppServerAdapter,
   osoAdapter, adaxAdapter, smaAdapter, knxAdapter, nibeMyUplinkAdapter, stiebelHeatPumpAdapter,
   sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter, zendureLocalAdapter,
-  huaweiLuna2000Adapter, solaxBatteryAdapter, homeWizardAdapter,
+  huaweiLuna2000Adapter, solaxBatteryAdapter, homeWizardAdapter, hoiaxAdapter,
 ];
 
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {
