@@ -65,9 +65,11 @@ export class RealtimeIngestService {
     const current = this.reader.chargingCurrentControl;
     for (const snapshot of this.reader.snapshotStore.getSnapshot()) {
       if (!current.sessions.controls(snapshot)) continue;
-      const raw = this.reader.snapshotStore.getTrackedRawDevice(snapshot.id);
       // Home authorization can recover from companion capability events. The
-      // accepted device read still owns Homey's independent availability.
+      // accepted device read still owns Homey's independent availability: the
+      // last one, which for a device PELS does not track live (an unmanaged
+      // charger) is its row in the last full device list.
+      const raw = this.reader.snapshotStore.getLastAcceptedRawDevice(snapshot.id);
       const previousAvailability = snapshot.available;
       const previousStatus = snapshot.controlAdapter?.unavailableStatus;
       snapshot.available = raw !== undefined && getIsAvailable(raw);

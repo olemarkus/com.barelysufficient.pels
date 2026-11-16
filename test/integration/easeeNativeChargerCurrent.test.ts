@@ -279,6 +279,42 @@ describe('Easee native charger current', () => {
     expect(parsed.binaryControl).toEqual({ on: builtIn });
   });
 
+  it('keeps Homey\'s availability for an unmanaged charger when another device reports', async () => {
+    // A fresh install: the owner has managed nothing yet, so the charger is
+    // listed but not tracked live. A report from any other device must not
+    // turn its Homey availability into "Unavailable".
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, createLogger(), {
+      settings: {
+        isManaged: (deviceId) => deviceId !== EASEE_ID,
+        isControllable: (deviceId) => deviceId !== EASEE_ID,
+        isManagedFilterActive: () => false,
+      },
+    });
+    const charger = buildEaseeCharger({
+      charger_status: { value: 'Car connected', lastUpdated: READ_AT },
+      evcharger_charging: { value: false, lastUpdated: READ_AT },
+      evcharger_charging_state: { value: 'plugged_in', lastUpdated: READ_AT },
+      measure_power: { value: 0, lastUpdated: READ_AT },
+    });
+    charger.capabilities = [...EASEE_CAPABILITIES, 'charger_status'];
+    const heater: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
+      id: 'heater-1', name: 'Heater', class: 'heater',
+      capabilities: ['onoff', 'measure_power'],
+      capabilitiesObj: {
+        onoff: { value: true, setable: true, lastUpdated: READ_AT },
+        measure_power: { value: 1_000, lastUpdated: READ_AT },
+      },
+    };
+    try {
+      await initWithLiveFeed(transport);
+      await seedTransportDevices(transport, [charger, heater]);
+      await emitCapability('heater-1', 'measure_power', 1_200);
+      expect(transport.getSnapshot().find(({ id }) => id === EASEE_ID)?.available).toBe(true);
+    } finally {
+      transport.destroy();
+    }
+  });
+
   it.each([false, true])('preserves the linked car and battery session through completion and resume with built-in control %s', async (builtIn) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(READ_AT));
