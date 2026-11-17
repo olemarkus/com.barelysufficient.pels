@@ -737,10 +737,11 @@ describe('settingsOverviewReadModel', () => {
     expect(buildDeviceCard(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
-  it('names the device\u2019s own target and the planned one, also while PELS holds it off', () => {
-    // Owner ruling 2026-11-17: the card always shows the device's setpoint and
-    // the one PELS plans to set, whether or not a write is going out. (It used to
-    // show only the device's own while held off.)
+  it('names the device\u2019s own target and the planned one, also while PELS holds it off for power', () => {
+    // Owner ruling 2026-11-17: the card shows the device's setpoint and the one
+    // PELS will write next, whether or not a write is going out. The one hold that
+    // shows the setpoint alone, a finished Smart task, is pinned in
+    // `deviceStatusReadModel.test.ts`.
     const device = {
       ...buildPlanDevice({
         id: 'held-heater', deviceType: 'temperature', binaryCapabilityId: 'onoff', currentState: 'off',

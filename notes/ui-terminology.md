@@ -337,7 +337,11 @@ fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
 level 6 A`; the fact line always names the device's own setpoint and, after the
 arrow `→`, the one PELS plans to set when they differ (`target 28 °C → 22 °C`),
 also while PELS holds the device off and no write goes out yet; owner ruling
-2026-11-17),
+2026-11-17. The planned one is the setpoint PELS will write the next time it
+writes to the device. A finished Smart task holding its device until the
+ready-by time is the one hold that shows the setpoint alone: the plan's target
+is still the task's, PELS will not write it, and the mode's target applies when
+the hold ends),
 and at most ONE
 exception reason line. An EV charger's fact line carries the car's battery
 level in the slot a temperature device uses for its measured value — that is
