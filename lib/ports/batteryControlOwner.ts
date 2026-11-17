@@ -25,6 +25,15 @@ export type HomeBatteryClaimRead = { kind: 'unreported' } | HomeBatteryClaimObse
 export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; everyMs: number };
 
 /**
+ * How soon a battery takes a new setpoint. `unpaced` takes each one as the
+ * plan decides it. `paced` is a battery whose app asks for few control writes:
+ * a setpoint that raises grid import (less discharge, more charge) waits until
+ * `importRaisingIntervalMs` after the last setpoint sent. One that lowers grid
+ * import always goes at once: the plan counts on it to hold a limit.
+ */
+export type BatteryCommandPacing = { kind: 'unpaced' } | { kind: 'paced'; importRaisingIntervalMs: number };
+
+/**
  * A device as the battery control owner reads it, resolved by the device
  * transport from its snapshot (`readBatteryControl` on `DeviceTransport`): not
  * observed (yet), not a home battery at all, a battery PELS can only observe
@@ -76,12 +85,14 @@ export type BatteryControlRead =
     surface: Extract<HomeBatteryControlSurface, { kind: 'setpoint' }>;
     claim: HomeBatteryClaimRead;
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
+    pacing: BatteryCommandPacing;
   }
   | {
     kind: 'app_actions';
     target: AppActionControlTarget;
     range: HomeBatterySetpointRange;
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
+    pacing: BatteryCommandPacing;
   };
 
 /**
@@ -199,6 +210,8 @@ export type BatteryLeverRead =
     claimEngaged: boolean;
     /** How a setpoint PELS sent is kept in force (`BatteryCommandKeepAlive`). */
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
+    /** How soon the battery takes a new setpoint (`BatteryCommandPacing`). */
+    pacing: BatteryCommandPacing;
     /** How the battery answers a setpoint, and so how the storage lane judges it (`BatteryLeverResponse`). */
     response: BatteryLeverResponse;
     /** How it may charge from the grid, for the battery plan: at any power, or only at its one fixed power, W. */

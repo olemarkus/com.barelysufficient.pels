@@ -86,10 +86,10 @@ describe('toBatteryControlRead', () => {
     const claim = { value: 'anti_feed', observedAtMs: 1_000 };
     expect(toBatteryControlRead(
       battery({ homeBattery: { controlSurface: surface }, batteryClaim: claim }), readAppActions,
-    )).toEqual({ kind: 'setpoint', surface, claim, keepAliveFor: expect.any(Function) });
+    )).toEqual({ kind: 'setpoint', surface, claim, keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' } });
     const unreported = toBatteryControlRead(battery({ homeBattery: { controlSurface: surface } }), readAppActions);
     expect(unreported).toEqual({
-      kind: 'setpoint', surface, claim: { kind: 'unreported' }, keepAliveFor: expect.any(Function),
+      kind: 'setpoint', surface, claim: { kind: 'unreported' }, keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
     });
     if (unreported.kind !== 'setpoint') throw new Error('expected a setpoint read');
     expect([1500, -1500, 0].map((setpointW) => unreported.keepAliveFor(setpointW))).toEqual([

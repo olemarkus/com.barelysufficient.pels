@@ -25,7 +25,7 @@ const battery = (value: string, observedAtMs = 0): SetpointBatteryRead => ({
     range: { minW: -800, maxW: 800, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   },
   claim: { value, observedAtMs },
-  keepAliveFor: () => ({ kind: 'none' }),
+  keepAliveFor: () => ({ kind: 'none' }), pacing: { kind: 'unpaced' },
 });
 
 describe('meter-following battery modes', () => {

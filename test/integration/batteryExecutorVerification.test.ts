@@ -7,6 +7,7 @@ import type { StorageDecidedDevice } from '../../lib/planContract/storageDecisio
 import { BatteryVerificationLedger, DELIVERY_CEILING_TTL_MS } from '../../lib/battery/batteryVerification';
 import type {
   BatteryCommandKeepAlive,
+  BatteryCommandPacing,
   BatteryControlOwner,
   BatteryHandBackOutcome,
   BatteryLeverRead,
@@ -42,6 +43,7 @@ const buildLane = () => {
   const owned = {
     held: false, takenOver: false, deferred: false, releaseOutcome: 'released' as BatteryHandBackOutcome,
     keepAliveFor: (_setpointW: number): BatteryCommandKeepAlive => ({ kind: 'none' }),
+    pacing: { kind: 'unpaced' } as BatteryCommandPacing,
     response: { kind: 'delivers_setpoint' } as BatteryLeverResponse,
   };
   let lastActionAtMs = Number.NEGATIVE_INFINITY;
@@ -62,6 +64,7 @@ const buildLane = () => {
       handBackDeferred: owned.deferred,
       claimEngaged: owned.held && !owned.takenOver,
       keepAliveFor: owned.keepAliveFor,
+      pacing: owned.pacing,
       response: owned.response,
       gridCharge: { kind: 'any' }, ownModeGridCharge: { kind: 'observed' },
       admissible: true,
@@ -220,6 +223,34 @@ describe('battery storage lane', () => {
     await send(-1500, 0);
     expect(await send(-1500, 60 * 60_000)).toBe(false);
     expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds back a paced battery\'s import-raising setpoint until its interval has passed', async () => {
+    const { lane, apply, send, owned } = buildLane();
+    owned.pacing = { kind: 'paced', importRaisingIntervalMs: 300_000 };
+    // The first setpoint is never paced.
+    expect(await send(-1500, 0)).toBe(true);
+    // Less discharge raises grid import: it waits, and the plan keeps deciding it.
+    expect(lane.hasDrift(setpoint(-1200))).toBe(false);
+    expect(await send(-1200, 60_000)).toBe(false);
+    // Back at the setpoint in force: nothing was written, nothing is due.
+    expect(await send(-1500, 120_000)).toBe(false);
+    // More discharge lowers grid import: at once, however recent the last write.
+    expect(await send(-1800, 130_000)).toBe(true);
+    // A charge after a discharge raises import too, and waits from the last write.
+    expect(await send(900, 400_000)).toBe(false);
+    expect(await send(900, 430_000)).toBe(true);
+    // Less charge lowers import: at once.
+    expect(await send(300, 440_000)).toBe(true);
+    expect(apply.mock.calls.map(([command]) => (command.kind === 'storage_power' ? command.setpointW : undefined)))
+      .toEqual([-1500, -1800, 900, 300]);
+  });
+
+  it('sends an unpaced battery every new setpoint as it is decided', async () => {
+    const { apply, send } = buildLane();
+    await send(-1500, 0);
+    expect(await send(-1200, 1_000)).toBe(true);
+    expect(apply).toHaveBeenCalledTimes(2);
   });
 
   it('counts a battery report received before the write promise resolves', async () => {

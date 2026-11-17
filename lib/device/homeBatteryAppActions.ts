@@ -205,6 +205,7 @@ export class HomeBatteryAppActions {
       keepAliveFor: (setpointW) => toKeepAlive(
         binding.commandLifetime(toTargetPowerCapabilityValue(setpointW, actions.range)),
       ),
+      pacing: binding.commandPacing,
     };
   }
 

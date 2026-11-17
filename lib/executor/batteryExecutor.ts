@@ -31,6 +31,14 @@
  *   `KEEP_ALIVE_RETRY_MS` later rather than a whole interval later, so with
  *   re-sends at a third of the app's countdown, a failed one still has
  *   several tries before the countdown runs out.
+ * - **Pacing.** A battery whose app asks for few control writes (`pacing` reads
+ *   `paced`) takes a setpoint that raises grid import, less discharge or more
+ *   charge than the one in force, only once its interval has passed since the
+ *   last setpoint sent. The plan keeps deciding it and it goes out when due.
+ *   A setpoint that lowers grid import goes at once: shedding credits a
+ *   discharge increase before the battery delivers it, so one held back would
+ *   be credit for a command never sent. The first setpoint and a release are
+ *   never paced.
  * - **Release.** A release decision hands the battery back through its owner
  *   (`releaseClaim`), which restores the claim value it recorded. Capacity
  *   simulation dispatches nothing, and the planner decides nothing for a
@@ -203,6 +211,18 @@ const isKeepAliveDue = (record: StorageCommandRecord, control: SetpointLever, no
   control.keepAliveFor(record.setpointW).kind === 'resend' && nowMs >= record.keepAliveDueAtMs
 );
 
+/**
+ * Whether a new setpoint waits for the battery's pacing: one that raises grid
+ * import over the setpoint in force (PELS's sign: a higher setpoint charges
+ * more or discharges less), sooner than the battery's interval after it.
+ */
+const isHeldByPacing = (
+  record: StorageCommandRecord, setpointW: number, control: SetpointLever, nowMs: number,
+): boolean => (
+  control.pacing.kind === 'paced' && setpointW > record.setpointW
+  && nowMs - record.issuedAtMs < control.pacing.importRaisingIntervalMs
+);
+
 /** When a setpoint sent at `nowMs` is next due again, or after `afterMs` when its re-send failed. */
 const nextKeepAliveAtMs = (keepAlive: BatteryCommandKeepAlive, nowMs: number, afterMs?: number): number => (
   keepAlive.kind === 'resend'
@@ -338,8 +358,11 @@ export class BatteryExecutor {
     if (control.response.kind === 'follows_meter' && control.claimHeld
       && control.response.reportsSetpoint(decision.setpointW)) return 'no_drift';
     const record = this.commands.get(device.id);
-    const drifted = record?.setpointW !== decision.setpointW
-      || (control.claimHeld && isKeepAliveDue(record, control, Date.now()));
+    const nowMs = Date.now();
+    if (record === undefined) return control;
+    const drifted = record.setpointW !== decision.setpointW
+      ? !isHeldByPacing(record, decision.setpointW, control, nowMs)
+      : control.claimHeld && isKeepAliveDue(record, control, nowMs);
     return drifted ? control : 'no_drift';
   }
 

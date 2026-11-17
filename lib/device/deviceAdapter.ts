@@ -4,7 +4,7 @@ import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packa
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
   HomeBatteryMeterModes, HomeBatteryObserveOnlyReason, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
-import type { BatteryUnobservedCause } from '../ports/batteryControlOwner';
+import type { BatteryCommandPacing, BatteryUnobservedCause } from '../ports/batteryControlOwner';
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -205,6 +205,8 @@ export type HomeBatteryActionBinding = {
    */
   noReadingsCause: Exclude<BatteryUnobservedCause, 'unknown'>;
   commandLifetime(setpointW: number): HomeBatteryCommandLifetime;
+  /** How soon the battery's app takes a new command; `unpaced` unless it asks for few control writes. */
+  commandPacing: BatteryCommandPacing;
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
   /** Hand-back is independent of the command range and admission gates. */
   resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;

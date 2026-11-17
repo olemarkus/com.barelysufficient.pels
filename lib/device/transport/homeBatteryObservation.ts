@@ -179,7 +179,7 @@ export const toBatteryControlRead = (
     const claim: HomeBatteryClaimRead = snapshot.batteryClaim === undefined
         ? { kind: 'unreported' }
         : snapshot.batteryClaim;
-    return { kind: 'setpoint', surface, claim, keepAliveFor: () => ({ kind: 'none' }) };
+    return { kind: 'setpoint', surface, claim, keepAliveFor: () => ({ kind: 'none' }), pacing: { kind: 'unpaced' } };
 };
 
 /**

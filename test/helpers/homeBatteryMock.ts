@@ -230,6 +230,22 @@ export const buildZendureLocalBatteryDevice = (params: { id: string }): MockDevi
 };
 
 /**
+ * A Fronius GEN24 battery as se.andreas.fronius-modbus-control 1.4.13 declares
+ * its `gen24` driver: no `target_power`, its maximum power (kW) kept in the
+ * device's `maxBatteryKw` setting. PELS drives it through the app's Flow cards.
+ */
+export const buildFroniusGen24BatteryDevice = (params: { id: string; maxBatteryKw?: number }): MockDevice => {
+  const device = new MockDevice(params.id, 'Fronius Battery', ['measure_power', 'measure_battery', 'battery_state'], 'battery');
+  device.setDriverIdentity({ driverId: 'homey:app:se.andreas.fronius-modbus-control:gen24' });
+  device.setSettings({ maxBatteryKw: params.maxBatteryKw ?? 5 });
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  device.setActualCapabilityValue('measure_battery', 55, quiet);
+  device.setActualCapabilityValue('measure_power', 0, quiet);
+  device.setActualCapabilityValue('battery_state', 'holding', quiet);
+  return device;
+};
+
+/**
  * A Huawei LUNA2000 as com.huawei.fusionsolar 1.3.9 declares its
  * `luna2000_modbus` driver: no `target_power`, its max charge and discharge
  * power (W) kept in the device settings by the app's poll. PELS drives it

@@ -32,6 +32,7 @@ import { sigenergyAdapter } from './sigenergy';
 import { zendureLocalAdapter } from './zendure';
 import { huaweiLuna2000Adapter } from './huawei';
 import { solaxBatteryAdapter } from './solax';
+import { froniusGen24Adapter } from './fronius';
 import { homeWizardAdapter } from './homewizard';
 import { lixeeZlinkyAdapter } from './lixee';
 import { nousEnergyMonitorAdapter } from './nous';
@@ -48,7 +49,8 @@ const adapters: readonly DeviceAdapter[] = [
   wallboxAdapter, warpAdapter, zaptecAdapter, futurehomeAdapter, aminaAdapter, goeAdapter, kebaAdapter,
   smappeeAdapter, ocppServerAdapter, osoAdapter, adaxAdapter, smaAdapter, knxAdapter, nibeMyUplinkAdapter,
   stiebelHeatPumpAdapter, sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter,
-  zendureLocalAdapter, huaweiLuna2000Adapter, solaxBatteryAdapter, homeWizardAdapter, hoiaxAdapter, lixeeZlinkyAdapter,
+  zendureLocalAdapter, huaweiLuna2000Adapter, solaxBatteryAdapter, froniusGen24Adapter,
+  homeWizardAdapter, hoiaxAdapter, lixeeZlinkyAdapter,
   nousEnergyMonitorAdapter,
 ];
 

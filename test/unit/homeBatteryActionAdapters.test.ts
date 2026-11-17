@@ -291,3 +291,57 @@ describe('SolaX Modbus binding', () => {
     expect(actionBinding(battery).resolve(battery, devices)).toEqual({ kind: 'unavailable', reasonCode });
   });
 });
+
+describe('Fronius GEN24 binding (Fronius Control app)', () => {
+  const gen24 = (maxBatteryKw: unknown) => device(
+    'gen24', 'homey:app:se.andreas.fronius-modbus-control:gen24', { maxBatteryKw },
+  );
+
+  it('runs every card on the battery itself, ranged by the app\'s max power on a 300 W grid', () => {
+    const battery = gen24(5.12);
+    const binding = actionBinding(battery);
+    expect(binding.appUri).toBe('homey:app:se.andreas.fronius-modbus-control');
+    const actions = resolved(battery, [battery]);
+    expect(actions.target).toEqual({ appUri: 'homey:app:se.andreas.fronius-modbus-control', deviceId: 'gen24' });
+    expect(actions.range).toEqual({ minW: -5100, maxW: 5100, stepW: 300, excludeMinW: 0, excludeMaxW: 0 });
+  });
+
+  it('charges and discharges in unsigned W, and holds at 0 W by pausing discharge', () => {
+    const battery = gen24(5);
+    const actions = resolved(battery, [battery]);
+    expect(actions.command(1200)).toEqual([{ deviceId: 'gen24', actionId: 'set_charge_kw', args: { power: 1200 } }]);
+    expect(actions.command(-900)).toEqual([
+      { deviceId: 'gen24', actionId: 'force_discharge_kw', args: { power: 900 } },
+    ]);
+    expect(actions.command(0)).toEqual([{ deviceId: 'gen24', actionId: 'pause_battery', args: {} }]);
+  });
+
+  it('holds each command until the next, and paces the ones that raise grid import by five minutes', () => {
+    const binding = actionBinding(gen24(5));
+    for (const setpointW of [1200, -900, 0]) expect(binding.commandLifetime(setpointW)).toEqual({ kind: 'persistent' });
+    expect(binding.commandPacing).toEqual({ kind: 'paced', importRaisingIntervalMs: 300_000 });
+  });
+
+  it('hands back by resetting the battery control', () => {
+    const battery = gen24(5);
+    expect(actionBinding(battery).handBack(resolved(battery, [battery]).target, [battery]))
+      .toEqual([{ deviceId: 'gen24', actionId: 'reset_control', args: {} }]);
+  });
+
+  it('only watches a battery whose max power the app does not know', () => {
+    for (const unknown of [0, undefined, 0.2, 'big']) {
+      const battery = gen24(unknown);
+      expect(actionBinding(battery).resolve(battery, [battery]))
+        .toEqual({ kind: 'unavailable', reasonCode: 'battery_max_power_unknown' });
+    }
+  });
+
+  it('leaves every other card-driven battery unpaced', () => {
+    for (const driverId of [
+      'homey:app:com.niewold.marstek:marstek-venus', 'homey:app:com.sigenergy:battery',
+      'homey:app:com.tweakers.zendure:zendure', 'homey:app:com.msd.inverter.solax:solax_modbus_battery',
+    ]) {
+      expect(actionBinding(device('other', driverId)).commandPacing).toEqual({ kind: 'unpaced' });
+    }
+  });
+});

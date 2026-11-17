@@ -130,6 +130,7 @@ const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   noReadingsCause: 'no_readings',
   appUri: `homey:app:${SIGENERGY_APP_ID}`,
   commandLifetime: () => ({ kind: 'persistent' }),
+  commandPacing: { kind: 'unpaced' },
   resolve: resolveSigenergy,
   // Releases before target identities were persisted used the sole plant in
   // the inventory. Retain that upgrade policy for those records only, including
