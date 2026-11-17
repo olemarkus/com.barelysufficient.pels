@@ -24,7 +24,7 @@ import {
   acknowledgeSetupSaveFailures,
 } from './setupJourneyState.ts';
 import {
-  SetupJourneyHeader, SetupReview, type SetupReviewDevice, type SetupJourneyHeaderProps,
+  REVIEW_DEVICE_NO_JOB, SetupJourneyHeader, SetupReview, type SetupReviewDevice, type SetupJourneyHeaderProps,
 } from './views/SetupJourney.tsx';
 import { renderDevices } from './devices.ts';
 import { setEditingMode } from './modes.ts';
@@ -186,7 +186,7 @@ const describeDeviceJobs = (device: SettingsUiDeviceListItem): string | null => 
     hasOpenSmartTask(device.id) ? 'Smart task set' : null,
     solar?.configured ? solar.label : null,
   ].filter((job): job is string => job !== null);
-  return jobs.length > 0 ? jobs.join(' · ') : 'Nothing for PELS to do yet';
+  return jobs.length > 0 ? jobs.join(' · ') : REVIEW_DEVICE_NO_JOB;
 };
 
 const readReviewDevices = (): SetupReviewDevice[] => {

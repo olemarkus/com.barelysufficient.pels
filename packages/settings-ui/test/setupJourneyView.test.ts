@@ -1,7 +1,8 @@
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import {
-  SetupDevicePicker, SetupGoalPicker, SetupJourneyHeader, type SetupJourneyHeaderProps,
+  REVIEW_DEVICE_NO_JOB, resolveReviewNoJobNote, SetupDevicePicker, SetupGoalPicker, SetupJourneyHeader,
+  type SetupJourneyHeaderProps,
 } from '../src/ui/views/SetupJourney.tsx';
 import type { SetupGoalChoice } from '../src/ui/setupGoals.ts';
 
@@ -204,5 +205,21 @@ describe('Setup device picker', () => {
     }), root));
     expect(root.textContent).toContain('Heater · Living room · 0 kW');
     expect(root.querySelector('md-switch')?.getAttribute('aria-label')).toBe('Manage Mill');
+  });
+});
+
+describe('setup review', () => {
+  const device = (id: string, control: string | null) => ({ id, name: id, control, status: null, configuration: [] });
+  const idle = [device('charger', REVIEW_DEVICE_NO_JOB), device('heater', REVIEW_DEVICE_NO_JOB)];
+
+  it('says when no managed device has a job, and where to give one', () => {
+    expect(resolveReviewNoJobNote(idle, true)).toContain('Choose what PELS does to give one a job.');
+    expect(resolveReviewNoJobNote(idle, false)).toContain('Turn on a power limit');
+  });
+
+  it('says nothing once a device has a job, with no managed device, or for a meter-area read', () => {
+    expect(resolveReviewNoJobNote([idle[0]!, device('heater', 'Price-based control on')], true)).toBeNull();
+    expect(resolveReviewNoJobNote([], true)).toBeNull();
+    expect(resolveReviewNoJobNote([device('heater', null)], true)).toBeNull();
   });
 });
