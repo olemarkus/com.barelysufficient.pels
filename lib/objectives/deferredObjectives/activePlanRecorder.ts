@@ -81,6 +81,7 @@ import {
   hasLearnedRateDeviated,
   hasMetadataDriftedWithinSchedule,
   isFrozenServedDiagnostic,
+  withReviewedContext,
   MAX_HISTORY_REVISIONS,
   reportedPlanStatus,
   resolveCommitment,
@@ -338,7 +339,7 @@ export class DeferredObjectiveActivePlanRecorder {
     current: DeferredObjectiveActivePlanV1,
     diag: DeferredObjectiveDiagnostic,
   ): DeferredObjectiveActivePlanV1 {
-    const refreshed = refreshActivePlanLiveFacts(current, diag);
+    const refreshed = withReviewedContext(refreshActivePlanLiveFacts(current, diag), diag);
     if (refreshed === current) return current;
     this.plans[current.deviceId] = refreshed;
     this.dirty = true;

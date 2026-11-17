@@ -196,6 +196,8 @@ type BaseDeferredObjectiveDiagnostic = {
   replaceCommitment?: true;
   /** A lifecycle queue turn authorizes a fresh revision even after the settle window. */
   scheduledReplan?: true;
+  /** The task's queue turn could not allocate and served its commitment in this context. */
+  contextReviewed?: true;
   // True only while the current bucket is a planned bucket for a smart task whose "exempt
   // from budget" rescue permission is active. Admission consumes this flat flag to set the
   // device's existing `budgetExempt` for that bucket; idle/background cycles stay normal.

@@ -9,6 +9,7 @@ import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/ta
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
@@ -36,14 +37,14 @@ const prices = (): PriceHorizonEntry[] => Array.from({ length: 10 }, (_, index) 
 }));
 
 /** Real evaluator and recorder, with only its device/price/household reads supplied. */
-const createHarness = (count: number) => {
+const createHarness = (count: number, load: () => DeferredObjectiveActivePlansV2 = createEmptyActivePlans) => {
   const devices = Array.from({ length: count }, (_, index) => deviceFor(`load-${index + 1}`));
   const settings: DeferredObjectiveRoster = {
     objectivesByDeviceId: Object.fromEntries(devices.map(({ id }) => [id, {
       enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 1, deadlineAtMs: DEADLINE_MS,
     }])),
   };
-  const recorder = new DeferredObjectiveActivePlanRecorder({ load: createEmptyActivePlans, save: () => undefined });
+  const recorder = new DeferredObjectiveActivePlanRecorder({ load, save: () => undefined });
   const roster = new TaskAllocationRoster(() => new Date(START_MS));
   const turns = new TaskPlanningTurns();
   const lane: TaskEvaluationLane = { kind: 'scheduled', turns };
@@ -296,6 +297,56 @@ describe('bounded smart-task planning turns', () => {
     expect(freshIds(home.tick(START_MS + 90_000))).toEqual(['load-2']);
     expect(home.evaluate(START_MS + 120_000, SERVING_LANE)
       .find(({ evaluation }) => evaluation.deviceId === 'load-2')?.evaluation.planning.kind).toBe('allocated');
+  });
+
+  it('serves a lower commitment saved before planning turns until its queued turn replans it', () => {
+    const before = createHarness(2);
+    before.tick(START_MS);
+    before.tick(START_MS + 30_000);
+    const saved = structuredClone(before.recorder.getActivePlansSnapshot());
+    const lowerLatest = saved.plansByDeviceId['load-2']?.latest;
+    const planned = lowerLatest?.allocationContextSignature;
+    if (!lowerLatest || planned === undefined) throw new Error('the lower task did not commit a plan');
+    // The earlier format: the roster, then each higher claim as a device and topology pair.
+    const [rosterSignature] = JSON.parse(planned) as [string, unknown];
+    lowerLatest.allocationContextSignature = JSON.stringify([rosterSignature, [['load-1', 'main']]]);
+    const restarted = createHarness(2, () => saved);
+    const lowerOf = (reports: readonly TaskEvaluationReport[]) => (
+      reports.find(({ evaluation }) => evaluation.deviceId === 'load-2')
+    );
+
+    expect(lowerOf(restarted.evaluate(START_MS + 60_000, SERVING_LANE))?.evaluation.planning)
+      .toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+    expect(freshIds(restarted.tick(START_MS + 60_000))).toEqual(['load-2']);
+    expect(restarted.recorder.getActivePlan('load-2')?.latest?.allocationContextSignature).toBe(planned);
+    expect(lowerOf(restarted.evaluate(START_MS + 90_000, SERVING_LANE))?.evaluation.planning.kind).toBe('allocated');
+  });
+
+  it('serves a lower commitment whose turn cannot replan after a higher change, and replans it later', () => {
+    const home = createHarness(2);
+    home.tick(START_MS);
+    home.tick(START_MS + 30_000);
+    home.settings.objectivesByDeviceId['load-1'] = {
+      enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 1.2, deadlineAtMs: DEADLINE_MS,
+    };
+    expect(freshIds(home.tick(START_MS + 60_000))).toEqual(['load-1']);
+    const lowerBefore = home.recorder.getActivePlan('load-2')?.latest;
+    const lowerOf = (reports: readonly TaskEvaluationReport[]) => (
+      reports.find(({ evaluation }) => evaluation.deviceId === 'load-2')
+    );
+    expect(lowerOf(home.evaluate(START_MS + 75_000, SERVING_LANE))?.evaluation.planning.kind).toBe('awaiting_plan');
+    home.setPriceRead(() => []);
+
+    expect(freshIds(home.tick(START_MS + 90_000))).toEqual([]);
+
+    expect(lowerOf(home.evaluate(START_MS + 105_000, SERVING_LANE))?.evaluation.planning)
+      .toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+    expect(home.recorder.getActivePlan('load-2')?.latest?.revision).toBe(lowerBefore?.revision);
+    home.setPriceRead(() => prices());
+    expect(freshIds(home.tick(START_MS + 120_000))).toEqual(['load-2']);
+    expect(home.recorder.getActivePlan('load-2')?.latest?.revision).toBeGreaterThan(lowerBefore?.revision ?? 0);
+    expect(lowerOf(home.evaluate(START_MS + 150_000, SERVING_LANE))?.evaluation.planning)
+      .toMatchObject({ kind: 'allocated' });
   });
 
   it('does not let previews spend the pending live planning turn', () => {

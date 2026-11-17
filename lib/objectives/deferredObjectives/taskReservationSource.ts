@@ -12,11 +12,12 @@ import {
 } from '../types';
 import type { DeferredObjectivePriorityReservation } from './policyHorizon';
 import {
-  committedPriorityReservations, narrowPriorityReservations, orderDeferredObjectives, type OrderedDeferredObjective,
+  buildAllocationContextSignature, committedPriorityReservations, narrowPriorityReservations,
+  orderDeferredObjectives, type OrderedDeferredObjective,
 } from './priorityAllocation';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import type { TaskEvaluationSource } from './taskEvaluationCoordinator';
-import { planningTurnContext } from './taskPlanningTurns';
+import { planningTurnContext, servesSavedCommitment } from './taskPlanningTurns';
 import { buildObjectiveDeviceExclusionPredicate } from './deviceExclusion';
 
 type ReservationReaders = Pick<TaskEvaluationSource,
@@ -48,9 +49,10 @@ function readTaskReservations(
   activePlans: DeferredObjectiveActivePlansV2,
   powerLimits: PowerLimitSettings,
   nowMs: number,
-  allocationContext: string,
+  prefix: readonly OrderedDeferredObjective[],
 ): TaskReservationsRead {
   const { deviceId, objective, device } = task;
+  const allocationContext = planningTurnContext(prefix, activePlans);
   const plan = activePlans.plansByDeviceId[deviceId];
   if (plan === undefined) return { kind: 'waiting' };
   const committed = resolveActiveCommittedPlan(deviceId, objective, resolveObjectiveProgressDirectionRead({
@@ -64,8 +66,12 @@ function readTaskReservations(
   // A queued plan retains its last revision for history, but those bookings
   // cannot be spent by battery planning. Compare the current higher revisions
   // directly: the lifecycle overlay may not have observed their latest write yet.
-  if (plan.diagnosticReasonCode === 'objective_waiting_for_plan'
-    || committed.latest.allocationContextSignature !== allocationContext) return { kind: 'waiting' };
+  // Every saved plan the evaluator serves in a changed context spends its bookings too.
+  const heldContext = committed.latest.allocationContextSignature;
+  if (plan.diagnosticReasonCode === 'objective_waiting_for_plan' || (heldContext !== allocationContext
+    && !servesSavedCommitment(heldContext, allocationContext, buildAllocationContextSignature(prefix)))) {
+    return { kind: 'waiting' };
+  }
   const reservations = committedPriorityReservations(
     deviceId, committed.latest, device, powerLimits, objective.deadlineAtMs, false,
   );
@@ -115,7 +121,7 @@ export class ObjectiveTaskReservationSource<Device extends { id: string }> imple
       this.readers.allocationRoster.read(nowMs), activePlans, this.readers.getPrioritiesForDevices,
     );
     const ready = ordered.map((task, index) => readTaskReservations(
-      task, activePlans, powerLimits, nowMs, planningTurnContext(ordered.slice(0, index + 1), activePlans),
+      task, activePlans, powerLimits, nowMs, ordered.slice(0, index + 1),
     )).filter((task) => task.kind === 'ready');
     if (ready.length !== tasks.length) return { kind: 'waiting' };
     return {

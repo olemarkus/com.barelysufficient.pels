@@ -6,6 +6,7 @@ import { resolveObjectiveProgressDirectionRead } from '../types';
 import { resolveDeadlineBoundFrozenReadInputs } from './frozenDiagnostic';
 import type { TaskEvaluationLane } from './taskEvaluationCoordinator';
 import type { TaskEvaluation } from './taskEvaluation';
+import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import { isObjectiveProgressSatisfied, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import { isPastHourSettleMark, SCHEDULE_SETTLE_OFFSET_MS } from './settleWindow';
 
@@ -40,6 +41,70 @@ export const isSelectedFreshTurn = (
 export const allocationContextChanged = (
   held: string | undefined, current: string, hasReservations: boolean,
 ): boolean => held === undefined ? hasReservations : held !== current;
+
+/**
+ * Revisions saved before planning turns list each higher claim as a
+ * `[device, topology]` pair. Such a plan was allocated against those claims, so
+ * it stays compatible while the roster ahead of it is the one it was planned for.
+ */
+const isCompatibleLegacyContext = (held: string | undefined, rosterSignature: string): boolean => {
+  if (held === undefined) return false;
+  let parsed: unknown;
+  try { parsed = JSON.parse(held); } catch { return false; }
+  if (!Array.isArray(parsed) || parsed.length !== 2 || !Array.isArray(parsed[1])) return false;
+  return parsed[0] === rosterSignature
+    && parsed[1].every((claim) => Array.isArray(claim) && claim.length === 2);
+};
+
+/**
+ * What a queue turn records when it could not allocate in `context` and served
+ * the saved commitment instead. It never equals the context, so the commitment
+ * still counts as planned elsewhere: the queue keeps its ticket and the next
+ * fresh allocation replaces it.
+ */
+export const reviewedContextSignature = (context: string): string => JSON.stringify(['reviewed', context]);
+
+/** A changed context that the task's own turn has already reviewed needs no hold. */
+const isReviewedContext = (held: string | undefined, current: string): boolean => (
+  held === reviewedContextSignature(current)
+);
+
+/**
+ * A commitment planned for another context is still served when its roster is
+ * the one a pre-queue revision was planned for, or when its own turn reviewed
+ * it in this context and could not replan.
+ */
+export const servesSavedCommitment = (
+  held: string | undefined, current: string, rosterSignature: string,
+): boolean => isCompatibleLegacyContext(held, rosterSignature) || isReviewedContext(held, current);
+
+/** Whether the saved context differs from the current one, and whether that needs the task's turn. */
+export const readAllocationContext = (
+  bounded: boolean, held: string | undefined, current: string, rosterSignature: string, hasReservations: boolean,
+): { changed: boolean; needsTurn: boolean } => {
+  const changed = allocationContextChanged(held, current, hasReservations);
+  return { changed, needsTurn: changed && !(bounded && servesSavedCommitment(held, current, rosterSignature)) };
+};
+
+/** The task's own turn, in a changed context, ended on its saved commitment. */
+export const isReviewedTurn = (
+  selected: ReadonlySet<string>, contextChanged: boolean, evaluation: TaskEvaluation,
+): boolean => selected.has(evaluation.deviceId) && contextChanged
+  && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.frozenRead === true;
+
+/**
+ * Frozen and waiting reports cannot certify that a changed context was planned:
+ * they keep the saved signature. The exception is the task's own turn that found
+ * no fresh allocation possible (a price or step gap) and served its commitment.
+ * Holding the device for a plan that cannot be made would keep it off for the
+ * length of the gap, so that turn records the context it reviewed.
+ */
+export const resolveReportedContext = (
+  keepsSaved: boolean, reviewed: boolean, saved: string | undefined, current: string,
+): Pick<DeferredObjectiveDiagnostic, 'allocationContextSignature' | 'contextReviewed'> => {
+  if (reviewed) return { allocationContextSignature: reviewedContextSignature(current), contextReviewed: true };
+  return { allocationContextSignature: keepsSaved ? saved : current };
+};
 
 export const shouldWaitForPlanningTurn = (
   allocation: TaskAllocationMode, hasFrozen: boolean,
@@ -92,7 +157,7 @@ export class TaskPlanningTurns {
   complete(selected: ReadonlySet<string>, reports: readonly TaskEvaluationReport[]): void {
     for (const deviceId of selected) {
       const result = reports.find(({ evaluation }) => evaluation.deviceId === deviceId)?.evaluation;
-      const fresh = result?.planning.kind === 'allocated' && result.planning.plan.frozenRead !== true;
+      const fresh = result !== undefined && isFreshTaskEvaluation(result);
       const attempt = this.attempted.get(deviceId);
       if (fresh && attempt) this.attempted.set(deviceId, {
         context: attempt.context, generation: attempt.generation, completed: true,

@@ -84,7 +84,7 @@ import {
   buildFreshDiagnostic, buildHorizonUnavailableDiagnostic, withAwaitingPricesPlanning,
 } from './freshDiagnostic';
 import {
-  allocationContextChanged as hasChangedAllocationContext, isFreshTaskEvaluation, isSelectedFreshTurn,
+  isFreshTaskEvaluation, isReviewedTurn, isSelectedFreshTurn, readAllocationContext, resolveReportedContext,
   planningTurnContext, resolveTaskAllocationMode, shouldWaitForPlanningTurn, taskReplanRequested,
   type TaskAllocationMode, type TaskPlanningTurns,
 } from './taskPlanningTurns';
@@ -327,9 +327,10 @@ export const buildDeferredObjectiveTaskResults = (
     // Legacy single-task revisions have no coordination signature, but their
     // frozen commitment is still safe to serve until the ordinary :58 settle.
     // Legacy lower tasks must replan immediately to prevent residual overbooking.
-    const allocationContextChanged = hasChangedAllocationContext(
-      latestSignature, allocationContextSignature, reservations.length > 0,
+    const context = readAllocationContext(
+      bounded, latestSignature, allocationContextSignature, rosterSignature, reservations.length > 0,
     );
+    const allocationContextChanged = context.changed;
     // Ordinary priority-context drift settles at `:58`, but two one-shot
     // bootstrap cases must coordinate the whole affected prefix immediately:
     // (1) a higher task just allocated fresh and made its first physical claim;
@@ -344,7 +345,7 @@ export const buildDeferredObjectiveTaskResults = (
       isPreviewCandidate(lane, deviceId),
     );
     const allocation = resolveTaskAllocationMode(
-      bounded, selected.has(deviceId), allocationContextChanged, forceFreshAllocation,
+      bounded, selected.has(deviceId), context.needsTurn, forceFreshAllocation,
     );
     const diagnostic = buildDeferredObjectiveDiagnostic(snapshot, readers, task, reservations, allocation);
     const contentionEvaluation = resolveHigherPriorityContentionEvaluation(
@@ -359,8 +360,10 @@ export const buildDeferredObjectiveTaskResults = (
     const freshAllocation = isFreshTaskEvaluation(contentionEvaluation);
     const coordinated: DeferredObjectiveDiagnostic = {
       ...contentionResolved,
-      // Frozen/waiting reports cannot certify that a changed context was planned.
-      allocationContextSignature: bounded && !freshAllocation ? latestSignature : allocationContextSignature,
+      ...resolveReportedContext(
+        bounded && !freshAllocation, isReviewedTurn(selected, allocationContextChanged, contentionEvaluation),
+        latestSignature, allocationContextSignature,
+      ),
       ...(isSelectedFreshTurn(lane, selected, contentionEvaluation)
         ? { scheduledReplan: true as const } : {}),
       ...(shouldReplaceCommitment(

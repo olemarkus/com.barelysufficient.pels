@@ -40,6 +40,11 @@ first allocation. When a higher task commits a changed revision, incompatible lo
 their devices until their queued turn; their previous schedule and history remain stored.
 Stable committed revision identity tracks those changes, so passage of time alone cannot invalidate
 a lower plan. A transient price or step gap keeps a compatible saved plan in use and queues a retry.
+When an incompatible lower task's own turn cannot allocate through such a gap, the turn records that
+it reviewed the new context: the saved plan is served there instead of holding the device for the
+length of the gap, the task keeps its ticket, and its next fresh allocation replaces the commitment.
+A revision saved before planning turns existed is served while the roster ahead of it is unchanged,
+until its queued turn replans it.
 Missing prices and thermal learning keep their own existing waiting or learning behavior.
 A period transition takes effect on the next normal meter-driven plan rebuild; the lifecycle clock
 commits schedules and never sends device commands.

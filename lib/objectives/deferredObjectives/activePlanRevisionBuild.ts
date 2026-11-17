@@ -189,6 +189,21 @@ export const isFrozenServedDiagnostic = (diag: DeferredObjectiveDiagnostic): boo
   diag.evaluation.planning.kind === 'allocated' && diag.evaluation.planning.plan.frozenRead === true
 );
 
+/**
+ * A queue turn that could not allocate keeps its revision and records the
+ * context it was reviewed in, so the saved commitment is served there.
+ */
+export const withReviewedContext = (
+  current: DeferredObjectiveActivePlanV1,
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanV1 => {
+  const { latest } = current;
+  const reviewed = diag.allocationContextSignature;
+  if (diag.contextReviewed !== true || latest === null || reviewed === undefined
+    || latest.allocationContextSignature === reviewed) return current;
+  return { ...current, latest: { ...latest, allocationContextSignature: reviewed } };
+};
+
 export const resolvePendingReason = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanPendingReason => {
