@@ -433,22 +433,6 @@ function resolveHoldCause(device: DeviceStatusInput): DeviceStatus['holdCause'] 
   return device.reason.code === PLAN_REASON_CODES.dailyBudget ? 'daily_budget' : null;
 }
 
-// The target the card names. A planned target the executor is not driving (the
-// device is held off, so no write goes out) is not a change in progress: a
-// heater its finished smart task held off read `target 18 °C → 20 °C` for hours.
-// The card shows the device's own target then, and the arrow only while PELS is
-// actually moving it.
-//
-// An override is the exception: the owner set that temperature for this device
-// just now, so it is the target the card names, not the setpoint the device was
-// left at when PELS turned it off. PELS writes it when it resumes the device.
-function withPresentedTarget(device: DeviceStatusInput): DeviceStatusInput {
-  if (!device.temperature || device.execution.targetProgress !== 'undriven') return device;
-  const named = device.temporaryTemperatureActive === true
-    ? device.temperature.plannedTarget : device.temperature.currentTarget;
-  return { ...device, temperature: { ...device.temperature, currentTarget: named, plannedTarget: named } };
-}
-
 /** An adapter may explain a control refusal without changing any command gate. */
 function buildUnavailableAdapterStatus(device: DeviceStatusInput): DeviceStatus | null {
   const status = device.adapterUnavailableStatus;
@@ -479,12 +463,15 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
   const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');
   const draw = device.currentDrawKw;
-  const presented = withPresentedTarget(device);
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
     ...resolvePower(device, limited, dryRun),
-    factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
-    reading: resolveReading(presented),
+    // The fact line always names the device's own setpoint and, when it differs,
+    // the one PELS plans to set (`target 28 °C → 22 °C`), also while PELS holds the
+    // device off and writes nothing yet: the owner sees both what the device
+    // says and where PELS will take it.
+    factText: resolveFactText(device, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
+    reading: resolveReading(device),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),

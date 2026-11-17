@@ -334,8 +334,10 @@ title + at most ONE status chip (ladder: `Let it run now` → `Held back` →
 `Boost` → `Budget exempt`; the `Smart task` badge is an
 identity/route badge and may coexist), the state row (state word + power
 fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
-level 6 A`; the arrow `→` is reserved for a target *change* PELS is driving:
-a device it holds off, where no target write goes out, reads its own target),
+level 6 A`; the fact line always names the device's own setpoint and, after the
+arrow `→`, the one PELS plans to set when they differ (`target 28 °C → 22 °C`),
+also while PELS holds the device off and no write goes out yet; owner ruling
+2026-11-17),
 and at most ONE
 exception reason line. An EV charger's fact line carries the car's battery
 level in the slot a temperature device uses for its measured value — that is
@@ -858,8 +860,8 @@ declares no range), `Choose an end time in the future.`, `Choose an end time
 within seven days.`, `Choose a date and time that exists in the Homey time zone.`
 Toasts: `Override started.`, `Override changed.`, `Override ended.`, `Could not
 save the override.` On a device PELS holds off, the card's fact line names the
-override as the target (`21.8 °C · target 22 °C`), not the setpoint the device
-was left at: no write goes out while it is off, and PELS sets it on resume. The overview card carries an `Override` chip beside its state
+setpoint the device was left at and the override it will be set to on resume
+(`21.8 °C · target 28 °C → 22 °C`). The overview card carries an `Override` chip beside its state
 chip while one is in force, limited or not, and no reason line for it. The two
 Flow cards that start and end one are still titled "temporary temperature".
 

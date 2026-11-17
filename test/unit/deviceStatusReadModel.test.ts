@@ -72,23 +72,22 @@ describe('simulation action previews', () => {
     expect(buildDeviceStatus(modeTemperature(60, false), false, 0)).not.toHaveProperty('override');
   });
 
-  it('names the override as the target of a device PELS holds off, not the setpoint it was left at', () => {
+  it('names the device\'s setpoint and the one PELS plans to set, also while it holds the device off', () => {
     // Prod 2026-11-17: an override of 22 on a thermostat PELS had turned off at
-    // 28. No write goes out while it is off, and the card kept reading 28.
-    const heldOff = (temporaryTemperatureActive: boolean): DeviceStatusInput => {
-      const device = runningPowerHold({ temporaryTemperatureActive });
-      return {
-        ...device, currentState: 'off', currentDrawKw: 0,
-        temperature: { currentTemperature: 21.9, currentTarget: 28, plannedTarget: 22, thermalDirection: 'heating' },
-        execution: { ...device.execution, physicalState: 'off', targetProgress: 'undriven' },
-      };
+    // 28. No write goes out while it is off, and the card read only `target 28 °C`.
+    const device = runningPowerHold();
+    const heldOff: DeviceStatusInput = {
+      ...device, currentState: 'off', currentDrawKw: 0,
+      temperature: { currentTemperature: 21.9, currentTarget: 28, plannedTarget: 22, thermalDirection: 'heating' },
+      execution: { ...device.execution, physicalState: 'off', targetProgress: 'undriven' },
     };
 
-    const overridden = buildDeviceStatus(heldOff(true), false, 0);
-    expect(overridden.factText).toBe('21.9 °C · target 22 °C');
-    expect(overridden.reading).toMatchObject({ targetC: 22 });
-    // Without an override the card still names the device's own setpoint, with no arrow.
-    expect(buildDeviceStatus(heldOff(false), false, 0).factText).toBe('21.9 °C · target 28 °C');
+    const status = buildDeviceStatus(heldOff, false, 0);
+    expect(status.factText).toBe('21.9 °C · target 28 °C → 22 °C');
+    expect(status.reading).toMatchObject({ targetC: 22 });
+    // One value when the device already sits where PELS wants it.
+    const settled = { ...heldOff, temperature: { ...heldOff.temperature, plannedTarget: 28 } };
+    expect(buildDeviceStatus(settled, false, 0).factText).toBe('21.9 °C · target 28 °C');
   });
 
   it('does not use hypothetical wording for an ordinary live target change', () => {
@@ -244,7 +243,8 @@ describe('simulation action previews', () => {
       execution: { ...device.execution, desiredBinary: null, binaryProgress: 'undriven' },
     }, true, 0);
     expect(status.reason?.text).not.toContain('Would set target');
-    expect(status.factText).toBe('20.0 °C · target 21 °C');
+    // The fact line still names both: the device's setpoint and the one planned.
+    expect(status.factText).toBe('20.0 °C · target 21 °C → 15 °C');
   });
 
   it('keeps the waiting explanation once the real device is already off', () => {
