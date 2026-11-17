@@ -30,9 +30,11 @@ export const SURPLUS_TRACKING_HINTS: Record<SurplusTrackingCopyKind, string> = {
 };
 
 /**
- * Shared by both kinds: a smart task with a deadline outranks this setting, and
- * an owner who has set one needs to know which of the two is deciding.
+ * Shared by both kinds: a smart task runs the device in the periods it plans,
+ * and this setting keeps running it between them (owner ruling 2026-11-17), so
+ * an owner who has set both needs to know which decides when.
  */
 export const SURPLUS_TRACKING_SMART_TASK_NOTE
-  = 'While active, a Smart task decides when this device runs and may use grid electricity.';
+  = 'While active, a Smart task runs this device in the periods it plans, also on grid electricity. '
+  + 'Between them the device still runs on your solar surplus.';
 

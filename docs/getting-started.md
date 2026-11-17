@@ -92,7 +92,7 @@ With no limit in force, the Overview says what PELS does for your home, for exam
 
 A solar device showing **Waiting for solar surplus** can be correctly configured. Missing meter readings or an unavailable solar signal are separate conditions with their own checks.
 
-Before adding a Smart task to a solar-only device, remember that the active task decides when it runs and may use grid electricity.
+A Smart task on a solar-only device runs it in the periods the task plans, also on grid electricity. Between those periods the device still runs on your solar surplus, and that energy counts toward the task.
 
 <span id="quick-setup-checklist"></span>
 

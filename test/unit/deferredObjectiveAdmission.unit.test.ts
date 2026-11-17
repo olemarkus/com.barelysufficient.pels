@@ -580,6 +580,35 @@ describe('applyDeferredObjectiveAdmission', () => {
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
     expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', releaseIntent: 'binary_release' });
   });
+
+  it('leaves a charger on a solar-surplus setting to that setting in an hour the task skips', () => {
+    const waiting = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveKind: 'ev_soc',
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false }, currentHourClaim: 'released' }),
+    });
+    for (const posture of [{ surplusTracking: true }, { surplusOnly: true as const, surplusTracking: false }]) {
+      const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power', controllable: true, ...posture });
+      const decisions = applyDeferredObjectiveAdmission([waiting.evaluation], [device]);
+      // No pause intent and no task hold: the surplus posture holds and runs it.
+      expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours' });
+      const applied = applyDeferredAdmissionToInput([device], decisions);
+      expect(applied.forceShedSet.has('ev1')).toBe(false);
+      expect(applied.devices[0]?.deferredHold).toBeUndefined();
+    }
+    // Without a surplus setting the task still holds it.
+    const plain = buildEvDevice({ id: 'ev1', controlModel: 'binary_power', controllable: true, surplusTracking: false });
+    const held = applyDeferredAdmissionToInput([plain], applyDeferredObjectiveAdmission([waiting.evaluation], [plain]));
+    expect(held.forceShedSet.has('ev1')).toBe(true);
+  });
+
+  it('still lets the task run a surplus-setting charger in an hour it booked', () => {
+    const booked = buildDiagnostic({
+      deviceId: 'ev1', objectiveKind: 'ev_soc', horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
+    });
+    const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power', controllable: true, surplusTracking: true });
+    expect(applyDeferredObjectiveAdmission([booked.evaluation], [device]).get('ev1')).toMatchObject({ kind: 'planned' });
+  });
 });
 
 describe('planned admission temperature floor', () => {

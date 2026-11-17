@@ -422,7 +422,9 @@ const paintSmartTaskCreate = (snapshot: SmartTaskCreateSnapshot | null): void =>
     afterTaskLine: step.kind === 'preview' ? resolveSmartTaskCreateAfterTaskLine(step.device.deviceId) : null,
     solarNote: (step.kind === 'compose' || step.kind === 'preview')
       && state.priceOptimizationSettings[step.device.deviceId]?.surplusWilling === true
-      ? 'While active, the Smart task decides when this device runs and may use grid electricity.' : null,
+      ? 'While active, the Smart task runs this device in the periods it plans, also on grid electricity. '
+        + 'Between them the device still runs on your solar surplus.'
+      : null,
     simulationNote: (step.kind === 'compose' || step.kind === 'preview') && state.dryRun
       ? SMART_TASK_SIMULATION_NOTE : null,
     overrideNote: step.kind === 'compose' || step.kind === 'preview'
