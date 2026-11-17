@@ -1,6 +1,11 @@
 /* Standalone web app only: the Homey list and the Homey bar above the
    settings shell. Never loaded by the Homey settings page. */
 
+.webapp-getting-started {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
 .webapp-homey-list {
   display: grid;
   gap: var(--spacing-3);

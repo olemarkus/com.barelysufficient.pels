@@ -56,6 +56,18 @@ describe('web app launcher', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps getting-started guidance above the empty add form without scrolling past it', async () => {
+    await loadLauncher(() => response(200, 'null'));
+
+    expect(document.getElementById('webapp-homeys-title')?.textContent).toBe('Get started');
+    expect(document.getElementById('webapp-homeys-empty')?.hidden).toBe(false);
+    expect(document.querySelector('#webapp-homeys-empty a')?.getAttribute('href'))
+      .toBe('https://homey.app/a/com.barelysufficient.pels');
+    expect(document.getElementById('webapp-add-homey')?.hidden).toBe(true);
+    expect(document.getElementById('webapp-add-cancel')?.hidden).toBe(true);
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('refuses a key Homey rejects, even when PELS predates the version route', async () => {
     await loadLauncher((pathname) => (pathname === KEY_CHECK_PATH
       ? response(401, '{"error":"Invalid Session"}')
@@ -77,6 +89,17 @@ describe('web app launcher', () => {
 
     await vi.waitFor(() => expect(storedNames()).toEqual(['House']));
     await vi.waitFor(() => expect(document.getElementById('webapp-homey-list')?.textContent).toContain('PELS 3.20.0'));
+    expect(document.getElementById('webapp-homeys-title')?.textContent).toBe('Your Homeys');
+    expect(document.getElementById('webapp-homeys-empty')?.hidden).toBe(true);
+    const addButton = document.getElementById('webapp-add-homey') as HTMLElement;
+    expect(addButton.hidden).toBe(false);
+    addButton.click();
+    expect(addButton.hidden).toBe(true);
+    expect(document.getElementById('webapp-add-panel')?.hidden).toBe(false);
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    document.getElementById('webapp-add-cancel')?.click();
+    expect(addButton.hidden).toBe(false);
+    expect(document.getElementById('webapp-add-panel')?.hidden).toBe(true);
   });
 
   it('keeps the form open when the browser refuses to store the Homey', async () => {
@@ -462,6 +485,8 @@ describe('web app launcher', () => {
       try {
         await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
 
+        expect(document.getElementById('webapp-add-panel')?.hidden).toBe(true);
+        expect(document.getElementById('webapp-homeys-panel')?.hidden).toBe(true);
         expect(document.getElementById('webapp-import-title')?.textContent).toBe('This code could not be read');
         expect(document.getElementById('webapp-import-add')?.hidden).toBe(true);
         expect(window.location.hash).toBe('');
@@ -508,6 +533,7 @@ describe('web app launcher', () => {
 
       expect(document.getElementById('webapp-add-title')?.textContent).toBe('New key for House');
       expect(document.getElementById('webapp-add-submit')?.textContent).toBe('Save key');
+      expect(document.getElementById('webapp-add-homey')?.hidden).toBe(true);
       expect(keyField().error).toBe(false);
     } finally {
       window.history.replaceState(null, '', '/');
