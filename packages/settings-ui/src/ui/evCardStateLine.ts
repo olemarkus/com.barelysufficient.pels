@@ -1,9 +1,18 @@
-import { resolveEvCardStateLine } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
+import {
+  isSmartTaskPricePaused,
+  resolveEvCardStateLine,
+} from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
+import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import { state } from './state.ts';
 import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 
 const formatEvCardTime = (ms: number): string => (
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+);
+
+const isCurrentEvTask = (objective: DeferredObjectiveSettingsEntry, nowMs: number): boolean => (
+  objective.enabled && objective.kind === 'ev_soc'
+    && Number.isFinite(objective.deadlineAtMs) && objective.deadlineAtMs > nowMs
 );
 
 /**
@@ -16,9 +25,9 @@ export const resolveEvCardStateLines = (nowMs: number): ReadonlyMap<string, stri
   const lines = new Map<string, string>();
   const objectives = state.deferredObjectiveSettings?.objectivesByDeviceId ?? {};
   for (const [deviceId, objective] of Object.entries(objectives)) {
-    if (!objective.enabled || objective.kind !== 'ev_soc') continue;
-    if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) continue;
+    if (!isCurrentEvTask(objective, nowMs)) continue;
     const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
+    if (activePlan && isSmartTaskPricePaused(activePlan)) continue;
     const stateLine = resolveEvCardStateLine(
       hoursWithPlannedEnergy(activePlan?.latest?.hours ?? []),
       nowMs,

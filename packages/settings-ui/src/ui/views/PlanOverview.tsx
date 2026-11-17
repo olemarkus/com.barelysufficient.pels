@@ -20,6 +20,7 @@ import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow
 import { SetupPathCard } from './SetupPathCard.tsx';
 import { isSetupStepOpen } from '../setupPathModel.ts';
 import type { SetupPathRead } from '../setupPathFacts.ts';
+import type { OverviewSmartTaskStatus } from '../overviewSmartTaskStatus.ts';
 
 type OverviewProps = {
   // One row per device PELS manages, from the DEVICE list joined to this
@@ -45,6 +46,8 @@ type OverviewProps = {
   // nothing — no active tasks and no recent misses). Resolved in the
   // orchestrator (`planRedesign.ts`) so this view stays props-in.
   smartTaskRow: OverviewSmartTaskRow | null;
+  smartTaskStatuses: readonly OverviewSmartTaskStatus[];
+  onSmartTaskAction: (action: OverviewSmartTaskStatus['action']) => void;
   phaseLoad: SettingsUiPhaseLoad;
   // Each charger's EV smart-task line, keyed by device id; the on/off card shows
   // it when its status carries no reason. Resolved in the orchestrator.
@@ -87,6 +90,38 @@ const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
     <span class="plan-smart-task-row__chevron" aria-hidden="true">›</span>
   </button>
 );
+
+const SmartTaskStatuses = ({ rows, onAction }: {
+  rows: readonly OverviewSmartTaskStatus[];
+  onAction: OverviewProps['onSmartTaskAction'];
+}) => {
+  if (rows.length === 0) return null;
+  return (
+    <section class="pels-surface-card plan-task-status" id="plan-smart-task-status" aria-labelledby="plan-task-status-title">
+      <MdElevation aria-hidden="true" />
+      <h2 class="pels-text-card-title" id="plan-task-status-title">Smart task status</h2>
+      <ul class="plan-task-status__list">
+        {rows.map((row) => (
+          <li key={row.deviceId} class="plan-task-status__item" data-tone={row.tone} data-task-device-id={row.deviceId}>
+            <h3 class="pels-text-card-title">{row.deviceName}</h3>
+            <p class="plan-task-status__headline">{row.headline}</p>
+            <p class="pels-card-supporting">{row.body}</p>
+            <div class="form__actions">
+              <MdOutlinedButton
+                type="button"
+                {...('targetTab' in row.action && !row.action.deviceId
+                  ? { 'data-settings-target': row.action.targetTab } : {})}
+                onClick={() => onAction(row.action)}
+              >
+                {row.action.label}
+              </MdOutlinedButton>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
 
 // The retired `controlModel === 'temperature_target'` arm is gone, not lost:
 // the producer derived that value FROM `deviceType === 'temperature'`
@@ -152,7 +187,7 @@ const ScopeUnavailableNotice = () => (
 
 const PlanOverviewRoot = ({
   devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, evStateLines, setupPath,
-  context, nowMs,
+  context, nowMs, smartTaskStatuses, onSmartTaskAction,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
@@ -211,6 +246,7 @@ const PlanOverviewRoot = ({
       {showHero && <PhaseLoadRow load={phaseLoad} />}
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
+      <SmartTaskStatuses rows={smartTaskStatuses} onAction={onSmartTaskAction} />
       {devices.state === 'unavailable' && (
         <section class="pels-surface-card" id="plan-devices-unavailable">
           <MdElevation aria-hidden="true" />

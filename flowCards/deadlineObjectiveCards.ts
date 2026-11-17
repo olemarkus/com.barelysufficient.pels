@@ -6,7 +6,7 @@ import type {
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { resolveEffectivePlanStatus } from '../packages/shared-domain/src/smartTaskCopy/listStatus';
 import {
-  isDeviceExclusionPaused, isWaitingForSmartTaskPlan,
+  isDeviceExclusionPaused, isSmartTaskPricePaused, isWaitingForSmartTaskPlan,
 } from '../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { FlowCard } from '../lib/utils/types';
@@ -466,6 +466,9 @@ const resolveEffectiveStatus = (
   // answering with the schedule it committed before the exclusion. Shared
   // predicate: the detail hero and the list chip read the same one.
   if (plan !== null && isDeviceExclusionPaused(plan)) return null;
+  // A saved schedule cannot describe a task paused by price policy. Keep
+  // never-planned tasks on the existing Waiting status until their first plan.
+  if (plan !== null && plan.latest !== null && isSmartTaskPricePaused(plan)) return null;
   if (plan === null || plan.pending || plan.latest === null || isWaitingForSmartTaskPlan(plan)) {
     return PENDING_FLOW_STATUS;
   }

@@ -8,18 +8,18 @@
 // revision would keep it alive after the cause ended.
 
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
-import { isWaitingForSmartTaskPlan } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import { isSmartTaskPricePaused, isWaitingForSmartTaskPlan } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ActivePlanPersistDeps } from './activePlanRevisionBuild';
 
-/** This plan's public status, or `null` while its allocation is pending. */
+/** Public status; price-paused tasks and tasks awaiting allocation have none. */
 export const effectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
 ): DeferredObjectiveActivePlanStatusV1 | null => {
-  if (plan.latest === null || isWaitingForSmartTaskPlan(plan)) return null;
+  if (plan.latest === null || isSmartTaskPricePaused(plan) || isWaitingForSmartTaskPlan(plan)) return null;
   return resolveEffectivePlanStatus(plan.latest.planStatus, plan);
 };
 
@@ -42,7 +42,7 @@ export const publishOverlayOnlyStatusChange = (
   previousEffective: DeferredObjectiveActivePlanStatusV1 | null,
 ): void => {
   const latest = plan.latest;
-  if (latest === null) return;
+  if (latest === null || isSmartTaskPricePaused(plan)) return;
   const after = effectivePlanStatusOf(plan);
   if (after === previousEffective) return;
   if (after === null) {

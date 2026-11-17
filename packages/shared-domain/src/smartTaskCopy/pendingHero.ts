@@ -207,10 +207,11 @@ export const awaitingHorizonCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendin
 // Price-aware optimisation is off: no plan can be built until it is on again.
 export const priceFeatureDisabledCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   () => ({
-    headline: 'Price-aware optimisation is off',
-    body: `Enable price-aware optimisation in Settings → Electricity prices to compute a ${kindNoun}.`,
-    headlineReason: 'Price-aware optimisation is off in Settings.',
-    recourse: { label: 'Open Settings', targetTab: 'settings' },
+    headline: 'Respond to prices is off',
+    body: 'Turn on Respond to prices in Settings → Electricity prices → '
+      + `Manage price-aware devices to build a ${kindNoun}.`,
+    headlineReason: 'Smart tasks are paused while Respond to prices is off.',
+    recourse: { label: 'Open price-aware devices', targetTab: 'price-aware-devices' },
   })
 );
 

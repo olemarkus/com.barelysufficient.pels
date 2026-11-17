@@ -143,6 +143,13 @@ describe('the list status of a task held below target by the car\'s limit', () =
     }, 0)).toBe('on_track');
   });
 
+  it('does not serve a cached status or car limit when price response is off', () => {
+    expect(resolveSmartTaskListStatus({
+      ...base, diagnosticReasonCode: 'objective_price_feature_disabled', carChargeLimit: stopped,
+    }, 0)).toBe('building_plan');
+    expect(resolveSmartTaskListStatus(base, 0)).toBe('on_track');
+  });
+
   // A pending plan has no committed status to overlay: the detail page shows
   // its pending hero and the Flow reports pending, so the chip does too.
   it.each([

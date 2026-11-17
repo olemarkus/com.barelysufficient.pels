@@ -8,7 +8,7 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { isCarLimitBinding } from './diagnosticTypes';
 import { isTaskSatisfied } from './taskCompletion';
 
-// Narrow diagnostic reason codes that the UI needs to render specific copy
+// Live device and policy reason codes that the UI needs to render specific copy
 // (e.g. "car unplugged") beyond what `pendingReason` alone can express.
 // Surfaced on the active plan even when it carries a cached
 // `latest` revision, so the list chip stays honest after a mid-plan transition.
@@ -22,6 +22,7 @@ export const resolveDiagnosticReasonCode = (
   // grace, and the user's chip would flip back to a cached "On track" on a
   // momentary gap. A real recovery arrives as a diagnostic that names itself.
   if (diag.reasonCode === 'objective_missing_device') return current;
+  if (diag.reasonCode === 'objective_price_feature_disabled') return 'objective_price_feature_disabled';
   if (diag.reasonCode === 'objective_waiting_for_car') return 'objective_waiting_for_car';
   if (diag.reasonCode === 'objective_waiting_for_plan') return 'objective_waiting_for_plan';
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';

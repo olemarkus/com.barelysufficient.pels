@@ -218,6 +218,93 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV2): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
+  it.each([false, true])('persists a live price-policy pause and reports changed recovery only (deliveryBlocked=%s)', (deliveryBlocked) => {
+    const persist = buildPersistDeps();
+    const onRevisionWritten = vi.fn();
+    const recorder = new DeferredObjectiveActivePlanRecorder({ ...persist.deps, onRevisionWritten });
+    const active = makeDiag({
+      deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitAcceptedSamples: 8, kwhPerUnitLastAcceptedAtMs: HOUR_MS,
+    });
+    recorder.observe([active], HOUR_MS);
+    recorder.flushIfDirty();
+    const original = persist.saved()!.plansByDeviceId.heater!;
+    const revision = original.latest;
+    expect(effectivePlanStatusOf(original)).toBe('on_track');
+    onRevisionWritten.mockClear();
+
+    recorder.observe([makeDiag({
+      deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_price_feature_disabled',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
+    })], HOUR_MS + 10 * 60_000);
+    recorder.flushIfDirty();
+    const paused = persist.saved()!.plansByDeviceId.heater!;
+    expect(paused.pending).toBe(false);
+    expect(paused.latest).toBe(revision);
+    expect(paused.diagnosticReasonCode).toBe('objective_price_feature_disabled');
+    expect(effectivePlanStatusOf(paused)).toBeNull();
+    expect(onRevisionWritten).not.toHaveBeenCalled();
+    const restored = normalizeDeferredObjectiveActivePlans(JSON.parse(JSON.stringify(persist.saved())));
+    expect(restored.plansByDeviceId.heater!.diagnosticReasonCode).toBe('objective_price_feature_disabled');
+    expect(effectivePlanStatusOf(restored.plansByDeviceId.heater!)).toBeNull();
+
+    recorder.observe([makeDiag({
+      deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS,
+      trajectory: { kind: 'resolved', status: deliveryBlocked ? 'at_risk' : 'on_track' },
+      reasonCode: deliveryBlocked ? 'objective_not_accepting_energy' : 'planned_with_margin',
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5), makeBucket(3 * HOUR_MS, 1.5), makeBucket(4 * HOUR_MS, 1.5),
+      ], { frozenRead: true }),
+    })], HOUR_MS + 20 * 60_000);
+    recorder.flushIfDirty();
+    const recovered = persist.saved()!.plansByDeviceId.heater!;
+    expect(recovered.latest).toBe(revision);
+    expect(recovered.diagnosticReasonCode).toBe(deliveryBlocked ? 'objective_not_accepting_energy' : undefined);
+    expect(effectivePlanStatusOf(recovered)).toBe(deliveryBlocked ? 'at_risk' : 'on_track');
+    if (deliveryBlocked) {
+      expect(onRevisionWritten).toHaveBeenCalledOnce();
+      expect(onRevisionWritten).toHaveBeenCalledWith(expect.objectContaining({
+        previousPlanStatus: 'on_track', effectivePlanStatus: 'at_risk', allocationChanged: false,
+        revision,
+      }));
+    } else {
+      // Resuming the same status adds no fictional public paused event.
+      expect(onRevisionWritten).not.toHaveBeenCalled();
+    }
+  });
+
+  it('preserves the reached car-limit overlay when comparing recovery from a price pause', () => {
+    const persist = buildPersistDeps();
+    const onRevisionWritten = vi.fn();
+    const recorder = new DeferredObjectiveActivePlanRecorder({ ...persist.deps, onRevisionWritten });
+    const ev = {
+      deviceId: 'ev', deadlineAtMs: 6 * HOUR_MS, objectiveKind: 'ev_soc' as const,
+      objectiveId: 'ev:ev_soc', targetTemperatureC: null, currentTemperatureC: null,
+      targetPercent: 90, currentPercent: 85, targetValue: 90, reachableTargetValue: 85,
+    };
+    recorder.observe([makeDiag(ev)], HOUR_MS);
+    const original = recorder.getActivePlan('ev')!;
+    expect(original.latest!.planStatus).toBe('on_track');
+    expect(original.carChargeLimit).toEqual({ limitValue: 85, reached: true });
+    expect(effectivePlanStatusOf(original)).toBe('at_risk');
+    onRevisionWritten.mockClear();
+
+    recorder.observe([makeDiag({
+      ...ev, horizonPlan: undefined, reasonCode: 'objective_price_feature_disabled',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
+    })], HOUR_MS + 10 * 60_000);
+    expect(effectivePlanStatusOf(recorder.getActivePlan('ev')!)).toBeNull();
+    recorder.observe([makeDiag({
+      ...ev, horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5)], { frozenRead: true }),
+    })], HOUR_MS + 20 * 60_000);
+    const recovered = recorder.getActivePlan('ev')!;
+    expect(recovered.latest).toBe(original.latest);
+    expect(recovered.diagnosticReasonCode).toBeUndefined();
+    expect(effectivePlanStatusOf(recovered)).toBe('at_risk');
+    expect(onRevisionWritten).not.toHaveBeenCalled();
+  });
+
   it('reopens public completion immediately while keeping the settled revision immutable', () => {
     const persist = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);

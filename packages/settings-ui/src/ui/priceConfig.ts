@@ -41,7 +41,7 @@ import {
   writePriceOptimizationSettings,
 } from './priceConfigSettingsIo.ts';
 import {
-  POWERHOUR_DEVICE_ID, PRICE_OPTIMIZATION_ENABLED, PV_FORECAST_SOURCE,
+  POWERHOUR_DEVICE_ID, PV_FORECAST_SOURCE,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
@@ -75,7 +75,7 @@ import type {
 import { liveStatusOrNull } from './powerStatusRead.ts';
 import { resolvePvForecastSourceUiStatus } from '../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 import { EXPORT_PRICE_SOURCE_DEFAULT } from '../../../shared-domain/src/settings/exportPriceSource.ts';
-import { refreshAfterSetupRecommendations } from './recommendations.ts';
+import { createPriceOptimizationToggle } from './priceOptimizationToggle.ts';
 
 let configState: PriceConfigState = {
   optimizationEnabled: true,
@@ -186,6 +186,8 @@ const renderPriceAwareDevices = () => {
   const props: PriceAwareDevicesViewProps = {
     priceSetupStatus: configState.priceSetupStatus,
     optimizationEnabled: configState.optimizationEnabled,
+    optimizationBusy: priceOptimizationToggle.busy,
+    optimizationOffArmed: priceOptimizationToggle.offArmed,
     devices: buildPriceOptDevices(state.latestDevices),
     handlers: priceAwareDevicesHandlers,
   };
@@ -201,19 +203,15 @@ const validateAndSavePriceSettings = async () => {
   await saveValidatedPriceSettings(configState);
 };
 
-const handleOptimizationToggle = async (enabled: boolean) => {
-  configState = { ...configState, optimizationEnabled: enabled };
-  renderAll();
-  try {
-    await setSetting(PRICE_OPTIMIZATION_ENABLED, enabled);
-    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
-    await refreshAfterSetupRecommendations();
-    await showToast(enabled ? 'Price optimization enabled.' : 'Price optimization disabled.', 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to update price optimization', error, 'priceConfig');
-    await showToastError(error, 'Failed to update price optimization setting.');
-  }
-};
+const priceOptimizationToggle = createPriceOptimizationToggle(
+  () => configState.optimizationEnabled,
+  (enabled) => {
+    // A settings read begun before this save must not put the old value back.
+    settingsLoadGeneration += 1;
+    configState = { ...configState, optimizationEnabled: enabled };
+  },
+  renderAll,
+);
 
 const handlePvForecastSourceChange = async (source: PvForecastSourceSetting) => {
   const previous = configState.pvForecastSource;
@@ -511,7 +509,9 @@ const electricityPricesHandlers: ElectricityPricesHandlers = {
 };
 
 const priceAwareDevicesHandlers: PriceAwareDevicesHandlers = {
-  onOptimizationToggle: handleOptimizationToggle,
+  onOptimizationToggle: priceOptimizationToggle.toggle,
+  onOptimizationOffConfirm: priceOptimizationToggle.confirmOff,
+  onOptimizationOffDismiss: priceOptimizationToggle.dismissOff,
   onDevicePriceAdjustmentChange: handleDevicePriceAdjustmentChange,
 };
 

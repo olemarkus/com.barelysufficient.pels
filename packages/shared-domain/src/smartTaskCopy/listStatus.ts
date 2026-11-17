@@ -8,7 +8,7 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans';
 import { resolveFirstPlannedHourMs } from '../deferredPlanBookedHours';
-import { resolveExclusionPendingReason } from './pendingReasons';
+import { resolveCurrentSmartTaskPendingReason, resolveExclusionPendingReason } from './pendingReasons';
 import { resolveSmartTaskCarChargeLimit, type SmartTaskCarChargeLimit } from './shortfallCauses';
 
 // Hero/list "live" status variants. Sits next to the kind chip and identifies
@@ -336,6 +336,7 @@ const resolveCurrentCauseListStatus = (plan: SmartTaskListStatusPlan): SmartTask
   // a cached revision is no longer being executed and the chip must say so
   // instead of "On track".
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
+  if (resolveCurrentSmartTaskPendingReason(diagnosticReasonCode) === 'price_feature_disabled') return 'building_plan';
   // A car limit from the preceding connection says nothing about this car.
   if (diagnosticReasonCode === 'objective_waiting_for_car'
     || diagnosticReasonCode === 'objective_waiting_for_plan') return 'building_plan';

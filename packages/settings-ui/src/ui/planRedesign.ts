@@ -44,6 +44,9 @@ import { resolveEvCardStateLines } from './evCardStateLine.ts';
 import type { SetupPathRead } from './setupPathFacts.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 import { countMainHomeJobs } from './mainHomeDevices.ts';
+import { resolveOverviewSmartTaskStatuses, type OverviewSmartTaskStatus } from './overviewSmartTaskStatus.ts';
+import { followDeadlineHref } from './deadlineUrls.ts';
+import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
 // staleness + materiality gates) happens in `resolveSolarNow` at render time
@@ -238,6 +241,12 @@ const doRender = () => {
   }
   const now = Date.now();
   const setup = resolveOverviewSetupPath();
+  const smartTaskStatuses = overviewScope.kind === 'main'
+    ? resolveOverviewSmartTaskStatuses(
+      state.deferredObjectiveSettings, state.deferredObjectiveActivePlans, state.latestDevices, cachedPrices, now,
+    ) : [];
+  const smartTaskRow = overviewScope.kind === 'main'
+    ? resolveSmartTaskRow(smartTaskStatuses.length > 0 ? [] : resolveRowStatuses(now)) : null;
   renderPlanOverview(surface, {
     // Membership and order come from the DEVICE list; the decision comes from
     // the plan. Resolved here so the view stays props-in.
@@ -251,7 +260,11 @@ const doRender = () => {
     // under a meter area the row is OMITTED as not-applicable — rendering
     // Main's task states under the area's name would break the scope bar's
     // honesty claim.
-    smartTaskRow: overviewScope.kind === 'main' ? resolveSmartTaskRow(now) : null,
+    // A detailed current status replaces the slim current-task summary. Recent
+    // misses remain a separate history signal when today's task needs attention.
+    smartTaskRow,
+    smartTaskStatuses,
+    onSmartTaskAction: activateSmartTaskStatus,
     phaseLoad: overviewScope.kind === 'main' ? cachedPhaseLoad : { state: 'none' },
     // Same Main-only rule as the smart-task row above.
     evStateLines: overviewScope.kind === 'main' ? resolveEvCardStateLines(now) : new Map(),
@@ -269,6 +282,12 @@ const doRender = () => {
   } else if (!needsLive) {
     stopLiveTick();
   }
+};
+
+const activateSmartTaskStatus = (action: OverviewSmartTaskStatus['action']): void => {
+  if ('href' in action) followDeadlineHref(action.href);
+  else if (action.deviceId) dispatchOpenDeviceDetail(action.deviceId, 'top');
+  // Other destinations use the shell's existing data-settings-target delegate.
 };
 
 /**
@@ -480,9 +499,9 @@ const resolveRowStatuses = (nowMs: number): OverviewSmartTaskStatusInput[] => {
   return statuses;
 };
 
-const resolveSmartTaskRow = (nowMs: number): OverviewSmartTaskRow | null => (
+const resolveSmartTaskRow = (statuses: readonly OverviewSmartTaskStatusInput[]): OverviewSmartTaskRow | null => (
   resolveOverviewSmartTaskRow({
-    statuses: resolveRowStatuses(nowMs),
+    statuses,
     missStreaks: cachedMissStreaks,
     formatTime: formatRowTime,
   })

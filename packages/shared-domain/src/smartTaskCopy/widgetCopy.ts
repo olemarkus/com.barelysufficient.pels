@@ -58,7 +58,7 @@ Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
   waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
   invalid_session: 'EV is unplugged — plug in to start.',
   missing_capacity: 'Learning energy use from this device.',
-  price_feature_disabled: 'Price-aware planning is off.',
+  price_feature_disabled: 'Respond to prices is off.',
   device_in_sub_home: SMART_TASK_SUB_HOME_UNAVAILABLE,
   device_unmanaged: SMART_TASK_DEVICE_UNMANAGED_WHY,
 };
@@ -76,7 +76,7 @@ const SMART_TASK_WIDGET_RECOURSE_BY_STATUS: Partial<Record<SmartTaskListStatusId
 
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
 
-// The two pending reasons the owner can act on directly. Everything else is
+// Pending reasons the owner can act on directly. Everything else is
 // PELS waiting on itself (prices, readings, a learned profile), where a
 // recourse line would invent an action the user does not have.
 const resolvePendingRecourseHint = (
@@ -84,6 +84,9 @@ const resolvePendingRecourseHint = (
 ): string | null => {
   if (reason === 'invalid_session') return RECOURSE_INVALID_SESSION;
   if (reason === 'device_unmanaged') return SMART_TASK_DEVICE_UNMANAGED_RECOURSE;
+  if (reason === 'price_feature_disabled') {
+    return 'Turn on Respond to prices in Settings → Electricity prices → Manage price-aware devices.';
+  }
   return null;
 };
 

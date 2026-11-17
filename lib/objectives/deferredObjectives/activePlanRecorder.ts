@@ -47,6 +47,7 @@ import {
   withCarChargeLimit,
   withDiagnosticReasonCode,
 } from './activePlanDiagnosticReason';
+import { isSmartTaskPricePaused } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
 import { effectivePlanStatusOf, publishOverlayOnlyStatusChange } from './effectivePlanStatusEvents';
 import type {
@@ -99,6 +100,16 @@ export type { ActivePlanFlowCardSeed, ActivePlanPersistDeps } from './activePlan
 import type { ActivePlanFlowCardSeed, ActivePlanPersistDeps } from './activePlanRevisionBuild';
 
 const emitDeferredDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
+
+// Price pause has no public Flow status. Compare recovery against the retained
+// verdict and overlays so a changed status is announced without a new revision.
+const previousEffectivePlanStatusOf = (
+  plan: DeferredObjectiveActivePlanV1,
+): DeferredObjectiveActivePlanStatusV1 | null => (
+  effectivePlanStatusOf(plan)
+    ?? (isSmartTaskPricePaused(plan) && plan.latest !== null
+      ? resolveEffectivePlanStatus(plan.latest.planStatus, plan) : null)
+);
 
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently
 // return empty/malformed data; if a plan cycle ever produces an empty
@@ -247,10 +258,9 @@ export class DeferredObjectiveActivePlanRecorder {
       this.writeFirstRevision(diag, signature, candidateHours, reason, nowMs);
       return;
     }
-    // Captured BEFORE the live cause is refreshed: this is the status the task
-    // publicly had entering the cycle, and every event published below reports
-    // its transition from exactly this value.
-    const previousEffective = effectivePlanStatusOf(current);
+    // Capture before refreshing live causes. A price-paused task compares
+    // recovery against its retained verdict because pause has no public token.
+    const previousEffective = previousEffectivePlanStatusOf(current);
     const backfilled = this.refreshDiagnosticReasonCode(
       this.backfillCommitmentIfMissing(current, signature, nowMs),
       diag,
@@ -346,7 +356,7 @@ export class DeferredObjectiveActivePlanRecorder {
       // longer reports a limit it had not reached), and a horizon-less cycle
       // writes no revision, so it announces that change itself.
       if (!existing.pending) {
-        const previousEffective = effectivePlanStatusOf(existing);
+        const previousEffective = previousEffectivePlanStatusOf(existing);
         const refreshed = this.refreshDiagnosticReasonCode(existing, diag);
         publishOverlayOnlyStatusChange(this.deps, refreshed, previousEffective);
         return;

@@ -1,6 +1,7 @@
 import { render } from 'preact';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
-import { MdIconButton, MdOutlinedButton, MdSwitch } from './materialWebJSX.tsx';
+import { MdDialog, MdIconButton, MdOutlinedButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
 import { AppBar } from './AppBar.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import {
@@ -12,6 +13,8 @@ import type { PriceSetupStatus } from '../priceSetupStatus.ts';
 /** The page's callbacks into its controller (`priceConfig.ts`), one per control. */
 export type PriceAwareDevicesHandlers = {
   onOptimizationToggle: (enabled: boolean) => void;
+  onOptimizationOffConfirm: () => void;
+  onOptimizationOffDismiss: () => void;
   onDevicePriceAdjustmentChange: (id: string, kind: PriceAdjustmentKind, sizeC: number) => void;
 };
 
@@ -19,6 +22,8 @@ export type PriceAwareDevicesViewProps = {
   /** The prices these devices respond to, so turning them on never hides an unset source. */
   priceSetupStatus: PriceSetupStatus;
   optimizationEnabled: boolean;
+  optimizationBusy: boolean;
+  optimizationOffArmed: boolean;
   devices: PriceOptDevice[];
   handlers: PriceAwareDevicesHandlers;
 };
@@ -155,26 +160,73 @@ const PriceSourceCard = ({ status }: { status: PriceSetupStatus }) => {
 };
 
 const RespondTogglesCard = ({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: (val: boolean) => void;
-}) => (
-  <label class="md-switch-row settings-form-card">
-    <MdSwitch
-      aria-label="Respond to prices"
-      {...(enabled ? { selected: true } : {})}
-      onChange={(e) => onToggle((e.currentTarget as SwitchElement).selected)}
-    />
-    <span class="md-switch-row__content">
-      <span class="md-switch-row__label pels-text-settings-label">Respond to prices</span>
-      <small class="field__hint">
-        When on, eligible devices boost while power is cheap and reduce while it is expensive.
-      </small>
-    </span>
-  </label>
-);
+  optimizationEnabled: enabled,
+  optimizationBusy: busy,
+  optimizationOffArmed: offArmed,
+  handlers,
+}: PriceAwareDevicesViewProps) => {
+  const nativeInput = useRef<HTMLInputElement | null>(null);
+  useLayoutEffect(() => {
+    // Once interacted with, the checkbox follows its checked property rather
+    // than the attribute Material renders from selected.
+    if (nativeInput.current) nativeInput.current.checked = enabled;
+  }, [enabled]);
+  return (
+  <>
+    <label class="md-switch-row settings-form-card">
+      <MdSwitch
+        aria-label="Respond to prices"
+        aria-describedby="respond-to-prices-hint"
+        selected={enabled}
+        disabled={busy || offArmed}
+        onInput={(event) => {
+          const element = event.currentTarget as SwitchElement;
+          // Material's input event is composed, so its native checkbox is the
+          // source. Restore both states: resetting only selected before Lit
+          // renders leaves the checkbox toggled and breaks the next request.
+          const source = event.composedPath()[0];
+          if (!(source instanceof HTMLInputElement)) return;
+          nativeInput.current = source;
+          const next = source.checked;
+          source.checked = enabled;
+          element.selected = enabled;
+          handlers.onOptimizationToggle(next);
+        }}
+      />
+      <span class="md-switch-row__content">
+        <span class="md-switch-row__label pels-text-settings-label">Respond to prices</span>
+        <small class="field__hint">
+          When on, eligible devices boost while power is cheap and reduce while it is expensive.
+        </small>
+      </span>
+    </label>
+    <p id="respond-to-prices-hint" class="field__hint">
+      {enabled
+        ? 'Smart tasks also need this setting to plan when to run.'
+        : 'While Respond to prices is off, any enabled smart tasks are paused.'}
+    </p>
+    <MdDialog open={offArmed && !busy}
+      onClose={(event) => {
+        if (!offArmed) return;
+        // Escape/scrim already started closing. Let the controller's boolean
+        // change own that close so two animations cannot race the next open.
+        event.preventDefault();
+        handlers.onOptimizationOffDismiss();
+      }}>
+      <div slot="headline">Turn off Respond to prices?</div>
+      <div slot="content">
+        Price-based device adjustments will stop. Any enabled smart tasks will pause and may miss their deadlines.
+      </div>
+      <div slot="actions">
+        <MdTextButton onClick={handlers.onOptimizationOffDismiss}>Keep on</MdTextButton>
+        <MdTextButton class="md-text-button--destructive" onClick={handlers.onOptimizationOffConfirm}>
+          Turn off
+        </MdTextButton>
+      </div>
+    </MdDialog>
+  </>
+  );
+};
 
 const DeviceRow = ({ device, handlers }: { device: PriceOptDevice; handlers: PriceAwareDevicesHandlers }) => {
   // Magnitudes, whatever sign an older save stored: the planner applies each
@@ -272,7 +324,7 @@ const PriceAwareDevicesRoot = (props: PriceAwareDevicesViewProps) => (
   <>
     <Header />
     <PriceSourceCard status={props.priceSetupStatus} />
-    <RespondTogglesCard enabled={props.optimizationEnabled} onToggle={props.handlers.onOptimizationToggle} />
+    <RespondTogglesCard {...props} />
     {props.optimizationEnabled && <DevicesSection devices={props.devices} handlers={props.handlers} />}
   </>
 );

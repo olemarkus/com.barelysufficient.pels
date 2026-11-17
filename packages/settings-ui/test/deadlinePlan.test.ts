@@ -1238,7 +1238,10 @@ describe('deadline plan page payload', () => {
     });
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
-    expect(renderInput.pending.hero.headline).toBe('Price-aware optimisation is off');
+    expect(renderInput.pending.hero.headline).toBe('Respond to prices is off');
+    expect(renderInput.pending.hero.recourse).toEqual({
+      label: 'Open price-aware devices', targetTab: 'price-aware-devices',
+    });
   });
 
   it('returns already_satisfied when the device is already at or above the target', () => {
@@ -4611,6 +4614,25 @@ describe('pending hero producer wiring', () => {
     expect(renderInput.pending.hero.headlineReason).toBe('Charger reports the car isn’t plugged in.');
     expect(renderInput.pending.hero.recourse).toBeNull();
   });
+});
+
+it('shows the price-response pause instead of a cached committed plan', () => {
+  const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+  const deadline = atLocalHour(now, 6);
+  const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
+  const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
+  const pausedPlan: DeferredObjectiveActivePlanV1 = {
+    ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [1, 2], plannedKWhPerHour: 2 }),
+    diagnosticReasonCode: 'objective_price_feature_disabled',
+  };
+  const renderInput = resolveRenderInput({
+    bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), pausedPlan),
+    deviceId: 'heater', devices, prices, nowMs: now.getTime(),
+  });
+  expect(renderInput.status).toBe('pending');
+  if (renderInput.status !== 'pending') return;
+  expect(renderInput.pending.hero.headline).toBe('Respond to prices is off');
+  expect(renderInput.pending.hero.recourse?.targetTab).toBe('price-aware-devices');
 });
 
 describe('pendingChipTone parity with the Smart-tasks list', () => {

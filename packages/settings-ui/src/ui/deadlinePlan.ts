@@ -18,6 +18,7 @@ import type { DeadlinePendingContext } from '../../../shared-domain/src/smartTas
 import {
   isDeviceExclusionPaused,
   isWaitingForSmartTaskPlan,
+  resolveCurrentSmartTaskPendingReason,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
@@ -37,6 +38,7 @@ import { formatHourLabel } from './deadlinePlanFormatters.ts';
 import { buildChargeByStartMs } from './deadlinePlanHourMaps.ts';
 import {
   buildPendingHero,
+  currentSessionPendingReason,
   resolvePendingPriceContext,
   resolvePendingReason,
 } from './deadlinePlanPending.ts';
@@ -295,16 +297,6 @@ export type DeadlineRenderInput =
   | { status: 'completed'; kind: DeferredObjectiveSettingsEntry['kind'] }
   | { status: 'absent' };
 
-const currentSessionPendingReason = (
-  plan: ResolvedDeferredObjectiveActivePlanV1,
-): DeadlinePlanPendingReason | null => {
-  if (plan.diagnosticReasonCode === 'objective_waiting_for_car') return 'waiting_for_car';
-  if (plan.diagnosticReasonCode === 'objective_invalid_session' && resolveReportedCarChargeLimit(plan) === null) {
-    return 'invalid_session';
-  }
-  return null;
-};
-
 export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderInput => {
   const ctxResult = resolveObjectiveContext(params);
   if (ctxResult.kind === 'absent') return { status: 'absent' };
@@ -312,15 +304,15 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   const ctx = ctxResult.context;
   const priceContext = resolvePendingPriceContext(params.prices, ctx.nowMs);
   // No persisted record yet, an explicitly pending record, OR a live exclusion
-  // blocker (separate meter, device no longer managed) → pending/unavailable
-  // hero. The exclusion branch deliberately outranks a committed cached
-  // `latest` revision because that schedule stopped governing the moment the
-  // device left the planned set.
+  // blocker (separate meter, device no longer managed, or price response off)
+  // → pending/unavailable hero. These blockers outrank a committed cached
+  // `latest` revision because that schedule no longer governs the device.
   if (
     !hasActivePlanRevision(ctx)
       || ctx.activePlan.pending
       || isDeviceExclusionPaused(ctx.activePlan)
       || isWaitingForSmartTaskPlan(ctx.activePlan)
+      || resolveCurrentSmartTaskPendingReason(ctx.activePlan.diagnosticReasonCode) !== null
   ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }

@@ -13,6 +13,7 @@ import type { SmartTaskCarChargeLimit } from './smartTaskCopy/shortfallCauses';
 import { resolveFirstPlannedHourMs } from './deferredPlanBookedHours';
 import { hasObservedStateOfCharge } from './stateOfChargeObservedState';
 import { hasObservedTemperature } from './temperatureObservedState';
+import { isSmartTaskPricePaused } from './smartTaskCopy/pendingReasons';
 
 /**
  * What a smart-task row (the Smart tasks list card and the smart-tasks widget
@@ -64,7 +65,7 @@ export const resolveSmartTaskRowFacts = (
   nowMs: number,
 ): SmartTaskRowFacts => ({
   statusId: resolveSmartTaskListStatus(plan, nowMs),
-  firstActionAtMs: resolveFirstPlannedHourMs(plan.latest),
+  firstActionAtMs: isSmartTaskPricePaused(plan) ? null : resolveFirstPlannedHourMs(plan.latest),
   carChargeLimit: resolveReportedCarChargeLimit(plan),
   currentValue: resolveCurrentValue(device, plan),
 });

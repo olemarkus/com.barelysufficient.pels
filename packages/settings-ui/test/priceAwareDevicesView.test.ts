@@ -1,8 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { renderPriceAwareDevicesView } from '../src/ui/views/PriceAwareDevicesView.tsx';
 
+let showDialog: MockInstance;
+beforeEach(() => {
+  // jsdom has no native dialog.showModal or animations. Keep this test on
+  // controller-owned open state and close events, as the Modes tests do.
+  const dialog = customElements.get('md-dialog')!;
+  showDialog = vi.spyOn(dialog.prototype, 'show').mockResolvedValue(undefined);
+});
 afterEach(() => {
   document.body.replaceChildren();
+  showDialog.mockRestore();
 });
 
 describe('PriceAwareDevicesView', () => {
@@ -16,9 +24,13 @@ describe('PriceAwareDevicesView', () => {
     renderPriceAwareDevicesView(mount, {
       priceSetupStatus: { state: 'unavailable' },
       optimizationEnabled: true,
+      optimizationBusy: false,
+      optimizationOffArmed: false,
       devices: [{ id: 'hp', name: 'Heat pump', cheapDelta: -3, expensiveDelta: 2 }],
       handlers: {
         onOptimizationToggle: vi.fn(),
+        onOptimizationOffConfirm: vi.fn(),
+        onOptimizationOffDismiss: vi.fn(),
         onDevicePriceAdjustmentChange,
       },
     });
@@ -39,9 +51,13 @@ describe('PriceAwareDevicesView', () => {
       renderPriceAwareDevicesView(mount, {
         priceSetupStatus,
         optimizationEnabled: true,
+        optimizationBusy: false,
+        optimizationOffArmed: false,
         devices: [],
         handlers: {
           onOptimizationToggle: vi.fn(),
+          onOptimizationOffConfirm: vi.fn(),
+          onOptimizationOffDismiss: vi.fn(),
           onDevicePriceAdjustmentChange: vi.fn(),
         },
       });
@@ -72,5 +88,87 @@ describe('PriceAwareDevicesView', () => {
     it('claims nothing without the read', () => {
       expect(mountWith({ state: 'unavailable' })).toBeNull();
     });
+  });
+});
+
+describe('Respond to prices confirmation view', () => {
+  const mountView = (armed = false, busy = false) => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const handlers = {
+      onOptimizationToggle: vi.fn(),
+      onOptimizationOffConfirm: vi.fn(),
+      onOptimizationOffDismiss: vi.fn(),
+      onDevicePriceAdjustmentChange: vi.fn(),
+    };
+    renderPriceAwareDevicesView(mount, {
+      priceSetupStatus: { state: 'unavailable' },
+      optimizationEnabled: true,
+      optimizationBusy: busy,
+      optimizationOffArmed: armed,
+      devices: [],
+      handlers,
+    });
+    return { mount, handlers };
+  };
+
+  it('restores Material and native checked state so a cancelled toggle can be requested again', async () => {
+    const { mount, handlers } = mountView();
+    const control = mount.querySelector<HTMLElement & { selected: boolean; updateComplete: Promise<boolean> }>('md-switch')!;
+    await control.updateComplete;
+    const input = control.shadowRoot!.querySelector<HTMLInputElement>('input')!;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      input.checked = false;
+      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      expect(control.selected).toBe(true);
+      expect(input.checked).toBe(true);
+      expect(handlers.onOptimizationToggle).toHaveBeenLastCalledWith(false);
+    }
+    expect(handlers.onOptimizationToggle).toHaveBeenCalledTimes(2);
+    expect(mount.textContent).toContain('Smart tasks also need this setting to plan when to run.');
+  });
+
+  it('routes Material dialog dismissal to the armed request', () => {
+    const { mount, handlers } = mountView(true);
+    const dialog = mount.querySelector<HTMLElement & { open: boolean }>('md-dialog')!;
+    expect(dialog.open).toBe(true);
+    expect(dialog.dispatchEvent(new Event('close', { cancelable: true }))).toBe(false);
+    expect(handlers.onOptimizationOffDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a close event after confirmation has already disarmed the dialog', () => {
+    const { mount, handlers } = mountView();
+    mount.querySelector('md-dialog')!.dispatchEvent(new Event('close'));
+    expect(handlers.onOptimizationOffDismiss).not.toHaveBeenCalled();
+  });
+
+  it('disables the Material switch while saving', () => {
+    const { mount } = mountView(false, true);
+    expect(mount.querySelector<HTMLElement & { disabled: boolean }>('md-switch')!.disabled).toBe(true);
+  });
+
+  it('sets boolean false when closing and saving instead of clearing Material properties to empty strings', async () => {
+    const { mount, handlers } = mountView(true);
+    const control = mount.querySelector<HTMLElement & {
+      selected: boolean; disabled: boolean; updateComplete: Promise<boolean>;
+    }>('md-switch')!;
+    await control.updateComplete;
+    const input = control.shadowRoot!.querySelector<HTMLInputElement>('input')!;
+    input.checked = false;
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    expect(input.checked).toBe(true);
+    renderPriceAwareDevicesView(mount, {
+      priceSetupStatus: { state: 'unavailable' },
+      optimizationEnabled: false,
+      optimizationBusy: false,
+      optimizationOffArmed: false,
+      devices: [],
+      handlers,
+    });
+    await control.updateComplete;
+    expect(control.selected).toBe(false);
+    expect(input.checked).toBe(false);
+    expect(control.disabled).toBe(false);
+    expect(mount.querySelector<HTMLElement & { open: boolean }>('md-dialog')!.open).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import {
   resolvePausedUnmanagedChipTone,
   resolvePausedUnpluggedChipTone,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
+  resolveReportedCarChargeLimit,
   type DeadlineLiveState,
   type SmartTaskChipTone,
 } from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
@@ -12,8 +13,8 @@ import type {
   DeadlinePendingPriceSource,
 } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
 import {
-  resolveExclusionPendingReason,
   isWaitingForSmartTaskPlan,
+  resolveCurrentSmartTaskPendingReason,
   resolveSmartTaskPendingReason,
   type DeadlinePlanPendingReason,
 } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
@@ -54,12 +55,22 @@ export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone
 };
 
 export const resolvePendingReason = (
-  activePlan: ResolvedDeferredObjectiveActivePlanV1 | null,
+  activePlan: Pick<ResolvedDeferredObjectiveActivePlanV1, 'diagnosticReasonCode' | 'pendingReason'> | null,
 ): DeadlinePlanPendingReason => (
   activePlan && isWaitingForSmartTaskPlan(activePlan) ? 'not_yet_planned'
-    : resolveExclusionPendingReason(activePlan?.diagnosticReasonCode)
+    : resolveCurrentSmartTaskPendingReason(activePlan?.diagnosticReasonCode)
       ?? resolveSmartTaskPendingReason(activePlan?.pendingReason)
 );
+
+export const currentSessionPendingReason = (
+  plan: Pick<ResolvedDeferredObjectiveActivePlanV1, 'diagnosticReasonCode' | 'carChargeLimit' | 'targetValue'>,
+): DeadlinePlanPendingReason | null => {
+  if (plan.diagnosticReasonCode === 'objective_waiting_for_car') return 'waiting_for_car';
+  if (plan.diagnosticReasonCode === 'objective_invalid_session' && resolveReportedCarChargeLimit(plan) === null) {
+    return 'invalid_session';
+  }
+  return null;
+};
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {
   if (scheme === 'flow') return 'external_flow';

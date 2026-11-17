@@ -691,10 +691,10 @@
     };
   });
   var priceFeatureDisabledCopy = (kindNoun) => (() => ({
-    headline: "Price-aware optimisation is off",
-    body: `Enable price-aware optimisation in Settings \u2192 Electricity prices to compute a ${kindNoun}.`,
-    headlineReason: "Price-aware optimisation is off in Settings.",
-    recourse: { label: "Open Settings", targetTab: "settings" }
+    headline: "Respond to prices is off",
+    body: `Turn on Respond to prices in Settings \u2192 Electricity prices \u2192 Manage price-aware devices to build a ${kindNoun}.`,
+    headlineReason: "Smart tasks are paused while Respond to prices is off.",
+    recourse: { label: "Open price-aware devices", targetTab: "price-aware-devices" }
   }));
   var waitingForCarCopy = (ctx) => ({
     headline: WAITING_FOR_CAR_ASSOCIATION,
