@@ -850,5 +850,8 @@
   },
   "3.39.0": {
     "en": "New: Main fuse reads each phase from the LiXee ZLinky and the Nous D4Z meters. Settings warn before you save a limit or main fuse below what your home already uses, so devices are not held back by surprise. In setup, French homes are offered their subscribed power under Main fuse. Device settings are tidier: each switch sits in the card it controls, and its settings show only while it is on. Diagnostics reports state the app's memory as Homey measures it."
+  },
+  "3.40.0": {
+    "en": "New: Override. On a thermostat's device page, set a temperature for a few hours or up to seven days; PELS holds it and then returns to the mode's target. A schedule can start an override, and the overview card shows an Override chip while one is in force. A Smart task on the device waits until the override ends. When a device's setpoint differs from the one PELS plans to set, the card shows both, and the device page says when PELS sets it. The device page is shorter: Override, Smart task and schedules share one Temporary card, and Price response and Power limiting open from a one-line summary."
   }
 }
