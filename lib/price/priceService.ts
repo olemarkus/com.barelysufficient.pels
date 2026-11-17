@@ -51,7 +51,9 @@ import {
 } from './powerhourScheme';
 import type { ExportPriceConfig } from './exportPrice';
 import type { BudgetPriceInputs } from './budgetPrice';
-import { applyPlanningPriceDecorations, isExportCostlyAt } from './pricePlanningSeries';
+import {
+  applyPlanningPriceDecorations, isExportCostlyAt, ReusedPlanningSeries, type PlanningPricePeriods,
+} from './pricePlanningSeries';
 import { buildPriceTimeline } from './priceTimeline';
 import { summarizePriceLevels } from './priceLevelSummary';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
@@ -99,6 +101,7 @@ export default class PriceService {
     private readonly homeyWebApiGet: HomeyWebApiGet,
   ) {
     this.priceSchemeResolver = new PriceSchemeResolver(homey.settings, priceDataStore);
+    this.planningSeries = new ReusedPlanningSeries(homey.settings, priceDataStore, getPowerTracker, getTimeZone);
   }
 
   private readonly priceSchemeResolver: PriceSchemeResolver;
@@ -116,6 +119,7 @@ export default class PriceService {
   private powerhourSourceStatus: PowerhourSourceUiStatus = { kind: 'unknown' };
   private budgetPriceInputs?: BudgetPriceInputs;
   private servedMeteredPeriods: MeteredPricePeriod[] = [];
+  private readonly planningSeries: ReusedPlanningSeries;
   setBudgetPriceInputs(inputs: BudgetPriceInputs | undefined): void { this.budgetPriceInputs = inputs; }
   private getSettingValue(key: string): unknown { return this.homey.settings.get(key); }
   private getNumberSetting(key: string, fallback: number): number {
@@ -344,9 +348,13 @@ export default class PriceService {
     return this.withExportAndPlanningPrices(this.buildImportHourlyPrices());
   }
 
-  /** Native periods with the import, export and solar-adjusted planning prices. */
-  private getPlanningPricePeriods(): CombinedPricePeriod[] {
-    return this.withExportAndPlanningPrices(this.buildImportPricePeriods());
+  /**
+   * Native periods with the import, export and solar-adjusted planning prices,
+   * reused until an input changes (`ReusedPlanningSeries`).
+   */
+  private getPlanningPricePeriods(): PlanningPricePeriods {
+    const build = (): CombinedPricePeriod[] => this.withExportAndPlanningPrices(this.buildImportPricePeriods());
+    return this.planningSeries.read(this.getPriceScheme(), this.resolveExportConfig(), this.budgetPriceInputs, build);
   }
 
   buildPriceHorizon(startMs: number, endMs: number): PriceHorizonEntry[] {
@@ -359,21 +367,17 @@ export default class PriceService {
 
   /**
    * Import-price periods intersecting a delivery slice, with recorded currency.
+   * Read off the planning series: it carries the same periods and import
+   * prices, and is the one already built.
    * Includes periods served earlier whose day has since rolled out of the
    * series (`retainServedMeteredPeriods`), so a slice that straddles local
    * midnight is priced on both sides.
    */
   getMeteredPricePeriods(startMs: number, endMs: number): MeteredPricePeriod[] {
-    this.servedMeteredPeriods = retainServedMeteredPeriods(
-      this.servedMeteredPeriods,
-      buildMeteredPricePeriodsForScheme(
-        this.buildImportPricePeriods(),
-        this.priceLevelBand,
-        this.getPriceScheme(),
-        this.getPriceUnitLabel(),
-      ),
-      Date.now(),
+    const served = buildMeteredPricePeriodsForScheme(
+      this.getPlanningPricePeriods(), this.priceLevelBand, this.getPriceScheme(), this.getPriceUnitLabel(),
     );
+    this.servedMeteredPeriods = retainServedMeteredPeriods(this.servedMeteredPeriods, served, Date.now());
     return this.servedMeteredPeriods.filter((period) => period.endMs > startMs && period.startMs < endMs);
   }
 

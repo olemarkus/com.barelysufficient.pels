@@ -92,7 +92,7 @@ type PriceLevelBandModel = {
  * average.
  */
 const createPriceLevelBandModel = (
-  prices: PriceEntry[],
+  prices: readonly PriceEntry[],
   band: PriceLevelBand,
 ): PriceLevelBandModel => {
   const avgPrice = calculateDurationWeightedAveragePrice(
@@ -146,7 +146,7 @@ const toTimelineLevel = (level: PriceLevel): PriceTimelineLevel => {
  * carries the current level.
  */
 export const resolvePriceLevelTimeline = <T extends PriceEntry>(
-  prices: T[],
+  prices: readonly T[],
   band: PriceLevelBand,
 ): PriceLevelTimeline<T> => {
   const model = createPriceLevelBandModel(prices, band);

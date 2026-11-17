@@ -122,3 +122,37 @@ export const applyBudgetPrices = <T extends CombinedPriceFields>(
     return typeof budgetPrice === 'number' ? { ...entry, budgetPrice } : entry;
   });
 };
+
+/**
+ * The hours whose forecast surplus {@link applyBudgetPrices} can turn into a
+ * planning price for `prices`: the hour each entry with an export price starts
+ * in. An entry without one keeps its import price whatever the surplus.
+ */
+export const resolveBudgetPricedHours = (
+  prices: ReadonlyArray<Readonly<CombinedPriceFields>>,
+  timeZone: string,
+): number[] => {
+  const hoursMs = new Set<number>();
+  for (const { startsAt, exportPrice } of prices) {
+    const startsAtMs = Date.parse(startsAt);
+    if (typeof exportPrice !== 'number' || !Number.isFinite(exportPrice) || !Number.isFinite(startsAtMs)) continue;
+    hoursMs.add(getHourStartInTimeZone(new Date(startsAtMs), timeZone));
+  }
+  return [...hoursMs];
+};
+
+/**
+ * What {@link applyBudgetPrices} reads from `inputs` to price those hours, so
+ * a holder of a planning series can tell whether a rebuild would differ: the
+ * flexible appetite, then each hour's surplus. Nothing without inputs, and the
+ * appetite alone when it rules the planning price out.
+ */
+export const readBudgetPriceInputs = (
+  hoursMs: readonly number[],
+  inputs: BudgetPriceInputs | undefined,
+): unknown[] => {
+  if (!inputs) return [];
+  const expectedManagedDrawKwh = resolveExpectedManagedDrawKwh(inputs.getPowerLimitSettings());
+  if (!isPositiveFinite(expectedManagedDrawKwh)) return [expectedManagedDrawKwh];
+  return [expectedManagedDrawKwh, ...hoursMs.map((hourMs) => inputs.getSurplusKwh(hourMs))];
+};
