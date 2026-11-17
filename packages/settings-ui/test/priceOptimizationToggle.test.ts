@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PriceAwareDevicesViewProps } from '../src/ui/views/PriceAwareDevicesView.tsx';
+import type { ElectricityPricesViewProps } from '../src/ui/views/ElectricityPricesView.tsx';
 import { PRICE_OPTIMIZATION_ENABLED } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 const mocks = vi.hoisted(() => ({
@@ -7,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn<() => Promise<void>>(),
   readSettings: vi.fn(),
   render: vi.fn<(surface: HTMLElement, props: PriceAwareDevicesViewProps) => void>(),
+  renderElectricity: vi.fn<(surface: HTMLElement, props: ElectricityPricesViewProps) => void>(),
+  savePriceSettings: vi.fn<() => Promise<void>>(),
   showToast: vi.fn(),
   showToastError: vi.fn(),
 }));
@@ -17,9 +20,14 @@ vi.mock('../src/ui/homey.ts', async (original) => ({
 vi.mock('../src/ui/priceConfigSettingsIo.ts', () => ({
   readPriceConfigSettings: mocks.readSettings,
   writePriceOptimizationSettings: vi.fn(),
-  validateAndSavePriceSettings: vi.fn(),
+  validateAndSavePriceSettings: mocks.savePriceSettings,
 }));
 vi.mock('../src/ui/views/PriceAwareDevicesView.tsx', () => ({ renderPriceAwareDevicesView: mocks.render }));
+vi.mock('../src/ui/views/ElectricityPricesView.tsx', () => ({ renderElectricityPricesView: mocks.renderElectricity }));
+vi.mock('../src/ui/prices.ts', async (original) => ({
+  ...await original<typeof import('../src/ui/prices.ts')>(),
+  getPricesReadModel: vi.fn().mockRejectedValue(new Error('Price status unavailable')),
+}));
 vi.mock('../src/ui/recommendations.ts', () => ({ refreshAfterSetupRecommendations: mocks.refresh }));
 vi.mock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../src/ui/toast.ts', () => ({ showToast: mocks.showToast, showToastError: mocks.showToastError }));
@@ -28,6 +36,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.setSetting.mockReset().mockResolvedValue(undefined);
+  mocks.savePriceSettings.mockReset().mockResolvedValue(undefined);
   mocks.refresh.mockReset().mockResolvedValue(undefined);
   mocks.readSettings.mockReset().mockResolvedValue({ optimizationEnabled: true });
 });
@@ -102,6 +111,52 @@ describe('Respond to prices saves', () => {
     expect(mocks.setSetting).toHaveBeenCalledExactlyOnceWith(PRICE_OPTIMIZATION_ENABLED, true);
     expect(latest()).toMatchObject({ optimizationEnabled: true, optimizationOffArmed: false });
     expect(mocks.showToast).toHaveBeenCalledWith('Respond to prices turned on.', 'ok');
+  });
+
+  it('merges unrelated settings from an earlier read without reverting a successful toggle save', async () => {
+    const controller = await load();
+    await controller.initElectricityPricesView(document.createElement('div'));
+    let finishRead!: (patch: { optimizationEnabled: boolean; providerSurcharge: number }) => void;
+    mocks.readSettings.mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+    const reloading = controller.reloadPriceConfigSettings();
+    await latest().handlers.onOptimizationToggle(false);
+    await latest().handlers.onOptimizationOffConfirm();
+    finishRead({ optimizationEnabled: true, providerSurcharge: 7 });
+    await reloading;
+
+    expect(latest().optimizationEnabled).toBe(false);
+    const prices = mocks.renderElectricity.mock.calls.at(-1)![1];
+    expect(prices.config.providerSurcharge).toBe(7);
+    await prices.handlers.onMinDiffChange(5);
+    expect(mocks.savePriceSettings).toHaveBeenCalledWith(expect.objectContaining({
+      optimizationEnabled: false, providerSurcharge: 7, minDiffOre: 5,
+    }));
+  });
+
+  it('keeps latest-read ordering when overlapping reads straddle a successful toggle save', async () => {
+    const controller = await load();
+    await controller.initElectricityPricesView(document.createElement('div'));
+    let finishOlder!: (patch: { optimizationEnabled: boolean; providerSurcharge: number }) => void;
+    let finishNewest!: (patch: { optimizationEnabled: boolean; providerSurcharge: number }) => void;
+    mocks.readSettings
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOlder = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNewest = resolve; }));
+    const older = controller.reloadPriceConfigSettings();
+    await latest().handlers.onOptimizationToggle(false);
+    await latest().handlers.onOptimizationOffConfirm();
+    const newest = controller.reloadPriceConfigSettings();
+    finishNewest({ optimizationEnabled: false, providerSurcharge: 9 });
+    await newest;
+    finishOlder({ optimizationEnabled: true, providerSurcharge: 3 });
+    await older;
+
+    expect(latest().optimizationEnabled).toBe(false);
+    const prices = mocks.renderElectricity.mock.calls.at(-1)![1];
+    expect(prices.config.providerSurcharge).toBe(9);
+    await prices.handlers.onMinDiffChange(6);
+    expect(mocks.savePriceSettings).toHaveBeenCalledWith(expect.objectContaining({
+      optimizationEnabled: false, providerSurcharge: 9, minDiffOre: 6,
+    }));
   });
 
   it('keeps confirmation armed when the page repaints in the background', async () => {

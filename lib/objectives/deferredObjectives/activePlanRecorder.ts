@@ -101,14 +101,14 @@ import type { ActivePlanFlowCardSeed, ActivePlanPersistDeps } from './activePlan
 
 const emitDeferredDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
-// Price pause has no public Flow status. Compare recovery against the retained
-// verdict and overlays so a changed status is announced without a new revision.
+// Price pause has no public Flow status. Compare recovery against its captured
+// last public status; older records fall back to the retained verdict/overlays.
 const previousEffectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
 ): DeferredObjectiveActivePlanStatusV1 | null => (
   effectivePlanStatusOf(plan)
     ?? (isSmartTaskPricePaused(plan) && plan.latest !== null
-      ? resolveEffectivePlanStatus(plan.latest.planStatus, plan) : null)
+      ? plan.pricePausePreviousStatus ?? resolveEffectivePlanStatus(plan.latest.planStatus, plan) : null)
 );
 
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently

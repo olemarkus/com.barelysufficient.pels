@@ -7,6 +7,8 @@ import type {
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { isCarLimitBinding } from './diagnosticTypes';
 import { isTaskSatisfied } from './taskCompletion';
+import { isSmartTaskPricePaused } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import { effectivePlanStatusOf } from './effectivePlanStatusEvents';
 
 // Live device and policy reason codes that the UI needs to render specific copy
 // (e.g. "car unplugged") beyond what `pendingReason` alone can express.
@@ -103,9 +105,18 @@ export const refreshActivePlanLiveFacts = (
   const reasonCode = resolveDiagnosticReasonCode(diagnostic, current.diagnosticReasonCode);
   const carChargeLimit = resolveCarChargeLimitOverlay(diagnostic, current.carChargeLimit);
   const liveCompletion = resolveLiveCompletion(diagnostic);
+  const refreshed = withCarChargeLimit(
+    withDiagnosticReasonCode({ ...current, liveCompletion }, reasonCode), carChargeLimit,
+  );
+  let previousStatus = current.pricePausePreviousStatus;
+  if (!isSmartTaskPricePaused(refreshed)) previousStatus = undefined;
+  else if (!isSmartTaskPricePaused(current)) previousStatus = effectivePlanStatusOf(current) ?? undefined;
   if (current.diagnosticReasonCode === reasonCode
     && sameCarChargeLimit(current.carChargeLimit, carChargeLimit)
-    && sameLiveCompletion(current.liveCompletion, liveCompletion)) return current;
-  const refreshed = withDiagnosticReasonCode({ ...current, liveCompletion }, reasonCode);
-  return withCarChargeLimit(refreshed, carChargeLimit);
+    && sameLiveCompletion(current.liveCompletion, liveCompletion)
+    && current.pricePausePreviousStatus === previousStatus) return current;
+  const { pricePausePreviousStatus: _drop, ...withoutPauseHistory } = refreshed;
+  return previousStatus === undefined
+    ? withoutPauseHistory
+    : { ...withoutPauseHistory, pricePausePreviousStatus: previousStatus };
 };

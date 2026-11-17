@@ -40,9 +40,7 @@ import {
   validateAndSavePriceSettings as saveValidatedPriceSettings,
   writePriceOptimizationSettings,
 } from './priceConfigSettingsIo.ts';
-import {
-  POWERHOUR_DEVICE_ID, PV_FORECAST_SOURCE,
-} from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { POWERHOUR_DEVICE_ID, PV_FORECAST_SOURCE } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -206,8 +204,8 @@ const validateAndSavePriceSettings = async () => {
 const priceOptimizationToggle = createPriceOptimizationToggle(
   () => configState.optimizationEnabled,
   (enabled) => {
-    // A settings read begun before this save must not put the old value back.
-    settingsLoadGeneration += 1;
+    // Only the toggle field of an older read is superseded by this save.
+    optimizationSaveGeneration += 1;
     configState = { ...configState, optimizationEnabled: enabled };
   },
   renderAll,
@@ -554,6 +552,7 @@ const refreshStatusInfo = async () => {
 };
 
 let settingsLoadGeneration = 0;
+let optimizationSaveGeneration = 0;
 
 const loadPriceConfigSettings = async () => {
   // Read FIRST, then merge. Spreading `configState` inside the same literal as
@@ -565,9 +564,13 @@ const loadPriceConfigSettings = async () => {
   // finishing last would put the old values back.
   settingsLoadGeneration += 1;
   const generation = settingsLoadGeneration;
+  const optimizationGeneration = optimizationSaveGeneration;
   const patch = await readPriceConfigSettings();
   if (generation !== settingsLoadGeneration) return;
-  configState = { ...configState, ...patch };
+  // Keep unrelated settings from the newest read even if a toggle save landed.
+  const settingsPatch = optimizationGeneration === optimizationSaveGeneration
+    ? patch : { ...patch, optimizationEnabled: configState.optimizationEnabled };
+  configState = { ...configState, ...settingsPatch };
   settingsLoaded = true;
 };
 

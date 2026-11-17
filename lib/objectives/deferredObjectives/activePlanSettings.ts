@@ -335,6 +335,7 @@ const isActivePlan = (value: unknown): value is StoredActivePlan => {
   const v = value as Record<string, unknown>;
   return hasValidPlanIdentity(v)
     && (v.liveCompletion === undefined || isDeferredObjectiveLiveCompletion(v.liveCompletion))
+    && (v.pricePausePreviousStatus === undefined || isPlanStatus(v.pricePausePreviousStatus))
     && isOptionalCarChargeLimit(v.carChargeLimit)
     && isRevisionOrNull(v.original)
     && isRevisionOrNull(v.latest)
