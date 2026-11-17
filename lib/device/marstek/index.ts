@@ -75,6 +75,7 @@ const MARSTEK_BINDING: HomeBatteryActionBinding = {
   // The local driver reads the battery over its Local API, and reports nothing while that API is off.
   noReadingsCause: 'local_api_off',
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: MARSTEK_PASSIVE_SECONDS * 1000 }),
+  commandPacing: { kind: 'unpaced' },
   resolveTarget: (device) => ({
     kind: 'resolved', target: { appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`, deviceId: device.id },
   }),

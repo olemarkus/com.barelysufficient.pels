@@ -70,6 +70,7 @@ const ZENDURE_LOCAL_BINDING: HomeBatteryActionBinding = {
   commandLifetime: (setpointW) => (setpointW > 0
     ? { kind: 'expires', lifetimeMs: CHARGE_LIFETIME_MS }
     : { kind: 'persistent' }),
+  commandPacing: { kind: 'unpaced' },
   resolveTarget: (device) => ({
     kind: 'resolved', target: { appUri: `homey:app:${ZENDURE_LOCAL_APP_ID}`, deviceId: device.id },
   }),

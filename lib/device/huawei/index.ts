@@ -87,6 +87,7 @@ const LUNA2000_BINDING: HomeBatteryActionBinding = {
   noReadingsCause: 'no_readings',
   appUri: `homey:app:${HUAWEI_APP_ID}`,
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: LUNA2000_FORCE_MINUTES * 60_000 }),
+  commandPacing: { kind: 'unpaced' },
   resolveTarget: (device) => ({
     kind: 'resolved', target: { appUri: `homey:app:${HUAWEI_APP_ID}`, deviceId: device.id },
   }),

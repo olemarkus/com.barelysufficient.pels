@@ -49,7 +49,7 @@ const setpointBattery = (claimValue: string, observedAtMs = T0 - 60_000): Batter
     range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   },
   claim: { value: claimValue, observedAtMs },
-  keepAliveFor: HOLDS_UNTIL_NEXT,
+  keepAliveFor: HOLDS_UNTIL_NEXT, pacing: { kind: 'unpaced' },
 });
 
 const record = (previousValue: string, claimedAtMs = T0 - 3_600_000) => ({
@@ -562,7 +562,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       claimHeld: false,
       handBackDeferred: false,
       claimEngaged: false,
-      keepAliveFor: HOLDS_UNTIL_NEXT,
+      keepAliveFor: HOLDS_UNTIL_NEXT, pacing: { kind: 'unpaced' },
       // A setpoint battery is judged by the power it delivers, as before.
       response: { kind: 'delivers_setpoint' },
       // And its plan may charge it from the grid at any power, as before.
@@ -692,14 +692,14 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
   const TARGET = { appUri: 'homey:app:com.niewold.marstek', deviceId: BATTERY };
   const RANGE = { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 };
   const resendsEvery150s = (): BatteryCommandKeepAlive => ({ kind: 'resend', everyMs: 150_000 });
-  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', target: TARGET, range: RANGE, keepAliveFor: resendsEvery150s });
+  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', target: TARGET, range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' } });
 
   it('records a claim of its own before the first command, and holds it from that record alone', async () => {
     const { owner, settings } = buildOwner({ batteries: { [BATTERY]: appActions() } });
     expect(owner.readControlCapability(BATTERY)).toBe('drivable');
     expect(owner.readControl(BATTERY)).toMatchObject({
       kind: 'setpoint', range: RANGE, claimHeld: false, claimEngaged: false, admissible: true,
-      keepAliveFor: resendsEvery150s,
+      keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' },
     });
 
     await expect(owner.dispatchSetpoint(BATTERY, async () => 1200))
@@ -724,7 +724,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     });
     await owner.dispatchSetpoint(BATTERY, write);
     batteries[BATTERY] = { kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' },
-      range: RANGE, keepAliveFor: resendsEvery150s };
+      range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' } };
     await expect(owner.dispatchSetpoint(BATTERY, write))
       .resolves.toEqual({ status: 'refused', reason: 'claim_record_mismatch' });
     expect(write).toHaveBeenCalledTimes(1);
@@ -743,7 +743,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
   it('keeps the stored target through restart and failed hand-back retries despite a replacement', async () => {
     const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
     const replacement: BatteryControlRead = {
-      kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' }, range: RANGE, keepAliveFor: resendsEvery150s,
+      kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' }, range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' },
     };
     const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: replacement },
       apply: async () => { throw new Error('original target unavailable'); } });

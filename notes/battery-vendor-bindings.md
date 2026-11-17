@@ -36,6 +36,16 @@ Homey API key (see "App-action bindings" below). It states:
   (it holds until the next) or `expires` after `lifetimeMs` (the app's own
   countdown, or its own policy, drops it). An app may keep some commands and
   drop others.
+- **commandPacing**: `unpaced`, or `paced` for an app whose control writes
+  PELS keeps few. The storage lane (`lib/executor/batteryExecutor.ts`) then
+  holds a setpoint that raises grid import (less discharge, more charge) until
+  `importRaisingIntervalMs` after the last setpoint sent. The plan keeps
+  deciding it, and it goes out when due. A setpoint that lowers grid import
+  always goes at once: shedding credits a discharge increase before the
+  battery delivers it, so pacing one would be credit for a command never sent.
+  The first setpoint and the hand-back are never paced. A house load that
+  crosses a step of the battery's grid and comes back inside the interval
+  costs no write, since the step back up equals the setpoint in force.
 - **resolve(device, devices)**: the battery's actions, from the host's last
   full device inventory, or why there are none (`reasonCode`, logged only).
   The actions carry the exact target, the signed range in PELS's sign, and
@@ -226,6 +236,7 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
 | Zendure SolarFlow 2400 AC / 800 Pro (local Zendure app, `com.tweakers.zendure` 1.0.16, driver `zendure`) | app actions: `set-power` (`power` W, ±2400, positive discharges) to command and hold 0 W; hand back `set-power` 0 (the app's idle; it has no own mode); a charge expires (90 s), a discharge and the hold persist | `lib/device/zendure/` |
 | Huawei LUNA2000 (`com.huawei.fusionsolar` 1.3.9, driver `luna2000_modbus`) | app actions, unsigned W on a 100 W grid: charge and 0 W hold `luna2000_start_force_charge_duration`, discharge `luna2000_start_force_discharge_duration`, each for 10 minutes; hand back `luna2000_stop_force_charge_discharge`; expires after 10 min; range from the battery's max charge and discharge power settings | `lib/device/huawei/` |
 | SolaX battery (`com.msd.inverter.solax` 4.4.10, driver `solax_modbus_battery`, cards on the inverter) | app actions on the inverter: `set_remote_control_power_ram_<suffix>` mode 4 (Push Power, `power` W, positive charges) with a 300 s `timeout` to command and hold 0 W; hand back `disable_remote_control_ram_<suffix>`; expires after 300 s; ±30 kW | `lib/device/solax/` |
+| Fronius GEN24 battery (Fronius Control app, `se.andreas.fronius-modbus-control` 1.4.13, driver `gen24`) | app actions on the battery, W on a 300 W grid: charge `set_charge_kw`, discharge `force_discharge_kw`, hold `pause_battery`; hand back `reset_control`; persistent; paced, import-raising commands wait 5 minutes; range from the app's `maxBatteryKw` setting | `lib/device/fronius/` |
 | Zendure cloud app (`com.zendure.flow` 1.0.25: SolarFlow 800, 800 Plus, 800 Pro, 1600 AC+, 2400 AC, 2400 AC+, 2400 Pro, 4000 Mix AC+, 4000 Mix Pro, Hyper 2000); Huawei `luna2000_emma_modbus` and the FusionSolar OpenAPI drivers | standard (no `target_power`): watch-only | none |
 
 ## What each adapter does and why
@@ -318,6 +329,20 @@ mode. `measure_power` is Homey's sign, updated on the app's poll (60 s by
 default), so verification is slower than for a local battery. The EMMA driver
 offers only working-mode and grid-charge cards, and the OpenAPI drivers are
 read-only: both stay watch-only.
+
+**Fronius GEN24 (Fronius Control app).** The battery device carries its own
+cards. `set_charge_kw` and `force_discharge_kw` take watts despite their ids:
+the first charges at least that much, from the grid when solar falls short,
+the second discharges at least that much. The app has no card for an exact
+0 W: `pause_battery` blocks discharge and still lets solar charge the battery,
+so a PELS hold can read as a charge. `reset_control` clears every restriction
+and is the hand-back. Commands persist. Every command is a write to the
+inverter's storage control over Modbus, which PELS keeps few (owner decision,
+2026-11-17): the range is on a 300 W grid, which is also the planner's
+deadband for this battery, and the binding is `paced` at five minutes. The
+range comes from the app's `maxBatteryKw` setting, rounded down to the grid;
+while it is 0 the battery is unavailable. The app's other Fronius battery
+drivers and the other Fronius apps offer no battery control.
 
 **SolaX (Modbus).** The battery device only reads the inverter it follows;
 the cards are on the inverter, one pair per inverter driver (`g4`, `g4_pro`,

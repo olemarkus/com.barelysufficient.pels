@@ -13,7 +13,7 @@ import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKey
 
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import {
-  buildHuaweiLuna2000Device, buildMarstekBluetoothBatteryDevice, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildSolaxDevices,
+  buildFroniusGen24BatteryDevice, buildHuaweiLuna2000Device, buildMarstekBluetoothBatteryDevice, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildSolaxDevices,
   buildZendureLocalBatteryDevice,
 } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
@@ -53,6 +53,10 @@ const MARSTEK_CONTROL = { kind: 'app_actions' as const, target: { appUri: MARSTE
 const SIGENERGY_CONTROL = { kind: 'app_actions' as const, target: { appUri: SIGENERGY_APP, deviceId: 'plant' } };
 const ZENDURE_CONTROL = { kind: 'app_actions' as const, target: { appUri: ZENDURE_APP, deviceId: 'zendure' } };
 const HUAWEI_CONTROL = { kind: 'app_actions' as const, target: { appUri: HUAWEI_APP, deviceId: 'luna' } };
+const FRONIUS_APP = 'homey:app:se.andreas.fronius-modbus-control';
+const FRONIUS_CARDS = ['set_charge_kw', 'force_discharge_kw', 'pause_battery', 'reset_control']
+  .map((id) => `${FRONIUS_APP}:${id}`);
+const FRONIUS_CONTROL = { kind: 'app_actions' as const, target: { appUri: FRONIUS_APP, deviceId: 'gen24' } };
 
 type Setup = { transport: DeviceTransport; runs: () => Array<[string, HomeyFlowAction]> };
 
@@ -129,7 +133,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: MARSTEK_CONTROL.target,
       range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function),
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
     });
     // A third of the app's 300 s passive countdown, whatever the command.
     const resend = { kind: 'resend', everyMs: 100_000 };
@@ -351,7 +355,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: SIGENERGY_CONTROL.target,
       range: { minW: -5000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function),
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
     });
     expect(keepAlives(transport, 'sigen')).toEqual([{ kind: 'none' }, { kind: 'none' }, { kind: 'none' }]);
     await expect(transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: -1234 }))
@@ -584,7 +588,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: ZENDURE_CONTROL.target,
       range: { minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function),
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
     });
     // The app's idle poll drops a charge; a discharge and the 0 W hold stand until the next command.
     expect(keepAlives(transport, 'zendure')).toEqual([
@@ -602,6 +606,37 @@ describe('home battery app actions', () => {
     expect(runs()).toEqual([setPower(-900), setPower(2400), setPower(0)]);
   });
 
+  it('drives a Fronius GEN24 on a 300 W grid, paced, through the app\'s charge, discharge, pause and reset cards', async () => {
+    const battery = buildFroniusGen24BatteryDevice({ id: 'gen24', maxBatteryKw: 5 });
+    const { transport, runs } = await setup([battery], FRONIUS_CARDS);
+
+    expect(transport.readBatteryControl('gen24')).toEqual({
+      kind: 'app_actions',
+      target: FRONIUS_CONTROL.target,
+      range: { minW: -4800, maxW: 4800, stepW: 300, excludeMinW: 0, excludeMaxW: 0 },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'paced', importRaisingIntervalMs: 300_000 },
+    });
+    const holds = { kind: 'none' };
+    expect(keepAlives(transport, 'gen24')).toEqual([holds, holds, holds]);
+    const request = (setpointW: number) => transport.requestStoragePower(
+      { kind: 'storage_power', control: FRONIUS_CONTROL, deviceId: 'gen24', setpointW },
+    );
+    await expect(request(1000)).resolves.toEqual({ kind: 'written', setpointW: 900 });
+    await expect(request(-1300)).resolves.toEqual({ kind: 'written', setpointW: -1200 });
+    await expect(request(0)).resolves.toEqual({ kind: 'written', setpointW: 0 });
+    await transport.releaseStorageControl(
+      { kind: 'storage_release', deviceId: 'gen24', handBack: 'app_actions', target: FRONIUS_CONTROL.target },
+    );
+
+    const card = (actionId: string, args: Record<string, unknown> = {}): [string, HomeyFlowAction] => [
+      'gen24', { ownerUri: FRONIUS_APP, cardId: `${FRONIUS_APP}:${actionId}`, args: { device: { id: 'gen24' }, ...args } },
+    ];
+    expect(runs()).toEqual([
+      card('set_charge_kw', { power: 900 }), card('force_discharge_kw', { power: 1200 }), card('pause_battery'),
+      card('reset_control'),
+    ]);
+  });
+
   it('drives a LUNA2000 through forced runs kept alive at a third of their 10 minutes, and stops them to hand back', async () => {
     const battery = buildHuaweiLuna2000Device({ id: 'luna', maxChargePowerW: 5000, maxDischargePowerW: 4000 });
     const { transport, runs } = await setup([battery], HUAWEI_CARDS);
@@ -610,7 +645,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: HUAWEI_CONTROL.target,
       range: { minW: -4000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function),
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
     });
     const resend = { kind: 'resend', everyMs: 200_000 };
     expect(keepAlives(transport, 'luna')).toEqual([resend, resend, resend]);
@@ -652,7 +687,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: SOLAX_CONTROL.target,
       range: { minW: -30_000, maxW: 30_000, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function),
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
     });
     const resend = { kind: 'resend', everyMs: 100_000 };
     expect(keepAlives(transport, 'solax')).toEqual([resend, resend, resend]);

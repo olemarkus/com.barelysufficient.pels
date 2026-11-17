@@ -287,8 +287,9 @@ Check these, in order:
   restarts.
 - **No Homey API key for a battery controlled through its app's Flow cards.**
   A Marstek Venus on the Marstek Battery Connector app, a Sigenergy system, a
-  Zendure SolarFlow on the local Zendure app and a Huawei LUNA2000 on the
-  FusionSolar app's Modbus connection take commands only through their app's
+  Zendure SolarFlow on the local Zendure app, a Huawei LUNA2000 on the
+  FusionSolar app's Modbus connection and a Fronius GEN24 battery on the
+  Fronius Control app take commands only through their app's
   Flow cards, which PELS runs with a
   Homey API key with **Flow** permission. Its card then reads "PELS can only
   watch it: add a Homey API key so it can help with your limit and solar". Create the key with

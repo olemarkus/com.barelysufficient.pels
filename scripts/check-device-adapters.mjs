@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = 'lib/device/deviceAdapterRegistry.ts';
-const integration = /^lib\/device\/(tesla|easee|enua|alfen|alfenProline|peblar|myenergi|wallbox|warp|zaptec|futurehome|amina|goe|keba|smappee|ocppServer|oso|adax|hoiax|sma|knx|nibe|stiebel|sessy|anker|zinvolt|marstek|sigenergy|zendure|huawei|solax|homewizard)\//u;
+const integration = /^lib\/device\/(tesla|easee|enua|alfen|alfenProline|peblar|myenergi|wallbox|warp|zaptec|futurehome|amina|goe|keba|smappee|ocppServer|oso|adax|hoiax|sma|knx|nibe|stiebel|sessy|anker|zinvolt|marstek|sigenergy|zendure|huawei|solax|fronius|homewizard)\//u;
 const rawCapabilities = new Set([
   'charging_on', 'charging_button', 'charge_mode', 'target_charger_current',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power',
@@ -17,7 +17,7 @@ const rawCapabilities = new Set([
   'target_temperature.warmwater_temp', 'measure_temperature.warmwater_temp',
   'target_temperature.warmwater', 'measure_temperature.warmwater',
 ]);
-const vendorDriver = /^(?:homey:app:)?(?:com\.tesla\.car|com\.zaptec|no\.easee|no\.enua|com\.alfen|alfen\.prolinesingle|com\.kylemichiels\.peblar|net\.biseth\.myenergi|nl\.xseth\.wallbox|com\.glumpf\.warp|no\.futurehome|com\.aminacharging|com\.go-e\.charger|se\.cohen\.keba|com\.smappee|com\.dnetlabs\.ocpp|no\.osoincharge|no\.adax\.smart-heater\.homey-app|no\.hoiax|com\.myuplink:hoiax|sma\.modbus|org\.knx|com\.nibe\.myuplink|stiebel\.heatpump|nl\.sessy|com\.anker\.solix|com\.zinvolt|com\.niewold\.marstek|com\.sigenergy|com\.tweakers\.zendure|com\.huawei\.fusionsolar|com\.msd\.inverter\.solax|com\.homewizard)(?::|$)/iu;
+const vendorDriver = /^(?:homey:app:)?(?:com\.tesla\.car|com\.zaptec|no\.easee|no\.enua|com\.alfen|alfen\.prolinesingle|com\.kylemichiels\.peblar|net\.biseth\.myenergi|nl\.xseth\.wallbox|com\.glumpf\.warp|no\.futurehome|com\.aminacharging|com\.go-e\.charger|se\.cohen\.keba|com\.smappee|com\.dnetlabs\.ocpp|no\.osoincharge|no\.adax\.smart-heater\.homey-app|no\.hoiax|com\.myuplink:hoiax|sma\.modbus|org\.knx|com\.nibe\.myuplink|stiebel\.heatpump|nl\.sessy|com\.anker\.solix|com\.zinvolt|com\.niewold\.marstek|com\.sigenergy|com\.tweakers\.zendure|com\.huawei\.fusionsolar|com\.msd\.inverter\.solax|se\.andreas\.fronius-modbus-control|com\.homewizard)(?::|$)/iu;
 
 /** Pure source check, also exercised with adversarial source fixtures. */
 export function findDeviceAdapterViolations(file, source) {
