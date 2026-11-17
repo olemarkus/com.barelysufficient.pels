@@ -352,6 +352,10 @@ export type DeferredObjectiveActivePlanV1 = {
   // present on a committed record with a cached revision so consumers do not
   // advertise that stale schedule. Optional for backward compatibility.
   diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
+  // Recorder-owned history: the last public effective status before a price
+  // pause. Held across paused cycles/restarts, then cleared on recovery. UI
+  // and current-status consumers must not read this historical value.
+  pricePausePreviousStatus?: DeferredObjectiveActivePlanStatusV1;
   // Present only while the car's own charge limit sits below an EV task's
   // target: the car's limit, and whether the car has reached it. The requested
   // target stays the task's target; the limit only explains why delivery stops
