@@ -42,25 +42,20 @@ describe('device support picker rows', () => {
     expect(classless?.deviceType).toBeNull();
   });
 
-  it('offers only devices PELS does not support, grouped by zone with devices without a zone last', () => {
+  it('lists every device the search matches, supported or not, grouped by zone with devices without a zone last', () => {
     const rows = toDevicePickerRows([...homeyDevices, meter], pelsDevices, 'meter');
     expect(rows.find((row) => row.id === 'meter')?.status).toBe('power_source');
     const list = resolveDevicePickerList(rows, '');
-    expect(list.kind).toBe('requestable');
-    expect(sectionIds(list)).toEqual([['Basement', ['relay']], ['No zone', ['fan']]]);
-    // Search reaches the zone as well as the name.
+    expect(list).toMatchObject({ kind: 'devices', allSupported: false });
+    expect(sectionIds(list)).toEqual([
+      ['Basement', ['relay']], ['Garage', ['socket']], ['Hall', ['heater', 'meter']], ['No zone', ['fan']],
+    ]);
+    // Search reaches the zone as well as the name, and finds supported devices where they are.
     expect(sectionIds(resolveDevicePickerList(rows, 'relay'))).toEqual([['Basement', ['relay']]]);
-    expect(sectionIds(resolveDevicePickerList(rows, 'basement'))).toEqual([['Basement', ['relay']]]);
-  });
-
-  it('names the supported devices a search finds when it finds no device to request', () => {
-    const rows = toDevicePickerRows([...homeyDevices, meter], pelsDevices, 'meter');
-    const list = resolveDevicePickerList(rows, 'hall');
-    expect(list.kind).toBe('supported');
-    expect(sectionIds(list)).toEqual([['Already on Devices', ['heater']], ['Whole-home meter', ['meter']]]);
+    expect(sectionIds(resolveDevicePickerList(rows, 'hall'))).toEqual([['Hall', ['heater', 'meter']]]);
     expect(resolveDevicePickerList(rows, 'no such device')).toEqual({ kind: 'no_match' });
     expect(resolveDevicePickerList(rows.filter((row) => row.status !== 'unsupported'), ''))
-      .toEqual({ kind: 'all_supported' });
+      .toMatchObject({ kind: 'devices', allSupported: true });
   });
 
   it('drops list entries without an id or a name from Homey', () => {
@@ -84,31 +79,32 @@ describe('device support picker view', () => {
     return { surface, props };
   };
 
-  it('lists only devices to request, each with its device type, and passes the tapped row on', () => {
+  it('lists every device with its device type and where PELS has it, and passes the tapped row on', () => {
     const { surface, props } = mount({ state: 'ready', rows });
     expect(surface.querySelector('.pels-appbar__title')?.textContent).toBe('Request support');
-    expect(surface.querySelector('[data-device-picker-id="heater"]')).toBeNull();
-    expect(surface.querySelector('[data-device-picker-id="meter"]')).toBeNull();
     expect(surface.querySelector('.segmented')).toBeNull();
-    const relay = surface.querySelector<HTMLElement>('[data-device-picker-id="relay"]');
+    const detail = (id: string) => surface.querySelector(`[data-device-picker-id="${id}"] [slot="supporting-text"]`)?.textContent;
+    expect(detail('relay')).toBe('Light');
+    expect(detail('socket')).toBe('Socket · On Devices');
+    expect(detail('meter')).toBe('Whole-home meter');
+    const relay = surface.querySelector<HTMLElement>('[aria-label="Basement"] [data-device-picker-id="relay"]');
     expect(relay?.querySelector('[slot="headline"]')?.textContent).toBe('Water heater relay');
-    expect(relay?.querySelector('[slot="supporting-text"]')?.textContent).toBe('Light');
     expect(relay?.querySelector('[slot="end"]')).not.toBeNull();
     relay?.click();
     expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'relay', status: 'unsupported' }));
-    expect(surface.querySelector('.pels-appbar__back')?.getAttribute('data-settings-target')).toBe('devices');
-  });
-
-  it('shows a search that finds only supported devices under where they are, and clears it', () => {
-    const { surface, props } = mount({ state: 'ready', rows }, 'hall');
-    expect(surface.querySelector('[aria-label="Already on Devices"] [data-device-picker-id="heater"]')
-      ?.querySelector('[slot="supporting-text"]')?.textContent).toBe('Hall');
+    surface.querySelector<HTMLElement>('[data-device-picker-id="socket"]')?.click();
+    expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'socket', status: 'listed' }));
     // The meter opens Power source through the app-wide settings link.
-    const meterRow = surface.querySelector<HTMLElement>('[aria-label="Whole-home meter"] [data-device-picker-id="meter"]');
-    expect(meterRow?.dataset).toMatchObject({
+    expect(surface.querySelector<HTMLElement>('[aria-label="Hall"] [data-device-picker-id="meter"]')?.dataset).toMatchObject({
       settingsTarget: 'limits', settingsAnchor: '#settings-power-source', settingsHomeScope: 'main',
     });
     expect(surface.textContent).toContain('A device has to be added to Homey before PELS can see it.');
+    expect(surface.querySelector('[data-device-picker-action="clear-search"]')).toBeNull();
+    expect(surface.querySelector('.pels-appbar__back')?.getAttribute('data-settings-target')).toBe('devices');
+  });
+
+  it('offers to clear a search', () => {
+    const { surface, props } = mount({ state: 'ready', rows }, 'hall');
     surface.querySelector<HTMLElement>('[data-device-picker-action="clear-search"]')?.click();
     expect(props.onClearSearch).toHaveBeenCalledTimes(1);
   });
@@ -117,6 +113,7 @@ describe('device support picker view', () => {
     expect(mount({ state: 'ready', rows }, 'no such device').surface.textContent).toContain('No devices match.');
     const supported = mount({ state: 'ready', rows: rows.filter((row) => row.status !== 'unsupported') });
     expect(supported.surface.textContent).toContain('PELS supports every device in Homey.');
+    expect(supported.surface.querySelector('[data-device-picker-id="heater"]')).not.toBeNull();
     expect(supported.surface.querySelector('[data-device-picker-action="clear-search"]')).toBeNull();
   });
 

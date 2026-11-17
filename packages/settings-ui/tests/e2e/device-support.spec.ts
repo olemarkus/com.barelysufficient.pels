@@ -21,8 +21,8 @@ test('finds an unsupported Homey device and sends a device support request for i
   const picker = page.locator('#device-support-panel');
   await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
   await expect(picker.locator('[data-device-picker-id="dev_bath_fan"]')).toBeVisible();
-  // Devices already on Devices are not offered for a request.
-  await expect(picker.locator('[data-device-picker-id="dev_heatpump"]')).toHaveCount(0);
+  // A device already on Devices is listed too, and says so.
+  await expect(picker.locator('[data-device-picker-id="dev_heatpump"]')).toContainText('Thermostat · On Devices');
 
   await setMdValue(page, '[data-device-picker-field="search"]', 'basement');
   await expect(picker.locator('[data-device-picker-id="dev_bath_fan"]')).toHaveCount(0);
@@ -90,15 +90,13 @@ test('opens a problem report from Advanced after leaving a device support reques
   expect((await readDeviceSupportStub(page)).requests).toHaveLength(0);
 });
 
-test('a search that finds a device already on Devices opens it instead of a support request', async ({ page }) => {
+test('a device already on Devices opens it instead of a support request', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 1100 });
   await installDeviceSupportReportStub(page);
   await page.goto('/?page=settings/device-support');
   const picker = page.locator('#device-support-panel');
   await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
-  await setMdValue(page, '[data-device-picker-field="search"]', 'living');
-  const supported = picker.getByRole('region', { name: 'Already on Devices' });
-  await supported.locator('[data-device-picker-id="dev_heatpump"]').click();
+  await picker.locator('[data-device-picker-id="dev_heatpump"]').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await expect(page.locator('#report-problem-panel')).toBeHidden();
   expect((await readDeviceSupportStub(page)).requests).toHaveLength(0);

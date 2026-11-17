@@ -233,9 +233,9 @@ at **Power-limit control**.
 
 ### Missing a device?
 
-**Missing a device?** is the last card on the Devices page. Its **Request support** button lists the devices in Homey that PELS does not support, by zone and with their device type, with a search field for name or zone. Tap a device to send a device support request: describe the device and what PELS should do with it, and PELS sends the request through Homey with what Homey reports about the device (its type, its app and its capabilities) and the app's logs. Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is. To hear back, post in the PELS forum thread and quote the reference PELS shows after sending, or email the developer.
+**Missing a device?** is the last card on the Devices page. Its **Request support** button lists every device in Homey by zone, with a search field for name or zone. Each row shows the device type, and **On Devices** when PELS already supports it. Tap a device PELS does not support to send a device support request: describe the device and what PELS should do with it, and PELS sends the request through Homey with what Homey reports about the device (its type, its app and its capabilities) and the app's logs. Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is. To hear back, post in the PELS forum thread and quote the reference PELS shows after sending, or email the developer.
 
-A search that finds no device to request but finds devices PELS already supports lists them instead: under **Already on Devices**, where a tap opens the device, and the meter PELS reads whole-home power from under **Whole-home meter**, where a tap opens **Power source**. The device step of the setup journey shows the same card.
+A device marked **On Devices** opens on Devices when tapped, where **Managed** turns on control. The meter PELS reads whole-home power from is marked **Whole-home meter** and opens **Power source**. The device step of the setup journey shows the same card.
 
 ## Settings > Modes
 
