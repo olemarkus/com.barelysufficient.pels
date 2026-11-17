@@ -9,7 +9,7 @@ const MINUTE_MS = 60 * 1000;
 
 /** Preserve the source grid, including holes and fractional-offset boundaries. */
 export const buildPriceHorizonFromPeriods = (
-  periods: CombinedPricePeriod[],
+  periods: ReadonlyArray<Readonly<CombinedPricePeriod>>,
   startMs: number,
   endMs: number,
 ): PriceHorizonEntry[] => periods.flatMap((period) => {
@@ -26,7 +26,7 @@ export const buildPriceHorizonFromPeriods = (
 
 /** Price and classify each native period once, without filling unpublished gaps. */
 export const buildMeteredPricePeriods = (
-  periods: CombinedPricePeriod[],
+  periods: ReadonlyArray<Readonly<CombinedPricePeriod>>,
   band: PriceLevelBand,
   costDisplay: MeteredPricePeriod['costDisplay'],
 ): MeteredPricePeriod[] => resolvePriceLevelTimeline(periods, band).periods.map((period) => {
@@ -42,7 +42,7 @@ export const buildMeteredPricePeriods = (
 
 /** Keep metered currency resolution with the period projection that carries it. */
 export const buildMeteredPricePeriodsForScheme = (
-  periods: CombinedPricePeriod[],
+  periods: ReadonlyArray<Readonly<CombinedPricePeriod>>,
   band: PriceLevelBand,
   priceScheme: PriceScheme,
   priceUnit: string,
@@ -81,7 +81,7 @@ export const retainServedMeteredPeriods = (
 
 /** Native task prices for presentation, alongside the existing hourly payload. */
 export const buildTaskPricePeriodsForUi = (
-  periods: CombinedPricePeriod[],
+  periods: ReadonlyArray<Readonly<CombinedPricePeriod>>,
   band: PriceLevelBand,
 ): SettingsUiTaskPricePeriod[] => resolvePriceLevelTimeline(periods, band).periods.map((period) => {
   const startsAtMs = Date.parse(period.startsAt);

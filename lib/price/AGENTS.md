@@ -4,7 +4,7 @@
 
 ## Periods and hours
 
-Published prices may be hourly or quarter-hourly. `getCombinedPricePeriods()` serves import periods for price levels; `getPlanningPricePeriods()` adds export and solar-adjusted planning prices for Smart tasks. Their horizon keeps explicit start/end bounds and a separate import money price. `getCombinedHourlyPrices()` serves duration-weighted hours for budgets, tariff and lowest-price Flow logic. Keep the types distinct so an hourly consumer cannot count 96 quarters as 96 hours. A price refresh alone does not trigger a plan rebuild; the next meter reading picks it up. An owner settings change can trigger one.
+Published prices may be hourly or quarter-hourly. `getCombinedPricePeriods()` serves import periods for price levels; `getPlanningPricePeriods()` adds export and solar-adjusted planning prices for Smart tasks. That series is built once and reused until an input changes; `ReusedPlanningSeries` reads every input on each request, so a new input to the build is added to those reads. Their horizon keeps explicit start/end bounds and a separate import money price. `getCombinedHourlyPrices()` serves duration-weighted hours for budgets, tariff and lowest-price Flow logic. Keep the types distinct so an hourly consumer cannot count 96 quarters as 96 hours. A price refresh alone does not trigger a plan rebuild; the next meter reading picks it up. An owner settings change can trigger one.
 
 ## Storage and source boundaries
 

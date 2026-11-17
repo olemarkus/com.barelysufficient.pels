@@ -33,7 +33,7 @@ export const calculateAveragePrice = <T>(
  * let a 15-minute price pull on the average as hard as a 60-minute one.
  */
 export const calculateDurationWeightedAveragePrice = <T>(
-  prices: T[],
+  prices: readonly T[],
   getValue: (entry: T) => number,
   getMinutes: (entry: T) => number,
 ): number => {
