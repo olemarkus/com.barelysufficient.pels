@@ -101,6 +101,11 @@ const readDeviceSchedules = async (current: string): Promise<void> => {
   paint();
 };
 
+/** Re-read the open device's schedules: turning Managed on or off changes which of them can run. */
+export const refreshDeviceSchedules = (): void => {
+  if (deviceId !== null) void readDeviceSchedules(deviceId);
+};
+
 /** Paint the card for a device; a different device reads its schedules afresh. */
 export const renderDeviceTemporaryCard = (current: string): void => {
   if (deviceId !== current) {

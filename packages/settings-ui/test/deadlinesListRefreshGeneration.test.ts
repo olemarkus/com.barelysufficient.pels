@@ -189,3 +189,35 @@ describe('refreshDeadlinesList stale-history-refresh guard', () => {
     expect(activeSurface().querySelector('[data-state="empty"]')).toBeNull();
   });
 });
+
+describe('refreshDeadlinesList schedules that cannot run', () => {
+  const taskEntry = { schedule: { action: { type: 'task' } }, state: 'invalid' };
+  const refreshWith = async (schedules: unknown): Promise<void> => {
+    callApiMock.mockImplementation((_method: string, path: string) => {
+      if (path === '/ui_bootstrap') return Promise.resolve(emptyBootstrap);
+      if (path === '/ui_devices') return Promise.resolve({ devices: [], schedules });
+      if (path === '/ui_deferred_objective_history') return Promise.resolve(historyEmpty());
+      return Promise.reject(new Error(`unexpected path ${path}`));
+    });
+    await refreshDeadlinesList();
+    await flush();
+  };
+
+  beforeEach(() => {
+    callApiMock.mockReset();
+    logSettingsErrorMock.mockReset().mockResolvedValue(undefined);
+    installSurfaces();
+  });
+
+  it('keeps the notice through an unavailable schedules read and clears it on an empty one', async () => {
+    await refreshWith({ ok: true, data: { entries: [taskEntry] } });
+    expect(activeSurface().querySelector('#deadlines-schedules-notice')).not.toBeNull();
+
+    // A failed read is not a home whose schedules all run.
+    await refreshWith({ ok: false, error: 'unavailable' });
+    expect(activeSurface().querySelector('#deadlines-schedules-notice')).not.toBeNull();
+
+    await refreshWith({ ok: true, data: { entries: [] } });
+    expect(activeSurface().querySelector('#deadlines-schedules-notice')).toBeNull();
+  });
+});

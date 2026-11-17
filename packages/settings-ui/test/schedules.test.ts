@@ -19,7 +19,7 @@ vi.mock('../src/ui/views/Schedules.tsx', () => ({
   },
 }));
 vi.mock('../src/ui/state.ts', () => ({
-  state: { activePanel: 'schedules', latestDevices: [{ id: 'charger', name: 'Garage charger' }, { id: 'tank', name: 'Tank' }] },
+  state: { activePanel: 'schedules', deviceSettingMapsLoaded: true, latestDevices: [{ id: 'charger', name: 'Garage charger' }, { id: 'tank', name: 'Tank' }] },
   resolveManagedState: (deviceId: string) => deviceId === 'tank',
 }));
 const controller = await import('../src/ui/schedules.ts');

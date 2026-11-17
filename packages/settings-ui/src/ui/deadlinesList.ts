@@ -271,6 +271,9 @@ const renderHistorySurface = (
   renderDeadlinesHistoryList(surface, state);
 };
 
+// Task schedules that are switched on but cannot run, from the last schedules read that succeeded.
+let schedulesNotRunning = 0;
+
 export const refreshDeadlinesList = async (): Promise<void> => {
   const surface = getSurface();
   if (!surface) return;
@@ -295,7 +298,6 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   // bootstrap `.then` (cards) or the history `.then` (presence) can trigger it.
   let latestCards: DeadlinesListCard[] | null = null;
   let historyPresent: boolean | undefined;
-  let schedulesNotRunning = 0;
   const renderActiveReady = (): void => {
     if (latestCards === null) return;
     const state: DeadlinesListState = {
@@ -339,10 +341,11 @@ export const refreshDeadlinesList = async (): Promise<void> => {
       callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
     ]);
     const objectiveSettings = normalizeDeferredObjectiveRoster(bootstrap.deferredObjectives);
-    schedulesNotRunning = devicesPayload.schedules?.ok === true
-      ? devicesPayload.schedules.data.entries
-        .filter((entry) => entry.schedule.action.type === 'task' && entry.state === 'invalid').length
-      : 0;
+    // An unavailable schedules read keeps the last count: it is not a home with no such schedule.
+    if (devicesPayload.schedules?.ok === true) {
+      schedulesNotRunning = devicesPayload.schedules.data.entries
+        .filter((entry) => entry.schedule.action.type === 'task' && entry.state === 'invalid').length;
+    }
     latestCards = resolveDeadlinesListCards(
       bootstrap.deferredObjectiveActivePlans,
       objectiveSettings,
