@@ -4,7 +4,8 @@
  */
 export type DeviceDetailFocus =
   | 'top' | 'start-policy' | 'power-limit' | 'shed-limit' | 'solar'
-  | 'control-model' | 'managed' | 'native-control' | 'temperature-policy' | 'electrical-connection' | 'car';
+  | 'control-model' | 'managed' | 'native-control' | 'temperature-policy' | 'electrical-connection' | 'car'
+  | 'control-contest';
 
 export type OpenDeviceDetailDetail = {
   deviceId: string;

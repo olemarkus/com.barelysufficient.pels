@@ -267,13 +267,13 @@ test('a KEBA P30 reads its switch from onoff, its plug state from the status boo
 test('a WARP charger reads its switch from the charging state and its current from the shown limit', () => {
   type Status = {
     evcharger_charging: boolean; evcharger_charging_state: string; warp_current_limit: number;
-    warp_current_limit_pick: string;
+    warp_current_limit_pick: string; alarm_generic: boolean;
   };
   const charger = (status: Partial<Status>): HomeyDeviceLike => ({
     ...HOMEY_DEVICE_FIELDS, id: 'warp', name: 'WARP', class: 'evcharger',
     driverId: 'homey:app:com.glumpf.warp:wallbox',
     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'warp_status',
-      ...Object.keys(status).filter((id) => id.startsWith('warp_'))],
+      ...Object.keys(status).filter((id) => id.startsWith('warp_') || id === 'alarm_generic')],
     capabilitiesObj: Object.fromEntries(Object.entries(status)
       .map(([id, value]) => [id, { ...cap(value), setable: true }])),
   });
@@ -289,6 +289,21 @@ test('a WARP charger reads its switch from the charging state and its current fr
   expect(switchOf('plugged_out')).toBe(false);
 
   const waiting = { evcharger_charging: false, evcharger_charging_state: 'plugged_in' };
+  // In error with a car connected, the app publishes `plugged_in` too, with its alarm on: not running.
+  const errored = { ...waiting, alarm_generic: true };
+  const switchWith = (status: Partial<Status>) => overlay(charger(status)).capabilityObj.evcharger_charging?.value;
+  expect(switchWith(errored)).toBe(false);
+  expect(switchWith({ ...waiting, alarm_generic: false })).toBe(true);
+  expect(switchWith({ ...errored, evcharger_charging_state: 'plugged_in_charging' })).toBe(true);
+  // An alarm newer than an unchanged state dates the switch, so it is not read as older than it is.
+  const recovered = charger({ ...waiting, alarm_generic: false });
+  const stateAt = '2026-01-10T10:00:00.000Z';
+  const alarmAt = '2026-01-10T10:05:00.000Z';
+  recovered.capabilitiesObj!.evcharger_charging_state = { value: 'plugged_in', lastUpdated: stateAt };
+  recovered.capabilitiesObj!.alarm_generic = { value: false, lastUpdated: alarmAt };
+  expect(overlay(recovered).capabilityObj.evcharger_charging).toMatchObject({ value: true, lastUpdated: alarmAt });
+  recovered.capabilitiesObj!.alarm_generic = { value: false, lastUpdated: '2026-01-10T09:00:00.000Z' };
+  expect(overlay(recovered).capabilityObj.evcharger_charging).toMatchObject({ value: true, lastUpdated: stateAt });
   const adapted = overlay(charger({ ...waiting, warp_current_limit: 16 }));
   expect(adapted).toMatchObject({ kind: 'adapted', binaryTarget: { kind: 'canonical' },
     controlAdapter: { activationOrder: 'current_before_start' } });
@@ -309,6 +324,20 @@ test('a WARP charger reads its switch from the charging state and its current fr
     { capabilityId: 'evcharger_charging_state', value: 'plugged_in_paused' },
     { capabilityId: 'evcharger_charging', value: false },
   ]);
+  expect(adapter.normalize(live, 'evcharger_charging_state', 'plugged_in', charger(errored))).toEqual([
+    { capabilityId: 'evcharger_charging_state', value: 'plugged_in' },
+    { capabilityId: 'evcharger_charging', value: false },
+  ]);
+  // The alarm coming or going changes what an unchanged `plugged_in` means.
+  expect(adapter.normalize(live, 'alarm_generic', true, charger(errored))).toEqual([
+    { capabilityId: 'alarm_generic', value: true },
+    { capabilityId: 'evcharger_charging', value: false },
+  ]);
+  expect(adapter.normalize(live, 'alarm_generic', false, charger({ ...waiting, alarm_generic: false }))).toEqual([
+    { capabilityId: 'alarm_generic', value: false },
+    { capabilityId: 'evcharger_charging', value: true },
+  ]);
+  expect(adapter.readRules(charger(waiting))).toEqual({ alarm_generic: 'boolean' });
   expect(adapter.normalize(live, 'warp_current_limit_pick', '12', charger(waiting))).toEqual([
     { capabilityId: 'warp_current_limit_pick', value: '12' },
     { capabilityId: 'available_installation_current', value: 12 },

@@ -23,6 +23,7 @@ export type DeadlineLiveState =
   | 'unavailable'
   | 'paused_unplugged'
   | 'paused_unmanaged'
+  | 'paused_prices_off'
   | 'ok';
 
 // Display label for a smart task list card's status chip.
@@ -32,6 +33,7 @@ export type SmartTaskListStatusId =
   | 'unavailable'     // device moved to a separately-metered home
   | 'paused_unplugged' // EV: car unplugged / session ended
   | 'paused_unmanaged' // "Managed by PELS" turned off for the device
+  | 'paused_prices_off' // "Respond to prices" turned off for the home
   | 'on_track'
   | 'at_risk'
   | 'cannot_meet'
@@ -51,6 +53,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   unavailable: 'Unavailable',
   paused_unplugged: 'Paused — unplugged',
   paused_unmanaged: 'Paused — not managed',
+  paused_prices_off: 'Paused — prices off',
   on_track: 'On track',
   at_risk: 'At risk',
   cannot_meet: 'Cannot finish',
@@ -61,14 +64,15 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
 // row at 320–480 px has roughly half the horizontal space the settings UI
 // list card uses, so the `Paused — unplugged` em-dash variant truncates or
 // pushes the row out of layout. The widget reuses the settings UI label for
-// every other state — `paused_unplugged` is the only em-dash label, so it is
-// the only override. Keeping the override here (and not in the widget) preserves
+// every other state — only the em-dash `Paused — …` labels are overridden.
+// Keeping the overrides here (and not in the widget) preserves
 // the "UI text shared with logs" rule: both the list label and the widget label
 // resolve from shared-domain helpers, not from hardcoded widget strings.
 export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: 'Unplugged',
   paused_unmanaged: 'Not managed',
+  paused_prices_off: 'Prices off',
 };
 
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
@@ -99,6 +103,10 @@ export const resolvePausedUnpluggedChipTone = (): SmartTaskChipTone => 'warn';
 // do, so this is `warn`, never `alert`.
 export const resolvePausedUnmanagedChipTone = (): SmartTaskChipTone => 'warn';
 
+// And for "Paused — prices off": turning Respond to prices on again resumes
+// the task, so the owner has an action to take.
+export const resolvePausedPricesOffChipTone = (): SmartTaskChipTone => 'warn';
+
 // CSS modifier class suffix for each list status id (appended to `plan-chip--`).
 // `building_plan` / `paused_unplugged` delegate to the shared pending-tone
 // resolvers above so the list card and the plan-detail pending hero can never
@@ -112,6 +120,7 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   unavailable: 'warn',
   paused_unplugged: resolvePausedUnpluggedChipTone(),
   paused_unmanaged: resolvePausedUnmanagedChipTone(),
+  paused_prices_off: resolvePausedPricesOffChipTone(),
   on_track: 'ok',
   at_risk: 'warn',
   cannot_meet: 'alert',
@@ -151,6 +160,7 @@ const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskList
   unavailable: 'warn',
   paused_unplugged: 'warn',
   paused_unmanaged: 'warn',
+  paused_prices_off: 'warn',
   on_track: 'neutral',
   at_risk: 'warn',
   cannot_meet: 'warn',
@@ -191,6 +201,7 @@ const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string
   // Compressed widget label ('Not managed') for the same double-em-dash reason
   // as paused_unplugged — the full chip label carries its own em-dash.
   paused_unmanaged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unmanaged,
+  paused_prices_off: SMART_TASK_WIDGET_STATUS_LABELS.paused_prices_off,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
   cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
@@ -336,7 +347,11 @@ const resolveCurrentCauseListStatus = (plan: SmartTaskListStatusPlan): SmartTask
   // a cached revision is no longer being executed and the chip must say so
   // instead of "On track".
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
-  if (resolveCurrentSmartTaskPendingReason(diagnosticReasonCode) === 'price_feature_disabled') return 'building_plan';
+  // Respond to prices is off: the task is paused, as every other surface says,
+  // not waiting for a plan that is on its way.
+  if (resolveCurrentSmartTaskPendingReason(diagnosticReasonCode) === 'price_feature_disabled') {
+    return 'paused_prices_off';
+  }
   // A car limit from the preceding connection says nothing about this car.
   if (diagnosticReasonCode === 'objective_waiting_for_car'
     || diagnosticReasonCode === 'objective_waiting_for_plan') return 'building_plan';
@@ -386,6 +401,7 @@ export const resolveSmartTaskListStatus = (
     if (pendingReason === 'device_in_sub_home') return 'unavailable';
     if (pendingReason === 'invalid_session') return 'paused_unplugged';
     if (pendingReason === 'device_unmanaged') return 'paused_unmanaged';
+    if (pendingReason === 'price_feature_disabled') return 'paused_prices_off';
     return 'building_plan';
   }
   // Live causes (a confirmed device-side stop)

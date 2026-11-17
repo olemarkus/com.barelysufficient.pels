@@ -54,6 +54,11 @@ export const PENDING_REASON_MISSING_CAPACITY_COPY = 'Learning energy use — PEL
 export const SMART_TASK_DEVICE_UNMANAGED_WHY = 'PELS isn’t managing this device.';
 export const SMART_TASK_DEVICE_UNMANAGED_RECOURSE = 'Turn on Managed by PELS in Setup to resume this task.';
 
+// Respond to prices is off for the home, so no task is planned. The remedy
+// names the page that holds the switch, by the label of its Settings card.
+export const SMART_TASK_PRICES_OFF_WHY = 'Respond to prices is off.';
+export const RESPOND_TO_PRICES_SETTINGS_PATH = 'Settings → Price-aware devices';
+
 export const WAITING_FOR_CAR_ASSOCIATION = 'Waiting to identify the connected car';
 /** The device card's reason once the matching window from the plug-in has closed with no car. */
 export const CAR_ASSOCIATION_TIMED_OUT = 'Could not identify the connected car. '

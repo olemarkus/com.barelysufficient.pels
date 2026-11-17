@@ -7,7 +7,9 @@
  * session waiting for a full car never is. Its `evcharger_charging_state`
  * tells those apart: `plugged_in` and `plugged_in_charging` are a session
  * PELS lets run, `plugged_in_paused` is one that waits for its release. So
- * the switch is read from the state.
+ * the switch is read from the state. The app also publishes `plugged_in` for
+ * a charger in error with a car connected, with `alarm_generic` on; that one
+ * is not running.
  *
  * The charging current is the charger's external current limit. The app's
  * `wb_set_current` card sets it, and the app's poll publishes it on
@@ -17,7 +19,7 @@
  */
 import type { DeviceAdapter, DeviceEvOverlay, SwitchWrite } from '../deviceAdapter';
 import { whileBuiltInControlEnabled } from '../deviceAdapter';
-import type { DeviceCapabilityMap } from '../managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import type { CapabilityValue, HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
@@ -28,8 +30,16 @@ const LIMIT_CAPABILITIES = ['warp_current_limit', 'warp_current_limit_pick'] as 
 const INSTALLATION_CURRENT = 'available_installation_current';
 const MIN_CURRENT_A = 6;
 const MAX_CURRENT_A = 32;
-/** States of a session PELS lets run: drawing, or released and waiting for the car. */
-const RUNNING_STATES = new Set(['plugged_in', 'plugged_in_charging']);
+const ALARM_CAPABILITY = 'alarm_generic';
+
+/**
+ * A session PELS lets run: drawing, or released and waiting for the car. A
+ * charger in error with a car connected publishes `plugged_in` too, with its
+ * alarm on, and runs nothing.
+ */
+function isRunning(state: string, alarm: unknown): boolean {
+  return state === 'plugged_in_charging' || (state === 'plugged_in' && alarm !== true);
+}
 
 function isWarpCharger(device: HomeyDeviceLike): boolean {
   return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
@@ -56,6 +66,18 @@ function readLimit(values: Readonly<Partial<DeviceCapabilityMap>>): CurrentReadi
   return undefined;
 }
 
+/**
+ * The switch is as new as the newer of the two readings it is read from: an
+ * alarm that comes or goes changes it while the charging state stays the same.
+ */
+type Reading = DeviceCapabilityMap[string];
+
+function newestLastUpdated(state: Reading, alarm: Reading | undefined): Reading['lastUpdated'] {
+  const stateMs = toCapabilityTimestampMs(state.lastUpdated);
+  const alarmMs = toCapabilityTimestampMs(alarm?.lastUpdated);
+  return alarmMs !== undefined && (stateMs === undefined || alarmMs > stateMs) ? alarm?.lastUpdated : state.lastUpdated;
+}
+
 /** The switch read from the charging state, and the external limit as the charger's current reading. */
 function withWarpObservation(values: DeviceCapabilityMap): DeviceCapabilityMap {
   const state = values[STATE_CAPABILITY];
@@ -64,7 +86,11 @@ function withWarpObservation(values: DeviceCapabilityMap): DeviceCapabilityMap {
   return {
     ...values,
     ...(charging !== undefined && typeof state?.value === 'string' ? {
-      evcharger_charging: { ...charging, value: RUNNING_STATES.has(state.value), lastUpdated: state.lastUpdated },
+      evcharger_charging: {
+        ...charging,
+        value: isRunning(state.value, values[ALARM_CAPABILITY]?.value),
+        lastUpdated: newestLastUpdated(state, values[ALARM_CAPABILITY]),
+      },
     } : {}),
     ...(limit ? {
       [INSTALLATION_CURRENT]: { value: limit.currentA, setable: false, lastUpdated: limit.lastUpdated },
@@ -90,16 +116,24 @@ export const warpAdapter: DeviceAdapter = {
   matchesCapabilities: (capabilities) => capabilities.includes('evcharger_charging')
     && capabilities.includes(STATE_CAPABILITY) && capabilities.some((id) => id.startsWith('warp_')),
   overlay: warpOverlay,
-  normalize: whileBuiltInControlEnabled((_snapshot, capabilityId, value) => {
+  normalize: whileBuiltInControlEnabled((_snapshot, capabilityId, value, device) => {
     // The app's switch says "current flows now", not whether PELS lets the session run.
     if (capabilityId === 'evcharger_charging') return [];
     if (capabilityId === STATE_CAPABILITY && typeof value === 'string') {
-      return [{ capabilityId, value }, { capabilityId: 'evcharger_charging', value: RUNNING_STATES.has(value) }];
+      const alarm = device.capabilitiesObj[ALARM_CAPABILITY]?.value;
+      return [{ capabilityId, value }, { capabilityId: 'evcharger_charging', value: isRunning(value, alarm) }];
+    }
+    // The alarm coming or going changes what an unchanged `plugged_in` means.
+    const state = device.capabilitiesObj[STATE_CAPABILITY]?.value;
+    if (capabilityId === ALARM_CAPABILITY && typeof value === 'boolean' && typeof state === 'string') {
+      return [{ capabilityId, value }, { capabilityId: 'evcharger_charging', value: isRunning(state, value) }];
     }
     const currentA = isLimitCapability(capabilityId) ? readCurrentA(value) : undefined;
     return currentA === undefined ? [{ capabilityId, value }]
       : [{ capabilityId, value }, { capabilityId: INSTALLATION_CURRENT, value: currentA }];
   }),
+  // Kept in the device's accepted read, so a state report is read against the current alarm.
+  readRules: () => ({ [ALARM_CAPABILITY]: 'boolean' }),
   // Read from the charging state, the switch is no observation of PELS's own write.
   switchWrite: (snapshot, request): SwitchWrite => {
     const plain = standardDeviceAdapter.switchWrite(snapshot, request);

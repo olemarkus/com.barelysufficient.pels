@@ -183,7 +183,7 @@ const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUna
   needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
   missing_prices: 'Can’t preview this yet. Prices through this window are not available yet.',
   missing_reading: 'Can’t preview this yet. PELS needs a current device reading.',
-  price_feature_disabled: 'Can’t preview this yet. Price-aware planning is off.',
+  price_feature_disabled: 'Can’t preview this yet. Respond to prices is off.',
   waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
   progress_stale: 'Can’t preview this yet. PELS needs a fresher device reading.',
   settings_unavailable: 'Can’t preview this yet. PELS couldn’t read Smart tasks. Try again.',

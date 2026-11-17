@@ -53,6 +53,28 @@ describe('simulation reminder', () => {
     expect(notifications.createNotification).toHaveBeenCalledOnce();
   });
 
+  it('restarts the day when a device is managed again after a time with none', async () => {
+    await check(START_MS);
+    expect(settings.get('simulation_reminder_since_ms')).toBe(START_MS);
+    home.managed = false;
+    await check(START_MS + 1);
+    expect(settings.getKeys()).not.toContain('simulation_reminder_since_ms');
+
+    // Weeks later: the next check starts a new day instead of reminding at once.
+    const laterMs = START_MS + 30 * SIMULATION_REMINDER_AFTER_MS;
+    home.managed = true;
+    await check(laterMs);
+    await check(laterMs + SIMULATION_REMINDER_AFTER_MS - 1);
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+
+    await check(laterMs + SIMULATION_REMINDER_AFTER_MS);
+    expect(notifications.createNotification).toHaveBeenCalledExactlyOnceWith({
+      excerpt: 'PELS is still in Simulation mode, so your devices stay as they are. '
+        + 'Open Homey > More > Apps > PELS > Settings, open the setup review from the banner at the top, '
+        + 'and choose Start managing to let PELS control them.',
+    });
+  });
+
   it('never reminds an owner who started managing, also after simulation is turned on again', async () => {
     await check(START_MS);
     home.simulation = false;

@@ -67,7 +67,7 @@ test('confirms disabling Respond to prices, keeps cancellation safe, and enables
 
   await control.click();
   await expect(dialog).toHaveJSProperty('open', true);
-  await expect(dialog).toContainText('Any enabled smart tasks will pause and may miss their deadlines.');
+  await expect(dialog).toContainText('Enabled Smart tasks will pause and may not be ready by their ready-by time.');
   await dialog.getByRole('button', { name: 'Keep on', exact: true }).click();
   await expect(dialog).toHaveJSProperty('open', false);
   await expect(control).toHaveJSProperty('selected', true);
@@ -88,7 +88,7 @@ test('confirms disabling Respond to prices, keeps cancellation safe, and enables
   await expect(control).toHaveJSProperty('selected', false);
   await expect(control.locator('input')).not.toBeChecked();
   await expect.poll(() => readRespondToPrices(page)).toBe(false);
-  await expect(page.locator('#respond-to-prices-hint')).toContainText('any enabled smart tasks are paused');
+  await expect(page.locator('#respond-to-prices-hint')).toContainText('any enabled Smart tasks are paused');
   await expect(dialog).toHaveJSProperty('open', false);
 
   await control.click();

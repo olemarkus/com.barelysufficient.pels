@@ -228,6 +228,8 @@ The banner above the Overview tells you which state you are in:
 - A Smart task at **Waiting for a plan** is waiting for its planning turn or for
   prices through its ready-by time. Check the reason line. If it names missing
   prices, tomorrow's prices may not be published yet.
+- A Smart task at **Paused — prices off** says **Respond to prices is off**. Turn
+  the switch on under **Settings → Price-aware devices** and the task is planned again.
 
 ## EV charging starts at the wrong time or won't change current
 
@@ -332,6 +334,21 @@ To let the night charge go ahead of other devices, move the battery up in your
 priority list (its device page → **Reorder**, or the **Modes** page). To keep
 PELS from ever capping it, turn off **Power-limit control** on the battery; PELS
 then leaves it to its own app for your solar too.
+
+## A device doesn't keep PELS's changes
+
+An amber warning icon on a device's Overview card, and a notice above **Managed by
+PELS** on its device page, mean the device reported another value after PELS set
+it. The notice says what PELS set, what the device reported and how often in the
+last hour.
+
+- Check for a Flow, another app, a schedule or the device's own app that sets the
+  same thing, and turn that off.
+- Or turn off **Managed by PELS** for the device, so PELS leaves it alone.
+
+Tap the icon and choose **Open device** to go to the notice. The warning leaves
+once the device has kept its settings for an hour. **Hide warning** removes the
+icon until it happens again.
 
 ## A device doesn't appear in PELS
 

@@ -39,6 +39,8 @@ describe('Overview control warnings', () => {
     expect(warnings.get('heater')?.recommendation).toMatchObject({
       id: 'control-contest:heater', version: 1000,
       title: "Hall heater doesn't keep PELS's changes",
+      category: 'warning',
+      target: { kind: 'device', deviceId: 'heater', focus: 'control-contest' },
     });
     expect(warningsFor([]).size).toBe(0);
   });

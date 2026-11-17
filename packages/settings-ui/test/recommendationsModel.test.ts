@@ -8,6 +8,7 @@ import {
   resolveSetpointShedLimitRecommendations,
   resolveSetupRecommendations,
   resolveSmartTaskStartPolicyRecommendations,
+  type SetupRecommendation,
 } from '../src/ui/recommendationsModel.ts';
 import { state } from '../src/ui/state.ts';
 import type { EvCarAssociations } from '../../contracts/src/types.ts';
@@ -294,14 +295,14 @@ describe('setup recommendations', () => {
     expect(recommendations).toEqual([
       expect.objectContaining({
         id: 'control-contest:mill',
-        category: 'recommendation',
+        category: 'warning',
         title: "Gang nede ovn doesn't keep PELS's changes",
         body: '6 times in the last hour, PELS set Gang nede ovn to 4.5 °C and Gang nede ovn then reported 5 °C. '
           + 'The device may not accept 4.5 °C, or a Flow, another app or a schedule may set it. '
           + 'Change the temperature PELS uses for Gang nede ovn, turn off what sets it, '
           + 'or turn off Managed by PELS for it.',
         actionLabel: 'Open device',
-        target: { kind: 'device', deviceId: 'mill' },
+        target: { kind: 'device', deviceId: 'mill', focus: 'control-contest' },
       }),
       expect.objectContaining({
         id: 'control-contest:plug',
@@ -329,6 +330,17 @@ describe('setup recommendations', () => {
     expect(groupSetupRecommendations(contestOf(1_700_000_000_000, 6), dismissals).active).toEqual([]);
     expect(groupSetupRecommendations(contestOf(1_700_000_000_000 + 2 * 60 * 60_000, 4), dismissals).active)
       .toEqual([expect.objectContaining({ id: 'control-contest:mill' })]);
+  });
+
+  it('lists a warning before the cards ahead of it, keeping the order of the rest', () => {
+    const card = (id: string, category: SetupRecommendation['category']): SetupRecommendation => ({
+      id, version: 1, category, title: id, body: '', actionLabel: 'Open', target: { kind: 'device', deviceId: id },
+    });
+    const { active } = groupSetupRecommendations([
+      card('optional-a', 'optional'), card('recommended', 'recommendation'),
+      card('warning', 'warning'), card('optional-b', 'optional'),
+    ], {});
+    expect(active.map(({ id }) => id)).toEqual(['warning', 'optional-a', 'recommended', 'optional-b']);
   });
 
   it('says once for a contest down to its last round in the hour', () => {

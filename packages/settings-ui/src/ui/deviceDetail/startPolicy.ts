@@ -173,6 +173,7 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
     control?.focus({ preventScroll: true });
   }
   if (focus === 'car') revealCarSection();
+  if (focus === 'control-contest') revealDetailRow(document.getElementById('device-detail-control-contest-notice'));
   if (focus === 'solar') {
     const row = ['device-detail-surplus-opt-row', 'device-detail-dump-load-row', 'device-detail-surplus-track-row']
       .map((id) => document.getElementById(id))

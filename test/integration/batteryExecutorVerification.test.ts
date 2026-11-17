@@ -26,6 +26,7 @@ import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfiguratio
 import type { StorageDecision } from '../../lib/planContract/storageDecision';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { buildPlanDevice } from '../utils/planTestUtils';
+import { captureDebugTopic } from '../utils/loggerCapture';
 
 const BATTERY = 'battery';
 const LOAD = 'heater';
@@ -226,6 +227,7 @@ describe('battery storage lane', () => {
   });
 
   it('holds back a paced battery\'s import-raising setpoint until its interval has passed', async () => {
+    const debug = captureDebugTopic('plan');
     const { lane, apply, send, owned } = buildLane();
     owned.pacing = { kind: 'paced', importRaisingIntervalMs: 300_000 };
     // The first setpoint is never paced.
@@ -244,6 +246,15 @@ describe('battery storage lane', () => {
     expect(await send(300, 440_000)).toBe(true);
     expect(apply.mock.calls.map(([command]) => (command.kind === 'storage_power' ? command.setpointW : undefined)))
       .toEqual([-1500, -1800, 900, 300]);
+    // Each held setpoint is logged once, however many cycles decide it, with when it is due.
+    expect(debug.findEvents('battery_storage_setpoint_paced')).toEqual([
+      expect.objectContaining({
+        deviceId: BATTERY, decidedSetpointW: -1200, inForceSetpointW: -1500, nextCommandDueAtMs: START_MS + 300_000,
+      }),
+      expect.objectContaining({
+        deviceId: BATTERY, decidedSetpointW: 900, inForceSetpointW: -1800, nextCommandDueAtMs: START_MS + 430_000,
+      }),
+    ]);
   });
 
   it('sends an unpaced battery every new setpoint as it is decided', async () => {

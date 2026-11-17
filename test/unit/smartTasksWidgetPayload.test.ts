@@ -92,13 +92,15 @@ describe('buildSmartTasksWidgetPayload', () => {
       expect(payload.state).toBe('ready');
       if (payload.state !== 'ready') return;
       expect(payload.rows[0]).toMatchObject({
+        statusLabel: 'Prices off',
         whyLabel: 'Respond to prices is off.',
         etaVerb: 'Due',
         planMetaLabel: null,
         confidenceLabel: null,
         chart: null,
       });
-      expect(payload.rows[0].recourseHint).toContain('Turn on Respond to prices');
+      expect(payload.rows[0].recourseHint)
+        .toBe('Turn on Respond to prices in Settings → Price-aware devices.');
       const device = buildSmartTaskDeviceView(buildInput({ dev: paused }), 'dev');
       expect(device.active?.run).toEqual({ kind: 'none_ahead' });
       expect(device.active?.row.whyLabel).toBe('Respond to prices is off.');

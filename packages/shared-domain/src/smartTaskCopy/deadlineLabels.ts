@@ -204,6 +204,8 @@ const KIND_INVARIANT_LIVE_STATE_CHIP_LABELS = {
   unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
   // Reachable on any kind: the owner can stop managing a heater too.
   paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
+  // Kind-agnostic too: Respond to prices is one switch for the home.
+  paused_prices_off: SMART_TASK_LIST_STATUS_LABELS.paused_prices_off,
   // Only a charger reports the `ok` state; the other kinds never reach it and
   // read the generic on-track copy if a stale value ever comes through.
   ok: 'On track',

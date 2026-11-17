@@ -8,6 +8,7 @@
   var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 PELS learns how much energy each degree takes from this device\u2019s power and temperature readings while it runs.";
   var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
   var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
+  var RESPOND_TO_PRICES_SETTINGS_PATH = "Settings \u2192 Price-aware devices";
   var WAITING_FOR_CAR_ASSOCIATION = "Waiting to identify the connected car";
 
   // packages/shared-domain/src/smartTaskCopy/valueFormat.ts
@@ -36,6 +37,7 @@
   var WHY_AT_RISK_BUDGET_PARTIAL = "Today\u2019s daily budget may be holding part of this back, and time is short too.";
 
   // packages/shared-domain/src/smartTaskCopy/widgetCopy.ts
+  var RECOURSE_PRICES_OFF = `Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH}.`;
   var SMART_TASK_WIDGET_CHART_PLANNED_LABEL = "Planned";
   var SMART_TASK_WIDGET_CHART_MEASURED_LABEL = "Measured";
   var SMART_TASK_WIDGET_CHART_TARGET_LABEL = "Target";
@@ -490,7 +492,7 @@
     needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
     missing_prices: "Can\u2019t preview this yet. Prices through this window are not available yet.",
     missing_reading: "Can\u2019t preview this yet. PELS needs a current device reading.",
-    price_feature_disabled: "Can\u2019t preview this yet. Price-aware planning is off.",
+    price_feature_disabled: "Can\u2019t preview this yet. Respond to prices is off.",
     waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
     progress_stale: "Can\u2019t preview this yet. PELS needs a fresher device reading.",
     settings_unavailable: "Can\u2019t preview this yet. PELS couldn\u2019t read Smart tasks. Try again.",
@@ -661,6 +663,7 @@
     unavailable: "Unavailable",
     paused_unplugged: "Paused \u2014 unplugged",
     paused_unmanaged: "Paused \u2014 not managed",
+    paused_prices_off: "Paused \u2014 prices off",
     on_track: "On track",
     at_risk: "At risk",
     cannot_meet: "Cannot finish",
@@ -669,11 +672,13 @@
   var SMART_TASK_WIDGET_STATUS_LABELS = {
     ...SMART_TASK_LIST_STATUS_LABELS,
     paused_unplugged: "Unplugged",
-    paused_unmanaged: "Not managed"
+    paused_unmanaged: "Not managed",
+    paused_prices_off: "Prices off"
   };
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
   var resolvePausedUnmanagedChipTone = () => "warn";
+  var resolvePausedPricesOffChipTone = () => "warn";
   var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
     building_plan: resolveBuildingPlanChipTone(),
     // Same label AND tone as `on_track` — a queued plan that is allocated and
@@ -682,6 +687,7 @@
     unavailable: "warn",
     paused_unplugged: resolvePausedUnpluggedChipTone(),
     paused_unmanaged: resolvePausedUnmanagedChipTone(),
+    paused_prices_off: resolvePausedPricesOffChipTone(),
     on_track: "ok",
     at_risk: "warn",
     cannot_meet: "alert",
@@ -702,6 +708,7 @@
     // Compressed widget label ('Not managed') for the same double-em-dash reason
     // as paused_unplugged — the full chip label carries its own em-dash.
     paused_unmanaged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unmanaged,
+    paused_prices_off: SMART_TASK_WIDGET_STATUS_LABELS.paused_prices_off,
     on_track: null,
     at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
@@ -770,7 +777,7 @@
   });
   var priceFeatureDisabledCopy = (kindNoun) => (() => ({
     headline: "Respond to prices is off",
-    body: `Turn on Respond to prices in Settings \u2192 Electricity prices \u2192 Manage price-aware devices to build a ${kindNoun}.`,
+    body: `Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH} to build a ${kindNoun}.`,
     headlineReason: "Smart tasks are paused while Respond to prices is off.",
     recourse: { label: "Open price-aware devices", targetTab: "price-aware-devices" }
   }));
@@ -861,6 +868,8 @@
     unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
     // Reachable on any kind: the owner can stop managing a heater too.
     paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
+    // Kind-agnostic too: Respond to prices is one switch for the home.
+    paused_prices_off: SMART_TASK_LIST_STATUS_LABELS.paused_prices_off,
     // Only a charger reports the `ok` state; the other kinds never reach it and
     // read the generic on-track copy if a stale value ever comes through.
     ok: "On track"

@@ -210,6 +210,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | **Waiting for a plan** | PELS has stored the task. It is waiting for its planning turn or for prices through the ready-by time; the reason line says which. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
 | **Paused — not managed** | **Managed by PELS** is off for the device, so PELS is not planning anything for it. The task is kept, not deleted: turn **Managed by PELS** back on and the plan resumes on the next cycle. |
+| **Paused — prices off** | **Respond to prices** is off, so PELS plans no Smart task. The task is kept: turn the switch on under **Settings → Price-aware devices** and it is planned again. |
 | **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled period is still in the future. |
 | **At risk** | PELS has a plan, but there is limited time or room left, or the device itself is holding delivery back: it stopped taking power while PELS let it run, or (EV) the car's own charge limit is below the target, or the car is delaying charging on its own schedule. PELS limiting the device for a house power limit, the daily budget or a higher-priority device does not change the status on its own: the plan already accounts for it. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |

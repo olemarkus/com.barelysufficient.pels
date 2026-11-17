@@ -203,7 +203,7 @@ const RespondTogglesCard = ({
     <p id="respond-to-prices-hint" class="field__hint">
       {enabled
         ? 'Smart tasks also need this setting to plan when to run.'
-        : 'While Respond to prices is off, any enabled smart tasks are paused.'}
+        : 'While Respond to prices is off, any enabled Smart tasks are paused.'}
     </p>
     <MdDialog open={offArmed && !busy}
       onClose={(event) => {
@@ -215,7 +215,8 @@ const RespondTogglesCard = ({
       }}>
       <div slot="headline">Turn off Respond to prices?</div>
       <div slot="content">
-        Price-based device adjustments will stop. Any enabled smart tasks will pause and may miss their deadlines.
+        Price-based device adjustments will stop. Enabled Smart tasks will pause and may not be ready by their
+        ready-by time.
       </div>
       <div slot="actions">
         <MdTextButton onClick={handlers.onOptimizationOffDismiss}>Keep on</MdTextButton>

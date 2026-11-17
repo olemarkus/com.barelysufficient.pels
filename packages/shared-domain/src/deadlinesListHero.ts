@@ -13,7 +13,7 @@
 //   on-track  : `on_track`, `queued` (allocated plan, first hour ahead — its
 //               chip reads `On track`, so the hero must agree)
 //   pending   : `building_plan`
-//   paused    : `paused_unplugged`, `paused_unmanaged`
+//   paused    : `paused_unplugged`, `paused_unmanaged`, `paused_prices_off`
 //   at-risk   : `at_risk`, `cannot_meet`
 //   satisfied : `satisfied`
 //
@@ -186,6 +186,7 @@ const STATUS_BUCKET = {
   unavailable: 'unavailable',
   paused_unplugged: 'paused',
   paused_unmanaged: 'paused',
+  paused_prices_off: 'paused',
   at_risk: 'at_risk',
   cannot_meet: 'at_risk',
   satisfied: 'satisfied',
@@ -283,6 +284,7 @@ type PausedStatusId = {
 const PAUSED_SUBLINE_REASON: Record<PausedStatusId, string> = {
   paused_unplugged: 'car unplugged',
   paused_unmanaged: 'not managed by PELS',
+  paused_prices_off: 'Respond to prices is off',
 };
 
 const isPausedStatusId = (statusId: SmartTaskListStatusId): statusId is PausedStatusId => (

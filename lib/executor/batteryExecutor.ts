@@ -74,7 +74,7 @@
  * `readControl`, so the planner input and this lane read one answer.
  */
 import type { Actuator } from '../actuator/deviceActuator';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type {
   BatteryCommandKeepAlive, BatteryControlOwner, BatteryLeverRead, BatterySetpointOutcome,
@@ -93,6 +93,7 @@ import {
 import { normalizeError } from '../utils/errorUtils';
 
 const logger = getLogger('executor/battery');
+const emitBatteryDebug = getDebugEmitter('executor/battery', 'plan');
 
 /** How long a setpoint waits for a battery reading newer than it before it is judged anyway. */
 export const VERIFICATION_MAX_WAIT_MS = 5 * 60 * 1000;
@@ -152,6 +153,8 @@ type StorageCommandRecord = {
   unansweredSinceMs: number;
   /** The battery's own signed power when the setpoint went out, W. */
   startSignedW: number;
+  /** The decided setpoint pacing last held back behind this one, already logged; null when none was. */
+  heldSetpointW: number | null;
   phase: CommandPhase;
 };
 
@@ -358,12 +361,39 @@ export class BatteryExecutor {
     if (control.response.kind === 'follows_meter' && control.claimHeld
       && control.response.reportsSetpoint(decision.setpointW)) return 'no_drift';
     const record = this.commands.get(device.id);
-    const nowMs = Date.now();
     if (record === undefined) return control;
-    const drifted = record.setpointW !== decision.setpointW
-      ? !isHeldByPacing(record, decision.setpointW, control, nowMs)
-      : control.claimHeld && isKeepAliveDue(record, control, nowMs);
-    return drifted ? control : 'no_drift';
+    return this.hasRecordedDrift(device, record, decision.setpointW, control) ? control : 'no_drift';
+  }
+
+  /** A setpoint in force drifts when the decision moved past pacing, or its keep-alive is due. */
+  private hasRecordedDrift(
+    device: StorageDecidedDevice, record: StorageCommandRecord, setpointW: number, control: SetpointLever,
+  ): boolean {
+    const nowMs = Date.now();
+    if (record.setpointW === setpointW) return control.claimHeld && isKeepAliveDue(record, control, nowMs);
+    if (!isHeldByPacing(record, setpointW, control, nowMs)) return true;
+    this.notePacingHold(device, record, setpointW, control);
+    return false;
+  }
+
+  /**
+   * Say that pacing holds a decided setpoint back, once per held setpoint: the
+   * plan keeps deciding it every cycle until it is due. The next command sent
+   * starts a new record, which has held nothing yet.
+   */
+  private notePacingHold(
+    device: StorageDecidedDevice, record: StorageCommandRecord, setpointW: number, control: SetpointLever,
+  ): void {
+    if (control.pacing.kind !== 'paced' || record.heldSetpointW === setpointW) return;
+    this.commands.set(device.id, { ...record, heldSetpointW: setpointW });
+    emitBatteryDebug({
+      event: 'battery_storage_setpoint_paced',
+      deviceId: device.id,
+      deviceName: device.name,
+      decidedSetpointW: setpointW,
+      inForceSetpointW: record.setpointW,
+      nextCommandDueAtMs: record.issuedAtMs + control.pacing.importRaisingIntervalMs,
+    });
   }
 
   private async sendSetpoint(
@@ -490,6 +520,7 @@ export class BatteryExecutor {
       unansweredSinceMs: unanswered?.phase.kind === 'pending' && !hasSetpointProgress(unanswered, power)
         ? unanswered.unansweredSinceMs : nowMs,
       startSignedW: power.signedW,
+      heldSetpointW: null,
       phase: {
         kind: 'pending',
         baseline: meter === 'unavailable'

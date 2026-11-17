@@ -1,3 +1,4 @@
+import type { DeviceDetailFocus } from './cardActivation.ts';
 import type { RecommendationTarget } from './recommendationsModel.ts';
 import type { SetupJourneyStep } from './setupJourneyState.ts';
 import { turnOnDailyDiagnosticsReport } from './diagnosticsReportSwitches.ts';
@@ -8,7 +9,7 @@ import { showToast } from './toast.ts';
 export type RecommendationNavigation = {
   openPanel: (panelId: string, setup?: SetupJourneyStep) => void;
   useQuarterHour: () => Promise<void>;
-  openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit' | 'control-model') => void;
+  openDevice: (deviceId: string, focus: DeviceDetailFocus) => void;
 };
 
 type RecommendationTask = { run: () => Promise<void>; failureMessage: string };
