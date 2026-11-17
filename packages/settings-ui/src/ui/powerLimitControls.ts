@@ -126,14 +126,23 @@ export const renderMarginAlert = (message: string | null) => {
 };
 
 const GRID_IMPORT_LIMIT_PROMPT = 'Enter a limit in kW to turn this on. PELS leaves a small automatic margin.';
+const GRID_IMPORT_LIMIT_REJECTED = 'Enter a limit above 0 kW. PELS saves it once it is valid.';
 
 export const refreshPowerLimitControls = (): void => {
   if (settingsCapacityFields) settingsCapacityFields.hidden = settingsCapacityEnabledInput?.selected === false;
   if (settingsGridImportField) settingsGridImportField.hidden = settingsGridImportEnabledInput?.selected !== true;
-  const limit = Number.parseFloat(settingsGridImportLimitInput?.value ?? '');
-  if (settingsGridImportHint) settingsGridImportHint.textContent = isValidGridImportLimitKw(limit)
+  const raw = settingsGridImportLimitInput?.value ?? '';
+  const limit = Number.parseFloat(raw);
+  const valid = isValidGridImportLimitKw(limit);
+  // A typed value that is not a usable limit (0, negative) is named at the field,
+  // where the owner is typing, rather than only in a toast after a failed save.
+  const rejected = !valid && raw.trim() !== '';
+  if (!settingsGridImportHint) return;
+  settingsGridImportHint.classList.toggle('field__hint--alert', rejected);
+  const promptText = rejected ? GRID_IMPORT_LIMIT_REJECTED : GRID_IMPORT_LIMIT_PROMPT;
+  settingsGridImportHint.textContent = valid
     ? `PELS starts reducing loads near ${gridImportTargetKw(limit).toFixed(2)} kW.`
-    : GRID_IMPORT_LIMIT_PROMPT;
+    : promptText;
 };
 
 export const syncPowerLimitSwitches = (scalars: CapacityScalarSettings): void => {
@@ -199,6 +208,16 @@ export const validatePowerLimitSettings = (settings: CapacityScalarSettings): vo
 // Every reader below reads the switches the same way: Grid import limit is on only
 // when its switch is selected.
 const isGridImportSwitchOn = (): boolean => settingsGridImportEnabledInput?.selected === true;
+
+/**
+ * The Grid import limit switch is on but its field holds no usable limit yet:
+ * saving now would fail, so the form waits for the owner to finish the value.
+ */
+export const isGridImportLimitIncomplete = (): boolean => (
+  isGridImportSwitchOn()
+  && !isValidGridImportLimitKw(Number.parseFloat(settingsGridImportLimitInput?.value ?? ''))
+);
+
 
 export const readPowerLimitSettings = (fallback: CapacityScalarSettings): PowerLimitSettings => {
   const capacityEnabled = settingsCapacityEnabledInput?.selected ?? fallback.capacityEnabled;

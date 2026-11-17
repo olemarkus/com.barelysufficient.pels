@@ -411,7 +411,7 @@ test.describe('Device detail panel', () => {
       };
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         recommendationCars: [{
-          id: car.carId, name: car.carName, matchHistory: { state: 'resolved', chargerMatches: [] },
+          id: car.carId, name: car.carName, available: true, matchHistory: { state: 'resolved', chargerMatches: [] },
         }],
         settings: {
           ev_car_associations: { dev_evcharger: { carIds: [car.carId] } },
@@ -465,7 +465,7 @@ test.describe('Device detail panel', () => {
       };
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         recommendationCars: [{
-          id: car.carId, name: car.carName, matchHistory: { state: 'resolved', chargerMatches: [] },
+          id: car.carId, name: car.carName, available: true, matchHistory: { state: 'resolved', chargerMatches: [] },
         }],
         settings: {
           ev_car_associations: { dev_evcharger: { carIds: [car.carId] } },
@@ -516,7 +516,7 @@ test.describe('Device detail panel', () => {
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         recommendationCars: [{
-          id: 'car_polestar', name: 'Polestar 3', matchHistory: { state: 'resolved', chargerMatches: [] },
+          id: 'car_polestar', name: 'Polestar 3', available: true, matchHistory: { state: 'resolved', chargerMatches: [] },
         }],
         settings: {
           ev_car_associations: { dev_evcharger: { carIds: ['car_polestar'] } },
@@ -549,6 +549,7 @@ test.describe('Device detail panel', () => {
         recommendationCars: [{
           id: 'car_kia',
           name: 'Kia EV6',
+          available: true,
           matchHistory: { state: 'resolved', chargerMatches: [] },
         }],
       };

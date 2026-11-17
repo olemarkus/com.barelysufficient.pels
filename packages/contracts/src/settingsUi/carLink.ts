@@ -10,6 +10,8 @@ export type SettingsUiCarAssociationConfirmation = {
 export type SettingsUiRecommendationCar = {
   id: string;
   name: string;
+  /** Whether PELS observes the car now; only an observed car can be confirmed on a charger. */
+  available: boolean;
   matchHistory: EvCarChargerMatchHistory;
 };
 

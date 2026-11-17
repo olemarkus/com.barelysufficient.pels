@@ -57,7 +57,7 @@ const charger = (overrides: Partial<SettingsUiDeviceDetailItem & EvObservedField
 } as SettingsUiDeviceDetailItem);
 
 const CARS = [
-  { id: 'car-1', name: 'Polestar 3', matchHistory: { state: 'resolved', chargerMatches: [] } },
+  { id: 'car-1', name: 'Polestar 3', available: true, matchHistory: { state: 'resolved', chargerMatches: [] } },
 ];
 
 // 2026-10-03 18:20 UTC: still 3 Oct in Oslo.
@@ -125,8 +125,8 @@ describe('charger car picker', () => {
       // The resolved endpoint returns only id/name and match history, including
       // for `vehicle` devices. Requiring class or capability metadata here drops these cars.
       cars: [
-        { id: 'hyundai-vehicle', name: 'Hyundai Ioniq 5', matchHistory: { state: 'resolved', chargerMatches: [] } },
-        { id: 'kia-vehicle', name: 'Kia EV6', matchHistory: { state: 'resolved', chargerMatches: [] } },
+        { id: 'hyundai-vehicle', name: 'Hyundai Ioniq 5', available: true, matchHistory: { state: 'resolved', chargerMatches: [] } },
+        { id: 'kia-vehicle', name: 'Kia EV6', available: true, matchHistory: { state: 'resolved', chargerMatches: [] } },
       ],
     });
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
@@ -477,8 +477,8 @@ describe('charger car picker', () => {
     callApi.mockResolvedValue({
       state: 'resolved',
       cars: [
-        { id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') },
-        { id: 'car-2', name: 'Kia EV6', matchHistory: matchedTo('charger-2') },
+        { id: 'car-1', name: 'Polestar 3', available: true, matchHistory: matchedTo('charger-1') },
+        { id: 'car-2', name: 'Kia EV6', available: true, matchHistory: matchedTo('charger-2') },
       ],
     });
     const { state } = await import('../src/ui/state.ts');
@@ -500,7 +500,7 @@ describe('charger car picker', () => {
   it('says the car on this charger now is matched, before its first match is recorded', async () => {
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: matchedTo('removed-charger') }],
+      cars: [{ id: 'car-1', name: 'Kia EV6', available: true, matchHistory: matchedTo('removed-charger') }],
     });
     const { state } = await import('../src/ui/state.ts');
     state.latestDevices = [charger()] as typeof state.latestDevices;
@@ -526,7 +526,7 @@ describe('charger car picker', () => {
     // since removed or replaced. That car does not charge elsewhere.
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: matchedTo('removed-charger') }],
+      cars: [{ id: 'car-1', name: 'Kia EV6', available: true, matchHistory: matchedTo('removed-charger') }],
     });
     const { state } = await import('../src/ui/state.ts');
     state.latestDevices = [charger()] as typeof state.latestDevices;
@@ -551,7 +551,7 @@ describe('charger car picker', () => {
 
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }],
+      cars: [{ id: 'car-1', name: 'Polestar 3', available: true, matchHistory: matchedTo('charger-1') }],
     });
     invalidateCarOptions();
     renderCarAssociation(charger());
@@ -563,7 +563,7 @@ describe('charger car picker', () => {
   });
 
   it('hides the previous match history while a re-read is pending', async () => {
-    callApi.mockResolvedValue({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }] });
+    callApi.mockResolvedValue({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3', available: true, matchHistory: matchedTo('charger-1') }] });
     const { renderCarAssociation, invalidateCarOptions } = await import(
       '../src/ui/deviceDetail/carAssociation.ts'
     );
@@ -604,7 +604,7 @@ describe('charger car picker', () => {
     );
     renderCarAssociation(charger());
 
-    callApi.mockResolvedValue({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }] });
+    callApi.mockResolvedValue({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3', available: true, matchHistory: matchedTo('charger-1') }] });
     invalidateCarOptions();
     renderCarAssociation(charger());
     resolveFirst({ state: 'resolved', cars: CARS });
@@ -633,7 +633,7 @@ describe('charger car picker', () => {
   it('keeps the waiting note for a selected car that has matched this charger before', async () => {
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }],
+      cars: [{ id: 'car-1', name: 'Polestar 3', available: true, matchHistory: matchedTo('charger-1') }],
     });
     const { renderCarAssociation, loadEvCarAssociations } = await import(
       '../src/ui/deviceDetail/carAssociation.ts'
@@ -650,7 +650,7 @@ describe('charger car picker', () => {
   it('shows no match hint and no clearing advice while the match history is unreadable', async () => {
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: { state: 'unavailable' } }],
+      cars: [{ id: 'car-1', name: 'Polestar 3', available: true, matchHistory: { state: 'unavailable' } }],
     });
     const { renderCarAssociation, loadEvCarAssociations } = await import(
       '../src/ui/deviceDetail/carAssociation.ts'
@@ -667,6 +667,22 @@ describe('charger car picker', () => {
 
 
 describe('confirming the connected car', () => {
+  it('explains, instead of offering Confirm, while Homey reports the selected car unavailable', async () => {
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3', available: false, matchHistory: { state: 'resolved', chargerMatches: [] } }],
+    });
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(document.querySelector('.detail-car-confirm')).toBeNull();
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Polestar 3 is not available in Homey right now, so PELS cannot confirm it.');
+  });
+
   it('confirms only a selected car and shows the authoritative response with its reported state', async () => {
     const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
     getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });

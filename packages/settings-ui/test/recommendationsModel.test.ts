@@ -30,10 +30,10 @@ const car = (
   id: string,
   name: string,
   chargerMatches: ChargerMatches = [],
-): SettingsUiRecommendationCar => ({ id, name, matchHistory: { state: 'resolved', chargerMatches } });
+): SettingsUiRecommendationCar => ({ id, name, available: true, matchHistory: { state: 'resolved', chargerMatches } });
 
 const carWithUnreadableHistory = (id: string, name: string): SettingsUiRecommendationCar => ({
-  id, name, matchHistory: { state: 'unavailable' },
+  id, name, available: true, matchHistory: { state: 'unavailable' },
 });
 
 const resolve = (

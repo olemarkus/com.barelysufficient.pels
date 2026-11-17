@@ -8,7 +8,7 @@ import {
   validatePowerLimitSettings,
 } from './powerLimitControls.ts';
 export { MARGIN_NOT_BELOW_LIMIT_MESSAGE, refreshLimitsValidationHints } from './powerLimitControls.ts';
-export { refreshPowerLimitControls } from './powerLimitControls.ts';
+export { isGridImportLimitIncomplete, refreshPowerLimitControls } from './powerLimitControls.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { readMainFuseForm, syncMainFuseControls } from './mainFuseControls.ts';
 import { allowLimitsSave, publishLimitUsagePower } from './limitUsageAlerts.ts';

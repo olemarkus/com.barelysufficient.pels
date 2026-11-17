@@ -683,6 +683,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       cars: [{
         id: CAR_ID,
         name: 'Polestar',
+        available: true,
         matchHistory: {
           state: 'resolved',
           chargerMatches: [{ chargerId: CHARGER_ID, lastMatchedAtMs: expect.any(Number) }],

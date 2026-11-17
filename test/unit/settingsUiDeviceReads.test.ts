@@ -21,6 +21,7 @@ describe('SettingsUiDeviceReads', () => {
     const carRead = { state: 'resolved' as const, cars: [{
       id: 'car-1',
       name: 'Polestar 3',
+      available: true,
       matchHistory: { state: 'resolved' as const, chargerMatches: [] },
     }] };
     const reads = new SettingsUiDeviceReads();
@@ -71,11 +72,24 @@ describe('resolveCarAssociationCandidatesRead', () => {
     capabilities: ['ev_charging_state', 'measure_battery'],
   } as unknown as HomeyDeviceLike;
 
-  const producerReading = (history: EvCarChargerMatchHistory) => {
+  const producerReading = (history: EvCarChargerMatchHistory, observed = true) => {
     const readChargerMatchesForCar = vi.fn(() => history);
-    // Only the history read is exercised; the producer's correlation is not.
-    return { readChargerMatchesForCar, producer: { readChargerMatchesForCar } as unknown as EvCarLinkProducer };
+    const observes = vi.fn(() => observed);
+    // Only the history and availability reads are exercised; the producer's correlation is not.
+    return {
+      readChargerMatchesForCar,
+      producer: { readChargerMatchesForCar, observes } as unknown as EvCarLinkProducer,
+    };
   };
+
+  it('marks a candidate the link producer does not observe as unavailable', () => {
+    const { producer } = producerReading({ state: 'resolved', chargerMatches: [] }, false);
+
+    expect(resolveCarAssociationCandidatesRead(true, [car], producer)).toEqual({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Kia EV6', available: false, matchHistory: { state: 'resolved', chargerMatches: [] } }],
+    });
+  });
 
   it('adds each candidate\'s match history from the link producer', () => {
     const history = {
@@ -86,7 +100,7 @@ describe('resolveCarAssociationCandidatesRead', () => {
 
     expect(resolveCarAssociationCandidatesRead(true, [car], producer)).toEqual({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: history }],
+      cars: [{ id: 'car-1', name: 'Kia EV6', available: true, matchHistory: history }],
     });
     expect(readChargerMatchesForCar).toHaveBeenCalledWith('car-1');
   });
@@ -96,7 +110,7 @@ describe('resolveCarAssociationCandidatesRead', () => {
 
     expect(resolveCarAssociationCandidatesRead(true, [car], producer)).toEqual({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: { state: 'unavailable' } }],
+      cars: [{ id: 'car-1', name: 'Kia EV6', available: true, matchHistory: { state: 'unavailable' } }],
     });
   });
 

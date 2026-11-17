@@ -128,6 +128,7 @@ const resolvedCars = (cars: Array<{ id: string; name: string }> = []) => ({
   state: 'resolved' as const,
   cars: cars.map((car) => ({
     ...car,
+    available: true,
     matchHistory: { state: 'resolved' as const, chargerMatches: MATCHED_TO_FIXTURE_CHARGERS },
   })),
 });
@@ -769,7 +770,7 @@ describe('recommendation loading', () => {
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: { state: 'resolved', chargerMatches: [] } }],
+      cars: [{ id: 'car-1', name: 'Kia EV6', available: true, matchHistory: { state: 'resolved', chargerMatches: [] } }],
     });
     refreshFlowConflictsApi.mockResolvedValue({
       devices: [{ id: charger.id }],
@@ -1443,7 +1444,7 @@ describe('recommendation loading', () => {
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue({
       state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: { state: 'unavailable' } }],
+      cars: [{ id: 'car-1', name: 'Polestar 3', available: true, matchHistory: { state: 'unavailable' } }],
     });
 
     await recommendations.loadRecommendationData();

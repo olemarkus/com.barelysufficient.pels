@@ -44,6 +44,7 @@ const isRecommendationCar = (value: unknown): value is SettingsUiRecommendationC
   isUnknownRecord(value)
   && typeof value.id === 'string'
   && typeof value.name === 'string'
+  && typeof value.available === 'boolean'
   && isMatchHistory(value.matchHistory)
 );
 
