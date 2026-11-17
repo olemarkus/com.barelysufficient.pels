@@ -50,7 +50,7 @@ for (const width of [320, 480]) {
             apiHandlers: {
               'GET /ui_charging_current': () => [],
               'GET /ui_recommendation_cars': () => ({ state: 'resolved', cars: [
-                { id: 'family-car', name: 'Family car', matchHistory: { state: 'resolved', chargerMatches: [] } },
+                { id: 'family-car', name: 'Family car', available: true, matchHistory: { state: 'resolved', chargerMatches: [] } },
               ] }),
             },
           };

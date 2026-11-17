@@ -51,7 +51,7 @@ import {
   loadAdvancedSettings,
   loadStaleDataStatus,
   refreshLimitsValidationHints,
-  refreshPowerLimitControls,
+  refreshPowerLimitControls, isGridImportLimitIncomplete,
   refreshStaleDataBanner,
   saveSettingsLimitsSettings,
   saveCapacityPeriodSettings,
@@ -268,10 +268,7 @@ const initTabHandlers = () => {
 const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void>): void => {
   settingsGridImportEnabledInput?.addEventListener('change', () => {
     refreshPowerLimitControls();
-    if (settingsGridImportEnabledInput?.selected && !settingsGridImportLimitInput?.value) {
-      settingsGridImportLimitInput?.focus();
-      return;
-    }
+    if (isGridImportLimitIncomplete()) { settingsGridImportLimitInput?.focus(); return; }
     void autoSaveSettingsLimits();
   });
   settingsGridImportLimitInput?.addEventListener('input', refreshPowerLimitControls);
@@ -285,6 +282,8 @@ const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void
 
 const initLimitsAndSimulationHandlers = () => {
   const autoSaveSettingsLimits = async () => {
+    // The field's own hint says what is missing; a save now would only fail.
+    if (isGridImportLimitIncomplete()) { refreshPowerLimitControls(); return; }
     try {
       await saveSettingsLimitsSettings();
     } catch (error) {

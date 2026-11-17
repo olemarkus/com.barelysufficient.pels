@@ -184,7 +184,9 @@ const ensureCarsLoaded = async (render: () => void): Promise<void> => {
  */
 const orphanedCarIds = (ticked: readonly string[], known: CarOption[]): CarOption[] => ticked
   .filter((carId) => !known.some((car) => car.id === carId))
-  .map((carId) => ({ id: carId, name: REMOVED_CAR_LABEL, matchHistory: { state: 'resolved', chargerMatches: [] } }));
+  .map((carId) => ({
+    id: carId, name: REMOVED_CAR_LABEL, available: false, matchHistory: { state: 'resolved', chargerMatches: [] },
+  }));
 
 const tickedCarIds = (deviceId: string): readonly string[] => (
   state.evCarAssociations[deviceId]?.carIds ?? []
@@ -371,7 +373,7 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     if (!selected || orphans.includes(car)) continue;
     // The confirm button sits right under its car, ahead of the car's current
     // limits, so the Car section opened to confirm shows it without a scroll.
-    if (canConfirmCar(device, car.id)) deviceDetailCarList.append(confirmButton(deviceId, car));
+    if (canConfirmCar(device, car.id)) deviceDetailCarList.append(confirmControl(deviceId, car));
     if (ticked.length === 1) deviceDetailCarList.append(standingCarSwitch(deviceId, car));
     const editor = editors.get(car.id) ?? document.createElement('div');
     editor.dataset.carCurrentLimits = car.id;
@@ -379,6 +381,15 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     renderCarCurrentLimits(editor, car, device, () => renderCarAssociation(currentDevice));
   }
 };
+
+/**
+ * Homey reports the car unavailable: a confirmation would be refused, so the card
+ * says what to check instead of offering the button.
+ */
+const confirmControl = (deviceId: string, car: CarOption): HTMLElement => (car.available
+  ? confirmButton(deviceId, car)
+  : hint(`${formatDisplayDeviceName(car.name)} is not available in Homey right now, so PELS cannot confirm it. `
+    + 'Check the car in its app, then open this device again.'));
 
 const confirmButton = (deviceId: string, car: CarOption): HTMLElement => {
   const button = document.createElement('md-outlined-button');

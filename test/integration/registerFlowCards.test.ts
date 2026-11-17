@@ -2156,8 +2156,8 @@ describe('registerFlowCards', () => {
         ]),
         getCarAssociationCarIds: vi.fn((id) => id === 'ev-1' ? ['polestar'] : []),
         readCarAssociationCandidates: vi.fn(() => ({ state: 'resolved' as const, cars: [
-          { id: 'polestar', name: 'Polestar', matchHistory: { state: 'unavailable' as const } },
-          { id: 'kia', name: 'Kia', matchHistory: { state: 'unavailable' as const } },
+          { id: 'polestar', name: 'Polestar', available: true, matchHistory: { state: 'unavailable' as const } },
+          { id: 'kia', name: 'Kia', available: true, matchHistory: { state: 'unavailable' as const } },
         ] })),
       });
       registerFlowCards(deps);

@@ -31,6 +31,7 @@ export const resolveCarAssociationCandidatesRead = (
             state: 'resolved',
             cars: resolveCarAssociationCandidates(devices).map((car) => ({
                 ...car,
+                available: evCarLink.observes(car.id),
                 matchHistory: evCarLink.readChargerMatchesForCar(car.id),
             })),
         }

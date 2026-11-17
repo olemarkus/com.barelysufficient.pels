@@ -18,7 +18,7 @@ const {
   clearEvChargerCurrentLimits, loadEvChargerCurrentLimits, renderChargerCurrentLimits,
 } = await import('../src/ui/deviceDetail/chargingCurrentLimits.tsx');
 const car: SettingsUiRecommendationCar = {
-  id: 'car-1', name: 'Family car', matchHistory: { state: 'resolved', chargerMatches: [] },
+  id: 'car-1', name: 'Family car', available: true, matchHistory: { state: 'resolved', chargerMatches: [] },
 };
 const charger = withDescriptorIdentity<SettingsUiDeviceView>({
   id: 'charger-1', name: 'Garage charger', available: true, expectedPowerKw: 7.36,

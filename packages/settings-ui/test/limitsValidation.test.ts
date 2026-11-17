@@ -426,6 +426,31 @@ describe('Limits & safety inline validation', () => {
     await expect(capacity.saveSettingsLimitsSettings()).rejects.toThrow('Grid import limit must be positive.');
     expect(setSetting).not.toHaveBeenCalled();
   });
+  it('names a typed nonpositive grid limit at the field and holds the save until it is valid', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule();
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    const input = document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string };
+    const hint = document.querySelector('#settings-grid-import-hint') as HTMLElement;
+    grid.selected = true;
+
+    input.value = '';
+    capacity.refreshPowerLimitControls();
+    expect(capacity.isGridImportLimitIncomplete()).toBe(true);
+    expect(hint.classList.contains('field__hint--alert')).toBe(false);
+
+    input.value = '0';
+    capacity.refreshPowerLimitControls();
+    expect(capacity.isGridImportLimitIncomplete()).toBe(true);
+    expect(hint.textContent).toBe('Enter a limit above 0 kW. PELS saves it once it is valid.');
+    expect(hint.classList.contains('field__hint--alert')).toBe(true);
+
+    input.value = '12';
+    capacity.refreshPowerLimitControls();
+    expect(capacity.isGridImportLimitIncomplete()).toBe(false);
+    expect(hint.classList.contains('field__hint--alert')).toBe(false);
+  });
+
   it('shows an alert when the margin meets or exceeds the hard cap', async () => {
     const dom = buildLimitsDom();
     const { capacity } = await loadCapacityModule();

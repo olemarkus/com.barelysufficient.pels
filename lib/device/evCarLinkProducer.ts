@@ -168,9 +168,11 @@ export class EvCarLinkProducer {
     getCarConfirmation(chargerId: string): CarConfirmation | undefined {
         const session = this.deps.getSnapshot().sessions[chargerId];
         if (!session?.confirmed) return undefined;
-        const { carId } = session;
-        return { carId, carName: this.carName(carId), available: this.cars.observed.has(carId) };
+        return { carId: session.carId, carName: this.carName(session.carId), available: this.observes(session.carId) };
     }
+
+    /** Whether the car is observed now; only an observed car can be confirmed on a charger. */
+    observes(carId: string): boolean { return this.cars.observed.has(carId); }
 
     clearCarConfirmation(chargerId: string): void {
         if (this.deps.getSnapshot().sessions[chargerId]?.confirmed) this.clearSession(chargerId);
@@ -182,7 +184,7 @@ export class EvCarLinkProducer {
         if (!charger || !isEvPlugStateConnected(charger.evChargingState)) {
             throw new Error('The charger is not connected.');
         }
-        if (!this.cars.observed.has(carId)) throw new Error('The selected car is unavailable.');
+        if (!this.observes(carId)) throw new Error('The car is not available in Homey right now. Check its app.');
         if (this.isCarHeldElsewhere(chargerId, carId)) {
             throw new Error('The car is already associated with another charger.');
         }
