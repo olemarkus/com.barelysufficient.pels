@@ -6,6 +6,10 @@ import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import {
   createEventReportStateStore, EVENT_REPORT_CHECK_INTERVAL_MS, EVENT_REPORT_FIRST_CHECK_DELAY_MS, EventReportSchedule,
 } from '../../lib/diagnostics/eventReportSchedule';
+import {
+  checkSimulationReminder, hasManagedMainHomeDevice,
+  SIMULATION_REMINDER_CHECK_INTERVAL_MS, SIMULATION_REMINDER_FIRST_CHECK_DELAY_MS,
+} from '../../lib/app/simulationReminder';
 import { LogTailRecorder } from '../../lib/diagnostics/logTailRecorder';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import type { SupportReportService } from '../../lib/diagnostics/supportReportService';
@@ -67,4 +71,24 @@ export const startEventReports = (
     check();
     timers.registerInterval('eventReportCheck', setInterval(check, EVENT_REPORT_CHECK_INTERVAL_MS));
   }, EVENT_REPORT_FIRST_CHECK_DELAY_MS));
+};
+
+/** Checks hourly whether a home left in Simulation mode is due its one reminder (`simulationReminder.ts`). */
+export const startSimulationReminder = (
+  ctx: Pick<AppContext, 'homey' | 'capacityDryRun' | 'deviceControlSettings' | 'homeMembership'>,
+  timers: TimerRegistry,
+): void => {
+  const home = {
+    isSimulationOn: () => ctx.capacityDryRun,
+    // Read per check: membership is cleared at shutdown, and a check then fails into its warning.
+    hasManagedDevice: () => hasManagedMainHomeDevice(
+      ctx.deviceControlSettings.managedDevices,
+      (deviceId) => requireHomeMembership(ctx).getHomeIdForDevice(deviceId),
+    ),
+  };
+  const check = (): void => {
+    void checkSimulationReminder(ctx.homey.settings, ctx.homey.notifications, home, Date.now());
+  };
+  timers.registerTimeout('simulationReminderFirstCheck', setTimeout(check, SIMULATION_REMINDER_FIRST_CHECK_DELAY_MS));
+  timers.registerInterval('simulationReminderCheck', setInterval(check, SIMULATION_REMINDER_CHECK_INTERVAL_MS));
 };
