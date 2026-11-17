@@ -23,7 +23,7 @@ export type DeferredReleaseIntent = 'binary_restore' | 'binary_release' | 'shed_
  * `task_done`: the task reached its target and holds the device until its
  * ready-by time. Defined here for the same reason as `DeferredReleaseIntent`.
  */
-export type DeferredHoldCause = 'cheaper_hours' | 'task_done';
+export type DeferredHoldCause = 'cheaper_hours' | 'task_done' | 'waiting_for_plan';
 
 /**
  * The per-cycle planner context the smart-task controller needs to decorate the

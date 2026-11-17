@@ -785,6 +785,28 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
   });
 
+  it('deadline_status_is reports waiting while a retained schedule needs a new plan', async () => {
+    const retained = buildActivePlan({
+      planStatus: 'on_track', diagnosticReasonCode: 'objective_waiting_for_plan',
+    });
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([retained]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true, kind: 'temperature', enforcement: 'soft',
+        targetTemperatureC: 55, deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(retained.latest?.planStatus).toBe('on_track');
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(false);
+  });
+
   it('deadline_status_is matches no public status for a committed task whose device moved to a separate meter', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],

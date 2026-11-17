@@ -66,29 +66,39 @@ const resolveReleaseIntent = (
   return device?.control.commandAuthority === false ? 'shed_release' : undefined;
 };
 
-// No prices reach the deadline yet, and the task can still finish later: the
-// device waits for them as it waits through an interval the task released.
-const resolvePriceWaitHold = (
+// A first plan leaves ordinary control intact. An incompatible saved plan,
+// or a held price wait, keeps the device in its configured release posture.
+const resolvePlanningWait = (
   evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
+  if (evaluation.planning.kind === 'awaiting_plan' && evaluation.planning.device === 'unchanged') {
+    return { kind: 'inactive', budgetExempt: false };
+  }
   const releaseIntent = resolveReleaseIntent(usesBinaryReleaseControl(device), device);
   return {
     kind: 'idle',
     budgetExempt: false,
-    holdCause: 'cheaper_hours',
+    holdCause: evaluation.planning.kind === 'awaiting_plan' ? 'waiting_for_plan' : 'cheaper_hours',
     ...resolveTaskTargetFloor(evaluation),
     ...(releaseIntent ? { releaseIntent } : {}),
   };
 };
+
+const isPlanningWait = (
+  planning: TaskEvaluation['planning'],
+): planning is Extract<TaskEvaluation['planning'], { kind: 'awaiting_plan' }>
+  | { kind: 'awaiting_prices'; device: 'held' } => (
+  planning.kind === 'awaiting_plan' || (planning.kind === 'awaiting_prices' && planning.device === 'held')
+);
 
 const resolveDecision = (
   evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
   if (evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
-  if (evaluation.planning.kind === 'awaiting_prices' && evaluation.planning.device === 'held') {
-    return resolvePriceWaitHold(evaluation, device);
+  if (isPlanningWait(evaluation.planning)) {
+    return resolvePlanningWait(evaluation, device);
   }
   if (evaluation.planning.kind === 'learning' || evaluation.planning.kind === 'awaiting_prices') {
     // Runs toward the task's target like an hour booked at 0 kWh: no plan backs a

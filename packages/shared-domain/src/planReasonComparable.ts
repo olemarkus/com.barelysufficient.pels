@@ -112,6 +112,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.deferredObjectiveSatisfied,
+  PLAN_REASON_CODES.deferredObjectiveWaitingForPlan,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
   PLAN_REASON_CODES.awaitingBatteryLevel,
@@ -138,6 +139,7 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveWaitingForPlan }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }

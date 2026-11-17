@@ -87,7 +87,7 @@ export const resolvePublicRevisionWrittenEvent = (
    * misreports the transition's origin and can suppress a real one (a device
    * turned back on during the same cycle that settles looks like no change).
    */
-  previousEffectivePlanStatus: DeferredObjectiveActivePlanStatusV1,
+  previousEffectivePlanStatus: DeferredObjectiveActivePlanStatusV1 | null,
   /** The status it publicly has after this cycle. */
   effectivePlanStatus: DeferredObjectiveActivePlanStatusV1,
 ): DeferredObjectivePlanRevisionWrittenEvent | null => {
@@ -102,7 +102,7 @@ export const resolvePublicRevisionWrittenEvent = (
     reason,
     progressDirection: diag.progressDirection,
     previousPlanStatus: previousEffectivePlanStatus,
-    previousWasPending: false,
+    previousWasPending: previousEffectivePlanStatus === null,
     allocationChanged,
     projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
     effectivePlanStatus,
@@ -192,6 +192,7 @@ export const isFrozenServedDiagnostic = (diag: DeferredObjectiveDiagnostic): boo
 export const resolvePendingReason = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanPendingReason => {
+  if (diag.reasonCode === 'objective_waiting_for_plan') return 'not_yet_planned';
   if (diag.reasonCode === 'objective_price_feature_disabled') return 'price_feature_disabled';
   // EV plugged-out / discharging session — surface a dedicated "paused —
   // unplugged" copy variant so the user knows the plan resumes once they

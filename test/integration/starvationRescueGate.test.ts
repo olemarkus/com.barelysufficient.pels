@@ -26,6 +26,7 @@ import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestU
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { createCommittedTaskPlanning } from '../helpers/committedTaskPlanning';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 const LATCHED_TOTAL_W = 1.5 * 1000;
@@ -200,7 +201,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // Large capacity limit, zero margin — capacity never binds, so the daily budget is the
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-  const deferredController = new DeferredObjectiveDecorationController({
+  const committedPlanning = createCommittedTaskPlanning({
     prefersContinuousCharging: () => false,
     getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
@@ -218,7 +219,10 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => buildSettings(rescue), () => false);
+  });
+  const deferredController = new DeferredObjectiveDecorationController(
+    committedPlanning.source, () => buildSettings(rescue), () => false,
+  );
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
@@ -226,7 +230,10 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
-    decorateDeferredObjectives: (input) => deferredController.decorate(input),
+    decorateDeferredObjectives: (input) => {
+      committedPlanning.settle(input, buildSettings(rescue));
+      return deferredController.decorate(input);
+    },
   }, createPlanEngineState());
 };
 

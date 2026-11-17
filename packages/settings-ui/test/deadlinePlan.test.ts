@@ -449,9 +449,31 @@ describe('deadline plan page payload', () => {
     // A record with no reason has no known blocker, so the hero must not name
     // one. It said "Waiting for tomorrow's prices" on a freshly created task
     // whose prices were already in (prod 2026-07-26).
-    expect(renderInput.pending.hero.headline).toBe('Choosing when to run');
+    expect(renderInput.pending.hero.headline).toBe('Waiting for a plan');
     expect(renderInput.pending.hero.headline).not.toContain('prices');
     expect(renderInput.pending.hero.subline).toContain('Connected 300');
+  });
+
+  it('shows the plan wait while retaining an earlier revision', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [1], plannedKWhPerHour: 1 }),
+      diagnosticReasonCode: 'objective_waiting_for_plan',
+    };
+    const renderInput = resolveRenderInput({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), activePlan),
+      deviceId: 'heater',
+      devices: heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 }),
+      prices: pricesPayload({ prices: [] }),
+      nowMs: now.getTime(),
+    });
+
+    expect(activePlan.latest).not.toBeNull();
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headline).toBe('Waiting for a plan');
+    expect(renderInput.pending.hero.metaLine).not.toContain('minute');
   });
 
   it('returns a pending render input when no active plan record exists yet', () => {
@@ -2212,7 +2234,7 @@ describe('deadline plan page payload', () => {
     expect(renderInput.pending.hero.headline).toBe('Learning energy use');
     expect(renderInput.pending.hero.metaLine).toMatch(/power and temperature readings while it runs/i);
     const chipTexts = renderInput.pending.hero.chips.map((chip) => chip.text);
-    expect(chipTexts).toEqual(['Temperature', 'Building plan…']);
+    expect(chipTexts).toEqual(['Temperature', 'Waiting for a plan']);
   });
 
   it('omits the revision-reason readout line on hours that have not changed', () => {

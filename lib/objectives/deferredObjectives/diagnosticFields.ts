@@ -1,5 +1,5 @@
-import { taskPermissionsForObjective } from './taskEvaluationProducer';
-import { inactiveTaskEvaluation } from './taskEvaluation';
+import { buildUnallocatedTaskEvaluation, taskPermissionsForObjective } from './taskEvaluationProducer';
+import { inactiveTaskEvaluation, NO_TASK_PERMISSIONS } from './taskEvaluation';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,
@@ -242,3 +242,20 @@ export const buildKnownEnergyFields = (params: {
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
   evRateRung: params.profileEnergy.evRateRung,
 });
+
+/** Waiting grants no rescue; an invalidated commitment holds while a new task leaves normal control intact. */
+export const buildWaitingForPlanDiagnostic = (
+  base: DeferredObjectiveDiagnostic,
+  objective: DeferredObjectiveSettingsEntry,
+  progress: DeferredObjectiveProgressResolution,
+  device: 'held' | 'unchanged',
+): DeferredObjectiveDiagnostic => {
+  const evaluation = buildUnallocatedTaskEvaluation(base.deviceId, objective, progress);
+  return withUnavailableTrajectory({
+    ...mergeProgressFields(base, progress.currentValue),
+    evaluation: progress.reasonCode ? evaluation : {
+      ...evaluation, permissions: NO_TASK_PERMISSIONS, planning: { kind: 'awaiting_plan', device },
+    },
+    completion: evaluation.completion,
+  }, progress.reasonCode ?? 'objective_waiting_for_plan');
+};

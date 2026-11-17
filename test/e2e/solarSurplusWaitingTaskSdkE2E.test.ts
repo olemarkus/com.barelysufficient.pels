@@ -142,7 +142,7 @@ describe('a waiting smart task and solar surplus (SDK-boundary e2e)', () => {
     await advancePolls(12);
     await drainPending();
     expect(onWrites()).not.toContain(true);
-    expect(taskLogs.at(-1)?.currentHourClaim).not.toBe('booked');
+    expect(taskLogs.at(-1)?.currentHourClaim).toBe('released');
     expect(taskLogs.at(-1)?.currentValue ?? 0).toBe(0);
     // Its card still says what the task waits for.
     expect(reason()).toEqual({ code: 'deferred_objective_avoid' });
@@ -161,11 +161,21 @@ describe('a waiting smart task and solar surplus (SDK-boundary e2e)', () => {
     expect(delivered).toBeLessThan(TARGET_KWH);
   });
 
-  it('keeps a device without a surplus setting off through the same export', async () => {
+  it('keeps a device without a surplus setting off on export after its first plan', async () => {
     houseNetW = -3000;
-    const { onWrites } = await boot(false);
+    const { putSpy, taskLogs, onWrites } = await boot(false);
+    // Before the first plan, the new task leaves the device under normal control.
+    expect(taskLogs).toEqual([]);
+    expect(onWrites()).toContain(true);
+    await advancePolls(6);
+    await drainPending();
+    expect(taskLogs.at(-1)?.currentHourClaim).toBe('released');
+    expect(await pump.getCapabilityValue('onoff')).toBe(false);
+
+    putSpy.mockClear();
     await advancePolls(60);
     await drainPending();
     expect(onWrites()).not.toContain(true);
+    expect(await pump.getCapabilityValue('onoff')).toBe(false);
   });
 });

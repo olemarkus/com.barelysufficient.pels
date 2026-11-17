@@ -554,6 +554,13 @@ describe('resolveSmartTaskListStatus — blocked charger and plan-verdict preced
     latest: { planStatus, hours: firstHourMs === null ? [] : [{ startsAtMs: firstHourMs, endsAtMs: (firstHourMs) + 3_600_000, plannedKWh: 1 }] },
   });
 
+  it('shows a waiting task instead of advertising its retained schedule as on track', () => {
+    expect(resolveSmartTaskListStatus({
+      ...plan('on_track', null), diagnosticReasonCode: 'objective_waiting_for_plan',
+    }, 0)).toBe('building_plan');
+    expect(SMART_TASK_LIST_STATUS_LABELS.building_plan).toBe('Waiting for a plan');
+  });
+
   it('maps objective_invalid_session to paused_unplugged, overriding an on_track plan', () => {
     expect(resolveSmartTaskListStatus({
       ...plan('on_track', null), diagnosticReasonCode: 'objective_invalid_session',

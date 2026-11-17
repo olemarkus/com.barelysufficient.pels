@@ -41,6 +41,7 @@ import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestU
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { createCommittedTaskPlanning } from '../helpers/committedTaskPlanning';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -264,13 +265,13 @@ type CycleResult = {
 
 const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   const nowMs = DAY_START_UTC + hour * HOUR_MS;
-  vi.setSystemTime(new Date(nowMs));
+  vi.setSystemTime(new Date(DAY_START_UTC));
 
-  const powerTracker = buildPowerTracker(nowMs);
+  let powerTracker = buildPowerTracker(DAY_START_UTC);
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   powerTracker.lastPowerW = STEP_LOW_KW * 1000;
 
-  const deferredController = new DeferredObjectiveDecorationController({
+  const committedPlanning = createCommittedTaskPlanning({
     prefersContinuousCharging: () => false,
     getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
@@ -291,7 +292,17 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => buildSettings(), () => false);
+  });
+  // Establish the schedule when the task starts in its cheap hour. The later
+  // admission reads that settled schedule rather than bootstrapping mid-hour.
+  committedPlanning.settle({
+    devices: [buildSteppedDevice(DAY_START_UTC), buildLowerPriorityDevice(DAY_START_UTC)],
+    dailyBudgetSnapshot: buildDailyBudgetSnapshot(DAY_START_UTC), nowTs: DAY_START_UTC,
+  }, buildSettings());
+  vi.setSystemTime(new Date(nowMs));
+  powerTracker = buildPowerTracker(nowMs);
+  powerTracker.lastPowerW = STEP_LOW_KW * 1000;
+  const deferredController = new DeferredObjectiveDecorationController(committedPlanning.source, buildSettings, () => false);
 
   const state = createPlanEngineState();
   state.shedDecisions.lastPlannedShedIds = new Set([LOWER_PRIORITY_ID]);

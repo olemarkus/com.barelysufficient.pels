@@ -17,6 +17,7 @@ import {
 import type { DeadlinePendingContext } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
 import {
   isDeviceExclusionPaused,
+  isWaitingForSmartTaskPlan,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
@@ -319,6 +320,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
     !hasActivePlanRevision(ctx)
       || ctx.activePlan.pending
       || isDeviceExclusionPaused(ctx.activePlan)
+      || isWaitingForSmartTaskPlan(ctx.activePlan)
   ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }

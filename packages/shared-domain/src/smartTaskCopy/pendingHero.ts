@@ -144,24 +144,23 @@ export const deviceUnmanagedResolver: DeadlinePendingCopyResolver = (ctx) => ({
 // they're waiting on; `recourse` is null because the planner replans itself
 // when prices arrive (no user action).
 // `not_yet_planned` is the no-blocker pending state: the task was just created
-// or edited and the allocator has not run yet. It resolves within a lifecycle
-// tick, so the copy describes work in progress and names no cause the user
-// could act on — the failure it replaces was claiming a price wait that was not
-// happening. `recourse` is null for the same reason `awaiting_horizon_plan`
+// or edited and is waiting for its allocation turn. The copy names no
+// deadline for that turn and no cause the user could act on — the failure it
+// replaces was claiming a price wait that was not happening. `recourse` is
+// null for the same reason `awaiting_horizon_plan`
 // has none: there is nothing for the user to do.
 //
 // The body stays silent about whether prices are in hand. This state is seeded
 // before any diagnostic exists, so it cannot know: a task created while prices
 // really are missing would be told PELS is working "from the prices it already
 // has", trading the price-wait overclaim this fix removes for its mirror image.
-// The first lifecycle tick states the real reason either way.
+// The task’s allocation turn states the real reason either way.
 type SmartTaskPlanNoun = 'heat plan' | 'cooling plan' | 'temperature plan' | 'charging plan' | 'schedule';
 
 export const notYetPlannedCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   () => ({
-    headline: 'Choosing when to run',
-    body: `PELS is working out the ${kindNoun}. `
-      + 'This normally lands within a minute.',
+    headline: 'Waiting for a plan',
+    body: `PELS will work out the ${kindNoun} when this task’s turn comes.`,
     headlineReason: null,
     recourse: null,
   })

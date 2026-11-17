@@ -1,5 +1,6 @@
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
+import { createCommittedTaskPlanning } from '../helpers/committedTaskPlanning';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -250,7 +251,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       price: 1,
       moneyPrice: 1,
     })));
-    const controller = new DeferredObjectiveDecorationController({
+    const planning = createCommittedTaskPlanning({
       prefersContinuousCharging: () => false,
       getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
@@ -268,11 +269,16 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => settings, () => temporaryTemperatureActive);
+    });
     const device = {
       ...buildDevice(), controlModel: 'binary_power' as const,
       control: fixtureControlPosture({ controllable: false }),
     };
+    planning.settle({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs }, settings);
+    buildPriceHorizon.mockClear();
+    const controller = new DeferredObjectiveDecorationController(
+      planning.source, () => settings, () => temporaryTemperatureActive,
+    );
     return { controller, settings, device, buildPriceHorizon };
   };
 

@@ -8,17 +8,18 @@
 // revision would keep it alive after the cause ended.
 
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import { isWaitingForSmartTaskPlan } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ActivePlanPersistDeps } from './activePlanRevisionBuild';
 
-/** This plan's public status, or `null` before it has a settled revision. */
+/** This plan's public status, or `null` while its allocation is pending. */
 export const effectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
 ): DeferredObjectiveActivePlanStatusV1 | null => {
-  if (plan.latest === null) return null;
+  if (plan.latest === null || isWaitingForSmartTaskPlan(plan)) return null;
   return resolveEffectivePlanStatus(plan.latest.planStatus, plan);
 };
 
@@ -41,9 +42,24 @@ export const publishOverlayOnlyStatusChange = (
   previousEffective: DeferredObjectiveActivePlanStatusV1 | null,
 ): void => {
   const latest = plan.latest;
-  if (latest === null || previousEffective === null) return;
+  if (latest === null) return;
   const after = effectivePlanStatusOf(plan);
-  if (after === null || after === previousEffective) return;
+  if (after === previousEffective) return;
+  if (after === null) {
+    deps.onRevisionWritten?.({
+      eventType: 'pending_written',
+      deviceId: plan.deviceId,
+      deviceName: plan.deviceName,
+      objectiveKind: plan.objectiveKind,
+      revision: null,
+      reason: 'pending',
+      previousPlanStatus: previousEffective,
+      previousWasPending: false,
+      allocationChanged: false,
+      projectedFinishAtMs: null,
+    });
+    return;
+  }
   deps.onRevisionWritten?.({
     eventType: 'revision_written',
     deviceId: plan.deviceId,
@@ -53,7 +69,7 @@ export const publishOverlayOnlyStatusChange = (
     reason: latest.reason,
     progressDirection: latest.progressDirection ?? 'increasing',
     previousPlanStatus: previousEffective,
-    previousWasPending: false,
+    previousWasPending: previousEffective === null,
     allocationChanged: false,
     projectedFinishAtMs: null,
     effectivePlanStatus: after,

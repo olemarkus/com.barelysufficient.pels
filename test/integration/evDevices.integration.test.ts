@@ -670,6 +670,10 @@ async function createEvApp(
   },
 ): Promise<InternalApp> {
   if (options?.evDeadlinePricesByRelativeHour) {
+    // Drive the real planning clock before asserting a task's commands, while
+    // keeping scheduler timeouts and its monotonic clock on real time.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    setTestClock(currentTimeMs);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
   }
   setMockDrivers({
@@ -714,6 +718,9 @@ async function createEvApp(
   await app.refreshTargetDevicesSnapshot({ fast: false });
   if (options?.evDeadlinePricesByRelativeHour) {
     configureEvDeadlineObjective(charger, options.evDeadlineTargetPercent);
+    await vi.advanceTimersByTimeAsync(30_000);
+    currentTimeMs = Date.now();
+    await flushPromises();
   }
   charger.clearCommandLog();
   return app;

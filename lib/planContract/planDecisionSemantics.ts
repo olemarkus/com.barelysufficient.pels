@@ -11,6 +11,7 @@ export type PlanStarvationPauseReason =
   | 'inactive'
   | 'deferred_objective_avoid'
   | 'deferred_objective_satisfied'
+  | 'deferred_objective_waiting_for_plan'
   | 'awaiting_solar_surplus'
   | 'awaiting_pels_start';
 
@@ -179,6 +180,7 @@ const PAUSE_SUPPRESSION_REASONS: Partial<Record<PlanReasonCode, PlanStarvationPa
   // falling through to the `unknown_suppression_reason` catch-all in planDiagnostics.
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'deferred_objective_avoid',
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: 'deferred_objective_satisfied',
+  [PLAN_REASON_CODES.deferredObjectiveWaitingForPlan]: 'deferred_objective_waiting_for_plan',
   [PLAN_REASON_CODES.awaitingSolarSurplus]: 'awaiting_solar_surplus',
   // `awaitingPelsStart`: the opted-in "Only PELS starts this device" posture,
   // whose baseline IS off. It belongs in the carve-out for the same reason its
@@ -201,6 +203,7 @@ const PAUSE_SUPPRESSION_REASONS: Partial<Record<PlanReasonCode, PlanStarvationPa
 export const isSmartTaskHoldReason = (reason: DeviceReason): boolean => (
   reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
   || reason.code === PLAN_REASON_CODES.deferredObjectiveSatisfied
+  || reason.code === PLAN_REASON_CODES.deferredObjectiveWaitingForPlan
 );
 
 export const isRestoreAdmissionHoldReason = (reason: DeviceReason): boolean => (

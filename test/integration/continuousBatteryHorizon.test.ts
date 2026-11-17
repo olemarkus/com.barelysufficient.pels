@@ -10,6 +10,9 @@ import { ObjectiveTaskReservationSource } from '../../lib/objectives/deferredObj
 import { buildObjectiveSignatureForEntry } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import type { ObjectiveDeviceSource } from '../../lib/objectives/types';
 import { partialDouble } from '../helpers/partialDouble';
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
+import { planningTurnContext } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { noDeviceExclusion } from '../helpers/deferredObjectiveWiringFixtures';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
 const HOUR_MS = 3_600_000;
@@ -50,6 +53,8 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> & {
     getDeferredObjectiveActivePlans: () => overrides.getActiveTasks?.() ?? { version: 2, plansByDeviceId: {} },
     getCapacitySettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
     getThermalDirection: () => 'heating',
+    allocationRoster: new TaskAllocationRoster(() => new Date(NOW)), resolveDeviceExclusion: noDeviceExclusion,
+    getPrioritiesForDevices: (deviceIds) => ({ getPriority: (deviceId) => deviceIds.indexOf(deviceId) + 1 }),
   }, () => ({
     objectivesByDeviceId: Object.fromEntries(Object.entries(overrides.getActiveTasks?.().plansByDeviceId ?? {})
       .map(([deviceId, plan]) => [deviceId, taskObjective(plan.deadlineAtMs)])),
@@ -67,6 +72,11 @@ const task = (plannedKWh: number, startMs = NOW, endMs = NOW + HOUR_MS): Deferre
     commitment: { committedAtMs: NOW, hours: [] },
     liveCompletion: { kind: 'unmet', status: 'on_track' },
     latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
+      revision: 1, revisedAtMs: NOW,
+      allocationContextSignature: planningTurnContext([{
+        deviceId: 'ev', objective: taskObjective(endMs), priority: 1,
+        reservationEligible: true, higherRankedDeviceIds: [],
+      }], { version: 2, plansByDeviceId: {} }),
       hours: [], reservationSegments: [{ startMs, endMs, plannedKWh, plannedAdmissionPowerKw: 7 }],
     }),
   })
@@ -195,10 +205,13 @@ describe('continuous battery horizon projection', () => {
   });
 
   it('keeps a native quarter booking inside its bounds when reservation segments were not saved', () => {
-    const scheduled = { ...task(0.5), latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
+    const committed = task(0.5);
+    if (!committed.latest) throw new Error('Expected a committed fixture');
+    const scheduled = { ...committed, latest: {
+      ...committed.latest, reservationSegments: undefined,
       hours: [{ startsAtMs: NOW + HOUR_MS / 4, endsAtMs: NOW + HOUR_MS / 2,
         plannedKWh: 0.5, plannedAdmissionPowerKw: 7 }],
-    }) };
+    } };
     const result = horizonSource(sources({
       getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: scheduled } }),
     })).readHorizon('battery', config);

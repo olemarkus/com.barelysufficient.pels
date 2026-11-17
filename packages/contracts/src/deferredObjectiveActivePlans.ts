@@ -292,6 +292,8 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
 export type DeferredObjectiveActivePlanDiagnosticReason =
   | 'objective_invalid_session'
   | 'objective_waiting_for_car'
+  // This task is queued for allocation; any saved schedule is retained as history.
+  | 'objective_waiting_for_plan'
   // Live home-scope truth. Kept on committed plans with a cached revision so
   // consumers can override that stale schedule while the task is out of scope.
   | 'objective_device_in_sub_home'

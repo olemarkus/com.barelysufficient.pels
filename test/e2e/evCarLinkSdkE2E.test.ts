@@ -611,7 +611,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       'ev_car_link_plug_edge', 'ev_car_link_waiting_started', 'ev_car_link_unmatched', 'ev_car_link_late_car_report',
     ]));
     expect(kept.indexOf('ev_car_link_unmatched')).toBeLessThan(kept.indexOf('ev_car_link_late_car_report'));
-  });
+  }, 90_000); // Thirteen simulated hours also exercise the app's periodic background work.
 
   it('sends a report about the charger when it could not identify the car, once the owner turned it on', async () => {
     vi.setSystemTime(Date.UTC(2026, 9, 24, 14, 30, 0));

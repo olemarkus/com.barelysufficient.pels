@@ -9,6 +9,7 @@ export {
   buildDeferredObjectiveTaskResults,
   buildTaskEvaluationSnapshot,
   LIVE_LANE,
+  SERVING_LANE,
   type TaskEvaluationReport,
   type TaskEvaluationLane,
   type TaskEvaluationReaders,

@@ -15,6 +15,11 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
 import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { toPlanDevice } from '../../setup/appInit/toPlanDevice';
 import { partialDouble } from '../helpers/partialDouble';
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
+import { planningTurnContext } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { noDeviceExclusion } from '../helpers/deferredObjectiveWiringFixtures';
 
 const HOUR_MS = 3_600_000;
 const NOW = Date.parse('2026-11-07T11:00:00Z');
@@ -37,6 +42,10 @@ const plan = (latest: Partial<DeferredObjectiveActivePlanRevisionV1> = {}): Defe
     objectiveSignature: buildObjectiveSignatureForEntry(objective, 'increasing'),
     commitment: { committedAtMs: NOW, hours: [booking] }, liveCompletion: { kind: 'unmet', status: 'on_track' },
     latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
+      revision: 1, revisedAtMs: NOW,
+      allocationContextSignature: planningTurnContext([{
+        deviceId: device.id, objective, device, priority: 1, reservationEligible: true, higherRankedDeviceIds: [],
+      }], { version: 2, plansByDeviceId: {} }),
       hours: [booking], reservationSegments: [{ startMs: START, endMs: END, plannedKWh: 0.56, plannedAdmissionPowerKw: 3 }],
       ...latest,
     }),
@@ -44,14 +53,33 @@ const plan = (latest: Partial<DeferredObjectiveActivePlanRevisionV1> = {}): Defe
 );
 const roster = (entry = objective): DeferredObjectiveRoster => ({ objectivesByDeviceId: { heater: entry } });
 const active = (task = plan()): DeferredObjectiveActivePlansV2 => ({ version: 2, plansByDeviceId: { heater: task } });
+const reservationReaders = (tasks: DeferredObjectiveActivePlansV2, devices: ObjectiveDeviceInput[] = [device]) => ({
+  getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => tasks,
+  getCapacitySettings: () => limits, getThermalDirection: () => 'heating' as const,
+  allocationRoster: new TaskAllocationRoster(() => new Date(NOW)), resolveDeviceExclusion: noDeviceExclusion,
+  getPrioritiesForDevices: createFixturePriorityQuery(devices.map(({ id }, index) => ({ id, priority: index + 1 }))),
+});
 const source = (
   tasks = active(),
   settings: DeferredObjectiveRoster | undefined = roster(),
   devices: ObjectiveDeviceInput[] = [device],
-) => new ObjectiveTaskReservationSource({
-  getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => tasks, getCapacitySettings: () => limits, getThermalDirection: () => 'heating',
-}, () => settings, () => devices, (input) => input);
+) => new ObjectiveTaskReservationSource(reservationReaders(tasks, devices), () => settings, () => devices, (input) => input);
 const ids = new Set(['heater']);
+
+const withPlanningContexts = (
+  tasks: DeferredObjectiveActivePlansV2, settings: DeferredObjectiveRoster, devices: ObjectiveDeviceInput[],
+): DeferredObjectiveActivePlansV2 => {
+  const readers = reservationReaders(tasks, devices);
+  const ordered = orderDeferredObjectives(settings, new Map(devices.map((entry) => [entry.id, entry])),
+    () => false, readers.allocationRoster.read(NOW), tasks, readers.getPrioritiesForDevices);
+  return { ...tasks, plansByDeviceId: Object.fromEntries(ordered.map((entry, index) => {
+    const record = tasks.plansByDeviceId[entry.deviceId];
+    if (!record?.latest) throw new Error('Expected a committed fixture');
+    return [entry.deviceId, { ...record, latest: {
+      ...record.latest, allocationContextSignature: planningTurnContext(ordered.slice(0, index + 1), tasks),
+    } }];
+  })) };
+};
 
 describe('objective-owned battery task reservations', () => {
   it('projects task devices without re-entering the battery plan or the home plan builder', () => {
@@ -61,9 +89,8 @@ describe('objective-owned battery task reservations', () => {
       id, name: id, available: true, expectedPowerKw: 3, expectedPowerSource: 'default', targets: [],
       binaryControl: { on: false }, measuredPowerKw: 0,
     }));
-    const input = new ObjectiveTaskReservationSource({
-      getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => active(), getCapacitySettings: () => limits, getThermalDirection: () => 'heating',
-    }, () => roster(), () => [snapshot('battery'), snapshot('heater')], entry => toPlanDevice(ctx, entry));
+    const input = new ObjectiveTaskReservationSource(reservationReaders(active()),
+      () => roster(), () => [snapshot('battery'), snapshot('heater')], entry => toPlanDevice(ctx, entry));
     expect(input.read(NOW, ids).kind).toBe('ready');
     expect(readBattery).not.toHaveBeenCalled();
   });
@@ -115,8 +142,48 @@ describe('objective-owned battery task reservations', () => {
     expect(source(active(stale)).read(NOW, ids)).toEqual({ kind: 'waiting' });
   });
 
+  it('waits for a legacy commitment to receive its coordinated planning context', () => {
+    expect(source(active(plan({ allocationContextSignature: undefined }))).read(NOW, ids))
+      .toEqual({ kind: 'waiting' });
+  });
+
+  it('does not spend bookings while the task is explicitly waiting for a plan', () => {
+    const queued = { ...plan(), diagnosticReasonCode: 'objective_waiting_for_plan' as const };
+    expect(source(active(queued)).read(NOW, ids)).toEqual({ kind: 'waiting' });
+  });
+
+  it('detects an incompatible higher revision before the waiting overlay is recorded', () => {
+    const lowerDevice = { ...device, id: 'lower', name: 'Lower' };
+    const settings = { objectivesByDeviceId: { heater: objective, lower: objective } };
+    const coordinated = withPlanningContexts({ version: 2, plansByDeviceId: {
+      heater: plan(), lower: { ...plan(), deviceId: lowerDevice.id },
+    } }, settings, [device, lowerDevice]);
+    const managedIds = new Set(['heater', 'lower']);
+    expect(source(coordinated, settings, [device, lowerDevice]).read(NOW, managedIds).kind).toBe('ready');
+    const high = coordinated.plansByDeviceId.heater;
+    if (!high.latest) throw new Error('Expected higher revision');
+    const changed: DeferredObjectiveActivePlansV2 = { ...coordinated, plansByDeviceId: {
+      ...coordinated.plansByDeviceId, heater: { ...high, latest: {
+        ...high.latest, revision: high.latest.revision + 1, revisedAtMs: NOW + 30_000,
+        reservationSegments: [{ startMs: START, endMs: END, plannedKWh: 0.8, plannedAdmissionPowerKw: 3 }],
+      } },
+    } };
+    expect(changed.plansByDeviceId.lower.diagnosticReasonCode).toBeUndefined();
+
+    expect(source(changed, settings, [device, lowerDevice]).read(NOW + 30_000, managedIds))
+      .toEqual({ kind: 'waiting' });
+  });
+
+  it('includes managed non-task devices when resolving the task priority', () => {
+    const ordinary = { ...device, id: 'ordinary', name: 'Ordinary' };
+    const coordinated = withPlanningContexts(active(), roster(), [ordinary, device]);
+
+    expect(source(coordinated, roster(), [ordinary, device]).read(NOW, new Set(['ordinary', 'heater'])).kind)
+      .toBe('ready');
+  });
+
   it('waits for unavailable settings and excludes paused, cleared, out-of-scope and satisfied tasks', () => {
-    const readers = { getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => active(), getCapacitySettings: () => limits, getThermalDirection: () => 'heating' as const };
+    const readers = reservationReaders(active());
     expect(new ObjectiveTaskReservationSource(readers, () => undefined, () => [device], input => input).read(NOW, ids))
       .toEqual({ kind: 'waiting' });
     const empty = { kind: 'ready', taskDeviceIds: new Set(), energy: [], admission: [] };

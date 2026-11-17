@@ -207,7 +207,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 
 | Status | Meaning |
 | --- | --- |
-| **Building plan…** | A task is stored but PELS has not scheduled operation yet — usually because prices through the ready-by time are not available. |
+| **Waiting for a plan** | PELS has stored the task. It is waiting for its planning turn or for prices through the ready-by time; the reason line says which. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
 | **Paused — not managed** | **Managed by PELS** is off for the device, so PELS is not planning anything for it. The task is kept, not deleted: turn **Managed by PELS** back on and the plan resumes on the next cycle. |
 | **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled period is still in the future. |

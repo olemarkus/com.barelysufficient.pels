@@ -52,6 +52,7 @@ export type DeferredObjectiveDiagnosticReasonCode =
   // pauses rather than ending — nothing is deleted, and the first cycle after
   // the device is managed again plans it normally.
   | 'objective_device_unmanaged'
+  | 'objective_waiting_for_plan'
   | 'objective_invalid_deadline'
   | 'objective_invalid_session'
   | 'objective_missing_capacity'
@@ -193,6 +194,8 @@ type BaseDeferredObjectiveDiagnostic = {
   // commitment when higher-priority claims changed its future schedule.
   allocationContextSignature?: string;
   replaceCommitment?: true;
+  /** A lifecycle queue turn authorizes a fresh revision even after the settle window. */
+  scheduledReplan?: true;
   // True only while the current bucket is a planned bucket for a smart task whose "exempt
   // from budget" rescue permission is active. Admission consumes this flat flag to set the
   // device's existing `budgetExempt` for that bucket; idle/background cycles stay normal.

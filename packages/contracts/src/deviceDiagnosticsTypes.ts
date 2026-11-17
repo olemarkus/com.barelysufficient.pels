@@ -35,6 +35,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
   | 'sample_gap'
   | 'deferred_objective_avoid'
   | 'deferred_objective_satisfied'
+  | 'deferred_objective_waiting_for_plan'
   | 'awaiting_solar_surplus'
   | 'awaiting_pels_start'
   | 'unknown_suppression_reason';

@@ -1273,7 +1273,7 @@ Source of truth: `packages/shared-domain/src/smartTaskCopy/deadlineLabels.ts`. P
 | Kind chip | `Temperature` | `Temperature` | `EV` | `Energy` |
 | Hero section label (eyebrow — pending hero only) | `Heating smart task` | `Cooling smart task` | `EV smart task` | `Energy smart task` |
 | Live state chip — active (pending hero only) | `Heating` | `Cooling` | `Charging` | `Running` |
-| Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` | `Building plan…` | `Building plan…` |
+| Live state chip — building plan (pending hero / list) | `Waiting for a plan` | `Waiting for a plan` | `Waiting for a plan` | `Waiting for a plan` |
 | Live state chip — plan ready, first hour later (list only) | `On track` | `On track` | `On track` | `On track` |
 | Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` | `Paused — unplugged` for EV chargers |
 | Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` |
@@ -1465,7 +1465,7 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 
 | Chip | Meaning |
 |---|---|
-| `Building plan…` | Pending; no plan allocation yet (often waiting for prices through the deadline). |
+| `Waiting for a plan` | Pending; no current plan allocation yet. The task can be waiting for its planning turn or for prices through its deadline; the reason line names the cause. |
 | `Paused — unplugged` | EV: charging task is paused because the car is unplugged or the session ended. |
 | `Paused — not managed` | "Managed by PELS" is off for the device, so PELS plans nothing for it. The task is **paused, not ended** — it resumes on the next cycle after the device is managed again, and nothing about it is deleted. Both kinds can reach this state. |
 | `On track` | PELS currently expects the task to reach the target — including when the plan is allocated and healthy but its first hour is still in the future. |
