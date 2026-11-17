@@ -9,7 +9,7 @@ import type { ObservedDeviceStateProjection } from '../lib/observer/observedDevi
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import {
-  attachLogTail, installStructuredLogger, startDailyReport, startEventReports,
+  attachLogTail, installStructuredLogger, startDailyReport, startEventReports, startSimulationReminder,
 } from './appInit/diagnosticsWiring';
 import type { SupportReportService } from '../lib/diagnostics/supportReportService';
 import { normalizeError } from '../lib/utils/errorUtils';
@@ -295,6 +295,11 @@ export class AppServiceWiring {
     await runStartupStep(
       'startEventReports',
       () => startEventReports(ctx, reports, this.deps.timers),
+      logStartupStepFailure,
+    );
+    await runStartupStep(
+      'startSimulationReminder',
+      () => startSimulationReminder(ctx, this.deps.timers),
       logStartupStepFailure,
     );
   }
