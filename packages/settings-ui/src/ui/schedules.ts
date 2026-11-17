@@ -10,7 +10,7 @@ import { scheduleConflict } from '../../../shared-domain/src/settings/schedules.
 import { callApi } from './homey.ts';
 import { persistScheduleCommand, readSchedules } from './schedulesTransport.ts';
 export { persistScheduleCommand, readSchedules } from './schedulesTransport.ts';
-import { state } from './state.ts';
+import { resolveManagedState, state } from './state.ts';
 import {
   automaticScheduleName, automaticScheduleTime, buildScheduleFromDraft, createScheduleDraft, daysForRepeat,
   editScheduleDraft, overrideDraftPatch, scheduleOverrideDevices, withOverrideEnd,
@@ -21,8 +21,13 @@ import { renderSchedules } from './views/Schedules.tsx';
 import type { SchedulesViewSnapshot } from './schedulesTypes.ts';
 
 let view: SchedulesViewSnapshot = {
-  load: 'loading', read: null, devices: [], busy: false, error: '', editor: null, filter: 'all',
+  load: 'loading', read: null, devices: [], unmanagedDeviceNames: {}, busy: false, error: '', editor: null,
+  filter: 'all',
 };
+// Read at paint, from the device list and Managed settings the shell keeps current.
+const readUnmanagedDeviceNames = (): Record<string, string> => Object.fromEntries(
+  state.latestDevices.filter((device) => !resolveManagedState(device.id)).map((device) => [device.id, device.name]),
+);
 let generation = 0;
 let openPanel: (panel: string) => void = () => {};
 let closeDevice: () => void = () => {};
@@ -41,7 +46,7 @@ const FILTER_PARAM = 'scheduleFilter';
 
 const paint = (): void => {
   const root = document.getElementById('schedules-root');
-  if (root) renderSchedules(root, view, {
+  if (root) renderSchedules(root, { ...view, unmanagedDeviceNames: readUnmanagedDeviceNames() }, {
     onRetry: () => { void refreshSchedules(); },
     onNew: () => openScheduleEditor('new'),
     onEdit: openScheduleEditor,

@@ -5,7 +5,7 @@ import type { ScheduleEntry } from '../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.ts';
 import { editScheduleDraft } from '../src/ui/scheduleDraft.ts';
 import type { SchedulesViewSnapshot } from '../src/ui/schedulesTypes.ts';
-import { renderSchedules, type SchedulesActions } from '../src/ui/views/Schedules.tsx';
+import { renderSchedules, SCHEDULE_UNMANAGED_REASON, type SchedulesActions } from '../src/ui/views/Schedules.tsx';
 import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 
 const HEATER: SmartTaskCandidateDevice = {
@@ -30,7 +30,7 @@ const savedEntry = (): ScheduleEntry => ({
   modeReferences: [], state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '', lastLabel: '',
 });
 const snapshotFor = (entry: ScheduleEntry): SchedulesViewSnapshot => ({
-  load: 'ready', busy: false, error: '', filter: 'all', devices: [HEATER],
+  load: 'ready', busy: false, error: '', filter: 'all', devices: [HEATER], unmanagedDeviceNames: {},
   read: {
     timeZone: 'Europe/Oslo', modes: ['Home'],
     controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] }, entries: [entry],
@@ -90,6 +90,34 @@ describe('Schedule editor state', () => {
 });
 
 describe('Schedule list rows', () => {
+  it('names a device PELS no longer manages and says how to get its schedule running', () => {
+    // The schedule owner only reports that the device cannot take the task.
+    const snapshot: SchedulesViewSnapshot = {
+      ...snapshotFor({
+        ...savedEntry(), state: 'invalid', nextAtMs: null, nextLabel: '',
+        reason: 'This device is not available for this Smart task. Edit the schedule.',
+      }),
+      devices: [], unmanagedDeviceNames: { heater: 'Water heater' }, editor: null,
+    };
+    const mount = mountView(snapshot);
+    const row = mount.querySelector('[data-schedule-id="water"]');
+    expect(row?.textContent).toContain('Water heater · 65 °C');
+    expect(row?.textContent).toContain(SCHEDULE_UNMANAGED_REASON);
+    expect(row?.textContent).not.toContain('not available for this Smart task');
+    expect(mount.textContent).not.toContain('Unavailable device');
+  });
+
+  it('keeps the schedule owner’s reason for a device that is managed or unknown to the device list', () => {
+    const reason = 'This device is not available for this Smart task. Edit the schedule.';
+    const snapshot: SchedulesViewSnapshot = {
+      ...snapshotFor({ ...savedEntry(), state: 'invalid', nextAtMs: null, nextLabel: '', reason }),
+      devices: [], editor: null,
+    };
+    const row = mountView(snapshot).querySelector('[data-schedule-id="water"]');
+    expect(row?.textContent).toContain(reason);
+    expect(row?.textContent).toContain('Unavailable device');
+  });
+
   it('names the last occurrence and its result without saying a skipped one ran', () => {
     const snapshot = snapshotFor({
       ...savedEntry(), lastLabel: 'Mon 2 Nov, 21:00', lastResult: 'Skipped because the ready-by time had already passed.',

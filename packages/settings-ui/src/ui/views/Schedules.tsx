@@ -1,7 +1,6 @@
 import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import type { ScheduleEntry } from '../../../../contracts/src/schedules.ts';
-import type { SmartTaskCandidateDevice } from '../../../../contracts/src/smartTaskEdit.ts';
 import { resolveSmartTaskCandidateGoal } from '../../../../shared-domain/src/smartTaskCandidateGoal.ts';
 import { formatSmartTaskGoalRangeHint } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import {
@@ -46,6 +45,21 @@ export type SchedulesActions = {
 };
 type View = { snapshot: SchedulesViewSnapshot; actions: SchedulesActions };
 const inputValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
+/** A schedule whose device PELS no longer manages: what is wrong, and the two ways out. */
+export const SCHEDULE_UNMANAGED_REASON = 'PELS does not manage this device, so this schedule cannot run. '
+  + 'Turn on Managed for the device, or delete the schedule.';
+const scheduleDeviceName = (snapshot: SchedulesViewSnapshot, deviceId: string): string => (
+  snapshot.devices.find((candidate) => candidate.deviceId === deviceId)?.deviceName
+    ?? snapshot.unmanagedDeviceNames[deviceId] ?? 'Unavailable device'
+);
+// The schedule owner only knows the device is not one a task can run on. The
+// settings UI knows why when the owner turned Managed off, and says that.
+const scheduleReason = (entry: ScheduleEntry, snapshot: SchedulesViewSnapshot): string => {
+  const deviceId = scheduleActionDeviceId(entry.schedule.action);
+  const unmanaged = entry.state === 'invalid' && deviceId !== null
+    && snapshot.unmanagedDeviceNames[deviceId] !== undefined;
+  return unmanaged ? SCHEDULE_UNMANAGED_REASON : entry.reason;
+};
 const STATE_LABELS = { on: 'On', off: 'Off', paused: 'Paused', invalid: 'Needs attention', finished: 'Finished' } as const;
 const PERMISSION_KEYS = ['exemptFromBudget', 'limitLowerPriorityDevices', 'pauseLowerPriorityDevices'] as const;
 const TASK_TARGET_NAMES = { temperature: 'temperature', ev_soc: 'battery', energy: 'energy' } as const;
@@ -63,13 +77,12 @@ const ACTION_CONFLICTS: Record<ScheduleActionType, string> = {
 const Choice = ({ value, children }: { value: string; children: ComponentChildren }) => (
   <MdSelectOption value={value}><span slot="headline">{children}</span></MdSelectOption>
 );
-const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidateDevice[]): string => {
+const actionSummary = (entry: ScheduleEntry, snapshot: SchedulesViewSnapshot): string => {
   const { schedule } = entry;
   if (schedule.action.type === 'mode') {
     return `Set mode to ${scheduleModeLabel(schedule.action.mode, entry.modeReferences)}`;
   }
-  const deviceId = scheduleActionDeviceId(schedule.action);
-  const name = devices.find((candidate) => candidate.deviceId === deviceId)?.deviceName ?? 'Unavailable device';
+  const name = scheduleDeviceName(snapshot, scheduleActionDeviceId(schedule.action) ?? '');
   if (schedule.action.type === 'override') {
     const { setting, minutes } = schedule.action;
     return `${name} · Override ${setting.targetC} °C until ${scheduleOverrideEnd(schedule.at, minutes)}`;
@@ -82,6 +95,7 @@ const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidat
 const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
   const { schedule } = entry;
   const disabled = view.snapshot.busy || view.snapshot.load !== 'ready';
+  const reason = scheduleReason(entry, view.snapshot);
   const grantedLine = schedule.action.type === 'task'
     ? formatGrantedRescuePermissionsLine({
       exemptFromBudget: schedule.action.task.exemptFromBudget === true,
@@ -95,7 +109,7 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
           onClick={() => view.actions.onEdit(schedule.id)}>
           <h4 class="pels-text-card-title">{schedule.name}</h4>
           <p class="pels-card-supporting">{scheduleRepeatLabel(schedule.repeat)} at {schedule.at}</p>
-          <p>{actionSummary(entry, view.snapshot.devices)}</p>
+          <p>{actionSummary(entry, view.snapshot)}</p>
           {schedule.condition.type !== 'any' && <p class="pels-card-supporting">
             {schedule.condition.type === 'include' ? 'Only in' : 'Except'}{' '}
             {schedule.condition.modes.map((mode) => scheduleModeLabel(mode, entry.modeReferences)).join(', ')}
@@ -110,7 +124,7 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
         </div>
       </div>
       <div class="schedule-row__footer" id={`schedule-status-${schedule.id}`}>
-        {entry.reason && <p>{entry.reason}</p>}
+        {reason && <p>{reason}</p>}
         {entry.nextAtMs !== null && <p>Next: {entry.nextLabel}</p>}
         {entry.lastResult && <p class="pels-card-supporting">
           Last: {entry.lastLabel ? `${entry.lastLabel} · ` : ''}{entry.lastResult}
@@ -130,7 +144,7 @@ const Group = ({ group, view }: { group: ScheduleGroup; view: View }) => {
   if (!read) return null;
   const modeGroup = id === 'mode';
   const on = modeGroup ? read.controls.modeChangesEnabled : !read.controls.disabledTaskDeviceIds.includes(id);
-  const deviceName = view.snapshot.devices.find((device) => device.deviceId === id)?.deviceName ?? 'Unavailable device';
+  const deviceName = scheduleDeviceName(view.snapshot, id);
   const name = modeGroup ? 'Mode changes' : deviceName;
   return (
     <section class="pels-surface-card schedule-group" aria-label={`${name} schedules`}>
@@ -339,7 +353,7 @@ const Editor = (view: View) => {
       {editedEntry && <section class={editedEntry.state === 'invalid' ? 'pels-notice-warning' : 'pels-notice-info'}
         aria-label="Saved schedule status">
         <p class="pels-text-settings-label">Saved schedule: {STATE_LABELS[editedEntry.state]}</p>
-        {editedEntry.reason && <p>{editedEntry.reason}</p>}
+        {scheduleReason(editedEntry, snapshot) && <p>{scheduleReason(editedEntry, snapshot)}</p>}
         {editedEntry.nextAtMs !== null && <p>Next: {editedEntry.nextLabel}</p>}
       </section>}
       <div class="pels-surface-card schedule-editor__enabled">

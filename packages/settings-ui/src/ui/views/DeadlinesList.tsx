@@ -87,7 +87,13 @@ export type DeadlinesListState =
   // area, so once areas are in use the page says so up front instead of
   // letting the refusal be the first signal. Optional so existing callers and
   // tests (single-home installs) render byte-identically.
-  | { status: 'ready'; cards: DeadlinesListCard[]; historyPresent?: boolean; meterAreasInUse?: boolean };
+  // `schedulesNotRunning` counts the task schedules that are switched on but
+  // cannot run (their device is no longer managed, or no longer fits the task),
+  // so a nightly task that will be skipped is seen here and not the morning after.
+  | {
+    status: 'ready'; cards: DeadlinesListCard[]; historyPresent?: boolean; meterAreasInUse?: boolean;
+    schedulesNotRunning?: number;
+  };
 
 // Route both list surfaces (active + past) through the same shared formatter
 // so the date/time shape can't drift again. Time-zone is resolved at render
@@ -412,6 +418,18 @@ const MainHomeOnlyNotice = () => (
   </p>
 );
 
+export const formatSchedulesNotRunningNotice = (count: number): string => (
+  count === 1
+    ? '1 task schedule cannot run, so it creates no Smart task.'
+    : `${count} task schedules cannot run, so they create no Smart tasks.`
+);
+const SchedulesNotRunningNotice = ({ count }: { count: number }) => (
+  <div class="pels-notice-warning deadlines-schedules-notice" id="deadlines-schedules-notice" role="status">
+    <p>{formatSchedulesNotRunningNotice(count)}</p>
+    <MdTextButton data-open-schedules data-schedule-filter="task">See why</MdTextButton>
+  </div>
+);
+
 /** What the Smart tasks list can ask its orchestrator to do. */
 export type DeadlinesListActions = {
   onNewTask: () => void;
@@ -444,7 +462,12 @@ const DeadlinesListRoot = ({ state, actions }: { state: DeadlinesListState; acti
       </>
     );
   }
-  const scopeNotice = state.meterAreasInUse === true ? <MainHomeOnlyNotice /> : null;
+  const scopeNotice = (
+    <>
+      {(state.schedulesNotRunning ?? 0) > 0 && <SchedulesNotRunningNotice count={state.schedulesNotRunning ?? 0} />}
+      {state.meterAreasInUse === true && <MainHomeOnlyNotice />}
+    </>
+  );
   if (state.cards.length === 0) {
     // No active cards. Branch on whether the Past tasks archive has finished
     // runs: a true first run (no history) keeps the "Add your first smart

@@ -40,6 +40,8 @@ export type SmartTaskCreateViewProps = {
   // on the preview; null when there is nothing to state.
   afterTaskLine: string | null;
   solarNote: string | null;
+  // Simulation mode is on, so the task is planned and shown but not run; null otherwise.
+  simulationNote: string | null;
   // The device has an override in force, which the task waits for; null otherwise.
   overrideNote: string | null;
   actions: SmartTaskCreateActions;
@@ -88,6 +90,7 @@ const ComposeFields = ({ step, view }: {
   const disabled = view.snapshot.busy !== 'idle';
   return (
     <>
+      {view.simulationNote && <p class="pels-notice-warning" data-simulation-note>{view.simulationNote}</p>}
       {view.solarNote && <p class="pels-notice-info">{view.solarNote}</p>}
       {view.overrideNote && <p class="pels-notice-info" data-override-note>{view.overrideNote}</p>}
       <label class="field">

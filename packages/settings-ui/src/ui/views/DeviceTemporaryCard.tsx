@@ -24,6 +24,7 @@ export const TEMPORARY_COPY = {
   schedulesNone: 'None for this device',
   schedulesAdd: 'Add',
   schedulesView: 'View',
+  schedulesUnmanaged: 'not running while Managed is off',
 } as const;
 
 export type TemporarySmartTaskRow =
@@ -35,6 +36,12 @@ export type TemporarySchedulesRow = {
   count: number;
   /** When the next one runs, as the schedule owner words it; empty when none is due. */
   nextLabel: string;
+  /** Schedules that are switched on and have a trigger left. */
+  live: number;
+  /** Of those, the ones the schedule owner says cannot run. */
+  needsAttention: number;
+  /** Whether PELS manages the device; a schedule for an unmanaged device does not run. */
+  managed: boolean;
   /** What a new schedule for the device starts as, when it has an Override row. */
   override: OverrideScheduleLink | null;
 };
@@ -84,6 +91,12 @@ const SmartTaskRow = ({ row }: { row: TemporarySmartTaskRow }) => (row.kind === 
 const schedulesLine = (row: TemporarySchedulesRow): string => {
   if (row.count === 0) return TEMPORARY_COPY.schedulesNone;
   const count = `${row.count} for this device`;
+  // A schedule that will not run says so here, on the page that holds the
+  // Managed switch, before the night it was meant for.
+  if (row.live > 0 && !row.managed) return `${count} · ${TEMPORARY_COPY.schedulesUnmanaged}`;
+  if (row.needsAttention > 0) {
+    return `${count} · ${row.needsAttention} ${row.needsAttention === 1 ? 'needs' : 'need'} attention`;
+  }
   return row.nextLabel === '' ? count : `${count} · next ${row.nextLabel}`;
 };
 

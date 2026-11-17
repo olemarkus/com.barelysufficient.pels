@@ -92,6 +92,23 @@ describe('DeadlinesList', () => {
     expect(mount.querySelector('#deadlines-home-scope-notice')).toBeNull();
   });
 
+  it('says on the Smart tasks page when task schedules cannot run, with the way to them', () => {
+    // A nightly schedule whose device is no longer managed creates no task, and
+    // with no task this page is otherwise the empty first-run state.
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, { status: 'ready', cards: [], schedulesNotRunning: 1 }, { onNewTask: () => {} });
+    const notice = mount.querySelector('#deadlines-schedules-notice');
+    expect(notice?.textContent).toContain('1 task schedule cannot run, so it creates no Smart task.');
+    expect(notice?.querySelector('[data-open-schedules][data-schedule-filter="task"]')).not.toBeNull();
+
+    renderDeadlinesList(mount, { status: 'ready', cards: [buildCard()], schedulesNotRunning: 2 }, { onNewTask: () => {} });
+    expect(mount.querySelector('#deadlines-schedules-notice')?.textContent)
+      .toContain('2 task schedules cannot run, so they create no Smart tasks.');
+
+    renderDeadlinesList(mount, { status: 'ready', cards: [buildCard()], schedulesNotRunning: 0 }, { onNewTask: () => {} });
+    expect(mount.querySelector('#deadlines-schedules-notice')).toBeNull();
+  });
+
   it('maps medium confidence to the live-hero chip vocabulary while learning on a recoverable card', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
