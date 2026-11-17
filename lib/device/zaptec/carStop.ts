@@ -7,9 +7,19 @@ import { toCapabilityTimestampMs } from '../managerControl';
  * Zaptec's answer to a turn-on when the car stopped the session itself. The app
  * publishes the same `plugged_in_paused` for a session PELS paused and for one
  * the car stopped, and resumes only the first. The answer is the only place the
- * difference reaches Homey (observed on a Zaptec Go, 2026-11-14).
+ * difference reaches Homey. Older apps answer with the charger's own text
+ * (observed on a Zaptec Go, 2026-11-14); newer ones answer in Homey's language,
+ * English or Norwegian (observed in Norwegian on a Zaptec Go, 2026-11-16).
  */
-const CAR_STOPPED_REFUSAL = 'not Paused nor Scheduled';
+const CAR_STOPPED_REFUSALS: readonly string[] = [
+  'not Paused nor Scheduled',
+  'the car stopped charging by itself',
+  'bilen sluttet å lade av seg selv',
+];
+
+const isCarStoppedRefusal = (message: string): boolean => (
+  CAR_STOPPED_REFUSALS.some((refusal) => message.includes(refusal))
+);
 
 /** The switch writes that start a Zaptec session: the standard one and the app's own before 1.11. */
 const SWITCH_CAPABILITY_IDS: ReadonlySet<string> = new Set(['evcharger_charging', 'charging_button']);
@@ -49,7 +59,7 @@ export class ZaptecCarStops {
 
   /** Whether the refusal is Zaptec's car-stopped answer to a turn-on, now recorded. */
   noteRefused(deviceId: string, write: CapabilityWrite, message: string, atMs: number): boolean {
-    if (!isSwitchWrite(write, true) || !message.includes(CAR_STOPPED_REFUSAL)) return false;
+    if (!isSwitchWrite(write, true) || !isCarStoppedRefusal(message)) return false;
     const known = this.stops.get(deviceId)?.kind === 'refused';
     this.stops.set(deviceId, { kind: 'refused', atMs });
     return !known;

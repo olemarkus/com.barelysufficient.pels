@@ -34,6 +34,15 @@ describe('ZaptecCarStops', () => {
     expect(stops.noteRefused('zaptec', { capabilityId: 'charging_button', value: true }, REFUSAL, 1000)).toBe(true);
   });
 
+  it.each([
+    'HTTP 500: Failed to turn on the charger: the car stopped charging by itself, for example because it is full',
+    'HTTP 500: Kunne ikke starte lading: bilen sluttet å lade av seg selv, for eksempel fordi den er full',
+  ])('records the app\'s translated car-stopped answer: %s', (message) => {
+    const stops = new ZaptecCarStops();
+    expect(stops.noteRefused('zaptec', TURN_ON, message, 1000)).toBe(true);
+    expect(stops.project(snapshot('plugged_in_paused')).evChargingState).toBe('plugged_in_car_stopped');
+  });
+
   it.each(['alarm_generic.car_connected', 'charge_mode', 'charging_button'])('ends on a %s report', (capabilityId) => {
     const stops = new ZaptecCarStops();
     stops.noteRefused('zaptec', TURN_ON, REFUSAL, 1000);
