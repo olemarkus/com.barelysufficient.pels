@@ -33,6 +33,8 @@ import {
 import { hasActiveDeadlineObjective } from '../state.ts';
 import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
+import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
+import { OverviewControlWarningIcon } from './OverviewControlWarning.tsx';
 
 const stopActivation = (event: Event): void => {
   event.stopPropagation();
@@ -321,13 +323,14 @@ type PlanCardShellProps = {
   // Header chip ahead of the status chip: the generic card's cooldown
   // countdown, null on the other cards.
   leadingChip: ComponentChildren;
+  warning?: OverviewControlWarning;
   // The card's body below the header: its state row and lines.
   children: ComponentChildren;
 };
 
 // The frame every plan card shares: the surface that opens device details and
 // the header with the title, the status chip and the smart-task chip.
-export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children }: PlanCardShellProps) => {
+export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, children }: PlanCardShellProps) => {
   const stateKind = dev.status.kind;
   const cardClasses = [
     `pels-surface-card device-row ${PLAN_CARD_KIND_CLASS[kind]} clickable`,
@@ -352,6 +355,7 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children 
           <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
+          {warning && <OverviewControlWarningIcon key={warning.recommendation.version} warning={warning} />}
           {leadingChip}
           <PlanCardStatusChipView dev={dev} displayKind={stateKind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
@@ -417,6 +421,7 @@ export const PlanGenericCard = ({
   dryRun,
   nowMs,
   evStateLine,
+  warning,
 }: {
   dev: PlanDeviceSnapshot;
   dryRun: boolean;
@@ -424,6 +429,7 @@ export const PlanGenericCard = ({
   // The charger's EV smart-task line, resolved by the orchestrator; null when
   // the device has none.
   evStateLine: string | null;
+  warning?: OverviewControlWarning;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
@@ -441,6 +447,7 @@ export const PlanGenericCard = ({
       dryRun={dryRun}
       nowMs={nowMs}
       kind="generic"
+      warning={warning}
       // The state word lives in the below-title state row; the header chip
       // returns only to anchor the cooldown countdown ring, which the state row
       // cannot show.
@@ -487,10 +494,12 @@ export const PlanTemperatureCard = ({
   dev,
   dryRun,
   nowMs,
+  warning,
 }: {
   dev: PlanDeviceSnapshot;
   dryRun: boolean;
   nowMs: number;
+  warning?: OverviewControlWarning;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
@@ -500,7 +509,7 @@ export const PlanTemperatureCard = ({
   const reasonTone = presentation.reason?.tone;
 
   return (
-    <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="temperature" leadingChip={null}>
+    <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="temperature" leadingChip={null} warning={warning}>
       {/* Same anatomy as the generic/stepped cards: the state word distinguishes
           a quiet on-device (`Idle`) from affirmative binary-off evidence
           (`Off`), while a held thermostat reads `Limited` like every other

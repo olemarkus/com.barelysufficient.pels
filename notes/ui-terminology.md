@@ -960,11 +960,13 @@ fall in that time, so `{count} times` reads `Once` when one round is left in the
 hour. Dismissing the recommendation hides that contest while it runs; a later
 contest on the same device shows again.
 
-The Settings → Devices list shows an amber `Not keeping changes` status chip
-while the device is managed and this same warning is active. Its tooltip is the
-notice title; the row's settings button opens the full explanation. Dismissing
-the recommendation does not hide the chip. It leaves the other chips and reason
-lines in place.
+The Overview device card shows an amber warning icon while this warning is
+active. Tapping it opens the same title and explanation, with `Open device`,
+`Dismiss` and `Close` actions. Dismiss acknowledges this conflict, shared with
+its recommendation; a later conflict shows again. Loading acknowledgements
+does not flash a previously dismissed icon. If acknowledgements cannot be read,
+the icon remains visible and Dismiss is disabled. The card's state, reason and
+status chip stay in place. The Devices list has no additional chip.
 
 ### Device-page "Power when running" — one line about the present source
 

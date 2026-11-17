@@ -61,7 +61,7 @@ describe('chip primitive', () => {
       id: 'unavailable', name: 'Unavailable Device', available: false, targets: [],
       expectedPowerKw: 1, expectedPowerSource: 'default',
     });
-    appendDeviceStateChips(mount, device, false);
+    appendDeviceStateChips(mount, device);
     const chip = mount.querySelector<HTMLElement>('.device-row__state-chip.plan-chip.plan-chip--muted');
     expect(chip?.textContent).toBe('Unavailable');
     expect(chip?.dataset.tone).toBe('muted');

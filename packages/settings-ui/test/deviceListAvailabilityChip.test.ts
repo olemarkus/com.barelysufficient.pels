@@ -4,7 +4,7 @@ import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
 
 const chipsFor = (device: Record<string, unknown>): string[] => {
   const container = document.createElement('div');
-  appendDeviceStateChips(container, { id: 'heater', name: 'Heater', ...device } as unknown as SettingsUiDeviceListItem, false);
+  appendDeviceStateChips(container, { id: 'heater', name: 'Heater', ...device } as unknown as SettingsUiDeviceListItem);
   return [...container.querySelectorAll('.device-row__state-chip')].map((chip) => chip.textContent ?? '');
 };
 

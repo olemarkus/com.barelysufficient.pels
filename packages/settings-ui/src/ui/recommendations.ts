@@ -1,4 +1,5 @@
 import { chargingRecommendations } from './chargingRecommendations.ts';
+import { registerOverviewRecommendationDismissals } from './overviewControlWarnings.ts';
 import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
@@ -512,6 +513,14 @@ const readTabId = (event: Event): string => {
 
 export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigation): void => {
   navigationRead = { state: 'resolved', navigation: nextNavigation };
+  registerOverviewRecommendationDismissals({
+    read: (recommendation) => {
+      if (dismissalRead.state === 'loading') return 'loading';
+      if (!hasLoadedDismissals(dismissalRead)) return 'unavailable';
+      return dismissalRead.dismissals[recommendation.id] === recommendation.version ? 'dismissed' : 'active';
+    },
+    dismiss: dismissSetupRecommendation,
+  });
   // Recommendation applicability depends on the identities of Main-home
   // devices, not only on the setup path's aggregate counts.
   subscribeToHomeScope(refreshRecommendationSurfaces);
