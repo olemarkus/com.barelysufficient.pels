@@ -183,6 +183,26 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Off for now (charger is unplugged)',
     },
     {
+      label: 'a charger that has not started the session says what to check',
+      reason: { code: PLAN_REASON_CODES.inactive, detail: 'charger has not started the session' },
+      expected: 'Off for now (charger has not started the session). Check authorisation and schedules in its app.',
+    },
+    {
+      label: 'a session the car stopped says when it charges again',
+      reason: { code: PLAN_REASON_CODES.inactive, detail: 'car stopped charging' },
+      expected: 'Off for now (car stopped charging). It charges again when the car asks.',
+    },
+    {
+      label: 'a refused start says PELS tries again',
+      reason: { code: PLAN_REASON_CODES.inactive, detail: 'device refused the command' },
+      expected: 'Off for now (device refused the command). PELS tries again within an hour.',
+    },
+    {
+      label: 'an unanswered start says PELS tries again',
+      reason: { code: PLAN_REASON_CODES.inactive, detail: 'device did not respond' },
+      expected: 'Off for now (device did not respond). PELS tries again within an hour.',
+    },
+    {
       label: 'restore need with targets describes the transition',
       reason: {
         code: PLAN_REASON_CODES.restoreNeed,

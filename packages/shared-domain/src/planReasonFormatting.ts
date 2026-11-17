@@ -18,6 +18,7 @@ import {
   formatChargeTargetReachedStatus,
   formatReservedForStartStatus,
 } from './planStateLabels';
+import { resolveCommandabilityNextStep } from './commandableNowReason';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 
 // The two reasons that still carry free text. The five ceiling/hold codes that
@@ -499,8 +500,12 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.keep:
       return reason.detail ? normalizeDetailSentence(reason.detail) : '';
-    case PLAN_REASON_CODES.inactive:
-      return `Off for now (${reason.detail})`;
+    case PLAN_REASON_CODES.inactive: {
+      // Says who the device waits for, and where there is one, what to check or
+      // what PELS does next: an off device with no next step reads as held by PELS.
+      const nextStep = resolveCommandabilityNextStep(reason.detail);
+      return nextStep === null ? `Off for now (${reason.detail})` : `Off for now (${reason.detail}). ${nextStep}`;
+    }
     default: {
       const exhaustive: never = reason;
       return exhaustive;
