@@ -26,7 +26,7 @@ import {
   resolveHeldCardReasonVerb,
 } from './planCardReasonLine';
 import type { SteppedFairnessHold } from './planTypes';
-import { formatTemperatureTarget } from './planTemperatureCardText';
+import { formatTemperatureTargetPair } from './planTemperatureCardText';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import {
   EV_ROUTINE_CHARGING_LABEL, isRoutineEvChargingState,
@@ -297,16 +297,15 @@ export const resolveSteppedStatusLine = (
 };
 
 export const resolveSteppedTemperatureText = (device: {
-  temperature?: { currentTemperature: number; plannedTarget: number };
+  temperature?: { currentTemperature: number; currentTarget: number; plannedTarget: number };
 }): string | null => {
   // The atomic facet: present iff the stepped device is also
   // temperature-observed, complete when present.
   if (!device.temperature) return null;
-  const { currentTemperature, plannedTarget } = device.temperature;
-  // Same `· target` grammar as the temperature card's fact line — the arrow
-  // is reserved for a target CHANGE (e.g. a solar/boost lift), never the
-  // routine current-vs-target pair (notes/ui-terminology.md § device cards).
-  return `${currentTemperature.toFixed(1)} °C · target ${formatTemperatureTarget(plannedTarget)} °C`;
+  const { currentTemperature, currentTarget, plannedTarget } = device.temperature;
+  // The temperature card's grammar: one target, or the device's setpoint and
+  // the planned one, each labelled (`formatTemperatureTargetPair`).
+  return `${currentTemperature.toFixed(1)} °C · ${formatTemperatureTargetPair(currentTarget, plannedTarget)}`;
 };
 
 // ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────

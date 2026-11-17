@@ -21,6 +21,7 @@ const getRow = (): {
   stateEl: HTMLElement;
   powerEl: HTMLElement;
   factEl: HTMLElement | null;
+  targetEl: HTMLElement | null;
   reasonEl: HTMLElement;
 } | null => {
   const row = document.getElementById('device-detail-live-status');
@@ -33,6 +34,7 @@ const getRow = (): {
     stateEl,
     powerEl,
     factEl: document.getElementById('device-detail-live-fact'),
+    targetEl: document.getElementById('device-detail-live-target'),
     reasonEl,
   };
 };
@@ -76,10 +78,18 @@ const renderHeroRows = (params: {
   mounts.stateEl.textContent = dev.status.label;
   mounts.row.dataset.stateKind = dev.status.kind;
   mounts.powerEl.textContent = dev.status.powerText ?? '';
+  // The header has room for the setpoint sentence, so the fact line above it
+  // carries only the reading; without one it is the card's fact line.
+  const targetDetail = dev.status.targetDetail ?? '';
   if (mounts.factEl) {
-    const factText = dev.status.factText ?? '';
+    const factText = targetDetail !== '' && dev.status.reading?.kind === 'temperature'
+      ? `${dev.status.reading.currentC.toFixed(1)} °C` : dev.status.factText ?? '';
     mounts.factEl.textContent = factText;
     mounts.factEl.hidden = factText === '';
+  }
+  if (mounts.targetEl) {
+    mounts.targetEl.textContent = targetDetail;
+    mounts.targetEl.hidden = targetDetail === '';
   }
   const reasonText = dev.status.reason?.text ?? '';
   mounts.reasonEl.textContent = reasonText;

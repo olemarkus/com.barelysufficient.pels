@@ -450,6 +450,42 @@ function withPresentedTarget(device: DeviceStatusInput): DeviceStatusInput {
   return { ...device, temperature: { ...device.temperature, plannedTarget: device.temperature.currentTarget } };
 }
 
+// Why the planned setpoint is not simply the mode's: named only where the card
+// data says so. A mode target needs no explanation, so it has none.
+function resolvePlannedTargetSource(device: DeviceStatusInput): string {
+  if (device.temporaryTemperatureActive === true) return ' (override)';
+  const shift = device.priceTargetShift;
+  return shift.kind === 'shifted' ? ` (${shift.direction} while power is ${shift.priceLevel})` : '';
+}
+
+// When PELS writes the planned setpoint, by what holds the device now.
+function resolvePlannedTargetTiming(device: DeviceStatusInput, planned: string, source: string): string {
+  if (device.execution.targetProgress !== 'undriven') return `PELS is setting ${planned}${source}.`;
+  if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
+    return `PELS sets ${planned} when the Smart task runs.`;
+  }
+  if (device.reason.code === PLAN_REASON_CODES.externalOffHold) {
+    return `PELS sets ${planned} when the device is turned on${source}.`;
+  }
+  return `PELS sets ${planned} when it resumes the device${source}.`;
+}
+
+/**
+ * The device page header's sentence for a setpoint that differs from the planned
+ * one: what the device is set to, what PELS will set, when, and why that value.
+ * The fact line carries the same pair in short form; the header has room to say
+ * which side is which.
+ */
+function resolveTargetDetail(presented: DeviceStatusInput, dryRun: boolean): string | undefined {
+  const { temperature } = presented;
+  if (!temperature || temperature.currentTarget === temperature.plannedTarget) return undefined;
+  const set = `Set to ${formatTemperatureTarget(temperature.currentTarget)} °C.`;
+  const planned = `${formatTemperatureTarget(temperature.plannedTarget)} °C`;
+  const source = resolvePlannedTargetSource(presented);
+  if (dryRun) return `${set} In simulation PELS changes nothing; it would set ${planned}${source}.`;
+  return `${set} ${resolvePlannedTargetTiming(presented, planned, source)}`;
+}
+
 /** An adapter may explain a control refusal without changing any command gate. */
 function buildUnavailableAdapterStatus(device: DeviceStatusInput): DeviceStatus | null {
   const status = device.adapterUnavailableStatus;
@@ -466,6 +502,10 @@ function buildUnavailableAdapterStatus(device: DeviceStatusInput): DeviceStatus 
     controlOffDrawing: false, holdCause: null,
   };
 }
+
+const optionalTargetDetail = (targetDetail: string | undefined): { targetDetail?: string } => (
+  targetDetail === undefined ? {} : { targetDetail }
+);
 
 /** Presentation consumes executor conclusions; it never resolves control axes. */
 export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus {
@@ -486,6 +526,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     ...resolvePower(device, limited, dryRun),
     factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reading: resolveReading(presented),
+    ...optionalTargetDetail(resolveTargetDetail(presented, dryRun)),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),

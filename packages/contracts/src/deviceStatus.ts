@@ -27,6 +27,13 @@ export type DeviceStatus = {
   powerText: string | null;
   powerVariant: 'live' | 'expected' | 'reported';
   factText: string | null;
+  /**
+   * For the device page header, when the device's own setpoint differs from the
+   * one PELS will write: both, with when PELS writes it and why it is that value,
+   * as a sentence (`Set to 28 °C. PELS sets 22 °C when it resumes the device
+   * (override).`). The fact line carries the same pair in short form.
+   */
+  targetDetail?: string;
   // Null for a device with neither a temperature nor a known battery level:
   // its measure is its draw (`powerText`).
   reading: DeviceStatusReading | null;

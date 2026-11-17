@@ -60,11 +60,19 @@ export const resolveBinarySurplusReasonLine = (
 
 export const formatTemperatureTarget = (target: number): string => String(Number(target.toFixed(1)));
 
-const resolveTemperatureTargetText = (temperature: NonNullable<TemperatureDevice['temperature']>): string => {
-  const planned = `${formatTemperatureTarget(temperature.plannedTarget)} °C`;
-  return temperature.currentTarget !== temperature.plannedTarget
-    ? `${formatTemperatureTarget(temperature.currentTarget)} °C → ${planned}`
-    : planned;
+/**
+ * The target half of a temperature fact line. One value when the device sits
+ * where PELS wants it (`target 22 °C`). When they differ, both, each labelled:
+ * `set to 28 °C → planned 22 °C`, the device's own setpoint and the one PELS
+ * will write the next time it writes to the device. The labels are what tell an
+ * owner which side is which; a bare arrow read as a change in progress, or as
+ * before and after.
+ */
+export const formatTemperatureTargetPair = (currentTarget: number, plannedTarget: number): string => {
+  const planned = `${formatTemperatureTarget(plannedTarget)} °C`;
+  return currentTarget !== plannedTarget
+    ? `set to ${formatTemperatureTarget(currentTarget)} °C → planned ${planned}`
+    : `target ${planned}`;
 };
 
 export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
@@ -73,10 +81,10 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
   // unrepresentable (a device without a sensor reading has no facet and is not
   // a temperature card).
   if (!device.temperature) return null;
-  const targetText = resolveTemperatureTargetText(device.temperature);
   // Middle-dot separator for the data line — em-dash is reserved for status
   // copy (see notes/ui-terminology.md § "Core principle").
-  return `${device.temperature.currentTemperature.toFixed(1)} °C · target ${targetText}`;
+  const { currentTemperature, currentTarget, plannedTarget } = device.temperature;
+  return `${currentTemperature.toFixed(1)} °C · ${formatTemperatureTargetPair(currentTarget, plannedTarget)}`;
 };
 
 // ─── Reason line ─────────────────────────────────────────────────────────────

@@ -820,7 +820,7 @@ describe('resolveSteppedStatusLine', () => {
 
 describe('resolveSteppedTemperatureText', () => {
   it('returns formatted text when the temperature facet is present', () => {
-    expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 20.5, plannedTarget: 50 } }))
+    expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 20.5, currentTarget: 50, plannedTarget: 50 } }))
       .toBe('20.5 °C · target 50 °C');
   });
 
@@ -829,7 +829,7 @@ describe('resolveSteppedTemperatureText', () => {
   });
 
   it('preserves fractional targets so the fact agrees with a planned target preview', () => {
-    expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 37.2, plannedTarget: 49.8 } }))
+    expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 37.2, currentTarget: 49.8, plannedTarget: 49.8 } }))
       .toBe('37.2 °C · target 49.8 °C');
   });
 });

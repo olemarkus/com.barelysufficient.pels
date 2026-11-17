@@ -677,8 +677,9 @@ describe('PlanService', () => {
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
-    expect(planUpdatedCalls[0][1].devices[0].status.factText).toContain('target 19 °C');
-    expect(planUpdatedCalls[1][1].devices[0].status.factText).toContain('target 21 °C');
+    // The fact line names the device's own setpoint; labelled `set to` while the plan wants another.
+    expect(planUpdatedCalls[0][1].devices[0].status.factText).toMatch(/(set to|target) 19 °C/u);
+    expect(planUpdatedCalls[1][1].devices[0].status.factText).toMatch(/(set to|target) 21 °C/u);
   });
 
   it('reads stall evidence without projecting plan input, inside or outside a build', async () => {
@@ -1585,7 +1586,7 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ cardKind: 'temperature', factText: expect.stringContaining('target '+18+' °C') }) }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ cardKind: 'temperature', factText: expect.stringContaining('set to '+18+' °C') }) }),
       ],
     }));
   });
