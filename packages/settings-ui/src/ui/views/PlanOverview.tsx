@@ -21,6 +21,8 @@ import { SetupPathCard } from './SetupPathCard.tsx';
 import { isSetupStepOpen } from '../setupPathModel.ts';
 import type { SetupPathRead } from '../setupPathFacts.ts';
 import type { OverviewSmartTaskStatus } from '../overviewSmartTaskStatus.ts';
+import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
+import { OverviewControlWarningIcon } from './OverviewControlWarning.tsx';
 
 type OverviewProps = {
   // One row per device PELS manages, from the DEVICE list joined to this
@@ -29,6 +31,7 @@ type OverviewProps = {
   // missing device.
   // A missing membership/device read is distinct from a resolved empty roster.
   devices: OverviewDeviceRowsRead;
+  controlWarnings: ReadonlyMap<string, OverviewControlWarning>;
   plan: PlanSnapshot | null;
   // True once a plan payload has been delivered (even a null one). While
   // false the overview is still loading: keep showing the hero skeleton and
@@ -136,20 +139,22 @@ const PlanCard = ({
   dryRun,
   nowMs,
   evStateLine,
+  warning,
 }: {
   dev: PlanDeviceSnapshot;
   dryRun: boolean;
   nowMs: number;
   evStateLine: string | null;
+  warning?: OverviewControlWarning;
 }) => {
   // The backend resolves card kind, including devices with a stored step ladder.
   if (dev.status.cardKind === 'stepped') {
-    return <PlanSteppedCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
+    return <PlanSteppedCard dev={dev} dryRun={dryRun} nowMs={nowMs} warning={warning} />;
   }
   if (isTemperatureCard(dev)) {
-    return <PlanTemperatureCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
+    return <PlanTemperatureCard dev={dev} dryRun={dryRun} nowMs={nowMs} warning={warning} />;
   }
-  return <PlanGenericCard dev={dev} dryRun={dryRun} nowMs={nowMs} evStateLine={evStateLine} />;
+  return <PlanGenericCard dev={dev} dryRun={dryRun} nowMs={nowMs} evStateLine={evStateLine} warning={warning} />;
 };
 
 /**
@@ -162,10 +167,16 @@ const PlanCard = ({
  * It deliberately shows no state chip and no reason line: there is no decision
  * to describe, and a placeholder one would be a decision the planner never made.
  */
-const PlanUndecidedCard = ({ row }: { row: Extract<OverviewDeviceRow, { kind: 'undecided' }> }) => (
+const PlanUndecidedCard = ({ row, warning }: {
+  row: Extract<OverviewDeviceRow, { kind: 'undecided' }>;
+  warning?: OverviewControlWarning;
+}) => (
   <section class="pels-surface-card plan-card plan-card--undecided">
     <MdElevation aria-hidden="true" />
-    <p class="plan-card__title">{row.device.name}</p>
+    <div class="plan-card__header">
+      <div class="plan-card__title-wrap"><p class="plan-card__title">{row.device.name}</p></div>
+      {warning && <OverviewControlWarningIcon key={warning.recommendation.version} warning={warning} />}
+    </div>
     <p class="pels-card-supporting">{row.statusText}</p>
   </section>
 );
@@ -186,7 +197,7 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, evStateLines, setupPath,
+  devices, controlWarnings, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, evStateLines, setupPath,
   context, nowMs, smartTaskStatuses, onSmartTaskAction,
 }: OverviewProps) => {
   if (scopeUnavailable) {
@@ -278,9 +289,10 @@ const PlanOverviewRoot = ({
               dryRun={context.dryRun}
               nowMs={nowMs}
               evStateLine={evStateLines.get(row.device.id) ?? null}
+              warning={controlWarnings.get(row.device.id)}
             />
           ) : (
-            <PlanUndecidedCard key={row.device.id} row={row} />
+            <PlanUndecidedCard key={row.device.id} row={row} warning={controlWarnings.get(row.device.id)} />
           )
         ))}
       </div>

@@ -4007,6 +4007,24 @@ label.pels-text-settings-label {
   flex: 1 1 auto;
 }
 
+.plan-card__control-warning-icon {
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
+  --md-icon-button-icon-color: var(--color-state-warning-text);
+  --md-icon-button-hover-icon-color: var(--color-state-warning-text);
+  --md-icon-button-focus-icon-color: var(--color-state-warning-text);
+  --md-icon-button-pressed-icon-color: var(--color-state-warning-text);
+  --md-icon-button-state-layer-color: var(--color-state-warning-text);
+}
+
+.plan-card__control-warning-dialog {
+  --md-dialog-supporting-text-color: var(--pels-text-primary);
+}
+
+.plan-card__control-warning-dialog > [slot="actions"] {
+  flex-wrap: wrap;
+}
+
 .plan-card__retry {
   margin-top: var(--spacing-2);
   align-self: flex-start;

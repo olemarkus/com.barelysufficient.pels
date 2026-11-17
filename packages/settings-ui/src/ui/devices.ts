@@ -286,7 +286,7 @@ const buildRedesignSwitchCell = (
   return cell;
 };
 
-const buildRedesignNameCell = (device: SettingsUiDeviceListItem, isManaged: boolean): HTMLElement => {
+const buildRedesignNameCell = (device: SettingsUiDeviceListItem): HTMLElement => {
   const nameWrap = document.createElement('div');
   nameWrap.className = 'pels-device-card__name device-row__name entity-name';
   const nameText = document.createElement('span');
@@ -303,7 +303,7 @@ const buildRedesignNameCell = (device: SettingsUiDeviceListItem, isManaged: bool
   // Which meter this device counts against, before the state chips: structural
   // metadata reads first, the tonal state signals after it.
   appendHomeBadge(nameWrap, device.id);
-  appendDeviceStateChips(nameWrap, device, isManaged);
+  appendDeviceStateChips(nameWrap, device);
   return nameWrap;
 };
 
@@ -397,7 +397,7 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
     price: getPriceTitle(isLoadingComplete, manageability),
   };
 
-  const nameCell = buildRedesignNameCell(device, manageability.isManaged);
+  const nameCell = buildRedesignNameCell(device);
   const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
   const visibleReasons = needsHomeyEnergySetup(device) ? { ...reasons, limit: null } : reasons;
   appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)

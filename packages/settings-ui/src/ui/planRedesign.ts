@@ -47,6 +47,7 @@ import { countMainHomeJobs } from './mainHomeDevices.ts';
 import { resolveOverviewSmartTaskStatuses, type OverviewSmartTaskStatus } from './overviewSmartTaskStatus.ts';
 import { followDeadlineHref } from './deadlineUrls.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
+import { resolveOverviewControlWarnings } from './overviewControlWarnings.ts';
 
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
 // staleness + materiality gates) happens in `resolveSolarNow` at render time
@@ -247,10 +248,12 @@ const doRender = () => {
     ) : [];
   const smartTaskRow = overviewScope.kind === 'main'
     ? resolveSmartTaskRow(smartTaskStatuses.length > 0 ? [] : resolveRowStatuses(now)) : null;
+  const devices = overviewDeviceRows();
   renderPlanOverview(surface, {
     // Membership and order come from the DEVICE list; the decision comes from
     // the plan. Resolved here so the view stays props-in.
-    devices: overviewDeviceRows(),
+    devices,
+    controlWarnings: resolveOverviewControlWarnings(devices),
     plan: currentPlan,
     planResolved: planPayloadReceived,
     scopeUnavailable: overviewScope.kind === 'area' && overviewScope.read === 'unavailable',
@@ -380,6 +383,7 @@ registerPlanSurfaceRenderer(doRender);
 // A setup fact landing (first reading, a saved hard cap, a managed device)
 // changes which step leads, and none of those arrive as a plan push.
 onSetupPathChange(doRender);
+document.addEventListener('pels:recommendations-updated', doRender);
 
 // `tracker === undefined` means the realtime push carried no full tracker —
 // keep the cached solar triple (the resolver's staleness gate retires it on

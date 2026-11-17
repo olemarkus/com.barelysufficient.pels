@@ -1,0 +1,61 @@
+import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { OverviewControlWarningIcon } from '../src/ui/views/OverviewControlWarning.tsx';
+import { resolveControlContestRecommendations } from '../src/ui/recommendationsModel.ts';
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
+import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
+import { PlanGenericCard, PlanTemperatureCard } from '../src/ui/views/PlanDeviceCards.tsx';
+import { PlanSteppedCard } from '../src/ui/views/PlanSteppedCard.tsx';
+import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
+
+const mount = document.createElement('div');
+const [recommendation] = resolveControlContestRecommendations([withDescriptorIdentity<SettingsUiDeviceListItem>({
+  id: 'heater', name: 'Hall heater', managed: true, available: true, targets: [],
+  expectedPowerKw: 1, expectedPowerSource: 'default',
+  controlContest: { setting: 'temperature', commanded: 22, observed: 28, count: 4, sinceMs: 1000 },
+})]);
+
+afterEach(() => { act(() => render(null, mount)); });
+
+describe('Overview warning icon', () => {
+  it.each(['generic', 'temperature', 'stepped'])('appears on a %s device card', (kind) => {
+    const props = {
+      dev: uiDeviceFixture({ id: 'heater', name: 'Hall heater' }),
+      dryRun: false, nowMs: 1000, warning: { recommendation },
+    };
+    act(() => render(kind === 'generic'
+      ? h(PlanGenericCard, { ...props, evStateLine: null })
+      : kind === 'temperature' ? h(PlanTemperatureCard, props) : h(PlanSteppedCard, props), mount));
+    expect(mount.querySelector('.plan-card .plan-card__control-warning-icon')).not.toBeNull();
+  });
+
+  it('opens its explanation and dismisses without activating the device card', async () => {
+    const activate = vi.fn();
+    const dismiss = vi.fn().mockResolvedValue(undefined);
+    act(() => render(h('div', { onClick: activate, onKeyDown: activate, onKeyUp: activate },
+      h(OverviewControlWarningIcon, { warning: { recommendation, onDismiss: dismiss } })), mount));
+    const icon = mount.querySelector('md-icon-button')!;
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(mount.querySelector('.plan-chip')).toBeNull();
+    act(() => { icon.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(mount.querySelector('md-dialog')?.textContent).toContain('22 °C');
+    const dismissButton = [...mount.querySelectorAll('md-text-button')].find((button) => button.textContent === 'Dismiss')!;
+    await act(async () => {
+      dismissButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      dismissButton.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+      dismissButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(activate).not.toHaveBeenCalled();
+    // The owner, not a resolved callback, removes a successfully acknowledged icon.
+    expect(mount.querySelector('md-icon-button')).not.toBeNull();
+  });
+
+  it('keeps an unavailable acknowledgement visible with Dismiss disabled', () => {
+    act(() => render(h(OverviewControlWarningIcon, { warning: { recommendation } }), mount));
+    act(() => { mount.querySelector('md-icon-button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    const dismissButton = [...mount.querySelectorAll('md-text-button')].find((button) => button.textContent === 'Dismiss');
+    expect(dismissButton?.hasAttribute('disabled')).toBe(true);
+  });
+});

@@ -27,6 +27,7 @@ import {
   supportsTemperatureControlDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
+  type SettingsUiDeviceListItem,
 } from './deviceUtils.ts';
 import { hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL } from './carAssociationCandidates.ts';
 import { flowConflictHandoffStep } from './deviceDetail/nativeWiringCopy.ts';
@@ -428,7 +429,7 @@ export const resolveBatteryApiKeyRecommendations = (
  * contest, and a later one shows again.
  */
 export const resolveControlContestRecommendations = (
-  devices: readonly SettingsUiDeviceDetailItem[],
+  devices: readonly SettingsUiDeviceListItem[],
 ): SetupRecommendation[] => devices.flatMap((device) => {
   if (!device.controlContest) return [];
   const notice = controlContestNotice(formatDisplayDeviceName(device.name), device.controlContest);

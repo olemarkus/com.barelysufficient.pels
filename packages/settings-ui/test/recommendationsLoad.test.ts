@@ -1,5 +1,6 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
+import { buildOverviewDeviceRows } from '../src/ui/overviewDeviceRows.ts';
 import type { AfterSetupFactsRead } from '../src/ui/afterSetupFacts.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
@@ -170,6 +171,47 @@ beforeEach(() => {
 });
 
 describe('recommendation loading', () => {
+  it('shares persisted conflict acknowledgements with Overview and keeps a failed write visible', async () => {
+    const heater = device({
+      controlContest: { setting: 'temperature', commanded: 22, observed: 28, count: 4, sinceMs: 1000 },
+    });
+    const recommendations = await loadSubject([heater]);
+    const { resolveOverviewControlWarnings } = await import('../src/ui/overviewControlWarnings.ts');
+    const warningsFor = (devices: readonly SettingsUiDeviceDetailItem[]) => resolveOverviewControlWarnings({
+      state: 'resolved', rows: buildOverviewDeviceRows({ devices, plan: null }),
+    });
+    const listeners = vi.spyOn(document, 'addEventListener');
+    try {
+      recommendations.initRecommendationSurfaces({
+        openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn().mockResolvedValue(undefined),
+      });
+      expect(warningsFor([heater]).size).toBe(0);
+      getSetting.mockResolvedValue({});
+      await recommendations.loadRecommendationDismissals();
+      const warning = warningsFor([heater]).get(heater.id)!;
+      getSettingFresh.mockResolvedValue({ 'another-recommendation': 1 });
+      setSetting.mockRejectedValueOnce(new Error('write unavailable'));
+      await warning.onDismiss!();
+      expect(warningsFor([heater]).has(heater.id)).toBe(true);
+      await warning.onDismiss!();
+      expect(setSetting).toHaveBeenLastCalledWith('setup_recommendation_dismissals', {
+        'another-recommendation': 1, 'control-contest:device-1': 1000,
+      });
+      expect(warningsFor([heater]).size).toBe(0);
+      // The next read, including one from another WebView, uses the saved episode.
+      getSetting.mockResolvedValue({ 'control-contest:device-1': 1000 });
+      await recommendations.loadRecommendationDismissals();
+      expect(warningsFor([heater]).size).toBe(0);
+      expect(warningsFor([{
+        ...heater, controlContest: { ...heater.controlContest!, sinceMs: 2000 },
+      }]).has(heater.id)).toBe(true);
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+    }
+  });
+
   it('reviews and dismisses Automatic without changing the existing charger control', async () => {
     const charger = device({
       id: 'charger-1', name: 'Garage', isEvCharger: true,

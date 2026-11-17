@@ -1,6 +1,7 @@
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { PlanCardShell } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
+import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
 
 // ─── Step rail ────────────────────────────────────────────────────────────────
 
@@ -50,10 +51,12 @@ export const PlanSteppedCard = ({
   dev,
   dryRun,
   nowMs,
+  warning,
 }: {
   dev: PlanDeviceSnapshot;
   dryRun: boolean;
   nowMs: number;
+  warning?: OverviewControlWarning;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const status = displayDev.status;
@@ -62,7 +65,7 @@ export const PlanSteppedCard = ({
   const statusText = status.reason?.text ?? null;
 
   return (
-    <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="stepped" leadingChip={null}>
+    <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="stepped" leadingChip={null} warning={warning}>
       <div class="plan-card__stepped-body">
         {/* Same anatomy as the generic/temperature cards: bold canonical state
             word + right-aligned power. The former "Level: 6 A" / "Off now"

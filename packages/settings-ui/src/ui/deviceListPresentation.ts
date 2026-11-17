@@ -1,7 +1,5 @@
 import { HOMEY_ENERGY_SETUP_REASON, HOMEY_ENERGY_SETUP_DOCS_URL } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { setTooltip } from './tooltips.ts';
-import { controlContestNotice } from './controlContestCopy.ts';
-import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
   supportsPowerDevice,
   supportsTemperatureDevice,
@@ -70,11 +68,7 @@ const buildFlowBackedChip = (device: SettingsUiDeviceListItem): HTMLElement | nu
   );
 };
 
-export const appendDeviceStateChips = (
-  container: HTMLElement,
-  device: SettingsUiDeviceListItem,
-  isManaged: boolean,
-) => {
+export const appendDeviceStateChips = (container: HTMLElement, device: SettingsUiDeviceListItem) => {
   const chips = [
     buildDeviceAvailabilityChip(device),
     buildFlowBackedChip(device),
@@ -83,13 +77,6 @@ export const appendDeviceStateChips = (
   chips.forEach((chip) => {
     if (chip) container.appendChild(chip);
   });
-  if (isManaged && device.controlContest) {
-    const notice = controlContestNotice(formatDisplayDeviceName(device.name), device.controlContest);
-    const chip = buildStateChip('Not keeping changes', notice.title);
-    chip.classList.replace('plan-chip--muted', 'plan-chip--warn');
-    chip.dataset.tone = 'warn';
-    container.appendChild(chip);
-  }
 };
 
 export const createPowerSetupWarning = (deviceName: string): HTMLElement => {

@@ -81,69 +81,6 @@ describe('devices render — redesign shell', () => {
     return import('../src/ui/devices.ts');
   };
 
-  const controlContest = {
-    setting: 'temperature' as const, commanded: 22, observed: 28, count: 4, sinceMs: 1,
-  };
-
-  it('shows a warning alongside availability and reason lines, clearing it with the contest', async () => {
-    const { renderDevices } = await importDevicesInRedesign();
-    const { state } = await import('../src/ui/state.ts');
-    state.initialLoadComplete = true;
-    state.managedMap = { 'device-1': true };
-    const device = buildDevice({ controlContest, available: false });
-    state.latestDevices = [device];
-
-    renderDevices(state.latestDevices);
-
-    const row = document.querySelector('[data-device-id="device-1"]');
-    const chip = row?.querySelector('.plan-chip[data-tone="warn"]');
-    expect(chip?.textContent).toBe('Not keeping changes');
-    expect(chip?.classList.contains('plan-chip--warn')).toBe(true);
-    expect(chip?.getAttribute('data-tooltip')).toBe("Test Device doesn't keep PELS's changes");
-    expect(chip?.tagName).toBe('SPAN');
-    expect(row?.textContent).toContain('Unavailable');
-    expect(row?.querySelector('.pels-device-card__reasons')).not.toBeNull();
-
-    state.latestDevices = [buildDevice({ available: false })];
-    renderDevices(state.latestDevices);
-    expect(document.querySelector('[data-device-id="device-1"] .plan-chip[data-tone="warn"]')).toBeNull();
-    expect(document.querySelector('[data-device-id="device-1"]')?.textContent).toContain('Unavailable');
-  });
-
-  it('hides a retained contest as soon as Managed is turned off', async () => {
-    const { renderDevices } = await importDevicesInRedesign();
-    const { state } = await import('../src/ui/state.ts');
-    state.initialLoadComplete = true;
-    state.managedMap = { 'device-1': true };
-    state.latestDevices = [buildDevice({ controlContest })];
-    renderDevices(state.latestDevices);
-    expect(document.querySelector('.plan-chip[data-tone="warn"]')).not.toBeNull();
-
-    state.managedMap = { 'device-1': false };
-    renderDevices(state.latestDevices);
-    expect(document.querySelector('.plan-chip[data-tone="warn"]')).toBeNull();
-  });
-
-  it('shows no warning for a managed device without a contest', async () => {
-    const { renderDevices } = await importDevicesInRedesign();
-    const { state } = await import('../src/ui/state.ts');
-    state.managedMap = { 'device-1': true };
-    state.latestDevices = [buildDevice()];
-    renderDevices(state.latestDevices);
-    expect(document.querySelector('.plan-chip[data-tone="warn"]')).toBeNull();
-  });
-
-  it('hides a retained contest when the device cannot be managed', async () => {
-    const { renderDevices } = await importDevicesInRedesign();
-    const { state } = await import('../src/ui/state.ts');
-    state.initialLoadComplete = true;
-    state.managedMap = { 'device-1': true };
-    state.latestDevices = [buildDevice({ controlContest, deviceType: undefined })];
-    renderDevices(state.latestDevices);
-    expect(document.querySelector('.pels-device-card__row--unmanageable')).not.toBeNull();
-    expect(document.querySelector('.plan-chip[data-tone="warn"]')).toBeNull();
-  });
-
   it('renders one surface card per device class with managed count chip', async () => {
     const { renderDevices } = await importDevicesInRedesign();
     const { state } = await import('../src/ui/state.ts');
