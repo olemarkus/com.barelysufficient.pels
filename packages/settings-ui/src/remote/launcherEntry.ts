@@ -67,7 +67,8 @@ const params = new URLSearchParams(window.location.search);
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const list = byId<HTMLUListElement>('webapp-homey-list');
 const emptyHint = byId<HTMLElement>('webapp-homeys-empty');
-const phoneLead = byId<HTMLElement>('webapp-phone-lead');
+const homeysTitle = byId<HTMLElement>('webapp-homeys-title');
+const addButton = byId<HTMLElement>('webapp-add-homey');
 const homeysPanel = byId<HTMLElement>('webapp-homeys-panel');
 const addTitle = byId<HTMLElement>('webapp-add-title');
 const addSubmit = byId<HTMLElement & { disabled: boolean }>('webapp-add-submit');
@@ -174,8 +175,9 @@ const openHomey = (homey: StoredHomey, version: string, address: AddressChoice) 
 };
 
 // The add form, or the same form asking for a new key for a listed Homey.
-const showAddPanel = (rekey: StoredHomey | null) => {
+const showAddPanel = (rekey: StoredHomey | null, scroll = true) => {
   addPanel.hidden = false;
+  addButton.hidden = true;
   addTitle.textContent = rekey ? `New key for ${rekey.name}` : 'Add a Homey';
   addSubmit.textContent = rekey ? 'Save key' : 'Add';
   addCancel.hidden = loadStoredHomeys(storage).homeys.length === 0;
@@ -185,7 +187,7 @@ const showAddPanel = (rekey: StoredHomey | null) => {
   setFieldError(nameField, null);
   setFieldError(addressField, null);
   setFieldError(keyField, null);
-  addPanel.scrollIntoView({ behavior: 'smooth' });
+  if (scroll) addPanel.scrollIntoView({ behavior: 'smooth' });
 };
 
 const button = (tag: 'md-filled-tonal-button' | 'md-text-button', label: string, onClick: () => void) => {
@@ -271,13 +273,14 @@ const render = async () => {
   rows.clear();
   list.replaceChildren();
   emptyHint.hidden = homeys.length > 0;
-  phoneLead.hidden = homeys.length > 0;
+  homeysTitle.textContent = homeys.length === 0 ? 'Get started' : 'Your Homeys';
+  addButton.hidden = !addPanel.hidden;
   pairButton.hidden = homeys.length === 0;
   // A code drawn for the list as it was would still carry a removed key.
   pairCodes.replaceChildren();
   pairPanel.hidden = true;
   if (homeys.length === 0) {
-    showAddPanel(null);
+    showAddPanel(null, false);
     return;
   }
   await Promise.all(homeys.map(checkAndRender));
@@ -350,6 +353,7 @@ const addHomey = async () => {
     return;
   }
   addPanel.hidden = true;
+  addButton.hidden = false;
   await render();
 };
 
@@ -372,9 +376,10 @@ addForm.addEventListener('submit', (event) => {
 });
 addCancel.addEventListener('click', () => {
   addPanel.hidden = true;
+  addButton.hidden = false;
 });
 
-byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPanel(null));
+addButton.addEventListener('click', () => showAddPanel(null));
 
 // Installing is offered where the browser offers it (Chrome on Android and
 // computers); it then lives on the home screen and opens the last Homey.
@@ -450,6 +455,7 @@ const closeOffer = () => {
 
 const offerPairedHomeys = (pairing: Exclude<PairingRead, { state: 'none' }>) => {
   addPanel.hidden = true;
+  addButton.hidden = false;
   homeysPanel.hidden = loadStoredHomeys(storage).homeys.length === 0;
   importPanel.hidden = false;
   importAdd.hidden = pairing.state !== 'homeys';

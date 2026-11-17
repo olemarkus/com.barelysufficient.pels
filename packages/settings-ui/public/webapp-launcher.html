@@ -41,8 +41,12 @@
 
     <section class="card panel" id="webapp-homeys-panel" aria-labelledby="webapp-homeys-title">
       <h2 id="webapp-homeys-title">Your Homeys</h2>
-      <p class="field__hint webapp-computer-only" id="webapp-homeys-empty" hidden>Add a Homey that runs PELS to open it here.</p>
-      <p class="field__hint webapp-touch-only" id="webapp-phone-lead" hidden>Add your Homeys on a computer at pels.barelysufficient.org/app, choose Show code for a phone there, and scan the code with this phone.</p>
+      <div class="webapp-getting-started" id="webapp-homeys-empty" hidden>
+        <p class="field__hint">Use the web app to view your energy use and manage PELS from your browser.</p>
+        <p class="field__hint">You need PELS running on a Homey Pro. <a href="https://homey.app/a/com.barelysufficient.pels" target="_blank" rel="noopener noreferrer">Get PELS from the Homey App Store</a>.</p>
+        <p class="field__hint">Then add your Homey in the form below.</p>
+        <p class="field__hint webapp-touch-only" id="webapp-phone-lead">On a phone, it is easier to add your Homey on a computer, choose Show code for a phone, and scan the code with this phone.</p>
+      </div>
       <ul class="webapp-homey-list" id="webapp-homey-list"></ul>
       <div class="webapp-actions">
         <md-text-button type="button" id="webapp-add-homey">Add a Homey</md-text-button>
