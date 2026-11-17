@@ -49,7 +49,7 @@ describe('Unsupported device handling', () => {
         vi.clearAllTimers();
     });
 
-    it('keeps binary devices without required power state out of the snapshot', async () => {
+    it('keeps unmetered native binary devices visible and preserves owner preferences', async () => {
         setMockDrivers({});
         mockHomeyInstance.settings.set('managed_devices', { 'vent-1': true });
         mockHomeyInstance.settings.set('controllable_devices', { 'vent-1': true });
@@ -68,7 +68,8 @@ describe('Unsupported device handling', () => {
 
         const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((device) => device.id === 'vent-1');
-        expect(entry).toBeUndefined();
+        expect(entry).toMatchObject({ powerCapable: false, binaryControllable: true, binaryControl: { on: true } });
+        expect(entry).not.toHaveProperty('measuredPowerKw', expect.any(Number));
 
         const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
         const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
@@ -92,9 +93,8 @@ describe('Unsupported device handling', () => {
 
         vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
             'vent-1': buildVentilationApiDevice({
-                // A managed device has to report an actual draw. The declared
-                // energy approximation supplies the ESTIMATE below; it no longer
-                // makes the device manageable on its own.
+                // The meter supplies the observed draw; the declared Homey
+                // Energy approximation supplies the estimate below.
                 capabilities: ['onoff', 'measure_power'],
                 energyObj: {
                     approximation: {

@@ -40,6 +40,8 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     steppedLoadProfile: _confirmedSteppedLoadProfile,
     targetPowerConfig: _targetPowerConfig,
     carCurrentRangeUnavailable: _carCurrentRangeUnavailable,
+    // Setup guidance belongs to the device status read, not planner decisions.
+    powerSetupRequired: _powerSetupRequired,
     measuredPowerKw: _measuredPowerKw,
     measuredPowerIsDirectMeasurement: _measuredPowerIsDirectMeasurement,
     // Read once by the footprint producer; the planner receives the footprint.

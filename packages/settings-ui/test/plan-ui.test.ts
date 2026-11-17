@@ -4,6 +4,7 @@ import { installHomeyMock } from './helpers/homeyApiMock.ts';
 import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUi/paths.ts';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from './helpers/planMetaFixture.ts';
 import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
+import { HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_REASON } from '../../shared-domain/src/homeyEnergySetup.ts';
 
 afterEach(() => {
   vi.clearAllTimers();
@@ -1297,6 +1298,39 @@ describe('Redesign plan UI', () => {
       expect(document.querySelector('[data-device-id="missing"]')?.getAttribute('data-state-kind')).toBe('unavailable');
     });
   
+    it('offers power setup documentation without activating the device card', async () => {
+      const onOpenDetail = vi.fn();
+      document.addEventListener('open-device-detail', onOpenDetail);
+      try {
+        await renderPlanSnapshot({
+          meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5 }),
+          devices: [{
+            id: 'plug', name: 'Fan plug', currentState: 'on', plannedState: 'keep',
+            status: { ...uiDeviceFixture().status, kind: 'manual', label: 'Manual', tone: 'neutral',
+              reason: { text: HOMEY_ENERGY_SETUP_REASON, tone: 'warning', offersHomeyEnergySetup: true } },
+          }],
+        });
+        const card = document.querySelector<HTMLElement>('[data-device-id="plug"]');
+        const link = card?.querySelector<HTMLAnchorElement>('a.plan-card__quiet-link');
+        expect(card?.querySelector('.plan-card__reason')?.textContent).toBe(HOMEY_ENERGY_SETUP_REASON);
+        expect(card?.querySelector('.plan-card__reason')?.getAttribute('data-tone')).toBe('warning');
+        expect(link?.href).toBe(HOMEY_ENERGY_SETUP_DOCS_URL);
+        expect(link?.target).toBe('_blank');
+        // Keep jsdom from trying to open the external documentation.
+        link?.addEventListener('click', (event) => event.preventDefault());
+        link?.click();
+        for (const key of ['Enter', ' ']) {
+          link?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+          link?.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+        }
+        expect(onOpenDetail).not.toHaveBeenCalled();
+        card?.click();
+        expect(onOpenDetail).toHaveBeenCalledTimes(1);
+      } finally {
+        document.removeEventListener('open-device-detail', onOpenDetail);
+      }
+    });
+
     it('opens device details on click and keyboard activation', async () => {
       const detailEvents: string[] = [];
       document.addEventListener('open-device-detail', ((event: Event) => {

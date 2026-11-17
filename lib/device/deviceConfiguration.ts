@@ -8,6 +8,7 @@ import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveSetpointShedFloorC } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import type { EvChargingCurrentLimitPolicy } from './evChargingCurrentLimitPolicy';
+import { needsHomeyEnergySetup } from '../../packages/shared-domain/src/homeyEnergySetup';
 
 export type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
@@ -45,6 +46,7 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     isBatteryOrSolar: snapshot.isBatteryOrSolar,
     isEvCharger: snapshot.isEvCharger,
     starvationSupported: isStarvationSupportedDeviceClass(snapshot.deviceClass),
+    powerSetupRequired: needsHomeyEnergySetup(snapshot),
     setpointShedFloorC: resolveSetpointShedFloorC(snapshot),
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,

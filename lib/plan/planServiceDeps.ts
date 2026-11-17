@@ -89,6 +89,8 @@ export type PlanServiceDeps = {
    * a device the plan does not carry, which the plan itself cannot.
    */
   hasStandingCommandGrant: (deviceId: string) => boolean;
+  /** The device owner requires Homey Energy setup before this device can be limited. */
+  getDevicePowerSetupRequired: (deviceId: string) => boolean;
   // Minimal observer projection for binary confirmation; never raw transport
   // snapshots or plan devices.
   getSettleDevices: () => PendingBinaryLiveDevice[];

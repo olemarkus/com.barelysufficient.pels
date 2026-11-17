@@ -1,3 +1,4 @@
+import { HOMEY_ENERGY_SETUP_REASON, HOMEY_ENERGY_SETUP_DOCS_URL } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { setTooltip } from './tooltips.ts';
 import {
   supportsPowerDevice,
@@ -78,6 +79,26 @@ export const appendDeviceStateChips = (container: HTMLElement, device: SettingsU
   });
 };
 
+export const createPowerSetupWarning = (deviceName: string): HTMLElement => {
+  const button = document.createElement('md-icon-button');
+  button.className = 'pels-device-card__power-warning';
+  button.setAttribute('type', 'button');
+  button.setAttribute('aria-label', `Power use needs setup for ${deviceName}. ${HOMEY_ENERGY_SETUP_REASON}.`);
+  setTooltip(button, HOMEY_ENERGY_SETUP_REASON);
+  button.dataset.tooltipGuide = HOMEY_ENERGY_SETUP_DOCS_URL;
+  button.dataset.tooltipGuideLabel = 'Set up power use in Homey';
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z');
+  path.setAttribute('fill', 'currentColor');
+  icon.append(path);
+  button.append(icon);
+  return button;
+};
+
 export const appendRedesignDisabledReasons = (
   container: HTMLElement,
   reasons: RowDisabledReasons,
@@ -122,7 +143,7 @@ export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => 
   }
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsPower || supportsTemperature;
+  const supportsManage = supportsPower || supportsTemperature || device.binaryControllable;
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
   const canManage = supportsManage && !nativeWiringRequired;
   return {

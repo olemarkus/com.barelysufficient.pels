@@ -543,6 +543,15 @@ describe('settingsOverviewReadModel', () => {
     expect(card(false)).toMatchObject({ kind: 'manual', reason: { text: 'Power-limit control is off' } });
   });
 
+  it('publishes the device owner’s Homey Energy setup requirement without a command grant', () => {
+    const device = buildPlanDevice({ controllable: false, unmetered: true });
+    const card = buildDeviceCard(device, {
+      ...absentTemperature, getDevicePowerSetupRequired: () => true,
+    });
+    expect(card.status).toMatchObject({ kind: 'manual', powerText: null,
+      reason: { tone: 'warning', offersHomeyEnergySetup: true } });
+  });
+
   it('calls a charger a charger before it has reported any plug-state', () => {
     const device = buildPlanDevice({
       id: 'ev-1',

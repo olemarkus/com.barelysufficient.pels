@@ -14,6 +14,8 @@ type DeviceConfigurationFields = {
   isEvCharger: DeviceDescriptorRead['isEvCharger'];
   /** A thermostat-family class whose "held below target" PELS reports as starvation. */
   starvationSupported: boolean;
+  /** Native on/off control needs Homey Energy power information before power limiting. */
+  powerSetupRequired: boolean;
   /**
    * The lowest heating limit PELS sheds this device's setpoint to when the
    * setpoint is its only way to shed (no on/off, no steps). The device's

@@ -89,6 +89,19 @@ const resolve = (snapshot: TransportDeviceSnapshot) => {
 };
 
 describe('DeviceConfigurationStore identity resolution', () => {
+  it.each(['socket', 'heater'])('resolves and clears Homey Energy setup for an on/off %s', (deviceClass) => {
+    const store = new DeviceConfigurationStore();
+    const snapshot = transportSnapshotFixture({
+      ...snapshotFor(deviceClass, deviceClass === 'heater' ? 'temperature_onoff' : 'onoff'),
+      capabilities: deviceClass === 'heater' ? ['onoff', 'target_temperature'] : ['onoff'],
+      powerCapable: false,
+    });
+    store.set(snapshot);
+    expect(store.get(snapshot.id)?.powerSetupRequired).toBe(true);
+    store.set({ ...snapshot, powerCapable: true });
+    expect(store.get(snapshot.id)?.powerSetupRequired).toBe(false);
+  });
+
   it.each([
     ['thermostat', 'temperature_only', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
     ['heater', 'onoff', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],

@@ -41,6 +41,7 @@ import {
 } from './deviceControlAvailability.ts';
 import {
   appendDeviceStateChips,
+  createPowerSetupWarning,
   appendRedesignDisabledReasons,
   countManagedInGroup,
   groupDevicesByClass,
@@ -68,6 +69,7 @@ import {
   CONTROLLABLE_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import { needsHomeyEnergySetup } from '../../../shared-domain/src/homeyEnergySetup.ts';
 
 export const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
@@ -290,7 +292,14 @@ const buildRedesignNameCell = (device: SettingsUiDeviceListItem): HTMLElement =>
   const nameText = document.createElement('span');
   nameText.className = 'device-row__title';
   nameText.textContent = formatDisplayDeviceName(device.name);
-  nameWrap.appendChild(nameText);
+  if (needsHomeyEnergySetup(device)) {
+    const titleLine = document.createElement('div');
+    titleLine.className = 'pels-device-card__title-line';
+    titleLine.append(nameText, createPowerSetupWarning(formatDisplayDeviceName(device.name)));
+    nameWrap.append(titleLine);
+  } else {
+    nameWrap.appendChild(nameText);
+  }
   // Which meter this device counts against, before the state chips: structural
   // metadata reads first, the tonal state signals after it.
   appendHomeBadge(nameWrap, device.id);
@@ -390,9 +399,10 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
 
   const nameCell = buildRedesignNameCell(device);
   const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
+  const visibleReasons = needsHomeyEnergySetup(device) ? { ...reasons, limit: null } : reasons;
   appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)
-    ? resolveBatteryRowReasons(device, manageability.isManaged, reasons)
-    : reasons);
+    ? resolveBatteryRowReasons(device, manageability.isManaged, visibleReasons)
+    : visibleReasons);
 
   row.append(
     nameCell,

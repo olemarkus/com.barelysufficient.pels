@@ -103,4 +103,24 @@ describe('device-detail live status restore waits', () => {
     expect(document.getElementById('device-detail-live-state')?.textContent).toBe('Unavailable');
     expect(document.getElementById('device-detail-live-reason')?.hidden).toBe(true);
   });
+
+  it('keeps a power setup warning visible and clears its warning tone when the reason changes', async () => {
+    const payload = planWithReason({ code: 'waiting_for_other_devices' });
+    const device = payload.plan?.devices?.[0];
+    if (!device) throw new Error('Expected plan device');
+    device.status = { ...device.status, kind: 'manual', label: 'Manual', reason: {
+      text: 'Set up power use in Homey', tone: 'warning', offersHomeyEnergySetup: true,
+    } };
+    getApiReadModelMock.mockResolvedValue(payload);
+    await renderDeviceDetailLiveStatus('charger');
+    const reason = document.getElementById('device-detail-live-reason');
+    expect(reason?.textContent).toBe('Set up power use in Homey');
+    expect(reason?.dataset.tone).toBe('warning');
+    expect(reason?.hidden).toBe(false);
+
+    device.status = { ...device.status, reason: null };
+    await renderDeviceDetailLiveStatus('charger');
+    expect(reason?.hidden).toBe(true);
+    expect(reason?.dataset.tone).toBe('neutral');
+  });
 });

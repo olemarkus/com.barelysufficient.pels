@@ -133,7 +133,7 @@ describe('On/off device integration', () => {
     expect(setCapSpy).not.toHaveBeenCalled();
   });
 
-  it('keeps on/off devices out of the snapshot until flow-backed required state exists', async () => {
+  it('keeps native on/off devices visible before Homey Energy is configured', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
@@ -146,9 +146,11 @@ describe('On/off device integration', () => {
 
     await app.refreshTargetDevicesSnapshot();
 
-    const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean }>;
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean;
+      measuredPowerKw?: number; binaryControllable?: boolean }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
-    expect(entry).toBeUndefined();
+    expect(entry).toMatchObject({ powerCapable: false, binaryControllable: true });
+    expect(entry?.measuredPowerKw).toBeUndefined();
   });
 
   it('uses Homey energy approximation delta to size a real-metered on/off device', async () => {
@@ -481,7 +483,7 @@ describe('On/off device integration', () => {
     expect(controllable['device-a']).toBe(true);
   });
 
-  it('preserves metadata-only device settings without admitting it to planning', async () => {
+  it('preserves metadata-only device settings without granting command authority', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
@@ -534,8 +536,9 @@ describe('On/off device integration', () => {
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
     expect(entry).toEqual(expect.objectContaining({ powerCapable: true }));
-    expect(app.planService.getPlanDevices().find((device: { id: string }) => device.id === 'device-a'))
-      .toBeUndefined();
+    const planned = app.planService.getPlanDevices().find((device: { id: string }) => device.id === 'device-a');
+    expect(planned).toMatchObject({ control: { managed: true, commandAuthority: false } });
+    expect(planned).not.toHaveProperty('currentDrawKw');
 
     const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;

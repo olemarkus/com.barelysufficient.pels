@@ -17,6 +17,7 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import api from '../../api';
 
 const ONOFF_CAP = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
 
@@ -73,6 +74,56 @@ describe('On/off capacity shedding (SDK-boundary e2e)', () => {
     await cleanupApps();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it.each([true, false])('shows a managed socket setup warning without switching it, initially on=%s', async (on) => {
+    const device = new MockDevice('device-a', 'Unmetered socket', ['onoff'], 'socket');
+    await device.setCapabilityValue('onoff', on);
+    setMockDrivers({ sockets: new MockDriver('sockets', [device]) });
+    configureCapacity(1);
+    reportHomePower(5000);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const listed = (await api.ui_devices({ homey: app.homey })).devices.find((entry) => entry.id === 'device-a');
+    expect(listed).toMatchObject({ binaryControllable: true, powerCapable: false, managed: true });
+    const overview = await api.ui_plan({ homey: app.homey });
+    expect(overview.plan?.devices?.find((entry) => entry.id === 'device-a')?.status).toMatchObject({
+      kind: 'manual', powerText: null, reason: { offersHomeyEnergySetup: true, tone: 'warning' },
+    });
+    expect(putSpy.mock.calls.filter(([path]) => path.includes('/device-a/capability/'))).toEqual([]);
+  });
+
+  it('starts normal limiting after the socket is configured in Homey Energy', async () => {
+    const device = new MockDevice('device-a', 'Unmetered socket', ['onoff'], 'socket');
+    await device.setCapabilityValue('onoff', true);
+    setMockDrivers({ sockets: new MockDriver('sockets', [device]) });
+    configureCapacity(1);
+    let configured = false;
+    const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => (
+      path === 'manager/energy/live' ? { items: [
+        { type: 'cumulative', id: 'meter-main', values: { W: 5000 } },
+        ...(configured ? [{ type: 'device', id: 'device-a', values: { W: 2000 } }] : []),
+      ] } : originalGet(path)
+    ));
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(putSpy.mock.calls.filter(([path]) => path.includes('/device-a/capability/'))).toEqual([]);
+
+    device.setSettings({ energy_value_on: 2000, energy_value_off: 0 });
+    configured = true;
+    await api.ui_refresh_devices({ homey: app.homey });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), pelsCapabilityWrite(false));
+    const overview = await api.ui_plan({ homey: app.homey });
+    const plannedDevice = overview.plan?.devices?.find((entry) => entry.id === 'device-a');
+    expect(plannedDevice).toBeDefined();
+    expect(plannedDevice?.status.reason?.offersHomeyEnergySetup).toBeUndefined();
   });
 
   it('turns the device off when home power exceeds the capacity limit', async () => {

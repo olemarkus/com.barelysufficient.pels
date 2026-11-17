@@ -28,6 +28,8 @@ const isCountdown = (value: unknown): boolean => {
   return timer.kind === 'in_text' && typeof timer.prefix === 'string' && typeof timer.suffix === 'string';
 };
 
+const isOptionalOffer = (value: unknown): boolean => value === undefined || value === true;
+
 const isStatusReason = (value: unknown): boolean => {
   if (value === null) return true;
   if (!value || typeof value !== 'object') return false;
@@ -35,8 +37,9 @@ const isStatusReason = (value: unknown): boolean => {
   return typeof reason.text === 'string'
     && (reason.tone === undefined || reason.tone === 'neutral' || reason.tone === 'warning')
     && (reason.detail === undefined || typeof reason.detail === 'string')
-    && (reason.offersPhaseSetting === undefined || reason.offersPhaseSetting === true)
-    && (reason.offersCarConfirmation === undefined || reason.offersCarConfirmation === true)
+    && isOptionalOffer(reason.offersPhaseSetting)
+    && isOptionalOffer(reason.offersHomeyEnergySetup)
+    && isOptionalOffer(reason.offersCarConfirmation)
     && isCountdown(reason.countdown);
 };
 

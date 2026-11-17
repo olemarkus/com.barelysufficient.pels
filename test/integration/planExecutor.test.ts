@@ -463,6 +463,7 @@ describe('PlanExecutor declined actuator requests', () => {
         softLimitKw: 5,
         headroomKw: -1}),
       devices: [pd({
+        currentDrawKw: 1,
         id: 'dev-1',
         name: 'Heater',
         currentState: 'on' as const,
@@ -586,6 +587,7 @@ describe('PlanExecutor restore logging', () => {
           residualKw: fixtureResidualKw({ currentDrawKw: 0, expectedPowerKw: 1 }),
         }),
         pd({
+          currentDrawKw: 1,
           id: 'dev-1',
           name: 'Heater',
           currentState: 'on' as const,
@@ -905,6 +907,7 @@ describe('PlanExecutor restore logging', () => {
         softLimitKw: 5,
         headroomKw: -1}),
       devices: [pd({
+        currentDrawKw: 1,
         id: 'dev-1',
         name: 'Heater',
         currentState: 'on' as const,
@@ -1051,6 +1054,7 @@ describe('PlanExecutor restore logging', () => {
         softLimitKw: 5,
         headroomKw: -1}),
       devices: [pd({
+        currentDrawKw: 1,
         id: 'dev-1',
         name: 'Heater',
         currentState: 'on' as const,
@@ -1154,6 +1158,7 @@ describe('PlanExecutor restore logging', () => {
         softLimitKw: 5,
         headroomKw: -1}),
       devices: [pd({
+        currentDrawKw: 1,
         id: 'dev-1',
         name: 'Heater',
         currentState: 'on' as const,
@@ -1498,6 +1503,7 @@ describe('PlanExecutor pending target commands', () => {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
       devices: [
         pd({
+          currentDrawKw: 1,
           id: 'dev-1',
           name: 'Heater',
           deviceType: 'temperature',
@@ -1546,6 +1552,7 @@ describe('PlanExecutor pending target commands', () => {
     await expect(executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
       devices: [pd({
+        currentDrawKw: 1,
         id: 'dev-1',
         name: 'Heater',
         binaryCapabilityId: 'onoff',
@@ -1949,6 +1956,7 @@ describe('PlanExecutor stepped loads', () => {
 
   it('issues independent sheds while another device write waits, isolates failures, and awaits every device', async () => {
     const binaryShed = (id: string) => pd({
+      currentDrawKw: 1,
       id, name: id, controllable: true, available: true,
       binaryCapabilityId: 'onoff', binaryControl: { on: true },
       currentState: 'on', plannedState: 'shed', shedAction: 'turn_off', reason: CAPACITY_REASON,
@@ -3747,6 +3755,7 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'max', reportedStepId: 'max', desiredStepId: 'off', plannedShedStepId: 'off',
     });
     plan.devices.unshift(pd({
+      currentDrawKw: 1,
       id: 'slow', name: 'Slow device', controllable: true, binaryCapabilityId: 'onoff',
       binaryControl: { on: true }, currentState: 'on', plannedState: 'shed', shedAction: 'turn_off',
       reason: CAPACITY_REASON,
@@ -5138,6 +5147,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           headroomKw: 4}),
         devices: [
           pd({
+            currentDrawKw: 1,
             id: 'dev-1',
             name: 'Tank',
             currentState: 'off' as const,

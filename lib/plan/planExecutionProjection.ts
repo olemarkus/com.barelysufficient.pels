@@ -1,5 +1,6 @@
 import type { DevicePlan } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice, isPlanDeviceObservedOff, isPlanDeviceObservedOn } from './planSteppedLoad';
 import { buildPlannedSteppedCommand, resolveSteppedLoadCurrentFallback } from './planSteppedCommand';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
@@ -154,6 +155,9 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
 const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
+  // A device can remain visible before power setup, or after losing its power
+  // facet. Neither permits an ON intent, even when it has a standing shed.
+  if (!isMeteredPlanDevice(dev)) return undefined;
   if (dev.control.commandAuthority === false) {
     return dev.plannedState === 'keep'
       ? { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'uncontrolled' }
@@ -238,7 +242,8 @@ function qualifyStableOperations(device: PlanDevice, commands: PlannedDeviceComm
     ? commands.steppedLoad
     : undefined;
   const operations: (StableExecutionOperation | undefined)[] = [
-    !device.control.commandAuthority && device.plannedState === 'keep' && isPlanDeviceObservedOff(device)
+    isMeteredPlanDevice(device) && !device.control.commandAuthority
+      && device.plannedState === 'keep' && isPlanDeviceObservedOff(device)
       ? 'uncontrolled_restore' : undefined,
     hasStableBinaryRelease(device) ? 'binary_release' : undefined,
     ...(step ? qualifyStableStepOperations(device, step) : []),

@@ -67,6 +67,17 @@ describe('links that open a new tab', () => {
     expect(client.openURL.mock.calls).toEqual([['https://pels.barelysufficient.org/smart-tasks#relay']]);
   });
 
+  it('reaches Homey before a card or popover stops the link click from bubbling', () => {
+    const client = { openURL: vi.fn() };
+    getHomeyClient.mockReturnValue(client);
+    const link = document.getElementById('guide')!;
+    link.addEventListener('click', (event) => event.stopPropagation());
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(client.openURL).toHaveBeenCalledWith('https://support.homey.app/guide');
+  });
+
   it('leaves them to the browser in the web app, which has no openURL', () => {
     getHomeyClient.mockReturnValue({});
 

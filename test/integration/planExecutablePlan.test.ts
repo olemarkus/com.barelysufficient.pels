@@ -10,6 +10,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 
 const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: buildPlanMeta({
@@ -23,6 +24,23 @@ const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
 });
 
 describe('planExecutablePlan', () => {
+  it.each([false, true])('emits no binary command before power data, saved control=%s', (controllable) => {
+    const device = buildPlanDevice({ id: 'needs-energy', unmetered: true, deviceType: 'onoff',
+      currentState: 'off', currentOn: false, controllable, plannedState: 'keep' });
+    const plan = planWithDevices([device]);
+    const command = buildExecutablePlan(plan).devices[0];
+    expect(command).not.toHaveProperty('binary');
+    expect(buildExecutionPlan(plan).devices[0].stableOperations).not.toContain('uncontrolled_restore');
+  });
+
+  it('resumes the ordinary uncontrolled projection once power data returns', () => {
+    const device = buildPlanDevice({ id: 'configured-energy', deviceType: 'onoff',
+      currentDrawKw: 0, currentState: 'off', currentOn: false, controllable: false, plannedState: 'keep' });
+    const plan = planWithDevices([device]);
+    expect(buildExecutablePlan(plan).devices[0]).toMatchObject({ binary: { desiredOn: true, source: 'uncontrolled' } });
+    expect(buildExecutionPlan(plan).devices[0].stableOperations).toContain('uncontrolled_restore');
+  });
+
   describe('observed binary axis vs effective on', () => {
     // These two fields were ONE field whose meaning depended on which path
     // constructed it. They are separate because two different questions are
