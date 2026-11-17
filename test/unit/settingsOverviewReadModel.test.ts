@@ -737,9 +737,10 @@ describe('settingsOverviewReadModel', () => {
     expect(buildDeviceCard(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
-  it('names the device\u2019s own target while PELS holds it off and drives no target', () => {
-    // A heater its finished smart task held off read `target 18 °C → 20 °C` for
-    // hours: the plan's target was the task floor, and nothing wrote it.
+  it('names the device\u2019s own target and the planned one, also while PELS holds it off', () => {
+    // Owner ruling 2026-11-17: the card always shows the device's setpoint and
+    // the one PELS plans to set, whether or not a write is going out. (It used to
+    // show only the device's own while held off.)
     const device = {
       ...buildPlanDevice({
         id: 'held-heater', deviceType: 'temperature', binaryCapabilityId: 'onoff', currentState: 'off',
@@ -750,8 +751,8 @@ describe('settingsOverviewReadModel', () => {
     const held = buildOverviewDeviceCard(device, { ...overviewReadModelWiring(), ...observedTemperature(18, 20.7),
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), desiredBinary: 'off', targetProgress: 'undriven' }),
       dryRun: false, nowMs: 0 });
-    expect(held.status.factText).toBe('20.7 °C · target 18 °C');
-    expect(held.status.reading).toEqual({ kind: 'temperature', currentC: 20.7, targetC: 18 });
+    expect(held.status.factText).toBe('20.7 °C · target 18 °C → 20 °C');
+    expect(held.status.reading).toEqual({ kind: 'temperature', currentC: 20.7, targetC: 20 });
     const driven = buildOverviewDeviceCard({ ...device, plannedState: 'keep', currentState: 'on' }, {
       ...overviewReadModelWiring(), ...observedTemperature(18, 20.7),
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), targetProgress: 'pending' }),
