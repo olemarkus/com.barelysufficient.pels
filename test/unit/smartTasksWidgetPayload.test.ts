@@ -31,6 +31,7 @@ import {
   ROW_CAP,
 } from '../../widgets/smart_tasks/src/smartTasksWidgetPayload';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
+import { resolveSmartTaskRowFacts } from '../../packages/shared-domain/src/smartTaskRowFacts';
 
 const NOW = new Date('2026-05-26T10:00:00.000Z').getTime();
 const HOUR = 60 * 60 * 1000;
@@ -76,6 +77,43 @@ const buildInput = (plansByDeviceId: Record<string, ActivePlanFixture>, devices:
 });
 
 describe('buildSmartTasksWidgetPayload', () => {
+  test.each([undefined, 'awaiting_horizon_plan'] as const)(
+    'shows the live price pause instead of a cached schedule (old reason: %s)', (pendingReason) => {
+      const saved = buildPlan({});
+      const paused = buildPlan({
+        diagnosticReasonCode: 'objective_price_feature_disabled',
+        pendingReason,
+        latest: { ...saved.latest!, estimatedDurationText: '2h', planningSpeedKw: 1 },
+      });
+      const payload = buildSmartTasksWidgetPayload(buildInput({ dev: paused }));
+      const pausedInput = buildInput({ dev: paused });
+      expect(resolveSmartTaskRowFacts(pausedInput.activePlans.plansByDeviceId.dev, undefined, NOW).firstActionAtMs)
+        .toBeNull();
+      expect(payload.state).toBe('ready');
+      if (payload.state !== 'ready') return;
+      expect(payload.rows[0]).toMatchObject({
+        whyLabel: 'Respond to prices is off.',
+        etaVerb: 'Due',
+        planMetaLabel: null,
+        confidenceLabel: null,
+        chart: null,
+      });
+      expect(payload.rows[0].recourseHint).toContain('Turn on Respond to prices');
+      const device = buildSmartTaskDeviceView(buildInput({ dev: paused }), 'dev');
+      expect(device.active?.run).toEqual({ kind: 'none_ahead' });
+      expect(device.active?.row.whyLabel).toBe('Respond to prices is off.');
+      const recovered = buildSmartTasksWidgetPayload(buildInput({ dev: saved }));
+      expect(recovered.state).toBe('ready');
+      if (recovered.state !== 'ready') return;
+      expect(recovered.rows[0].whyLabel).not.toBe('Respond to prices is off.');
+      expect(buildSmartTaskDeviceView(buildInput({ dev: saved }), 'dev').active?.run)
+        .toEqual({ kind: 'running_now' });
+      const recoveredInput = buildInput({ dev: saved });
+      expect(resolveSmartTaskRowFacts(recoveredInput.activePlans.plansByDeviceId.dev, undefined, NOW).firstActionAtMs)
+        .toBe(NOW);
+    },
+  );
+
   test('returns empty payload with action hint when no active plans', () => {
     const payload = buildSmartTasksWidgetPayload({ activePlans: null, devices: [], nowMs: NOW });
     expect(payload).toEqual({

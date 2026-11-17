@@ -1,6 +1,7 @@
 // Why a smart task is waiting or paused: the pending and exclusion reasons and
 // the one-line copy each surface shares for them.
 import type {
+  DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanPendingReason,
 } from '../../../contracts/src/deferredObjectiveActivePlans';
@@ -106,6 +107,22 @@ export const resolveExclusionPendingReason = (
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'device_unmanaged';
   return null;
 };
+
+/** A live policy blocker invalidates even a previously committed schedule. */
+export const resolveCurrentSmartTaskPendingReason = (
+  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
+): DeadlinePlanPendingReason | null => (
+  resolveExclusionPendingReason(diagnosticReasonCode)
+    ?? (diagnosticReasonCode === 'objective_price_feature_disabled' ? 'price_feature_disabled' : null)
+);
+
+/** Price response being off stops the task while preserving its saved goal. */
+export const isSmartTaskPricePaused = (plan: Pick<
+  DeferredObjectiveActivePlanV1, 'diagnosticReasonCode' | 'pendingReason' | 'pending' | 'latest'
+>): boolean => (
+  plan.diagnosticReasonCode === 'objective_price_feature_disabled'
+    || ((plan.pending || plan.latest === null) && plan.pendingReason === 'price_feature_disabled')
+);
 
 /**
  * "Is this task paused by a durable device exclusion?" — the one predicate every

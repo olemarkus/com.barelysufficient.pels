@@ -932,6 +932,38 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(false);
   });
 
+  it.each([false, true])('deadline_status_is price pause preserves waiting only before a first plan (pending=%s)', async (pending) => {
+    const paused = buildActivePlan({
+      pending,
+      planStatus: 'on_track',
+      pendingReason: pending ? 'price_feature_disabled' : undefined,
+      diagnosticReasonCode: 'objective_price_feature_disabled',
+    });
+    const activePlans = buildActivePlans([paused]);
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans,
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true, kind: 'temperature', enforcement: 'soft',
+        targetTemperatureC: 55, deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(pending);
+    for (const status of ['on_track', 'at_risk', 'unachievable', 'satisfied']) {
+      expect(await condition.run!({ device: 'heater-1', status })).toBe(false);
+    }
+    // The task still exists while its saved schedule is not in force.
+    expect(await mock.conditions.get('has_active_deadline')!.run!({ device: 'heater-1' })).toBe(true);
+    if (!pending) {
+      delete paused.diagnosticReasonCode;
+      expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(true);
+    }
+  });
+
   it('deadline_status_is returns true for waiting when a task has no status yet', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],

@@ -17,9 +17,9 @@ test('steady variant: the default fixture (one healthy task) renders the muted a
   await expect(row).toHaveAttribute('data-variant', 'steady');
 });
 
-test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }) => {
+test('cannot-finish replaces the steady summary with a detailed actionable status', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(400);
+  await expect(page.locator(ROW)).toHaveAttribute('data-variant', 'steady');
   await page.evaluate(() => {
     const homey = (window as unknown as {
       Homey: {
@@ -47,11 +47,13 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
       },
     });
   });
-  const row = page.locator(ROW);
-  await expect(row).toHaveAttribute('data-variant', 'cannot_finish');
+  const row = page.locator('#plan-smart-task-status [data-task-device-id="dev_connected300"]');
+  await expect(row).toHaveAttribute('data-tone', 'alert');
   await expect(row).toContainText('Connected 300');
-  await expect(row).toContainText('Cannot finish · Due ');
+  await expect(row).toContainText('Cannot finish');
+  await expect(row.getByRole('button', { name: 'View task', exact: true })).toBeVisible();
   await expect(row).not.toContainText('Ready by');
+  await expect(page.locator(ROW)).toHaveCount(0);
 });
 
 // The rollup reads only runs inside the `Last 7 days` window, so the fixture
@@ -92,6 +94,24 @@ test('miss-streak rollup renders for the failing-recovering visitor and taps thr
   const row = page.locator(ROW);
   await expect(row).toHaveAttribute('data-variant', 'miss_streak');
   await expect(row).toHaveText(/Water Heater — 3 of last 4 runs missed/);
+
+  // Current failures and recent misses convey different facts; keep both.
+  await page.evaluate(() => {
+    const homey = (window as unknown as {
+      Homey: { __stub: { emitHomeyEvent: (event: string, payload: unknown) => void } };
+    }).Homey;
+    homey.__stub.emitHomeyEvent('deferred_objective_active_plans_updated', {
+      version: 2,
+      plansByDeviceId: {
+        dev_connected300: {
+          pending: false, deviceName: 'Connected 300', deadlineAtMs: Date.now() + 6 * 3_600_000,
+          latest: { planStatus: 'cannot_meet', hours: [] },
+        },
+      },
+    });
+  });
+  await expect(page.locator('#plan-smart-task-status')).toContainText('Cannot finish');
+  await expect(row).toHaveAttribute('data-variant', 'miss_streak');
 
   await row.click();
   await expect(page.locator('#deadlines-panel')).toBeVisible();

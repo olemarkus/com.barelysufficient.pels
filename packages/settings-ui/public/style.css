@@ -1653,6 +1653,42 @@ md-filled-tonal-button.is-busy {
   min-width: 0;
 }
 
+.plan-task-status {
+  margin-block: var(--spacing-2);
+  padding: var(--spacing-4);
+}
+
+.plan-task-status__list {
+  display: grid;
+  gap: var(--spacing-4);
+  list-style: none;
+  margin: var(--spacing-4) 0 0;
+  padding: 0;
+}
+
+.plan-task-status__item {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.plan-task-status__item + .plan-task-status__item {
+  border-block-start: 1px solid var(--pels-surface-outline);
+  padding-block-start: var(--spacing-4);
+}
+
+.plan-task-status__headline {
+  margin-block: var(--spacing-2);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plan-task-status__item[data-tone="warn"] .plan-task-status__headline {
+  color: var(--pels-status-on-warning);
+}
+
+.plan-task-status__item[data-tone="alert"] .plan-task-status__headline {
+  color: var(--danger);
+}
+
 /* `.pels-hero` is the canonical hero / section-header primitive. `.plan-hero`
    is the historical alias — they resolve to the same rules so the existing
    Overview / Usage / Deadline-plan surfaces keep working unchanged while

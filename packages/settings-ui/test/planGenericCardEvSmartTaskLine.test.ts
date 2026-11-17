@@ -43,6 +43,13 @@ afterEach(() => {
 });
 
 describe('resolveEvCardStateLines', () => {
+  it('omits cached charging and next-start lines while price response is off', () => {
+    for (const startsAtMs of [Date.UTC(2026, 0, 1, 1), Date.UTC(2026, 0, 1, 3)]) {
+      seedEvTask([startsAtMs], { diagnosticReasonCode: 'objective_price_feature_disabled' });
+      expect(resolveEvCardStateLines(NOW_MS).has(CHARGER_ID)).toBe(false);
+    }
+  });
+
   it('gives the planned finish while a planned hour runs', () => {
     const currentHour = Date.UTC(2026, 0, 1, 1, 0, 0);
     seedEvTask([currentHour, currentHour + HOUR_MS]);

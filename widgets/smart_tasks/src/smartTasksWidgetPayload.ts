@@ -59,6 +59,8 @@ import {
   resolveMissedHistoryRecourse,
 } from '../../../packages/shared-domain/src/smartTaskCopy/missedHistoryRecourse';
 import {
+  isSmartTaskPricePaused,
+  resolveCurrentSmartTaskPendingReason,
   suppressesSmartTaskConfidenceChip,
 } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import {
@@ -270,9 +272,11 @@ const resolveRowCopy = (
   firstPlannedTimeLabel: string | null,
 ): RowCopy => {
   const { statusId } = facts;
+  const pendingReason = resolveCurrentSmartTaskPendingReason(plan.diagnosticReasonCode) ?? plan.pendingReason;
+  const pricePaused = isSmartTaskPricePaused(plan);
   const detail = resolveSmartTaskWidgetDetailCopy({
     statusId,
-    pendingReason: plan.pendingReason,
+    pendingReason,
     diagnosticReasonCode: plan.diagnosticReasonCode,
     floorShortfallCause: plan.latest?.floorShortfallCause,
     ...(plan.latest?.budgetContributedToShortfall === true
@@ -285,13 +289,14 @@ const resolveRowCopy = (
   // diagnosis ("why" + recourse) is what the distressed visitor came for, and
   // dropping the meta keeps the 220 px detail panel from pushing the recourse
   // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
-  const suppressPlanMeta = statusId === 'cannot_meet' || smartTaskScheduleNoLongerGoverns(statusId) || !plan.latest;
+  const suppressPlanMeta = pricePaused || statusId === 'cannot_meet'
+    || smartTaskScheduleNoLongerGoverns(statusId) || !plan.latest;
   // "Estimating" alongside a pending "why" line reads as two conflicting
   // blocked states; those reasons own the row. Routed through the shared
   // resolver so a record with no `pendingReason` is judged by the same rule the
   // copy above used — comparing the raw field here let the two disagree.
-  const suppressConfidence = smartTaskScheduleNoLongerGoverns(statusId)
-    || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(plan.pendingReason));
+  const suppressConfidence = pricePaused || smartTaskScheduleNoLongerGoverns(statusId)
+    || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(pendingReason));
   return {
     planMetaLabel: suppressPlanMeta || plan.latest === null
       ? null
@@ -313,7 +318,9 @@ const buildRow = (
   timeZone: string | null,
 ): SmartTasksWidgetRow => {
   const { statusId, firstActionAtMs, currentValue } = facts;
-  const firstPlannedTimeLabel = firstActionAtMs === null ? null : formatLocalHHMM(firstActionAtMs, timeZone);
+  const pricePaused = isSmartTaskPricePaused(plan);
+  const firstPlannedTimeLabel = firstActionAtMs === null || pricePaused
+    ? null : formatLocalHHMM(firstActionAtMs, timeZone);
   const copy = resolveRowCopy(plan, facts, firstPlannedTimeLabel);
   return {
     deviceId,
@@ -325,7 +332,9 @@ const buildRow = (
     finishLabel: formatLocalHHMM(plan.deadlineAtMs, timeZone),
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId],
-    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || smartTaskScheduleNoLongerGoverns(statusId)),
+    etaVerb: resolveSmartTaskWidgetEtaVerb(
+      pricePaused || statusId === 'cannot_meet' || smartTaskScheduleNoLongerGoverns(statusId),
+    ),
     targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
     targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
     deadlineLongLabel: formatSmartTaskDeadlineLong(plan.deadlineAtMs, nowMs, timeZone),
@@ -335,7 +344,7 @@ const buildRow = (
     recourseHint: copy.recourseHint,
     // A committed plan may still carry a cached trajectory after the device left
     // the planned set. Suppress it: those hours no longer govern.
-    chart: smartTaskScheduleNoLongerGoverns(statusId)
+    chart: pricePaused || smartTaskScheduleNoLongerGoverns(statusId)
       ? null
       : resolveActivePlanChartData(plan, { nowMs, currentValue }),
   };
@@ -483,6 +492,7 @@ export type SmartTaskDeviceView = {
 
 // The settled booking bounds decide whether the task is scheduled now.
 const resolveRunTiming = (plan: ResolvedDeferredObjectiveActivePlanV1, nowMs: number): SmartTaskRunTiming => {
+  if (isSmartTaskPricePaused(plan)) return { kind: 'none_ahead' };
   const booked = hoursWithPlannedEnergy(plan.latest?.hours ?? []);
   if (booked.some((hour) => (hour.coversFromMs ?? hour.startsAtMs) <= nowMs && nowMs < hour.endsAtMs)) {
     return { kind: 'running_now' };
