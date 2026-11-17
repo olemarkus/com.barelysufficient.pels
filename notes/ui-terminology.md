@@ -960,6 +960,12 @@ fall in that time, so `{count} times` reads `Once` when one round is left in the
 hour. Dismissing the recommendation hides that contest while it runs; a later
 contest on the same device shows again.
 
+The Settings → Devices list shows an amber `Not keeping changes` status chip
+while the device is managed and this same warning is active. Its tooltip is the
+notice title; the row's settings button opens the full explanation. Dismissing
+the recommendation does not hide the chip. It leaves the other chips and reason
+lines in place.
+
 ### Device-page "Power when running" — one line about the present source
 
 The device's Setup section carries **Power when running** (watts, `suffix-text="W"`)

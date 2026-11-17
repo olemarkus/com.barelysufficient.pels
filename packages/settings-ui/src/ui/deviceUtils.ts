@@ -58,6 +58,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   // resolved by the runtime for every listed device (`not_battery` / false
   // for the rest).
   & SettingsUiBatteryState
+  & ControlContestDecoration
   // The zone's name; the descriptor's `zone` is Homey's zone id, never shown.
   & Pick<SettingsUiDeviceSnapshot, 'zoneName'>;
 
@@ -72,8 +73,6 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
     'flowConflict' | 'automaticPowerControl'
   >
-  // Present while the device keeps moving away from what PELS set.
-  & ControlContestDecoration
   & { phaseFootprintRead?: SettingsUiPhaseFootprintRead }
   & { chargingPhaseControl?: import('../../../contracts/src/chargingPhases.ts').ChargingPhaseRead }
   // Present while PELS's level changes draw no level report back (`SettingsUiDeviceSnapshot`).

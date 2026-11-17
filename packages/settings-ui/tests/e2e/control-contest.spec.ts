@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './fixtures/test';
+import { expect, renderTest as test, type Page } from './fixtures/test';
 
 const contested = {
   id: 'dev_mill',
@@ -29,10 +29,22 @@ test.describe('A device that does not keep what PELS sets', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Settings' }).click();
     await page.locator('.settings-nav-card[data-settings-target="devices"]').click();
-    await page.locator('#devices-panel [data-device-id="dev_mill"] .pels-device-card__detail-button').first().click();
+    const row = page.locator('#devices-panel [data-device-id="dev_mill"]').first();
+    await expect(row.locator('.pels-icon-toggle').first()).not.toHaveClass(/\bis-disabled\b/u);
+    const chip = row.locator('.plan-chip[data-tone="warn"]');
+    await expect(chip).toHaveText('Not keeping changes');
+    await row.screenshot({ path: testInfo.outputPath('control-contest-device-list.png') });
+    expect(await row.locator('.pels-device-card__name').evaluate((element) => (
+      element.scrollWidth <= element.clientWidth
+    ))).toBe(true);
+    expect(await page.evaluate(() => (
+      document.documentElement.scrollWidth <= document.documentElement.clientWidth
+    ))).toBe(true);
+    await row.locator('.pels-device-card__detail-button').click();
 
     const notice = page.locator('#device-detail-control-contest-notice');
     await expect(notice).toBeVisible();
+    await expect(page.locator('#device-detail-setup-disclosure')).toHaveAttribute('open', '');
     await expect(notice).toContainText("Gang nede ovn doesn't keep PELS's changes");
     await expect(notice).toContainText('PELS set Gang nede ovn to 4.5 °C and Gang nede ovn then reported 5 °C');
     expect(await page.locator('#device-detail-panel').evaluate((panel) => (
