@@ -862,6 +862,25 @@ applies.
 | `Smart task` (device that can carry one) | `Reach a target by a time, at the cheapest hours` · `Add` | `Target 65 °C · Ready by …` · `View` |
 | `Schedules` (device a schedule can act on, or one that has schedules) | `None for this device` · `Add` | `2 for this device · next Mon 06:00` · `View` |
 
+The Schedules row says when the device's schedules will not run, so a nightly
+task that would be skipped is seen on the page that holds the Managed switch:
+`1 for this device · not running while Managed is off` while a switched-on
+schedule belongs to a device PELS does not manage, else `2 for this device · 1
+needs attention` (`need` for several) when the schedule owner marks some as
+unable to run. The Schedules page then names the device instead of `Unavailable
+device` and gives the row the reason `PELS does not manage this device, so this
+schedule cannot run. Turn on Managed for the device, or delete the schedule.`
+(source: `SCHEDULE_UNMANAGED_REASON` in `Schedules.tsx`); the schedule owner's own
+reason stays for a managed device that no longer fits the task. The Smart tasks
+page carries the same fact above its list, with `See why` opening the task
+schedules: `1 task schedule cannot run, so it creates no Smart task.` (`2 task
+schedules cannot run, so they create no Smart tasks.`).
+
+In Simulation mode the New smart task page states `Simulation mode is on. PELS
+plans this Smart task and shows the plan, but does not run the device.` above its
+fields and its preview; the global simulation banner covers the other Smart task
+pages.
+
 **Override** is one setting PELS holds on a device until a chosen time; today a
 temperature. Its row opens a form in place of the list (copy in
 `deviceOverrideDraft.ts`): `Temperature (°C)`, `Ends`: `In 2 hours` / `At 08:00` /

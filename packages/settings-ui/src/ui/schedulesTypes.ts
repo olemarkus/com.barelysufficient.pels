@@ -18,6 +18,11 @@ export type SchedulesViewSnapshot = {
   load: 'loading' | 'ready' | 'error';
   read: SchedulesSnapshot | null;
   devices: readonly SmartTaskCandidateDevice[];
+  /**
+   * Homey devices PELS does not manage, name by id. A schedule for one cannot
+   * run, and the row says so by the device's name; empty until devices are read.
+   */
+  unmanagedDeviceNames: Readonly<Record<string, string>>;
   busy: boolean;
   error: string;
   editor: ScheduleEditor | null;

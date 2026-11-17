@@ -295,12 +295,14 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   // bootstrap `.then` (cards) or the history `.then` (presence) can trigger it.
   let latestCards: DeadlinesListCard[] | null = null;
   let historyPresent: boolean | undefined;
+  let schedulesNotRunning = 0;
   const renderActiveReady = (): void => {
     if (latestCards === null) return;
     const state: DeadlinesListState = {
       status: 'ready',
       cards: latestCards,
       historyPresent,
+      schedulesNotRunning,
       // Honest Main-only notice gate (multi-home locked decision 4). Read at
       // render time from the shell's roster — fresh here because the roster
       // refreshes on `homes_config` realtime pushes and on every scope-aware
@@ -337,6 +339,10 @@ export const refreshDeadlinesList = async (): Promise<void> => {
       callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
     ]);
     const objectiveSettings = normalizeDeferredObjectiveRoster(bootstrap.deferredObjectives);
+    schedulesNotRunning = devicesPayload.schedules?.ok === true
+      ? devicesPayload.schedules.data.entries
+        .filter((entry) => entry.schedule.action.type === 'task' && entry.state === 'invalid').length
+      : 0;
     latestCards = resolveDeadlinesListCards(
       bootstrap.deferredObjectiveActivePlans,
       objectiveSettings,
@@ -371,6 +377,10 @@ subscribeToHomeScope(() => {
 // The New smart task flow paints into its own surface on this page. Its
 // controller (`smartTaskCreate.ts`) owns the flow; this wires its view and
 // refreshes the list it returns to.
+/** On the New smart task flow while Simulation mode is on: the plan is shown, never carried out. */
+export const SMART_TASK_SIMULATION_NOTE = 'Simulation mode is on. PELS plans this Smart task and shows the plan, '
+  + 'but does not run the device.';
+
 const smartTaskCreateActions: SmartTaskCreateActions = {
   onBack: backFromSmartTaskCreate,
   onRetry: retrySmartTaskCreateLoad,
@@ -410,6 +420,8 @@ const paintSmartTaskCreate = (snapshot: SmartTaskCreateSnapshot | null): void =>
     solarNote: (step.kind === 'compose' || step.kind === 'preview')
       && state.priceOptimizationSettings[step.device.deviceId]?.surplusWilling === true
       ? 'While active, the Smart task decides when this device runs and may use grid electricity.' : null,
+    simulationNote: (step.kind === 'compose' || step.kind === 'preview') && state.dryRun
+      ? SMART_TASK_SIMULATION_NOTE : null,
     overrideNote: step.kind === 'compose' || step.kind === 'preview'
       ? resolveSmartTaskCreateOverrideNote(step.device.deviceId) : null,
     actions: smartTaskCreateActions,

@@ -23,7 +23,7 @@ const actions: SchedulesActions = {
 };
 
 const snapshot = (): SchedulesViewSnapshot => ({
-  load: 'ready', busy: false, error: '', editor: null, filter: 'all', devices: [],
+  load: 'ready', busy: false, error: '', editor: null, filter: 'all', devices: [], unmanagedDeviceNames: {},
   read: { timeZone: 'Europe/Oslo', modes: ['Home', 'Night'], entries: [entry],
     controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] } },
 });

@@ -5,6 +5,7 @@ import { scheduleActionDeviceId } from '../../../../shared-domain/src/settings/s
 import { DEVICE_OVERRIDE_CHANGED_EVENT } from '../deviceOverrideStore.ts';
 import { callApi } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
+import { resolveManagedState } from '../state.ts';
 import {
   DeviceTemporaryCard, type TemporarySchedulesRow, type TemporarySmartTaskRow,
 } from '../views/DeviceTemporaryCard.tsx';
@@ -25,7 +26,15 @@ import {
  * schedules and paints the three together. The card is hidden while it has no
  * row to show.
  */
-type ScheduleCount = { deviceId: string; count: number; nextLabel: string };
+type ScheduleCount = {
+  deviceId: string;
+  count: number;
+  nextLabel: string;
+  /** Schedules that are switched on and have a trigger left. */
+  live: number;
+  /** Of those, the ones the schedule owner says cannot run. */
+  needsAttention: number;
+};
 
 let deviceId: string | null = null;
 let schedules: ScheduleCount | null = null;
@@ -43,7 +52,7 @@ const smartTaskRow = (): TemporarySmartTaskRow | null => {
 const schedulesRow = (current: string): TemporarySchedulesRow | null => {
   if (schedules?.deviceId !== current) return null;
   if (schedules.count === 0 && !isDeviceSmartTaskCandidate(current)) return null;
-  return { ...schedules, override: getDeviceOverrideScheduleLink() };
+  return { ...schedules, managed: resolveManagedState(current), override: getDeviceOverrideScheduleLink() };
 };
 
 const paint = (): void => {
@@ -78,7 +87,11 @@ const readDeviceSchedules = async (current: string): Promise<void> => {
         .filter((entry) => scheduleActionDeviceId(entry.schedule.action) === current);
       const due = entries.filter((entry) => entry.nextAtMs !== null)
         .sort((left, right) => (left.nextAtMs ?? 0) - (right.nextAtMs ?? 0))[0];
-      next = { deviceId: current, count: entries.length, nextLabel: due?.nextLabel ?? '' };
+      next = {
+        deviceId: current, count: entries.length, nextLabel: due?.nextLabel ?? '',
+        live: entries.filter((entry) => entry.state !== 'off' && entry.state !== 'finished').length,
+        needsAttention: entries.filter((entry) => entry.state === 'invalid').length,
+      };
     }
   } catch (error) {
     void logSettingsError('Failed to read device schedules', error, 'device temporary card');

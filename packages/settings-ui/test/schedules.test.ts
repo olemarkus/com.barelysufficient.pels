@@ -18,7 +18,10 @@ vi.mock('../src/ui/views/Schedules.tsx', () => ({
     renders.push({ snapshot, actions });
   },
 }));
-vi.mock('../src/ui/state.ts', () => ({ state: { activePanel: 'schedules' } }));
+vi.mock('../src/ui/state.ts', () => ({
+  state: { activePanel: 'schedules', latestDevices: [{ id: 'charger', name: 'Garage charger' }, { id: 'tank', name: 'Tank' }] },
+  resolveManagedState: (deviceId: string) => deviceId === 'tank',
+}));
 const controller = await import('../src/ui/schedules.ts');
 const schedule: Schedule = {
   id: 'night', name: 'Night mode', enabled: true, at: '22:00',
@@ -48,6 +51,11 @@ beforeEach(() => {
 });
 
 describe('Schedule settings bridge', () => {
+  it('hands the view the devices PELS does not manage, by name', async () => {
+    await controller.refreshSchedules();
+    expect(renders.at(-1)?.snapshot.unmanagedDeviceNames).toEqual({ charger: 'Garage charger' });
+  });
+
   it('keeps a valid task device, target and permissions when its action is selected again', async () => {
     const heater: SmartTaskCandidateDevice = {
       deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
