@@ -220,7 +220,7 @@
       },
       devices: [
         {
-          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"1.2 kW","powerVariant":"live","factText":"20.3 °C · target 22 °C → 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"1.2 kW","powerVariant":"live","factText":"20.3 °C · target 22 °C → 21 °C" } },
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"1.2 kW","powerVariant":"live","factText":"20.3 °C · set to 22 °C → planned 21 °C","targetDetail":"Set to 22 °C. PELS is setting 21 °C.","reading":{"kind":"temperature","currentC":20.3,"targetC":21} }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"1.2 kW","powerVariant":"live","factText":"20.3 °C · set to 22 °C → planned 21 °C","targetDetail":"Set to 22 °C. In simulation PELS changes nothing; it would set 21 °C.","reading":{"kind":"temperature","currentC":20.3,"targetC":21} } },
           id: 'dev_heatpump',
           name: 'Living Room Heat Pump',
           currentState: 'on',
@@ -233,7 +233,7 @@
           // reports 22); `plannedTarget` is planner-owned and follows the
           // active Home mode (21, see mode_device_targets). They legitimately
           // differ mid-transition, and the card grammar renders the honest
-          // arrow form (`target 22 °C → 21 °C`) — a fixture that forces them
+          // arrow form (`set to 22 °C → planned 21 °C`) — a fixture that forces them
           // equal hides that state, and one that diverges them with NO arrow
           // (the old 22/22 against a 21 mode row) reads as numbers that
           // don't reconcile.
@@ -285,7 +285,7 @@
           shedAction: 'turn_off',
         },
         {
-          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.0 kW","powerVariant":"live","factText":"22.8 °C · target 16 °C → 20 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.0 kW","powerVariant":"live","factText":"22.8 °C · target 16 °C → 20 °C" } },
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.0 kW","powerVariant":"live","factText":"22.8 °C · set to 16 °C → planned 20 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.0 kW","powerVariant":"live","factText":"22.8 °C · set to 16 °C → planned 20 °C" } },
           id: 'dev_bedroom',
           name: 'Bedroom Thermostat',
           currentState: 'on',

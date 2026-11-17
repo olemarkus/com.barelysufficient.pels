@@ -35,7 +35,7 @@ describe('simulation action previews', () => {
       const status = buildDeviceStatus(modeTemperature(target, controllable), true, 0);
       expect(status).toMatchObject({ label: 'Running', limited: false, wouldLimit: false,
         canEaseOff: controllable, controlOffDrawing: !controllable,
-        factText: `50.0 °C · target 55 °C → ${target} °C`,
+        factText: `50.0 °C · set to 55 °C → planned ${target} °C`,
         reading: { kind: 'temperature', currentC: 50, targetC: target },
         reason: { text: `Would set target to ${target} °C (simulation)` },
       });
@@ -83,7 +83,18 @@ describe('simulation action previews', () => {
     };
 
     const status = buildDeviceStatus(heldOff, false, 0);
-    expect(status.factText).toBe('21.9 °C · target 28 °C → 22 °C');
+    expect(status.factText).toBe('21.9 °C · set to 28 °C → planned 22 °C');
+    // The device page header says which side is which, when and why.
+    expect(status.targetDetail).toBe('Set to 28 °C. PELS sets 22 °C when it resumes the device.');
+    expect(buildDeviceStatus({ ...heldOff, temporaryTemperatureActive: true }, false, 0).targetDetail)
+      .toBe('Set to 28 °C. PELS sets 22 °C when it resumes the device (override).');
+    const driven = { ...heldOff, execution: { ...heldOff.execution, targetProgress: 'pending' as const } };
+    expect(buildDeviceStatus(driven, false, 0).targetDetail).toBe('Set to 28 °C. PELS is setting 22 °C.');
+    expect(buildDeviceStatus(driven, true, 0).targetDetail)
+      .toBe('Set to 28 °C. In simulation PELS changes nothing; it would set 22 °C.');
+    const shifted = { ...driven, priceTargetShift: { kind: 'shifted', direction: 'lowered', priceLevel: 'expensive' } as const };
+    expect(buildDeviceStatus(shifted, false, 0).targetDetail)
+      .toBe('Set to 28 °C. PELS is setting 22 °C (lowered while power is expensive).');
     expect(status.reading).toMatchObject({ targetC: 22 });
     // One value when the device already sits where PELS wants it.
     const settled: DeviceStatusInput = {
@@ -91,6 +102,7 @@ describe('simulation action previews', () => {
       temperature: { currentTemperature: 21.9, currentTarget: 28, plannedTarget: 28, thermalDirection: 'heating' },
     };
     expect(buildDeviceStatus(settled, false, 0).factText).toBe('21.9 °C · target 28 °C');
+    expect(buildDeviceStatus(settled, false, 0)).not.toHaveProperty('targetDetail');
   });
 
   it('names only the device\'s setpoint while a finished Smart task holds it until its ready-by time', () => {
@@ -108,7 +120,10 @@ describe('simulation action previews', () => {
     expect(done.reading).toMatchObject({ targetC: 18 });
     // A task still waiting for cheaper hours will run and set its target: the arrow stays.
     expect(buildDeviceStatus(held(PLAN_REASON_CODES.deferredObjectiveAvoid), false, 0).factText)
-      .toBe('20.7 °C · target 18 °C → 20 °C');
+      .toBe('20.7 °C · set to 18 °C → planned 20 °C');
+    expect(buildDeviceStatus(held(PLAN_REASON_CODES.deferredObjectiveAvoid), false, 0).targetDetail)
+      .toBe('Set to 18 °C. PELS sets 20 °C when the Smart task runs.');
+    expect(done).not.toHaveProperty('targetDetail');
   });
 
   it('does not use hypothetical wording for an ordinary live target change', () => {
@@ -176,7 +191,7 @@ describe('simulation action previews', () => {
       execution: { ...device.execution, desiredBinary: null, binaryProgress: 'undriven', targetProgress: 'unmet' },
     }, true, 0);
     expect(status.reason).toEqual({ text: `Would set target to ${temperature.plannedTarget} °C (simulation)` });
-    expect(status.factText).toBe(`20.0 °C · target 21 °C → ${temperature.plannedTarget} °C`);
+    expect(status.factText).toBe(`20.0 °C · set to 21 °C → planned ${temperature.plannedTarget} °C`);
   });
 
   it('formats an arithmetic temperature target consistently in the fact and preview', () => {
@@ -186,7 +201,7 @@ describe('simulation action previews', () => {
         thermalDirection: 'heating' },
       execution: { ...device.execution, desiredBinary: null, targetProgress: 'unmet' },
     }, true, 0);
-    expect(status.factText).toBe('20.0 °C · target 21 °C → 15.5 °C');
+    expect(status.factText).toBe('20.0 °C · set to 21 °C → planned 15.5 °C');
     expect(status.reason?.text).toBe('Would set target to 15.5 °C (simulation)');
   });
 
@@ -229,7 +244,7 @@ describe('simulation action previews', () => {
       temperature: { currentTemperature: 50, currentTarget: 60, plannedTarget: 55.5, thermalDirection: 'heating' },
       execution: { ...device.execution, desiredStepId: '16a', stepProgress: 'settled', targetProgress: 'unmet' },
     }, true, 0);
-    expect(status.factText).toBe('50.0 °C · target 55.5 °C');
+    expect(status.factText).toBe('50.0 °C · set to 60 °C → planned 55.5 °C');
     expect(status.reason?.text).toBe('Would set target to 55.5 °C (simulation)');
   });
 
@@ -265,7 +280,7 @@ describe('simulation action previews', () => {
     }, true, 0);
     expect(status.reason?.text).not.toContain('Would set target');
     // The fact line still names both: the device's setpoint and the one planned.
-    expect(status.factText).toBe('20.0 °C · target 21 °C → 15 °C');
+    expect(status.factText).toBe('20.0 °C · set to 21 °C → planned 15 °C');
   });
 
   it('keeps the waiting explanation once the real device is already off', () => {

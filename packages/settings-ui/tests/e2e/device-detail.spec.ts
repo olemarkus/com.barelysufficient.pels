@@ -89,6 +89,10 @@ test.describe('Device detail panel', () => {
     await expect(limiting).not.toHaveAttribute('open', '');
     await expect(page.locator('#device-detail-delta-summary')).toHaveText(/^(Off|On( · .+)?)$/u);
     await expect(page.locator('#device-detail-shedding-summary')).toHaveText(/^(Off|On · .+ when limiting)$/u);
+    // The header says the setpoint and the planned one as a sentence, and its
+    // fact line keeps only the reading.
+    await expect(page.locator('#device-detail-live-fact')).toHaveText('20.3 °C');
+    await expect(page.locator('#device-detail-live-target')).toHaveText(/^Set to 22 °C\. .*21 °C\.$/u);
     // The Temporary card leads, and the report action ends the page.
     await expect(page.locator('#device-detail-temporary')).toBeVisible();
     const sections = await page.locator('#device-detail-panel .detail-section').evaluateAll((els) => (
@@ -244,9 +248,12 @@ test.describe('Device detail panel', () => {
 
   test('Hero shows the fact line and reason from the shared card grammar', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
+    // This thermostat's setpoint differs from the planned one, so the reading
+    // stands alone and the sentence under it carries both targets.
     const fact = page.locator('#device-detail-live-fact');
     await expect(fact).toBeVisible();
-    await expect(fact).toContainText('target');
+    await expect(fact).toHaveText('20.3 °C');
+    await expect(page.locator('#device-detail-live-target')).toContainText('Set to 22 °C.');
   });
 
   test('Temperature per mode inputs persist for each mode', async ({ page }) => {

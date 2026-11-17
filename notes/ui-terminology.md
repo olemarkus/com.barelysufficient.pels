@@ -334,10 +334,18 @@ title + at most ONE status chip (ladder: `Let it run now` → `Held back` →
 `Boost` → `Budget exempt`; the `Smart task` badge is an
 identity/route badge and may coexist), the state row (state word + power
 fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
-level 6 A`; the fact line always names the device's own setpoint and, after the
-arrow `→`, the one PELS plans to set when they differ (`target 28 °C → 22 °C`),
-also while PELS holds the device off and no write goes out yet; owner ruling
-2026-11-17. The planned one is the setpoint PELS will write the next time it
+level 6 A`; the fact line always names the device's own setpoint and the one
+PELS plans to set when they differ, each labelled: `21.8 °C · set to 28 °C →
+planned 22 °C` (`formatTemperatureTargetPair`; a bare arrow read as a change in
+progress, or as before and after), also while PELS holds the device off and no
+write goes out yet; owner ruling 2026-11-17. Stepped devices with a temperature
+use the same line. The device page header keeps only the reading on its fact
+line and says the rest as a sentence (`DeviceStatus.targetDetail`): `Set to 28
+°C. PELS sets 22 °C when it resumes the device (override).`, `… when the Smart
+task runs.`, `… when the device is turned on.`, `Set to 28 °C. PELS is setting
+22 °C (lowered while power is expensive).`, and in simulation `Set to 28 °C. In
+simulation PELS changes nothing; it would set 22 °C.` The bracket names why the
+value is not the mode's: `(override)` or the price shift. The planned one is the setpoint PELS will write the next time it
 writes to the device. A finished Smart task holding its device until the
 ready-by time is the one hold that shows the setpoint alone: the plan's target
 is still the task's, PELS will not write it, and the mode's target applies when
@@ -865,7 +873,7 @@ within seven days.`, `Choose a date and time that exists in the Homey time zone.
 Toasts: `Override started.`, `Override changed.`, `Override ended.`, `Could not
 save the override.` On a device PELS holds off, the card's fact line names the
 setpoint the device was left at and the override it will be set to on resume
-(`21.8 °C · target 28 °C → 22 °C`). The overview card carries an `Override` chip beside its state
+(`21.8 °C · set to 28 °C → planned 22 °C`). The overview card carries an `Override` chip beside its state
 chip while one is in force, limited or not, and no reason line for it. The two
 Flow cards that start and end one are still titled "temporary temperature".
 

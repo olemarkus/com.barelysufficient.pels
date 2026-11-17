@@ -76,7 +76,7 @@ describe('settingsOverviewReadModel', () => {
     });
     expect(card.controllable).toBe(false);
     expect(card.status).toMatchObject({ label: 'Running', limited: false, wouldLimit: false, canEaseOff: false,
-      factText: '50.0 °C · target 55 °C → 60 °C',
+      factText: '50.0 °C · set to 55 °C → planned 60 °C',
       reason: { text: 'Would set target to 60 °C (simulation)' },
     });
   });
@@ -752,13 +752,13 @@ describe('settingsOverviewReadModel', () => {
     const held = buildOverviewDeviceCard(device, { ...overviewReadModelWiring(), ...observedTemperature(18, 20.7),
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), desiredBinary: 'off', targetProgress: 'undriven' }),
       dryRun: false, nowMs: 0 });
-    expect(held.status.factText).toBe('20.7 °C · target 18 °C → 20 °C');
+    expect(held.status.factText).toBe('20.7 °C · set to 18 °C → planned 20 °C');
     expect(held.status.reading).toEqual({ kind: 'temperature', currentC: 20.7, targetC: 20 });
     const driven = buildOverviewDeviceCard({ ...device, plannedState: 'keep', currentState: 'on' }, {
       ...overviewReadModelWiring(), ...observedTemperature(18, 20.7),
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), targetProgress: 'pending' }),
       dryRun: false, nowMs: 0 });
-    expect(driven.status.factText).toBe('20.7 °C · target 18 °C → 20 °C');
+    expect(driven.status.factText).toBe('20.7 °C · set to 18 °C → planned 20 °C');
   });
 
   it('keeps observed temperature presentation when effective control is binary', () => {

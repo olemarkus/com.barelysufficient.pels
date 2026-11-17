@@ -43,7 +43,7 @@ describe('resolveTemperatureLine', () => {
       ...baseDevice,
       temperature: { currentTemperature: 20.2, currentTarget: 18, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'keep', detail: null },
-    })).toBe('20.2 °C · target 18 °C → 21 °C');
+    })).toBe('20.2 °C · set to 18 °C → planned 21 °C');
   });
 
   it('renders nothing without the temperature facet — the adapter drops a junk facet wholly', () => {
