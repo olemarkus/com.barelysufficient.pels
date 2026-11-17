@@ -72,6 +72,25 @@ describe('simulation action previews', () => {
     expect(buildDeviceStatus(modeTemperature(60, false), false, 0)).not.toHaveProperty('override');
   });
 
+  it('names the override as the target of a device PELS holds off, not the setpoint it was left at', () => {
+    // Prod 2026-11-17: an override of 22 on a thermostat PELS had turned off at
+    // 28. No write goes out while it is off, and the card kept reading 28.
+    const heldOff = (temporaryTemperatureActive: boolean): DeviceStatusInput => {
+      const device = runningPowerHold({ temporaryTemperatureActive });
+      return {
+        ...device, currentState: 'off', currentDrawKw: 0,
+        temperature: { currentTemperature: 21.9, currentTarget: 28, plannedTarget: 22, thermalDirection: 'heating' },
+        execution: { ...device.execution, physicalState: 'off', targetProgress: 'undriven' },
+      };
+    };
+
+    const overridden = buildDeviceStatus(heldOff(true), false, 0);
+    expect(overridden.factText).toBe('21.9 °C · target 22 °C');
+    expect(overridden.reading).toMatchObject({ targetC: 22 });
+    // Without an override the card still names the device's own setpoint, with no arrow.
+    expect(buildDeviceStatus(heldOff(false), false, 0).factText).toBe('21.9 °C · target 28 °C');
+  });
+
   it('does not use hypothetical wording for an ordinary live target change', () => {
     expect(buildDeviceStatus(modeTemperature(60, false), false, 0).reason).toBeNull();
   });

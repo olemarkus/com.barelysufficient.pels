@@ -438,9 +438,15 @@ function resolveHoldCause(device: DeviceStatusInput): DeviceStatus['holdCause'] 
 // heater its finished smart task held off read `target 18 °C → 20 °C` for hours.
 // The card shows the device's own target then, and the arrow only while PELS is
 // actually moving it.
+//
+// An override is the exception: the owner set that temperature for this device
+// just now, so it is the target the card names, not the setpoint the device was
+// left at when PELS turned it off. PELS writes it when it resumes the device.
 function withPresentedTarget(device: DeviceStatusInput): DeviceStatusInput {
   if (!device.temperature || device.execution.targetProgress !== 'undriven') return device;
-  return { ...device, temperature: { ...device.temperature, plannedTarget: device.temperature.currentTarget } };
+  const named = device.temporaryTemperatureActive === true
+    ? device.temperature.plannedTarget : device.temperature.currentTarget;
+  return { ...device, temperature: { ...device.temperature, currentTarget: named, plannedTarget: named } };
 }
 
 /** An adapter may explain a control refusal without changing any command gate. */
