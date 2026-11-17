@@ -47,6 +47,7 @@ For most supported chargers PELS controls charging through the charger's Homey a
 | **Tesla** (Tesla Car & Energy) | Directly through the car. See [Tesla vehicle charging](/tesla-charging). |
 | **Futurehome Charge** (Futurehome) | Directly, with a Homey API key. See the [Futurehome guide](/futurehome-ev-charger). |
 | **Wallbox** (Wallbox Charger) | Directly, with a Homey API key under **Setup → Charging current**. |
+| **WARP Charger** (WARP Charger) | Directly, with a Homey API key under **Setup → Charging current**. Keep **Current limit** shown on the charger's device in Homey: PELS reads the charger's current from it. |
 | **amina S** (amina) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's on/off switch. |
 | **go-e Charger** (go-e Charger) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's **Charging Allowed** switch. Set the maximum current no higher than your cable allows: the charger caps the current at the cable's rating. |
 | **KEBA P20 and P30** (Keba) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's **Turn on charger** switch. The KEBA P40 has no such switch in the app, so PELS does not list it. |
@@ -206,7 +207,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 
 1. The charger is visible as a managed device in PELS.
 2. **Control model** is **Automatic**, or **EV 1-phase** or **EV 3-phase**.
-3. Current control matches the charger: Easee, Peblar and Alfen Pro-line/ACE have **Use built-in device control** on. Alfen (the Alfen app), Enua and other chargers controlled through their charging power have no such switch: PELS always controls them directly. A Zaptec, Futurehome, Wallbox, amina, go-e, KEBA or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Only a charger PELS cannot control directly, or one you chose to keep on a Flow, receives **EV charger current (A)** in a current-control Flow.
+3. Current control matches the charger: Easee, Peblar and Alfen Pro-line/ACE have **Use built-in device control** on. Alfen (the Alfen app), Enua and other chargers controlled through their charging power have no such switch: PELS always controls them directly. A Zaptec, Futurehome, Wallbox, WARP, amina, go-e, KEBA or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Only a charger PELS cannot control directly, or one you chose to keep on a Flow, receives **EV charger current (A)** in a current-control Flow.
 4. Charging current changes in the charger app when PELS asks for a lower or higher level.
 5. If you configured battery reporting, the charger's **Car** section or charging readout shows the battery percentage from your chosen source.
 

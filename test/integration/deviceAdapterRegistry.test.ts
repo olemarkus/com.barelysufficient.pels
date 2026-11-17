@@ -264,6 +264,65 @@ test('a KEBA P30 reads its switch from onoff, its plug state from the status boo
   expect(getDeviceAdapter(p40).currentBindings(p40)).toEqual([]);
 });
 
+test('a WARP charger reads its switch from the charging state and its current from the shown limit', () => {
+  type Status = {
+    evcharger_charging: boolean; evcharger_charging_state: string; warp_current_limit: number;
+    warp_current_limit_pick: string;
+  };
+  const charger = (status: Partial<Status>): HomeyDeviceLike => ({
+    ...HOMEY_DEVICE_FIELDS, id: 'warp', name: 'WARP', class: 'evcharger',
+    driverId: 'homey:app:com.glumpf.warp:wallbox',
+    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'warp_status',
+      ...Object.keys(status).filter((id) => id.startsWith('warp_'))],
+    capabilitiesObj: Object.fromEntries(Object.entries(status)
+      .map(([id, value]) => [id, { ...cap(value), setable: true }])),
+  });
+  const overlay = (device: HomeyDeviceLike) => getDeviceAdapter(device)
+    .overlay(device, device.capabilities ?? [], standardDeviceAdapter.observation(device));
+  const switchOf = (state: string) => overlay(charger({ evcharger_charging: false, evcharger_charging_state: state }))
+    .capabilityObj.evcharger_charging?.value;
+
+  // Released and waiting for the car: the app's switch reads off, the session runs.
+  expect(switchOf('plugged_in')).toBe(true);
+  expect(switchOf('plugged_in_charging')).toBe(true);
+  expect(switchOf('plugged_in_paused')).toBe(false);
+  expect(switchOf('plugged_out')).toBe(false);
+
+  const waiting = { evcharger_charging: false, evcharger_charging_state: 'plugged_in' };
+  const adapted = overlay(charger({ ...waiting, warp_current_limit: 16 }));
+  expect(adapted).toMatchObject({ kind: 'adapted', binaryTarget: { kind: 'canonical' },
+    controlAdapter: { activationOrder: 'current_before_start' } });
+  expect(adapted.capabilityObj.available_installation_current).toMatchObject({ value: 16, setable: false });
+  expect(overlay(charger({ ...waiting, warp_current_limit_pick: '10' })).capabilityObj.available_installation_current)
+    .toMatchObject({ value: 10, setable: false });
+  for (const limit of [5, 33, 10.5]) {
+    expect(overlay(charger({ ...waiting, warp_current_limit: limit })).capabilityObj.available_installation_current)
+      .toBeUndefined();
+  }
+
+  const adapter = getDeviceAdapter(charger(waiting));
+  const control = adapted.kind === 'adapted' ? adapted.controlAdapter : undefined;
+  const live = partialDouble<TransportDeviceSnapshot>({ controlAdapter: control });
+  // The app's switch says "current flows now": its events are dropped.
+  expect(adapter.normalize(live, 'evcharger_charging', false, charger(waiting))).toEqual([]);
+  expect(adapter.normalize(live, 'evcharger_charging_state', 'plugged_in_paused', charger(waiting))).toEqual([
+    { capabilityId: 'evcharger_charging_state', value: 'plugged_in_paused' },
+    { capabilityId: 'evcharger_charging', value: false },
+  ]);
+  expect(adapter.normalize(live, 'warp_current_limit_pick', '12', charger(waiting))).toEqual([
+    { capabilityId: 'warp_current_limit_pick', value: '12' },
+    { capabilityId: 'available_installation_current', value: 12 },
+  ]);
+
+  const shown = charger({ ...waiting, warp_current_limit: 16 });
+  const binding = adapter.currentBindings(shown)[0]!;
+  expect(binding).toMatchObject({ current: { kind: 'action_only' }, scope: { kind: 'charger' } });
+  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:com.glumpf.warp:wb_set_current' }], 10).args)
+    .toEqual({ device: { id: 'warp' }, current: 10 });
+  // A charger that shows no limit has no current reading, so no built-in current control.
+  expect(adapter.currentBindings(charger(waiting))).toEqual([]);
+});
+
 test('a Smappee EV Wall reads its switch from the charging mode and writes it as normal or paused', () => {
   type Status = { charging_mode: string; cable_connected: boolean; charging: boolean };
   const charger = (status: Partial<Status>): HomeyDeviceLike => ({
