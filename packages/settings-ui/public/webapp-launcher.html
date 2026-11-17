@@ -6,7 +6,18 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0c111b">
   <meta name="robots" content="noindex">
-  <title>PELS</title>
+  <title>PELS Energy Manager web app</title>
+  <meta name="description" content="Open PELS settings for your Homey Pro from any browser, on a computer or a phone.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PELS">
+  <meta property="og:url" content="https://pels.barelysufficient.org/app/">
+  <meta property="og:title" content="PELS Energy Manager web app">
+  <meta property="og:description" content="Open PELS settings for your Homey Pro from any browser, on a computer or a phone.">
+  <meta property="og:image" content="https://pels.barelysufficient.org/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="PELS Energy Manager for Homey Pro">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./webapp-icons/icon-192.png" type="image/png">
   <link rel="stylesheet" href="./style.css">
@@ -14,7 +25,10 @@
 </head>
 <body>
   <main class="screen">
-    <p class="webapp-brand pels-text-settings-label">PELS</p>
+    <header class="webapp-brand">
+      <h1 class="pels-text-section-headline">PELS Energy Manager web app</h1>
+      <p class="pels-text-supporting">Open PELS settings for your Homey Pro from any browser.</p>
+    </header>
 
     <section class="card panel" id="webapp-import-panel" aria-labelledby="webapp-import-title" hidden>
       <h2 id="webapp-import-title">Add Homeys from this code?</h2>
