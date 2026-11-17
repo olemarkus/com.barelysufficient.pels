@@ -41,6 +41,19 @@ const exportAllowanceW = (plan: ContinuousStoragePlan): number => (
 );
 
 /**
+ * The most discharge a period's plan asks for, W. A household-supply period
+ * asks for whatever the house draws: its planned power is the forecast of that
+ * draw, and a house that draws more than forecast (an oven in an expensive
+ * hour) is still the house the period decided to supply, so the measured draw,
+ * the delivery ceiling and the reserve bound it instead. The next plan starts
+ * from the level the battery reaches. A selling period keeps its planned
+ * power: its export is a forecast quantity the lever never raises.
+ */
+const plannedDischargeW = (plan: ContinuousStoragePlan): number => (
+  plan.reason === 'supply_house' ? Number.POSITIVE_INFINITY : -plan.setpointW
+);
+
+/**
  * A battery reading older than the meter sample by more than this, ms, lags it.
  * The house's draw without the battery is the meter less the battery's own
  * power; with a lagging battery reading that difference mixes two moments, and
@@ -117,7 +130,7 @@ export const continuousLever = (
     laggingDischargeCeilingW(storage, previous, balance),
   );
   const plannedW = plan.setpointW < 0
-    ? -Math.min(-plan.setpointW, storage.deliveryCeilingW, dischargeRoomW)
+    ? -Math.min(plannedDischargeW(plan), storage.deliveryCeilingW, dischargeRoomW)
     : Math.min(plan.setpointW, storage.chargeCeilingW);
   // The offer counts the battery's own discharge out of the export, so there
   // is something to store only once the house needs no supply.

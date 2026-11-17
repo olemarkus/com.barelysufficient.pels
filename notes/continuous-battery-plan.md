@@ -153,7 +153,12 @@ Economic charging is capped by measured available power and the priority solar
 offer. Extra capacity relief is selected in the existing priority walk. The
 configured reserve also bounds capacity discharge. Economic discharge is bounded
 by the house's measured demand and is withheld from admission, so it never creates
-room for unrelated restores. A selling period (`export_energy`) may add Main
+room for unrelated restores. A household-supply period (`supply_house`) follows
+that measured demand past its own planned power, which is only the forecast of
+the house's draw: a house that draws more than forecast is still the house the
+period decided to supply (owner ruling, 2026-11-17). The delivery ceiling and
+the reserve bound it, and the next plan starts from the level the battery
+reaches (`plannedDischargeW`, `lib/plan/battery/storageContinuous.ts`). A selling period (`export_energy`) may add Main
 export up to the owner's ceiling and earns no settling credit.
 
 The plan follows the solar forecast, not the meter, so a supply or hold period

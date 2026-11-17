@@ -284,7 +284,8 @@ describe('storage relief in the plan build', () => {
     const plan = await build(5000, [heater(true, 5), battery({
       claimHeld: true, continuousPlan: continuousPlan(-1500),
     })], 60_000);
-    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: -1500 });
+    // The house draws 5 kW: supply follows it past the 1.5 kW forecast, up to the battery's 2.5 kW.
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: -2500 });
     expect(plannedState(plan, 'heater')).toBe('keep');
   });
 

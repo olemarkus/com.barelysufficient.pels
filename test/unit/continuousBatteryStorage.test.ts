@@ -46,21 +46,41 @@ describe('continuous battery execution decisions', () => {
   });
 
   it('opens a fresh discharge credit after a long zero hold without extending an unanswered window', () => {
-    const plan = (setpointW: number) => ({ setpointW, validUntilMs: NOW + 600_000, reason: 'supply_house' as const, storesSurplus: true });
-    const idle = decideStorageRelief([battery({ continuousPlan: plan(0) })], buildMeasuredPower(), {}, offers(), NOW, 0);
-    const supplying = decideStorageRelief([battery({ continuousPlan: plan(-1000) })],
-      buildMeasuredPower({ drawKw: 3 }), idle.levers, offers(), NOW + 60_000, 0);
+    const until = NOW + 600_000;
+    const hold = { setpointW: 0, validUntilMs: until, reason: 'hold_energy' as const, storesSurplus: true };
+    const supply = { setpointW: -500, validUntilMs: until, reason: 'supply_house' as const, storesSurplus: true };
+    // Supply follows the house's measured draw, less the 100 W response margin.
+    const idle = decideStorageRelief([battery({ continuousPlan: hold })], buildMeasuredPower(), {}, offers(), NOW, 0);
+    const supplying = decideStorageRelief([battery({ continuousPlan: supply })],
+      buildMeasuredPower({ drawKw: 1.1 }), idle.levers, offers(), NOW + 60_000, 0);
+    expect(supplying.batteries[0].setpointW).toBe(-1000);
     expect(supplying.shed.netCreditKw).toBe(1);
     expect(supplying.levers.battery.increaseDecidedAtMs).toBe(NOW + 60_000);
-    const deeper = decideStorageRelief([battery({ continuousPlan: plan(-1500) })],
-      buildMeasuredPower({ drawKw: 3 }), supplying.levers, offers(), NOW + 70_000, 0);
+    const deeper = decideStorageRelief([battery({ continuousPlan: supply })],
+      buildMeasuredPower({ drawKw: 1.6 }), supplying.levers, offers(), NOW + 70_000, 0);
+    expect(deeper.batteries[0].setpointW).toBe(-1500);
     expect(deeper.levers.battery.increaseDecidedAtMs).toBe(NOW + 60_000);
-    const unanswered = decideStorageRelief([battery({ continuousPlan: plan(-2000) })],
-      buildMeasuredPower({ drawKw: 3 }), deeper.levers, offers(), NOW + 91_000, 0);
+    const unanswered = decideStorageRelief([battery({ continuousPlan: supply })],
+      buildMeasuredPower({ drawKw: 2.1 }), deeper.levers, offers(), NOW + 91_000, 0);
     expect(unanswered.shed.netCreditKw).toBe(0);
-    const delivered = decideStorageRelief([battery({ signedPowerW: -1500, continuousPlan: plan(-2000) })],
-      buildMeasuredPower({ drawKw: 3 }), deeper.levers, offers(), NOW + 91_000, 0);
+    // Delivering 1.5 kW, the meter shows 0.6 kW: the house still draws 2.1 kW.
+    const delivered = decideStorageRelief([battery({ signedPowerW: -1500, continuousPlan: supply })],
+      buildMeasuredPower({ drawKw: 0.6 }), deeper.levers, offers(), NOW + 91_000, 0);
     expect(delivered.shed.netCreditKw).toBe(0.5);
+  });
+
+  it('supplies what the house draws when that is more than the period forecast', () => {
+    const supply = { setpointW: -900, validUntilMs: NOW + 60_000, reason: 'supply_house' as const, storesSurplus: true };
+    const setpointAt = (drawKw: number, overrides: Partial<ObservedStorageInput> = {}) => decideStorageRelief(
+      [battery({ continuousPlan: supply, ...overrides })], buildMeasuredPower({ drawKw }), {}, offers(), NOW, 0,
+    ).batteries[0].setpointW;
+    // An oven on top of a 0.9 kW forecast: the battery covers it, less the 100 W response margin.
+    expect(setpointAt(3)).toBe(-2500);
+    expect(setpointAt(2)).toBe(-1900);
+    // A house that draws less than forecast gets only what it draws.
+    expect(setpointAt(0.5)).toBe(-400);
+    // The delivery ceiling, which carries the reserve, still bounds it.
+    expect(setpointAt(3, { deliveryCeilingW: 1200 })).toBe(-1200);
   });
 
   it('retains a zero-watt hold between windows, including a full battery', () => {
