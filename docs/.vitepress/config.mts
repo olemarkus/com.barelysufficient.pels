@@ -106,6 +106,18 @@ function namedMeta(name: string, content: string): HeadConfig {
   return ['meta', { name, content }];
 }
 
+// The landing pages stand alone and carry their own full titles; every other
+// page says which part of the site it belongs to, in its title and next to the
+// site name in the top bar (the theme reads `siteSection`).
+const siteName = 'PELS Energy Manager';
+const landingPages = new Set(['index.md', 'stromstyring-norge.md']);
+const developerPages = new Set(['architecture.md', 'contributor-setup.md']);
+
+function siteSectionFor(relativePath: string): string | null {
+  if (landingPages.has(relativePath)) return null;
+  return developerPages.has(relativePath) ? 'Developer docs' : 'User guide';
+}
+
 function jsonLdScript(data: Record<string, unknown>): HeadConfig {
   return ['script', { type: 'application/ld+json' }, JSON.stringify(data)];
 }
@@ -115,7 +127,8 @@ export default defineConfig({
   ...(outDir ? { outDir } : {}),
   base,
   lang: 'en-US',
-  title: 'PELS',
+  title: siteName,
+  titleTemplate: ':title | PELS user guide',
   description: defaultDescription,
   appearance: false,
   lastUpdated: true,
@@ -137,7 +150,7 @@ export default defineConfig({
   ],
   themeConfig: {
     logo: '/icon.svg',
-    siteTitle: 'PELS',
+    siteTitle: siteName,
     nav: [
       navItems[0],
       channelSwitcher,
@@ -174,13 +187,22 @@ export default defineConfig({
       next: 'Next page',
     },
   },
+  transformPageData(pageData) {
+    const section = siteSectionFor(pageData.relativePath);
+    pageData.frontmatter.siteSection = section;
+    if (section === 'Developer docs') {
+      pageData.titleTemplate ??= ':title | PELS developer docs';
+    } else if (section === null) {
+      pageData.titleTemplate ??= `:title | ${siteName}`;
+    }
+  },
   transformHead({ pageData, title, description }) {
     const pageUrl = resolvePageUrl(pageData.relativePath);
-    const pageTitle = title || 'PELS';
+    const pageTitle = title || siteName;
     const pageDescription = description || defaultDescription;
     const imageUrl = `${siteUrl}${withBase('social-card.png')}`;
     const imageAlt =
-      'PELS — automatic power-limit control and cheap-hour load shifting for Homey Pro';
+      'PELS Energy Manager: automatic power-limit control and cheap-hour load shifting for Homey Pro';
     const isNorwegian = pageData.relativePath === 'stromstyring-norge.md';
     const ogLocale = isNorwegian ? 'nb_NO' : 'en_US';
     // Only declare an alternate locale where a cross-language counterpart
@@ -208,7 +230,7 @@ export default defineConfig({
         'og:type',
         pageData.relativePath === 'index.md' ? 'website' : 'article',
       ),
-      propertyMeta('og:site_name', 'PELS'),
+      propertyMeta('og:site_name', siteName),
       propertyMeta('og:locale', ogLocale),
       ...(ogLocaleAlternate
         ? [propertyMeta('og:locale:alternate', ogLocaleAlternate)]
@@ -232,10 +254,20 @@ export default defineConfig({
       // than a fabricated Offer.
       ...(pageData.relativePath === 'index.md'
         ? [
+            // Google takes the site name in search results from WebSite markup
+            // on the homepage.
+            jsonLdScript({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: siteName,
+              alternateName: ['PELS'],
+              url: pageUrl,
+            }),
             jsonLdScript({
               '@context': 'https://schema.org',
               '@type': 'SoftwareApplication',
-              name: 'PELS',
+              name: siteName,
+              alternateName: 'PELS',
               applicationCategory: 'UtilitiesApplication',
               operatingSystem: 'Homey Pro',
               description: defaultDescription,

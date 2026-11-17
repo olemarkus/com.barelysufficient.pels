@@ -1,6 +1,6 @@
 ---
 title: "How PELS Decides: The Measure, Plan, Act Loop in Plain English"
-description: A plain-language mental model of how PELS works — the loop it runs every time your power changes, what it protects first, how it chooses what to turn down, and how it brings devices back.
+description: "How PELS works in plain language: the loop it runs when your power changes, what it protects first, what it turns down and how it brings devices back."
 ---
 
 # How PELS Decides

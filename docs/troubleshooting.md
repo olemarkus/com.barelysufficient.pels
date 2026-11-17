@@ -1,6 +1,6 @@
 ---
 title: "Troubleshooting: When PELS Isn't Doing What You Expect"
-description: Fixes for the most common PELS problems — a device that won't limit or resume, a Manual action needed alert, a missed Smart task, a budget overshoot, or missing power and price data.
+description: "Fixes for common PELS problems: a device that won't limit or resume, a Manual action needed alert, a missed Smart task, or missing power and price data."
 ---
 
 # Troubleshooting

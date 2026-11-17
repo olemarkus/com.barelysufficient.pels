@@ -1,6 +1,6 @@
 ---
-title: Weather Insight
-description: How PELS learns the way outdoor temperature drives your home's daily energy use, predicts tomorrow's total, and tells you whether it fits inside your daily budget.
+title: "Weather Insight: Forecast Tomorrow's Energy Use"
+description: How PELS learns how outdoor temperature drives your home's daily energy use, forecasts tomorrow's total, and checks it against your daily budget.
 ---
 
 # Weather Insight

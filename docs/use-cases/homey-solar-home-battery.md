@@ -1,6 +1,6 @@
 ---
 title: Solar and a home battery with Homey, when exporting earns little or costs you
-description: Use PELS on Homey Pro to put your own solar into your car, hot water and home battery in the order you choose, and let the battery hold your limit in the evening before any device is turned down.
+description: Use PELS on Homey Pro to send your own solar to your car, hot water and home battery in your order, and let the battery hold your limit in the evening.
 ---
 
 # Solar and a home battery with Homey, when exporting earns little or costs you

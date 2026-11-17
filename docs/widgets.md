@@ -1,6 +1,6 @@
 ---
-title: Dashboard Widgets
-description: Pin PELS widgets to a Homey dashboard to watch available power, electricity prices, today's budget, and Smart task progress, and start or release a device without opening the app.
+title: "Homey Dashboard Widgets for Power, Prices & Budget"
+description: Pin PELS widgets to a Homey dashboard to watch available power, electricity prices, today's budget and Smart task progress without opening the app.
 ---
 
 # Dashboard Widgets

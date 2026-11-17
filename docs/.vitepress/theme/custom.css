@@ -535,3 +535,31 @@ body {
     padding: var(--docs-spacing-4);
   }
 }
+
+/* The part of the site (User guide, Developer docs) sits under the site name,
+   so the top bar needs no extra width on a phone or beside the sidebar. */
+/* stylelint-disable-next-line selector-class-pattern */
+.VPNavBarTitle .title:has(.site-section) {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: var(--docs-spacing-2);
+  line-height: 20px;
+}
+
+/* stylelint-disable-next-line selector-class-pattern */
+.VPNavBarTitle .title:has(.site-section) .logo {
+  grid-row: 1 / span 2;
+  align-self: center;
+  margin-right: 0;
+}
+
+.site-section {
+  grid-column: 2;
+  color: var(--docs-color-text-muted);
+  font-size: 12px;
+  font-weight: var(--docs-font-weight-normal);
+  line-height: 16px;
+  white-space: nowrap;
+}
