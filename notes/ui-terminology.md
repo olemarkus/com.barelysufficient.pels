@@ -857,7 +857,9 @@ A new override starts from the device's target in the active mode. It ends `At
 declares no range), `Choose an end time in the future.`, `Choose an end time
 within seven days.`, `Choose a date and time that exists in the Homey time zone.`
 Toasts: `Override started.`, `Override changed.`, `Override ended.`, `Could not
-save the override.` The overview card carries an `Override` chip beside its state
+save the override.` On a device PELS holds off, the card's fact line names the
+override as the target (`21.8 °C · target 22 °C`), not the setpoint the device
+was left at: no write goes out while it is off, and PELS sets it on resume. The overview card carries an `Override` chip beside its state
 chip while one is in force, limited or not, and no reason line for it. The two
 Flow cards that start and end one are still titled "temporary temperature".
 
