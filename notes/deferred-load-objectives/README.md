@@ -27,11 +27,22 @@ intervals. `PriceHorizonEntry` carries `startMs`, `endMs`, the solar/export-adju
 separate quarters within one hour. Missing price coverage still blocks a fresh allocation through
 the deadline. Capacity-period configuration is independent of the task's scheduling resolution.
 
-Schedule resolution does not change the allocation clock: ordinary reoptimization remains at the
-hourly `:58` settle, with bootstrap and existing explicit-change exceptions. Between settles,
-`frozenHorizonPlan.ts` selects the saved interval with `start <= now < end`. A period transition
-takes effect on the next normal meter-driven plan rebuild. It neither reruns allocation nor starts
-an independent timer; the usual actuation, cooldown, satisfaction and deadline rules still apply.
+Schedule resolution does not change the hourly `:58` reoptimization point. The lifecycle clock
+solves at most one task per 30-second tick, beginning a queue generation at `:58` and draining it
+after `:00` when needed. Bootstrap and explicit changes also enqueue work. Initial turns follow
+device priority; later edits retain a waiting ticket's age, and blocked attempts retry behind
+other waiting tasks. Restart preserves a compatible revision that already settled this generation.
+Previewing a task does not consume a live turn.
+
+Meter-driven plan rebuilds serve saved commitments and update live admission without allocating.
+An unplanned task reports waiting for a plan and leaves normal device control in place until its
+first allocation. When a higher task commits a changed revision, incompatible lower tasks hold
+their devices until their queued turn; their previous schedule and history remain stored.
+Stable committed revision identity tracks those changes, so passage of time alone cannot invalidate
+a lower plan. A transient price or step gap keeps a compatible saved plan in use and queues a retry.
+Missing prices and thermal learning keep their own existing waiting or learning behavior.
+A period transition takes effect on the next normal meter-driven plan rebuild; the lifecycle clock
+commits schedules and never sends device commands.
 
 The legacy-named `hours` arrays now contain `DeferredObjectivePlanInterval` bookings with explicit
 `startsAtMs` and `endsAtMs`. Coverage, energy floors, admission power and milestone endpoints travel

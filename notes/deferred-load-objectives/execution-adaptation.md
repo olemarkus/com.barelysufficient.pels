@@ -16,8 +16,11 @@ tasks. An interval carries explicit start/end bounds, planned energy, admission 
 milestone; an hourly source still produces hourly intervals. Existing internal names such as
 `currentHourClaim`, `isAheadOfHourMilestone` and `hours` now refer to the selected interval.
 
-The two clocks are unchanged: ordinary allocation settles hourly at `:58`, with bootstrap and
-existing explicit-change paths; the frozen read selects `start <= now < end` between settles.
+The lifecycle clock gives one queued task a fresh allocation turn per tick. The ordinary hourly
+`:58` settle opens a queue generation that drains after `:00` if needed; bootstrap and explicit
+changes also enqueue work. Meter cycles serve compatible commitments with `start <= now < end`;
+a new task leaves normal control intact, while an invalidated saved plan holds until replanned.
+The queue preserves compatible revisions that already settled the current generation on restart.
 The next normal meter-driven rebuild follows a quarter boundary without a separate control timer
 or quarter-hour settle. Live releases still do not rewrite commitments. Duration-proportional
 floors preserve coverage and energy if a source changes its period grid, and schedule equality

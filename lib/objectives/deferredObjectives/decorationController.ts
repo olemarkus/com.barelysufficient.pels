@@ -19,7 +19,7 @@ import {
 import {
   buildDeferredObjectiveTaskResults,
   buildTaskEvaluationSnapshot,
-  LIVE_LANE,
+  SERVING_LANE,
   type TaskEvaluationReport,
   type TaskEvaluationSource,
 } from './diagnosticsBridge';
@@ -38,7 +38,7 @@ type BudgetExemptClaim = {
  * Smart-task (deferred-objective) controller decoration stage. Turns the raw planner input into a
  * `DeferredDecorationBundle` the planner consumes while staying
  * smart-task-agnostic. This is the input-mutation half of the controller
- * extraction: it evaluates objectives and applies admission / target-overrides /
+ * extraction: it serves committed objectives and applies admission / target-overrides /
  * release-intents to the device list. The active-plan RECORD (revisions) is
  * written on the lifecycle clock, not here; this stage only reads the committed
  * plan to decorate.
@@ -148,8 +148,8 @@ export class DeferredObjectiveDecorationController {
       // The lifecycle clock may not have disarmed an elapsed task yet. Its
       // terminal fallback belongs to that clock; it has no admission claims.
       return buildDeferredObjectiveTaskResults(
-        buildTaskEvaluationSnapshot(this.source, nowTs, devices, settings, dailyBudgetSnapshot, LIVE_LANE),
-        this.source, LIVE_LANE,
+        buildTaskEvaluationSnapshot(this.source, nowTs, devices, settings, dailyBudgetSnapshot, SERVING_LANE),
+        this.source, SERVING_LANE,
       ).filter((report) => report.evaluation.deadlineAtMs > nowTs);
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);

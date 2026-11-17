@@ -197,3 +197,8 @@ export const resolveEvCardStateLine = (
 
   return { kind: 'none' };
 };
+
+/** The saved schedule cannot govern until this task receives a new allocation. */
+export const isWaitingForSmartTaskPlan = (plan: {
+  diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
+}): boolean => plan.diagnosticReasonCode === 'objective_waiting_for_plan';

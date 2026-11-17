@@ -135,6 +135,7 @@ export const PLAN_STATE_METER_SILENT_STATUS = 'Waiting for a new power reading';
 // the intent being honoured. Set by `normalizeShedReasons` in
 // `lib/plan/planReasons.ts` from the deferred-objective admission decisions.
 export const PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS = 'Waiting for cheaper hours';
+export const PLAN_STATE_DEFERRED_OBJECTIVE_WAITING_FOR_PLAN_STATUS = 'Waiting for a plan';
 
 // Status line for a device whose smart task has reached its target: the task
 // holds it in every hour it did not book until the ready-by time (owner ruling

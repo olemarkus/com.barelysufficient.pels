@@ -55,7 +55,7 @@ You need:
 - A charger PELS controls directly (see [Configure an EV Charger](/ev-charger#charging-current-setup)), or a Homey charger app with a Flow action that can set available current or available power.
 - A car or charger app that can expose battery percentage in Homey, or a Flow that can send that percentage to PELS.
 
-If PELS is not installed yet, start with [Getting Started](/getting-started). If your power or price source comes from Homey Energy, see [Using Homey Energy](/homey-energy). A charging task can stay at **Building plan…** until prices are available for the whole ready-by window.
+If PELS is not installed yet, start with [Getting Started](/getting-started). If your power or price source comes from Homey Energy, see [Using Homey Energy](/homey-energy). A charging task shows **Waiting for a plan** while it waits for its planning turn or for prices through the ready-by time. The reason line says which.
 
 Homey background reading:
 
@@ -204,7 +204,7 @@ Use [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) instead w
 | --- | --- |
 | The charger is not offered in **Create smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
 | Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, select the car in the charger's **Car** section (Path A) and wait for PELS to match it. If the car is not listed there, report its battery percentage with **Report battery level for charger** (Path C). |
-| The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
+| The task stays at **Waiting for a plan** | Check the reason line. If it is waiting for prices, check that price data reaches the ready-by time. Tomorrow's prices may not be published yet. |
 | The charger starts in a period outside the plotted task plan | The task keeps that period without planned energy, because it is cheaper than the planned periods or the task cannot finish otherwise, and charges there when power is available. A deferred period is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
 | The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, open **Review power guarantee** to preview what the task needs and the effect of extra permissions. If the reason names the car's own schedule or smart charging, turn that off in the car. |
 | The car's own charge limit is below the target | The task keeps your target. As soon as PELS knows the car's limit is lower, the task shows **At risk** (or **Cannot finish**) with the limit as the reason, and it ends as missed if the car stops there. Raise the charge limit in the car, or lower the task's target to the car's limit. While the car is still below its limit, the daily budget is named instead when it is what holds the task back. A car unplugged before it reaches the limit shows **Paused — unplugged**; plug it in. |

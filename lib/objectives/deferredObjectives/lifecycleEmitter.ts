@@ -8,7 +8,6 @@ import {
   buildDeferredObjectiveDiagnostics,
   buildTaskEvaluationSnapshot,
   emitDeferredObjectiveDiagnostics,
-  LIVE_LANE,
   reportTaskCompletionDiagnostic,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveAnnounce,
@@ -22,6 +21,7 @@ import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { TaskPlanningTurns } from './taskPlanningTurns';
 import { isDeferredObjectiveExpired } from './diagnosticTypes';
 
 const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
@@ -43,7 +43,8 @@ const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_obje
  * The planner still computes its own evaluation per plan cycle for the
  * *decoration* (admission / target overrides) it applies to `PlanInputDevice`s
  * — that stays synchronous with planning. This emitter therefore owns its own
- * evaluation snapshot; only this side feeds the UI and persisted records.
+ * evaluation snapshot; only this side allocates (one queued task per tick), feeds
+ * the UI and writes persisted records. Decoration serves those commitments.
  *
  * "Owns its own evaluation" means the CLOCK and the resulting diagnostics, not
  * the device set: `getDevices` is still wired to `getPlanDevices()`, so the
@@ -116,6 +117,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
 };
 
 export class DeferredObjectiveLifecycleEmitter {
+  private readonly planningTurns = new TaskPlanningTurns();
   private lifecycleDeviceIds: ReadonlySet<string> = new Set();
 
   // objectiveId -> the state already announced for it, so an unchanged task
@@ -138,14 +140,15 @@ export class DeferredObjectiveLifecycleEmitter {
     // lag, immaterial for the history record). The read itself is in-memory (no
     // SDK call).
     const { source } = this.deps;
+    const lane = { kind: 'scheduled' as const, turns: this.planningTurns };
     const snapshot = buildTaskEvaluationSnapshot(
-      source, nowMs, this.deps.getDevices(), settings, this.deps.getDailyBudgetSnapshot(), LIVE_LANE,
+      source, nowMs, this.deps.getDevices(), settings, this.deps.getDailyBudgetSnapshot(), lane,
     );
     const { activePlans } = snapshot;
     this.deps.energyDelivery.observe(snapshot.devices, settings, nowMs);
     // Reporting projects the evaluator's completion without re-reading evidence.
     let diagnostics = buildDeferredObjectiveDiagnostics(
-      snapshot, source, LIVE_LANE,
+      snapshot, source, lane,
     ).map(reportTaskCompletionDiagnostic);
 
     // Plan-history record, using this tick's (pre-write) snapshot.

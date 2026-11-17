@@ -13,6 +13,7 @@ import type {
 } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
 import {
   resolveExclusionPendingReason,
+  isWaitingForSmartTaskPlan,
   resolveSmartTaskPendingReason,
   type DeadlinePlanPendingReason,
 } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
@@ -55,8 +56,9 @@ export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone
 export const resolvePendingReason = (
   activePlan: ResolvedDeferredObjectiveActivePlanV1 | null,
 ): DeadlinePlanPendingReason => (
-  resolveExclusionPendingReason(activePlan?.diagnosticReasonCode)
-    ?? resolveSmartTaskPendingReason(activePlan?.pendingReason)
+  activePlan && isWaitingForSmartTaskPlan(activePlan) ? 'not_yet_planned'
+    : resolveExclusionPendingReason(activePlan?.diagnosticReasonCode)
+      ?? resolveSmartTaskPendingReason(activePlan?.pendingReason)
 );
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {

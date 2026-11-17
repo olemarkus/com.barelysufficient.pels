@@ -225,8 +225,9 @@ The banner above the Overview tells you which state you are in:
 - For price-based temperature shifts, the device needs **Price** (or **Price response → Price-based control**)
   enabled and **When the temperature changes outside PELS** set to **Return to mode target**, and
   **Respond to prices** must be on globally.
-- A Smart task that stays at **Building plan…** is usually waiting for prices
-  through its ready-by time — tomorrow's prices may not be published yet.
+- A Smart task at **Waiting for a plan** is waiting for its planning turn or for
+  prices through its ready-by time. Check the reason line. If it names missing
+  prices, tomorrow's prices may not be published yet.
 
 ## EV charging starts at the wrong time or won't change current
 

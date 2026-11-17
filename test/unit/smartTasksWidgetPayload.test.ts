@@ -570,7 +570,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     }));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
-    expect(payload.rows[0].statusLabel).toBe('Building plan…');
+    expect(payload.rows[0].statusLabel).toBe('Waiting for a plan');
     expect(payload.rows[0].confidenceLabel).toBeNull();
   });
 
@@ -625,8 +625,8 @@ describe('buildSmartTasksWidgetPayload', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput({ p: pendingPlan }));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
-    expect(payload.rows[0].statusLabel).toBe('Building plan…');
-    expect(payload.rows[0].whyLabel).toBe('Choosing when to run now.');
+    expect(payload.rows[0].statusLabel).toBe('Waiting for a plan');
+    expect(payload.rows[0].whyLabel).toBe('Waiting for a plan.');
     expect(payload.rows[0].recourseHint).toBeNull();
     // The copy branch and the suppression branch must agree about absence —
     // they disagreed before, so the row showed "Estimating" beside a "why" line

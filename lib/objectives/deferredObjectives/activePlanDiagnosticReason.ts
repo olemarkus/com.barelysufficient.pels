@@ -23,6 +23,7 @@ export const resolveDiagnosticReasonCode = (
   // momentary gap. A real recovery arrives as a diagnostic that names itself.
   if (diag.reasonCode === 'objective_missing_device') return current;
   if (diag.reasonCode === 'objective_waiting_for_car') return 'objective_waiting_for_car';
+  if (diag.reasonCode === 'objective_waiting_for_plan') return 'objective_waiting_for_plan';
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_device_in_sub_home') return 'objective_device_in_sub_home';
   if (diag.reasonCode === 'objective_device_unmanaged') return 'objective_device_unmanaged';

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
+import { createCommittedTaskPlanning } from '../helpers/committedTaskPlanning';
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -55,12 +56,15 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
     },
   };
   const device = buildTaskDevice(controllable);
-  const controller = new DeferredObjectiveDecorationController({
+  const planning = createCommittedTaskPlanning({
     prefersContinuousCharging: () => false,
     getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
     hasSolarProduction: () => false,
-    getThermalDirection: () => 'heating',
+    getThermalDirection: () => {
+      if (dropPowerOnDecision) observedPowerKw = 0;
+      return 'heating';
+    },
     getPrioritiesForDevices: createFixturePriorityQuery(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => tracker,
@@ -77,7 +81,9 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => settings, () => false);
+  });
+  planning.settle({ devices: [device], dailyBudgetSnapshot: null, nowTs: START_MS }, settings);
+  const controller = new DeferredObjectiveDecorationController(planning.source, () => settings, () => false);
   const guard = createTestCapacityGuard({ homeId: 'main' });
   const scheduler = partialDouble<PlanRebuildScheduler>({
     request: () => {
@@ -97,7 +103,6 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
       }
       vi.setSystemTime(Date.now() + decisionDelayMs);
       controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: Date.now() });
-      if (dropPowerOnDecision) observedPowerKw = 0;
       // The budget owner can update tracker state while deciding. Accounting
       // must patch the latest state, not overwrite that update with its old copy.
       tracker = { ...tracker, hourlyBudgets: { [HOUR_KEY]: 9.5 } };

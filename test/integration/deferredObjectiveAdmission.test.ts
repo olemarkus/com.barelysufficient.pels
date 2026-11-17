@@ -23,6 +23,7 @@ import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestU
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { createCommittedTaskPlanning } from '../helpers/committedTaskPlanning';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_water_heater';
@@ -207,7 +208,7 @@ const buildBuilder = (
 ) => {
   const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
   const capacitySettings = overrides.capacitySettings ?? { capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 };
-  const deferredController = new DeferredObjectiveDecorationController({
+  const committedPlanning = createCommittedTaskPlanning({
     prefersContinuousCharging: () => false,
     getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
@@ -226,7 +227,8 @@ const buildBuilder = (
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => buildSettings(), () => false);
+  });
+  const deferredController = new DeferredObjectiveDecorationController(committedPlanning.source, buildSettings, () => false);
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
@@ -237,7 +239,10 @@ const buildBuilder = (
     }),
     getPowerTracker: () => powerTrackerRef.current,
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
-    decorateDeferredObjectives: (input) => deferredController.decorate(input),
+    decorateDeferredObjectives: (input) => {
+      committedPlanning.settle(input, buildSettings());
+      return deferredController.decorate(input);
+    },
   }, createPlanEngineState());
 };
 
@@ -355,7 +360,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
   it('commands the deadline target when the operating mode target is below it', async () => {
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
-    const deferredController = new DeferredObjectiveDecorationController({
+    const committedPlanning = createCommittedTaskPlanning({
       prefersContinuousCharging: () => false,
       getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
@@ -373,7 +378,8 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => buildSettings(), () => false);
+    });
+    const deferredController = new DeferredObjectiveDecorationController(committedPlanning.source, buildSettings, () => false);
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -387,7 +393,10 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => powerTrackerRef.current,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
-      decorateDeferredObjectives: (input) => deferredController.decorate(input),
+      decorateDeferredObjectives: (input) => {
+        committedPlanning.settle(input, buildSettings());
+        return deferredController.decorate(input);
+      },
     }, createPlanEngineState());
 
     vi.setSystemTime(new Date(DAY_START_UTC));

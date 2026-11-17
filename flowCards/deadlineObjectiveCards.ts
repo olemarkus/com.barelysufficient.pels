@@ -5,7 +5,9 @@ import type {
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { resolveEffectivePlanStatus } from '../packages/shared-domain/src/smartTaskCopy/listStatus';
-import { isDeviceExclusionPaused } from '../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import {
+  isDeviceExclusionPaused, isWaitingForSmartTaskPlan,
+} from '../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { FlowCard } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
@@ -464,7 +466,9 @@ const resolveEffectiveStatus = (
   // answering with the schedule it committed before the exclusion. Shared
   // predicate: the detail hero and the list chip read the same one.
   if (plan !== null && isDeviceExclusionPaused(plan)) return null;
-  if (plan === null || plan.pending || plan.latest === null) return PENDING_FLOW_STATUS;
+  if (plan === null || plan.pending || plan.latest === null || isWaitingForSmartTaskPlan(plan)) {
+    return PENDING_FLOW_STATUS;
+  }
   return mapPlanStatusToFlowStatus(
     resolveEffectivePlanStatus(plan.latest.planStatus, plan),
   );

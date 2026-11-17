@@ -1066,6 +1066,25 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(planOf(recorder, 'dev')?.pending).toBe(true);
   });
 
+  it('does not emit another pending status event when replacing a task waiting for a plan', () => {
+    const { deps } = buildPersistDeps();
+    const onRevisionWritten = vi.fn();
+    const recorder = new DeferredObjectiveActivePlanRecorder({ ...deps, onRevisionWritten });
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_waiting_for_plan',
+    })], HOUR_MS + 30_000);
+    expect(planOf(recorder, 'dev')?.latest?.planStatus).toBe('on_track');
+    expect(effectivePlanStatusOf(planOf(recorder, 'dev')!)).toBeNull();
+    onRevisionWritten.mockClear();
+
+    recorder.markPending(buildSeed({ deadlineAtMs: 7 * HOUR_MS }), 2 * HOUR_MS);
+
+    expect(onRevisionWritten).not.toHaveBeenCalled();
+    expect(planOf(recorder, 'dev')?.pending).toBe(true);
+  });
+
   it('does not emit a pending status event when the replaced plan was past deadline', () => {
     const events: string[] = [];
     const { deps } = buildPersistDeps();

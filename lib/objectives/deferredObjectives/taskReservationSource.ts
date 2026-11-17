@@ -1,5 +1,5 @@
 import type {
-  DeferredObjectiveRoster, DeferredObjectiveSettingsEntry,
+  DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV2 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
@@ -8,15 +8,20 @@ import type {
 } from '../../ports/taskReservations';
 import {
   resolveObjectiveDeviceInputs, resolveObjectiveProgressDirectionRead, withPermittedChargingEnvelopes,
-  type ObjectiveDeviceSource, type ObjectiveDeviceInput,
+  type ObjectiveDeviceSource,
 } from '../types';
 import type { DeferredObjectivePriorityReservation } from './policyHorizon';
-import { committedPriorityReservations, narrowPriorityReservations } from './priorityAllocation';
+import {
+  committedPriorityReservations, narrowPriorityReservations, orderDeferredObjectives, type OrderedDeferredObjective,
+} from './priorityAllocation';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import type { TaskEvaluationSource } from './taskEvaluationCoordinator';
+import { planningTurnContext } from './taskPlanningTurns';
+import { buildObjectiveDeviceExclusionPredicate } from './deviceExclusion';
 
 type ReservationReaders = Pick<TaskEvaluationSource,
-  'getDeferredObjectiveActivePlans' | 'getCapacitySettings' | 'getThermalDirection' | 'getChargingPhaseEnvelopes'>;
+  'getDeferredObjectiveActivePlans' | 'getCapacitySettings' | 'getThermalDirection' | 'getChargingPhaseEnvelopes'
+  | 'getPrioritiesForDevices' | 'allocationRoster' | 'resolveDeviceExclusion'>;
 
 /** Original economic coverage is independent of the projected admission window. */
 const energyReservations = (
@@ -39,13 +44,13 @@ const admissionReservations = (
 
 /** Resolve one configured obligation completely before including it in the household read. */
 function readTaskReservations(
-  deviceId: string,
-  objective: DeferredObjectiveSettingsEntry,
-  device: ObjectiveDeviceInput | undefined,
+  task: OrderedDeferredObjective,
   activePlans: DeferredObjectiveActivePlansV2,
   powerLimits: PowerLimitSettings,
   nowMs: number,
+  allocationContext: string,
 ): TaskReservationsRead {
+  const { deviceId, objective, device } = task;
   const plan = activePlans.plansByDeviceId[deviceId];
   if (plan === undefined) return { kind: 'waiting' };
   const committed = resolveActiveCommittedPlan(deviceId, objective, resolveObjectiveProgressDirectionRead({
@@ -56,6 +61,11 @@ function readTaskReservations(
   if (plan.liveCompletion.kind === 'satisfied') {
     return { kind: 'ready', taskDeviceIds: new Set(), energy: [], admission: [] };
   }
+  // A queued plan retains its last revision for history, but those bookings
+  // cannot be spent by battery planning. Compare the current higher revisions
+  // directly: the lifecycle overlay may not have observed their latest write yet.
+  if (plan.diagnosticReasonCode === 'objective_waiting_for_plan'
+    || committed.latest.allocationContextSignature !== allocationContext) return { kind: 'waiting' };
   const reservations = committedPriorityReservations(
     deviceId, committed.latest, device, powerLimits, objective.deadlineAtMs, false,
   );
@@ -91,7 +101,7 @@ export class ObjectiveTaskReservationSource<Device extends { id: string }> imple
     if (taskIds.size === 0) return { kind: 'ready', taskDeviceIds: taskIds, energy: [], admission: [] };
     const devices = resolveObjectiveDeviceInputs(
       withPermittedChargingEnvelopes(
-        this.getDevices().filter((device) => taskIds.has(device.id)).map(this.projectDevice),
+        this.getDevices().filter((device) => managedMainDeviceIds.has(device.id)).map(this.projectDevice),
         this.readers.getChargingPhaseEnvelopes(nowMs),
       ),
       this.readers.getThermalDirection,
@@ -99,8 +109,13 @@ export class ObjectiveTaskReservationSource<Device extends { id: string }> imple
     const devicesById = new Map(devices.map((device) => [device.id, device]));
     const activePlans = this.readers.getDeferredObjectiveActivePlans();
     const powerLimits = this.readers.getCapacitySettings();
-    const ready = tasks.map(([deviceId, objective]) => readTaskReservations(
-      deviceId, objective, devicesById.get(deviceId), activePlans, powerLimits, nowMs,
+    const ordered = orderDeferredObjectives(
+      { objectivesByDeviceId: Object.fromEntries(tasks) }, devicesById,
+      buildObjectiveDeviceExclusionPredicate(this.readers.resolveDeviceExclusion),
+      this.readers.allocationRoster.read(nowMs), activePlans, this.readers.getPrioritiesForDevices,
+    );
+    const ready = ordered.map((task, index) => readTaskReservations(
+      task, activePlans, powerLimits, nowMs, planningTurnContext(ordered.slice(0, index + 1), activePlans),
     )).filter((task) => task.kind === 'ready');
     if (ready.length !== tasks.length) return { kind: 'waiting' };
     return {

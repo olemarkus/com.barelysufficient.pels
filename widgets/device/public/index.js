@@ -656,7 +656,7 @@
 
   // packages/shared-domain/src/smartTaskCopy/listStatus.ts
   var SMART_TASK_LIST_STATUS_LABELS = {
-    building_plan: "Building plan\u2026",
+    building_plan: "Waiting for a plan",
     queued: "On track",
     unavailable: "Unavailable",
     paused_unplugged: "Paused \u2014 unplugged",
@@ -738,8 +738,8 @@
     recourse: overviewDeviceRecourse(ctx.deviceId)
   });
   var notYetPlannedCopy = (kindNoun) => (() => ({
-    headline: "Choosing when to run",
-    body: `PELS is working out the ${kindNoun}. This normally lands within a minute.`,
+    headline: "Waiting for a plan",
+    body: `PELS will work out the ${kindNoun} when this task\u2019s turn comes.`,
     headlineReason: null,
     recourse: null
   }));
@@ -856,7 +856,7 @@
     openOverview: { label: "Adjust device", targetTab: "overview" }
   };
   var KIND_INVARIANT_LIVE_STATE_CHIP_LABELS = {
-    building_plan: "Building plan\u2026",
+    building_plan: SMART_TASK_LIST_STATUS_LABELS.building_plan,
     queued: "On track",
     unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
     // Reachable on any kind: the owner can stop managing a heater too.

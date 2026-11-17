@@ -46,7 +46,7 @@ export type SmartTaskListStatusId =
 // track?" the same way the detail hero does — one state, one word across the
 // two surfaces; see notes/ui-terminology.md § Smart task list status chips).
 export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
-  building_plan: 'Building plan…',
+  building_plan: 'Waiting for a plan',
   queued: 'On track',
   unavailable: 'Unavailable',
   paused_unplugged: 'Paused — unplugged',
@@ -337,7 +337,8 @@ const resolveCurrentCauseListStatus = (plan: SmartTaskListStatusPlan): SmartTask
   // instead of "On track".
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
   // A car limit from the preceding connection says nothing about this car.
-  if (diagnosticReasonCode === 'objective_waiting_for_car') return 'building_plan';
+  if (diagnosticReasonCode === 'objective_waiting_for_car'
+    || diagnosticReasonCode === 'objective_waiting_for_plan') return 'building_plan';
   // A known car limit below the target on a COMMITTED plan. A pending plan has
   // no status to overlay and falls through to the pending ladder, as the detail
   // page's pending hero and the Flow's pending status do. The reported limit

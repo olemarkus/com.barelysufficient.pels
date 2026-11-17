@@ -111,7 +111,7 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
     {
       // Demonstrates the "Target X" rendering when the device snapshot hasn't
       // reported a current reading yet — the status chip carries the "why"
-      // (Building plan…) and the row no longer reads as "— → 22 °C".
+      // (Waiting for a plan) and the row no longer reads as "— → 22 °C".
       deviceId: 'preview-bedroom',
       deviceName: 'Bedroom heat',
       kind: 'temperature',
@@ -119,7 +119,7 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       currentValue: null,
       targetValue: 22,
       finishLabel: '07:00',
-      statusLabel: 'Building plan…',
+      statusLabel: 'Waiting for a plan',
       tone: 'muted',
       etaVerb: 'Ready by',
       targetActionVerb: 'Heat to',

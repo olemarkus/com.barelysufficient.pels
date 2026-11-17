@@ -12,7 +12,7 @@ import { plannedDurationHours } from './plannedDuration';
  * replan revisions settle at most once per clock hour, at/after the `:58`
  * mark shared with the build-time gate via `settleWindow.ts` (a user
  * objective edit bypasses the gate). Between settles the committed record is
- * frozen — the planner's per-cycle live allocation is deliberately ungated,
+ * frozen — a lifecycle queue turn authorizes delayed settle writes,
  * and the mid-hour frozen read is served elsewhere (`frozenHorizonPlan.ts`),
  * not by this file. The recorder also owns the commitment envelope, the
  * bounded revision history, and the pending-record lifecycle that the
@@ -161,8 +161,8 @@ export class DeferredObjectiveActivePlanRecorder {
       }
       return;
     }
-    const previousPlanStatus = existing !== undefined && existing.latest !== null && existing.deadlineAtMs > nowMs
-      ? existing.latest.planStatus
+    const previousPlanStatus = existing !== undefined && existing.deadlineAtMs > nowMs
+      ? effectivePlanStatusOf(existing)
       : null;
     this.plans[seed.deviceId] = createPlanFromSeed(seed, nowMs);
     this.lastSeenAtMs.set(seed.deviceId, nowMs);
@@ -257,7 +257,7 @@ export class DeferredObjectiveActivePlanRecorder {
     );
     // End-of-hour settle gate: a replan revision settles at most once per clock
     // hour (at/after :58); a user objective edit bypasses it. The planner's
-    // per-cycle live allocation is unaffected — only the persisted RECORD is
+    // per-cycle admission is unaffected — only the persisted RECORD is
     // gated, so the device stays controlled while the record waits for the hour's
     // outcome. The hour's settle slot is consumed only when a revision is actually
     // written (`markReplanSettled` after a truthy write), so a no-op `:58` cycle
@@ -487,7 +487,7 @@ export class DeferredObjectiveActivePlanRecorder {
     nowMs: number,
   ): boolean {
     if (isFrozenServedDiagnostic(diag)) return false;
-    if (objectiveChanged) return true;
+    if (objectiveChanged || diag.scheduledReplan) return true;
     const currentHourMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
     const pastSettleMark = nowMs - currentHourMs >= SCHEDULE_SETTLE_OFFSET_MS;
     return pastSettleMark && this.lastScheduleSettledHourMs.get(diag.deviceId) !== currentHourMs;
@@ -680,7 +680,7 @@ export class DeferredObjectiveActivePlanRecorder {
       revision,
       reason,
       allocationChanged,
-      previousEffective ?? latest.planStatus,
+      previousEffective,
       // The overlay is refreshed before the settle, so the plan on record already
       // carries this cycle's live causes. Read the plan just WRITTEN, not
       // `current`: an objective edit changes `targetValue`, and the car-limit

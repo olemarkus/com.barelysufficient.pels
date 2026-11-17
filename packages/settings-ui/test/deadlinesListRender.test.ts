@@ -611,7 +611,7 @@ describe('DeadlinesList', () => {
         status: 'ready',
         cards: [buildCard({ statusId: 'building_plan' })],
       }, { onNewTask: () => {} });
-      const chip = findChipByLabel(mount, 'Building plan…');
+      const chip = findChipByLabel(mount, 'Waiting for a plan');
       expect(chip).not.toBeNull();
       expect(chip?.getAttribute('data-pulse')).toBe('true');
     });

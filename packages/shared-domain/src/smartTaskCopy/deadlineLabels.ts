@@ -199,7 +199,7 @@ const CANNOT_MEET_RECOURSE: {
 // Live-state chip labels that read the same for every task kind; each kind adds
 // its own `active` and `paused_unplugged` words.
 const KIND_INVARIANT_LIVE_STATE_CHIP_LABELS = {
-  building_plan: 'Building plan…',
+  building_plan: SMART_TASK_LIST_STATUS_LABELS.building_plan,
   queued: 'On track',
   unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
   // Reachable on any kind: the owner can stop managing a heater too.

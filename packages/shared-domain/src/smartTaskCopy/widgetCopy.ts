@@ -52,7 +52,7 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
 
 const SMART_TASK_WIDGET_WHY_BY_PENDING_REASON:
 Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
-  not_yet_planned: 'Choosing when to run now.',
+  not_yet_planned: 'Waiting for a plan.',
   awaiting_horizon_plan: 'Waiting for tomorrow’s prices.',
   device_data_missing: 'Waiting for a reading from this device.',
   waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
@@ -162,6 +162,9 @@ export const resolveSmartTaskWidgetDetailCopy = (
         ?? SMART_TASK_SUB_HOME_UNAVAILABLE,
       recourseHint: null,
     };
+  }
+  if (input.diagnosticReasonCode === 'objective_waiting_for_plan') {
+    return { whyLabel: SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.not_yet_planned ?? null, recourseHint: null };
   }
   if (input.diagnosticReasonCode === 'objective_waiting_for_car') {
     return { whyLabel: WAITING_FOR_CAR_ASSOCIATION, recourseHint: null };

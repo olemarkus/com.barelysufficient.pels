@@ -36,6 +36,7 @@ const SIMULATION_TAG = ' (simulation)';
 // Whole lines with their own hypothetical rendering.
 const EXACT_SIMULATION_LINES = new Map<string, string>([
   ['Waiting for cheaper hours', 'Would wait for cheaper hours'],
+  ['Waiting for a plan', 'Would wait for a plan'],
   // The task is done either way; only the hold is hypothetical.
   [PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS, 'Smart task done, would be held until its ready-by time'],
   // The held fallback (`PLAN_STATE_HELD_FALLBACK_STATUS`). It is not a "Limited …"

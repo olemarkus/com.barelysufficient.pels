@@ -22,7 +22,12 @@ import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
 import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
-import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
+import {
+  buildFixtureDiagnostics, buildFixtureDiagnosticsForLane, type TaskEvaluationFixture,
+} from '../helpers/taskEvaluationFixture';
+import { SERVING_LANE } from '../../lib/objectives/deferredObjectives/taskEvaluationCoordinator';
+import { TaskPlanningTurns } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
@@ -188,21 +193,24 @@ type HourOutcome = { hod: number; price: number; kWh: number; minutesDriven: num
 
 // Drive the real stack from the SDK boundary, cycle by cycle, against a bang-bang
 // thermal model. Only temperature/prices/clock are simulated.
-const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
+const runScenario = (mode: 'live' | 'queued'): { hours: HourOutcome[]; finalTempC: number } => {
   const settings = buildSettings();
   const recorder = new DeferredObjectiveActivePlanRecorder({ load: () => null, save: () => true });
   const byHour = new Map<number, HourOutcome>();
+  const turns = new TaskPlanningTurns();
+  const allocationRosterOwner = new TaskAllocationRoster(() => new Date(START_MS));
   let tempC = START_C;
 
   // 5-minute grid from the top of the hour: the bootstrap cycle runs the real
   // fresh allocator, and every later cycle is the frozen read (the grid never
   // lands on the :58 settle mark). That is exactly the cold-start frozen-read case
   // under test — the frozen read never states coldStartFeasible and WI-2 must carry
-  // the release. (A :58-resettle path is covered elsewhere.)
+  // the release. The queued variant additionally drains new hourly generations
+  // at the next sampled tick, then serves the freshly recorded commitment.
   for (let nowMs = START_MS; nowMs < END_MS; nowMs += STEP_MS) {
     const device = buildDevice(tempC, nowMs);
     const activePlans = recorder.getActivePlansSnapshot();
-    const [diag] = buildFixtureDiagnostics({
+    const fixture: TaskEvaluationFixture = {
       hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -220,8 +228,15 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
       buildPriceHorizon: (n, deadlineAtMs) => priceHorizonFromStore(buildCombinedPrices(), n, deadlineAtMs),
       priceOptimizationEnabled: true,
       activePlans,
-    });
-    recorder.observe(diag ? [diag] : [], nowMs);
+      allocationRosterOwner,
+    };
+    const scheduled = mode === 'queued'
+      ? buildFixtureDiagnosticsForLane(fixture, { kind: 'scheduled', turns })
+      : buildFixtureDiagnostics(fixture);
+    recorder.observe(scheduled, nowMs);
+    const [diag] = mode === 'queued'
+      ? buildFixtureDiagnosticsForLane({ ...fixture, activePlans: recorder.getActivePlansSnapshot() }, SERVING_LANE)
+      : scheduled;
     const decision = diag ? applyDeferredObjectiveAdmission([diag.evaluation], [device]).get(DEVICE_ID) : undefined;
     const driven = decision?.kind === 'planned';
 
@@ -250,8 +265,8 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
   return { hours: [...byHour.values()].sort((a, b) => a.hod - b.hod), finalTempC: tempC };
 };
 
-describe('cold-start ⇄ price-deferral (SDK-boundary e2e)', () => {
-  const { hours, finalTempC } = runScenario();
+describe.each(['live', 'queued'] as const)('cold-start ⇄ price-deferral (SDK-boundary e2e, %s)', (mode) => {
+  const { hours, finalTempC } = runScenario(mode);
   const sumKWh = (pred: (h: HourOutcome) => boolean): number => hours.filter(pred).reduce((s, h) => s + h.kWh, 0);
   const peakKWh = sumKWh((h) => h.price === EXPENSIVE);
   const cheapKWh = sumKWh((h) => h.price === CHEAP);
@@ -279,4 +294,14 @@ describe('cold-start ⇄ price-deferral (SDK-boundary e2e)', () => {
     // …and because it is released, no peak hour runs the full 60 minutes.
     expect(peakHours.every((h) => h.minutesDriven < 60)).toBe(true);
   });
+
+  if (mode === 'queued') {
+    it('bounds each expensive hour to its floor booking plus sampled thermal overshoot', () => {
+      // Five-minute observations can cross the floor milestone by one element
+      // sample and cross it again after standby cooling. Neither permits an
+      // expensive hour's full element run after scheduled→commit→serve.
+      const sampledOvershootKWh = 2 * ELEMENT_KW * STEP_MS / HOUR_MS;
+      expect(peakHours.every((hour) => hour.kWh <= FLOOR_KW + sampledOvershootKWh)).toBe(true);
+    });
+  }
 });

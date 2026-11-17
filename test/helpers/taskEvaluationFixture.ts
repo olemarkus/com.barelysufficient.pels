@@ -59,3 +59,12 @@ const splitFixture = (
 export const buildFixtureDiagnostics = (
   fixture: TaskEvaluationFixture,
 ): ReturnType<typeof buildDeferredObjectiveDiagnostics> => buildDeferredObjectiveDiagnostics(...splitFixture(fixture));
+
+/** Exercise a production evaluation lane with the same resolved household fixture. */
+export const buildFixtureDiagnosticsForLane = (
+  fixture: TaskEvaluationFixture,
+  lane: TaskEvaluationLane,
+): ReturnType<typeof buildDeferredObjectiveDiagnostics> => {
+  const [snapshot, readers] = splitFixture(fixture);
+  return buildDeferredObjectiveDiagnostics(snapshot, readers, lane);
+};

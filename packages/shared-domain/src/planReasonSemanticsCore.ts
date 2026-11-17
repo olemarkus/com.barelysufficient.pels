@@ -37,6 +37,7 @@ export const PLAN_REASON_CODES = {
   // cycles. Distinct from `meterSettling`, a wait for a post-restore reading or a device settling countdown.
   meterSilent: 'meter_silent',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
+  deferredObjectiveWaitingForPlan: 'deferred_objective_waiting_for_plan',
   // The device's smart task has reached its target and holds the device in the
   // hours it did not book until the ready-by time. No detail, like
   // `deferredObjectiveAvoid`.
@@ -252,6 +253,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveWaitingForPlan }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.chargeTargetReached; targetPercent: number }
