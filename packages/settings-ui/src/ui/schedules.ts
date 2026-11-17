@@ -25,8 +25,12 @@ let view: SchedulesViewSnapshot = {
   filter: 'all',
 };
 // Read at paint, from the device list and Managed settings the shell keeps current.
+// Until the Managed settings have loaded every device reads as unmanaged, so none is named.
 const readUnmanagedDeviceNames = (): Record<string, string> => Object.fromEntries(
-  state.latestDevices.filter((device) => !resolveManagedState(device.id)).map((device) => [device.id, device.name]),
+  state.deviceSettingMapsLoaded
+    ? state.latestDevices.filter((device) => !resolveManagedState(device.id))
+      .map((device) => [device.id, device.name])
+    : [],
 );
 let generation = 0;
 let openPanel: (panel: string) => void = () => {};

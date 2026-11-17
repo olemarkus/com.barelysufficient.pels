@@ -18,6 +18,7 @@ import {
 } from './settingsWrite.ts';
 import { applyManagedOptInControlMode } from './targetPowerConfig.ts';
 import { applyManagedOptInLimit } from './managedOptInLimit.ts';
+import { refreshDeviceSchedules } from './temporaryCard.ts';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -109,6 +110,7 @@ export function initDeviceDetailManagedControlHandlers(
           state.managedMap = committedMap;
           refreshSharedDeviceViews();
           refreshCurrentDeviceControlStates();
+          refreshDeviceSchedules();
         },
         rollback: refreshCurrentDeviceControlStates,
       });
