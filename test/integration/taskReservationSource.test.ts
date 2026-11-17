@@ -16,7 +16,7 @@ import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { toPlanDevice } from '../../setup/appInit/toPlanDevice';
 import { partialDouble } from '../helpers/partialDouble';
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
-import { planningTurnContext } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { planningTurnContext, reviewedContextSignature } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
 import { orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion } from '../helpers/deferredObjectiveWiringFixtures';
@@ -172,6 +172,27 @@ describe('objective-owned battery task reservations', () => {
 
     expect(source(changed, settings, [device, lowerDevice]).read(NOW + 30_000, managedIds))
       .toEqual({ kind: 'waiting' });
+
+    // The lower task's own turn could not replan and recorded that it reviewed the new context.
+    const lower = changed.plansByDeviceId.lower;
+    const current = withPlanningContexts(changed, settings, [device, lowerDevice])
+      .plansByDeviceId.lower.latest?.allocationContextSignature;
+    if (!lower.latest || current === undefined) throw new Error('Expected lower revision');
+    const reviewed: DeferredObjectiveActivePlansV2 = { ...changed, plansByDeviceId: {
+      ...changed.plansByDeviceId,
+      lower: { ...lower, latest: { ...lower.latest, allocationContextSignature: reviewedContextSignature(current) } },
+    } };
+    expect(source(reviewed, settings, [device, lowerDevice]).read(NOW + 30_000, managedIds).kind).toBe('ready');
+
+    // A revision saved before planning turns: the roster, then device and topology pairs.
+    const [rosterSignature] = JSON.parse(current) as [string, unknown];
+    const earlier: DeferredObjectiveActivePlansV2 = { ...changed, plansByDeviceId: {
+      ...changed.plansByDeviceId,
+      lower: { ...lower, latest: {
+        ...lower.latest, allocationContextSignature: JSON.stringify([rosterSignature, [['heater', 'main']]]),
+      } },
+    } };
+    expect(source(earlier, settings, [device, lowerDevice]).read(NOW + 30_000, managedIds).kind).toBe('ready');
   });
 
   it('includes managed non-task devices when resolving the task priority', () => {
