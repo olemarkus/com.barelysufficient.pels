@@ -48,6 +48,7 @@ const createHarness = (count: number) => {
   const turns = new TaskPlanningTurns();
   const lane: TaskEvaluationLane = { kind: 'scheduled', turns };
   let priceReads = 0;
+  let priceOptimizationEnabled = true;
   let readPrices = (_startMs: number, _endMs: number): PriceHorizonEntry[] => prices();
   const readers: TaskEvaluationReaders = {
     prefersContinuousCharging: () => false,
@@ -62,7 +63,7 @@ const createHarness = (count: number) => {
     return {
       nowMs, timeZone: 'UTC', devices, settings, allocationRoster: roster.read(nowMs),
       powerTracker: {}, dailyBudgetSnapshot: null, activePlans: recorder.getActivePlansSnapshot(),
-      priceOptimizationEnabled: true, powerLimits: capacityOnlyPowerLimits(20), hasSolarProduction: false,
+      priceOptimizationEnabled, powerLimits: capacityOnlyPowerLimits(20), hasSolarProduction: false,
     };
   };
   const evaluate = (nowMs: number, evaluationLane: TaskEvaluationLane = lane): TaskEvaluationReport[] => (
@@ -77,6 +78,7 @@ const createHarness = (count: number) => {
     devices, settings, recorder, evaluate, tick,
     priceReadCount: () => priceReads,
     setPriceRead: (read: typeof readPrices) => { readPrices = read; },
+    setPriceEnabled: (enabled: boolean) => { priceOptimizationEnabled = enabled; },
   };
 };
 
@@ -86,6 +88,29 @@ const freshIds = (reports: readonly TaskEvaluationReport[]): string[] => reports
 ));
 
 describe('bounded smart-task planning turns', () => {
+  it('reports price-off ahead of a queued cached allocation and retains its planning turn', () => {
+    const home = createHarness(2);
+    home.tick(START_MS);
+    home.tick(START_MS + 30_000);
+    home.settings.objectivesByDeviceId['load-1'] = {
+      enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 1.2, deadlineAtMs: DEADLINE_MS,
+    };
+    expect(freshIds(home.tick(START_MS + 60_000))).toEqual(['load-1']);
+    expect(home.recorder.getActivePlan('load-2')?.diagnosticReasonCode).toBe('objective_waiting_for_plan');
+    home.setPriceEnabled(false);
+    const paused = home.tick(START_MS + 90_000);
+    expect(freshIds(paused)).toEqual([]);
+    for (const { diagnostic, evaluation } of paused) {
+      expect(diagnostic.reasonCode).toBe('objective_price_feature_disabled');
+      expect(diagnostic.horizonPlan).toBeUndefined();
+      expect(evaluation.planning.kind).toBe('inactive');
+      expect(home.recorder.getActivePlan(diagnostic.deviceId)?.diagnosticReasonCode)
+        .toBe('objective_price_feature_disabled');
+    }
+    home.setPriceEnabled(true);
+    expect(freshIds(home.tick(START_MS + 120_000))).toEqual(['load-2']);
+  });
+
   it('accepts the whole roster while one task gets each planning turn', () => {
     const home = createHarness(6);
     const reports = home.tick(START_MS);

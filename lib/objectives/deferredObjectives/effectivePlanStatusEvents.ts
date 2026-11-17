@@ -8,7 +8,9 @@
 // revision would keep it alive after the cause ended.
 
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
-import { isSmartTaskPricePaused, isWaitingForSmartTaskPlan } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import {
+  isSmartTaskPricePaused, isWaitingForSmartTaskPlan,
+} from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,

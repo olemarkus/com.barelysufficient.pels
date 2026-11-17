@@ -330,12 +330,16 @@ const readStoredTargetValue = (v: Record<string, unknown>): number | undefined =
   return v.objectiveKind !== 'energy' && isFiniteNumber(legacy) ? legacy : undefined;
 };
 
+const isOptionalPricePausePreviousStatus = (value: unknown): boolean => (
+  value === undefined || value === null || isPlanStatus(value)
+);
+
 const isActivePlan = (value: unknown): value is StoredActivePlan => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return hasValidPlanIdentity(v)
     && (v.liveCompletion === undefined || isDeferredObjectiveLiveCompletion(v.liveCompletion))
-    && (v.pricePausePreviousStatus === undefined || isPlanStatus(v.pricePausePreviousStatus))
+    && isOptionalPricePausePreviousStatus(v.pricePausePreviousStatus)
     && isOptionalCarChargeLimit(v.carChargeLimit)
     && isRevisionOrNull(v.original)
     && isRevisionOrNull(v.latest)

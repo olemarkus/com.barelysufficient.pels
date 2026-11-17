@@ -297,6 +297,13 @@ export type DeadlineRenderInput =
   | { status: 'completed'; kind: DeferredObjectiveSettingsEntry['kind'] }
   | { status: 'absent' };
 
+const hasPendingPlanReason = (plan: ResolvedDeferredObjectiveActivePlanV1): boolean => (
+  plan.pending
+    || isDeviceExclusionPaused(plan)
+    || isWaitingForSmartTaskPlan(plan)
+    || resolveCurrentSmartTaskPendingReason(plan.diagnosticReasonCode) !== null
+);
+
 export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderInput => {
   const ctxResult = resolveObjectiveContext(params);
   if (ctxResult.kind === 'absent') return { status: 'absent' };
@@ -309,10 +316,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   // `latest` revision because that schedule no longer governs the device.
   if (
     !hasActivePlanRevision(ctx)
-      || ctx.activePlan.pending
-      || isDeviceExclusionPaused(ctx.activePlan)
-      || isWaitingForSmartTaskPlan(ctx.activePlan)
-      || resolveCurrentSmartTaskPendingReason(ctx.activePlan.diagnosticReasonCode) !== null
+      || hasPendingPlanReason(ctx.activePlan)
   ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }

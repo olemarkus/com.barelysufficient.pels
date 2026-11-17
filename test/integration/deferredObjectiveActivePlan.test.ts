@@ -218,6 +218,79 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV2): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
+  it.each([false, true])('preserves Waiting across a persisted price pause (edit=%s)', (edit) => {
+    const persist = buildPersistDeps();
+    const onRevisionWritten = vi.fn();
+    const recorder = new DeferredObjectiveActivePlanRecorder({ ...persist.deps, onRevisionWritten });
+    const task = { deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitAcceptedSamples: 8, kwhPerUnitLastAcceptedAtMs: HOUR_MS };
+    recorder.observe([makeDiag(task)], HOUR_MS);
+    recorder.observe([makeDiag({
+      ...task, horizonPlan: undefined, reasonCode: 'objective_waiting_for_plan',
+    })], HOUR_MS + 60_000);
+    expect(onRevisionWritten).toHaveBeenLastCalledWith(expect.objectContaining({ eventType: 'pending_written' }));
+    onRevisionWritten.mockClear();
+    recorder.observe([makeDiag({
+      ...task, horizonPlan: undefined, reasonCode: 'objective_price_feature_disabled',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
+    })], HOUR_MS + 2 * 60_000);
+    recorder.flushIfDirty();
+    expect(onRevisionWritten).not.toHaveBeenCalled();
+    const restored = normalizeDeferredObjectiveActivePlans(JSON.parse(JSON.stringify(persist.saved())));
+    expect(restored.plansByDeviceId.heater!.pricePausePreviousStatus).toBeNull();
+    const resumed = new DeferredObjectiveActivePlanRecorder({
+      ...persist.deps, load: () => restored, onRevisionWritten,
+    });
+    if (edit) {
+      resumed.markPending(buildSeed({ ...task, targetValue: 70 }), HOUR_MS + 3 * 60_000);
+      expect(onRevisionWritten).not.toHaveBeenCalled();
+    }
+    resumed.observe([makeDiag({
+      ...task, ...(edit ? { targetValue: 70, targetTemperatureC: 70 } : {
+        horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5)], { frozenRead: true }),
+      }),
+    })], HOUR_MS + 4 * 60_000);
+    expect(onRevisionWritten).toHaveBeenCalledOnce();
+    expect(onRevisionWritten).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'revision_written', previousPlanStatus: null,
+      previousWasPending: true, effectivePlanStatus: 'on_track',
+    }));
+    expect(resumed.getActivePlan('heater')).not.toHaveProperty('pricePausePreviousStatus');
+  });
+
+  it('announces allocation waiting once after a price pause, then its recovered status', () => {
+    const { deps } = buildPersistDeps();
+    const onRevisionWritten = vi.fn();
+    const recorder = new DeferredObjectiveActivePlanRecorder({ ...deps, onRevisionWritten });
+    const task = { deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS };
+    const frozen = makeHorizon([makeBucket(2 * HOUR_MS, 1.5)], { frozenRead: true });
+    recorder.observe([makeDiag(task)], HOUR_MS);
+    recorder.observe([makeDiag({
+      ...task, reasonCode: 'objective_device_schedule', horizonPlan: frozen,
+    })], HOUR_MS + 60_000);
+    expect(effectivePlanStatusOf(recorder.getActivePlan('heater')!)).toBe('at_risk');
+    onRevisionWritten.mockClear();
+    recorder.observe([makeDiag({
+      ...task, horizonPlan: undefined, reasonCode: 'objective_price_feature_disabled',
+      trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
+    })], HOUR_MS + 2 * 60_000);
+    expect(onRevisionWritten).not.toHaveBeenCalled();
+    for (const minutes of [3, 4]) recorder.observe([makeDiag({
+      ...task, horizonPlan: undefined, reasonCode: 'objective_waiting_for_plan',
+    })], HOUR_MS + minutes * 60_000);
+    expect(onRevisionWritten).toHaveBeenCalledOnce();
+    expect(onRevisionWritten).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pending_written', previousPlanStatus: 'at_risk',
+    }));
+    expect(recorder.getActivePlan('heater')).not.toHaveProperty('pricePausePreviousStatus');
+    recorder.observe([makeDiag({ ...task, horizonPlan: frozen })], HOUR_MS + 5 * 60_000);
+    expect(onRevisionWritten).toHaveBeenCalledTimes(2);
+    expect(onRevisionWritten).toHaveBeenLastCalledWith(expect.objectContaining({
+      eventType: 'revision_written', previousPlanStatus: null,
+      previousWasPending: true, effectivePlanStatus: 'on_track',
+    }));
+  });
+
   it.each([false, true])('keeps the last public risk status across a persisted pause (riskRemains=%s)', (riskRemains) => {
     const persist = buildPersistDeps();
     const onRevisionWritten = vi.fn();
@@ -290,6 +363,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     onRevisionWritten.mockClear();
     recorder.markPending(buildSeed({ ...task, targetValue: 70 }), HOUR_MS + 10 * 60_000);
     expect(recorder.getActivePlan('heater')).not.toHaveProperty('pricePausePreviousStatus');
+    expect(onRevisionWritten).toHaveBeenCalledOnce();
+    expect(onRevisionWritten).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pending_written', previousPlanStatus: 'on_track',
+    }));
     recorder.observe([makeDiag({
       ...task, targetValue: 70, targetTemperatureC: 70,
     })], HOUR_MS + 15 * 60_000);
