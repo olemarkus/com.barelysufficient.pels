@@ -206,6 +206,64 @@ test('a go-e reads its switch from is_allowed, its plug state from the status an
   expect(adapter.phaseReport(charger({ ...waiting, num_phases: '3' }))).toEqual({ kind: 'not_reported' });
 });
 
+test('a KEBA P30 reads its switch from onoff, its plug state from the status booleans and its current from charge_power', () => {
+  type Status = { onoff: boolean; plug_status: boolean; charge_status: boolean; charge_power: number };
+  const charger = (status: Partial<Status>, driver = 'keba-p30'): HomeyDeviceLike => ({
+    ...HOMEY_DEVICE_FIELDS, id: 'keba', name: 'KEBA', class: 'evcharger',
+    driverId: `homey:app:se.cohen.keba:${driver}`,
+    capabilities: ['onoff', 'charge_power', 'plug_status', 'charge_status', 'charge_power_selector', 'measure_power'],
+    capabilitiesObj: Object.fromEntries(Object.entries(status)
+      .map(([id, value]) => [id, { ...cap(value), setable: id === 'onoff' }])),
+  });
+  const overlay = (device: HomeyDeviceLike) => getDeviceAdapter(device)
+    .overlay(device, device.capabilities ?? [], standardDeviceAdapter.observation(device));
+  const plugState = (status: Partial<Status>) => overlay(charger(status)).capabilityObj.evcharger_charging_state?.value;
+  const waiting = { onoff: true, plug_status: true, charge_status: false };
+
+  expect(plugState({ ...waiting, plug_status: false })).toBe('plugged_out');
+  expect(plugState({ ...waiting, charge_status: true })).toBe('plugged_in_charging');
+  expect(plugState({ ...waiting, onoff: false })).toBe('plugged_in_paused');
+  // Connected and enabled, but the car takes nothing.
+  expect(plugState(waiting)).toBe('plugged_in');
+  // A missing reading leaves the state unread.
+  expect(plugState({ onoff: true, plug_status: true })).toBeUndefined();
+  expect(plugState({ onoff: true, charge_status: false })).toBeUndefined();
+
+  const adapted = overlay(charger({ ...waiting, charge_power: 16 }));
+  expect(adapted).toMatchObject({ kind: 'adapted', binaryTarget: { kind: 'capability', writeCapabilityId: 'onoff',
+    observationCapabilityId: 'evcharger_charging' }, controlAdapter: { activationOrder: 'current_before_start' } });
+  expect(adapted.capabilities).toEqual(expect.arrayContaining(['evcharger_charging', 'evcharger_charging_state']));
+  expect(adapted.capabilityObj.evcharger_charging?.value).toBe(true);
+  expect(adapted.capabilityObj.available_installation_current).toMatchObject({ value: 16, setable: false });
+  for (const current of [5, 33, 10.5]) {
+    expect(overlay(charger({ ...waiting, charge_power: current })).capabilityObj.available_installation_current)
+      .toBeUndefined();
+  }
+
+  const adapter = getDeviceAdapter(charger(waiting));
+  const control = adapted.kind === 'adapted' ? adapted.controlAdapter : undefined;
+  expect(adapter.normalize(partialDouble({ controlAdapter: control }), 'onoff', false,
+    charger({ ...waiting, onoff: false }))).toEqual([
+    { capabilityId: 'onoff', value: false },
+    { capabilityId: 'evcharger_charging', value: false },
+    { capabilityId: 'evcharger_charging_state', value: 'plugged_in_paused' },
+  ]);
+  expect(adapter.normalize(partialDouble({ controlAdapter: control }), 'charge_power', 10, charger(waiting))).toEqual([
+    { capabilityId: 'charge_power', value: 10 },
+    { capabilityId: 'available_installation_current', value: 10 },
+  ]);
+
+  const binding = adapter.currentBindings(charger(waiting))[0]!;
+  expect(binding).toMatchObject({ current: { kind: 'action_only' }, scope: { kind: 'charger' } });
+  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:se.cohen.keba:set_charge_power' }], 10).args)
+    .toEqual({ device: { id: 'keba' }, charge_power: 10 });
+
+  // The P40 driver has no switch: it stays a plain device with no derived charging capability.
+  const p40 = charger({ plug_status: true, charge_status: false }, 'keba-p40');
+  expect(overlay(p40)).toMatchObject({ kind: 'standard' });
+  expect(getDeviceAdapter(p40).currentBindings(p40)).toEqual([]);
+});
+
 test('a Smappee EV Wall reads its switch from the charging mode and writes it as normal or paused', () => {
   type Status = { charging_mode: string; cable_connected: boolean; charging: boolean };
   const charger = (status: Partial<Status>): HomeyDeviceLike => ({
