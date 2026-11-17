@@ -78,6 +78,24 @@ export const resolveCommandabilityDetail = (dev: CommandabilityDetailInput): str
 };
 
 /**
+ * What follows an uncommandable device's reason on its card: what the owner can
+ * check, or what happens next without them. Keyed by the reasons this module
+ * resolves, so a reason reworded here keeps its follow-up. A reason with nothing
+ * to add (an unplugged charger says it all) has none.
+ */
+const COMMANDABILITY_NEXT_STEPS: Readonly<Record<string, string>> = {
+  [EV_BLOCK_REASONS.plugged_in_waiting_for_charger]: 'Check authorisation and schedules in its app.',
+  [EV_BLOCK_REASONS.plugged_in_car_stopped]: 'It charges again when the car asks.',
+  [BINARY_COMMAND_RETRY_REASON]: 'PELS tries again within an hour.',
+  [BINARY_COMMAND_REFUSED_REASON]: 'PELS tries again within an hour.',
+};
+
+/** The follow-up sentence for a reason {@link resolveCommandabilityDetail} gave, or `null` for none. */
+export const resolveCommandabilityNextStep = (detail: string): string | null => (
+  COMMANDABILITY_NEXT_STEPS[detail] ?? null
+);
+
+/**
  * EV-boost-context wording for the states that block boost activation. Boost is
  * "command it on now", so it blocks on exactly what actuation blocks on — same
  * classification, different vocabulary: these strings speak to the owner looking

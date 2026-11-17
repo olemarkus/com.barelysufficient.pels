@@ -46,7 +46,8 @@ A state that admits a start or resume can still be refused: an app that gives a
 paused session and one the car ended the same value takes a resume only for the
 first. A refused start reads `device refused the command`, where one that got no
 answer reads `device did not respond`. Both wait out the same backoff (15, 30,
-then 60 minutes) and are tried again, and a charger that runs clears it
+then 60 minutes) and are tried again, so the card line ends `PELS tries again
+within an hour.`, and a charger that runs clears it
 (`lib/plan/admission/binaryCommandReachability.ts`).
 
 Where the refusal itself says which of the two it was, the integration reads it.

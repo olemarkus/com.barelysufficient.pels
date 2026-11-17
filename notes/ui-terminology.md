@@ -395,11 +395,19 @@ its car: `Plugged in · no battery level`.
 `Charging finished` is a session the car has stopped asking power for (an Easee
 `Completed`, a go-e `car_finished`). `Waiting for charger` is a session the
 charger has not started: it waits for authorisation, its own schedule or its
-load balancing, and its reason line reads `charger has not started the session`.
+load balancing, and its reason line reads `Off for now (charger has not started
+the session). Check authorisation and schedules in its app.`
 `Car stopped charging` is a session the car stopped that the charger will not
 start again on PELS's command, as a Zaptec says when it refuses a turn-on; its
-reason line reads `car stopped charging`, and the charger charges again when the
-car asks.
+reason line reads `Off for now (car stopped charging). It charges again when the
+car asks.`
+
+An `Off for now (…)` line whose cause is not PELS's ends with what the owner can
+check or what happens next, because an off device with no next step reads as held
+by PELS (source: `resolveCommandabilityNextStep` in
+`packages/shared-domain/src/commandableNowReason.ts`). A start the device refused
+or did not answer ends `PELS tries again within an hour.`, which the 15, 30, then
+60 minute backoff keeps true. An unplugged charger needs no follow-up.
 
 The plugged-in-idle states (`plugged_in`, and a session that waits for a start)
 discriminate on the charger's own on/off capability (`evcharger_charging`),
