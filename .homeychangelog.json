@@ -853,5 +853,8 @@
   },
   "3.40.0": {
     "en": "New: Override. On a thermostat's device page, set a temperature for a few hours or up to seven days; PELS holds it and then returns to the mode's target. A schedule can start an override, and the overview card shows an Override chip while one is in force. A Smart task on the device waits until the override ends. When a device's setpoint differs from the one PELS plans to set, the card shows both, and the device page says when PELS sets it. The device page is shorter: Override, Smart task and schedules share one Temporary card, and Price response and Power limiting open from a one-line summary."
+  },
+  "3.41.0": {
+    "en": "A Smart task schedule that cannot run because its device is no longer managed now says so on the Smart tasks page, the Schedules page and the device page, before the night it was meant for. Request support lists every Homey device by room, and a device already on Devices opens it. A device that is off for a reason outside PELS says what to check, or that PELS tries again within an hour. Zaptec chargers: a session the car ended is recognised in newer Zaptec apps too. A car that Homey reports unavailable, and a Grid import limit of 0 kW, are explained where you set them."
   }
 }
