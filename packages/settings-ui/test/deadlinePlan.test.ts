@@ -4632,6 +4632,9 @@ it('shows the price-response pause instead of a cached committed plan', () => {
   expect(renderInput.status).toBe('pending');
   if (renderInput.status !== 'pending') return;
   expect(renderInput.pending.hero.headline).toBe('Respond to prices is off');
+  expect(renderInput.pending.hero.chips.map((chip) => chip.text)).toContain('Paused — prices off');
+  expect(renderInput.pending.hero.metaLine)
+    .toContain('Turn on Respond to prices in Settings → Price-aware devices to build a');
   expect(renderInput.pending.hero.recourse?.targetTab).toBe('price-aware-devices');
 });
 

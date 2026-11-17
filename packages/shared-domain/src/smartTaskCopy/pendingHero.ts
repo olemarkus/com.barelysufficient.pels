@@ -4,6 +4,7 @@ import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../objectiveWriteStrings';
 import { SMART_TASK_BANNER_UNAVAILABLE_TITLE } from './listCopy';
 import {
   PENDING_REASON_MISSING_CAPACITY_COPY,
+  RESPOND_TO_PRICES_SETTINGS_PATH,
   SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
   SMART_TASK_DEVICE_UNMANAGED_WHY,
   WAITING_FOR_CAR_ASSOCIATION,
@@ -208,8 +209,7 @@ export const awaitingHorizonCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendin
 export const priceFeatureDisabledCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   () => ({
     headline: 'Respond to prices is off',
-    body: 'Turn on Respond to prices in Settings → Electricity prices → '
-      + `Manage price-aware devices to build a ${kindNoun}.`,
+    body: `Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH} to build a ${kindNoun}.`,
     headlineReason: 'Smart tasks are paused while Respond to prices is off.',
     recourse: { label: 'Open price-aware devices', targetTab: 'price-aware-devices' },
   })

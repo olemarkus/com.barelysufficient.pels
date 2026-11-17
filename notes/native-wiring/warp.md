@@ -10,6 +10,7 @@ released session waiting for a full car reads off. Its
 
 - `plugged_in` and `plugged_in_charging` are a session PELS lets run.
 - `plugged_in_paused` is one that waits for its release.
+- `plugged_in` with `alarm_generic` on is a charger in error with a car connected: the adapter reads its switch as off.
 
 The adapter reads the switch from the state and drops the app's own switch
 events. The charger keeps its external current limit across a stop, so the

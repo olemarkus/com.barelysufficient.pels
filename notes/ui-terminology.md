@@ -958,15 +958,22 @@ PELS" or name one cause as fact. Source: `packages/settings-ui/src/ui/controlCon
 Both stay until the device has kept its settings for an hour, however its rounds
 fall in that time, so `{count} times` reads `Once` when one round is left in the
 hour. Dismissing the recommendation hides that contest while it runs; a later
-contest on the same device shows again.
+contest on the same device shows again. In Setup & recommendations its card
+carries an amber `Warning` chip instead of `Recommended` and is listed before
+the other cards; the Overview banner counts it among its recommendations.
 
 The Overview device card shows an amber warning icon while this warning is
-active. Tapping it opens the same title and explanation, with `Open device`,
-`Dismiss` and `Close` actions. Dismiss acknowledges this conflict, shared with
-its recommendation; a later conflict shows again. Loading acknowledgements
-does not flash a previously dismissed icon. If acknowledgements cannot be read,
-the icon remains visible and Dismiss is disabled. The card's state, reason and
-status chip stay in place. The Devices list has no additional chip.
+active. Tapping it opens a dialog with the same title and explanation, a close
+icon (`Close`) at the top right of the title, and two actions: `Hide warning`
+(`Hiding…` while it saves) and `Open device`. One supporting line under the
+explanation says what hiding does: `Hide warning removes this icon until it
+happens again.` Hide warning acknowledges this conflict, shared with its
+recommendation; a later conflict shows again. `Open device`, here and on the
+recommendation card, opens the device page with Setup expanded and the notice
+in view. Loading acknowledgements does not flash a previously hidden icon. If
+acknowledgements cannot be read, the icon remains visible and Hide warning is
+disabled. The card's state, reason and status chip stay in place. The Devices
+list has no additional chip.
 
 ### Device-page "Power when running" — one line about the present source
 
@@ -1285,6 +1292,7 @@ Source of truth: `packages/shared-domain/src/smartTaskCopy/deadlineLabels.ts`. P
 | Live state chip — plan ready, first hour later (list only) | `On track` | `On track` | `On track` | `On track` |
 | Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` | `Paused — unplugged` for EV chargers |
 | Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` |
+| Live state chip — Respond to prices off (pending hero / list) | `Paused — prices off` | `Paused — prices off` | `Paused — prices off` | `Paused — prices off` |
 | Live state chip — on track, no active hour | `On track` | `On track` | `On track` | `On track` |
 | At-risk chip | `At risk` | `At risk` | `At risk` | `At risk` |
 | Cannot-finish chip | `Cannot finish` | `Cannot finish` | `Cannot finish` | `Cannot finish` |
@@ -1476,6 +1484,7 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 | `Waiting for a plan` | Pending; no current plan allocation yet. The task can be waiting for its planning turn or for prices through its deadline; the reason line names the cause. |
 | `Paused — unplugged` | EV: charging task is paused because the car is unplugged or the session ended. |
 | `Paused — not managed` | "Managed by PELS" is off for the device, so PELS plans nothing for it. The task is **paused, not ended** — it resumes on the next cycle after the device is managed again, and nothing about it is deleted. Both kinds can reach this state. |
+| `Paused — prices off` | **Respond to prices** is off for the home, so PELS plans no Smart task. The task is paused with its goal kept, also when an earlier plan was committed, and resumes once the switch is on again. Never `Waiting for a plan` for this state. The remedy names one path, `Settings → Price-aware devices` (`RESPOND_TO_PRICES_SETTINGS_PATH` in `smartTaskCopy/pendingReasons.ts`). |
 | `On track` | PELS currently expects the task to reach the target — including when the plan is allocated and healthy but its first hour is still in the future. |
 | `At risk` | Plan exists but there is limited time or room left, or a live cause outside the plan holds the device back (see "Live causes on an at-risk or cannot-finish task"). |
 | `Cannot finish` | Not enough usable time or energy delivery before the deadline. |
@@ -1497,8 +1506,8 @@ contracts remain stable — only the user-visible chip label changed. `queued`
 and `on_track` now share one label and tone; the distinction stays internal.
 
 The dashboard widget's compressed row variants are registered:
-`Unplugged` (for `Paused — unplugged`) and `Not managed` (for
-`Paused — not managed`) — the widget row at 320–480 px has roughly half the
+`Unplugged` (for `Paused — unplugged`), `Not managed` (for
+`Paused — not managed`) and `Prices off` (for `Paused — prices off`) — the widget row at 320–480 px has roughly half the
 list card's width and the full em-dash forms truncate. Source:
 `SMART_TASK_WIDGET_STATUS_LABELS` in `smartTaskCopy/listStatus.ts`. The same compressed
 forms are the sanctioned inline status words on the list card's Ready-by line
@@ -1509,10 +1518,10 @@ chip label), `Not charging yet` (its compressed widget / Ready-by word), and
 `Not drawing power yet` (`EV_NOT_RESUMABLE_CARD_LINE`, the device-card variant).
 All three belonged to the `paused_not_resumable` status id, which went with the
 `objective_charger_not_resumable` lane — deleted after production logs showed
-nothing had ever produced the code. The paused bucket carries two ids again
-(`paused_unplugged`, `paused_unmanaged`), but neither is a revival of that
-wording: both name a state the owner can act on — replug the car, or turn
-"Managed by PELS" back on — whereas `paused_not_resumable` claimed a charger was
+nothing had ever produced the code. The paused bucket's ids
+(`paused_unplugged`, `paused_unmanaged`, `paused_prices_off`) are no revival of
+that wording: each names a state the owner can act on — replug the car, turn
+"Managed by PELS" back on, or turn **Respond to prices** on — whereas `paused_not_resumable` claimed a charger was
 connected and undriveable, which nothing could ever observe.
 
 #### Empty-state headlines
@@ -2689,7 +2698,9 @@ control, a car or a battery-reporting Flow) are offered only for devices PELS
 manages.
 
 `Optional` means no configuration defect. `Recommended` identifies a suggested
-setup change. Preserve `PELS can do more for this home` / `See what` for optional
+setup change. `Warning`, in the amber warning tone, marks something PELS
+measured going wrong on a device (a device that doesn't keep PELS's changes);
+warning cards are listed first and count among the banner's recommendations. Preserve `PELS can do more for this home` / `See what` for optional
 suggestions alone and `N recommendations` / `Review` for actual recommendations.
 Dismissal means “not relevant to me” and is retained.
 

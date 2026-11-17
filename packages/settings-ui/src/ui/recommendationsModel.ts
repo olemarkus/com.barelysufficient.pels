@@ -3,6 +3,7 @@ import type { SettingsUiEvSocFlowReporter } from '../../../contracts/src/setting
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import type { DevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import type { DeviceDetailFocus } from './cardActivation.ts';
 import { controlContestNotice } from './controlContestCopy.ts';
 import {
   resolveDeviceStartPolicy,
@@ -36,7 +37,8 @@ import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 export type RecommendationDismissals = Record<string, number>;
 
 export type RecommendationTarget =
-  | { kind: 'device'; deviceId: string }
+  // The device page; `focus` names the row or notice it lands on, the top without one.
+  | { kind: 'device'; deviceId: string; focus?: DeviceDetailFocus }
   // The device page with Setup open on "Only PELS starts this device".
   | { kind: 'device-start-policy'; deviceId: string }
   // The device page at its "Limited temperature" field.
@@ -55,10 +57,11 @@ export type RecommendationTarget =
 export type SetupRecommendation = {
   id: string;
   version: number;
+  // `warning`: something PELS measured going wrong on a device, listed first.
   // `recommendation`: something about this home's setup PELS would change.
   // `optional`: a feature that applies here and is not in use. Never urged —
   // dismissing one is the owner saying it is not for them.
-  category: 'recommendation' | 'optional';
+  category: 'warning' | 'recommendation' | 'optional';
   title: string;
   body: string;
   actionLabel: string;
@@ -436,10 +439,10 @@ export const resolveControlContestRecommendations = (
   return [{
     id: recommendationId('control-contest', device.id),
     version: device.controlContest.sinceMs,
-    category: 'recommendation',
+    category: 'warning',
     ...notice,
     actionLabel: 'Open device',
-    target: { kind: 'device', deviceId: device.id },
+    target: { kind: 'device', deviceId: device.id, focus: 'control-contest' },
   }];
 });
 
@@ -511,10 +514,17 @@ export const resolveSetupRecommendations = (
 export const groupSetupRecommendations = (
   recommendations: readonly SetupRecommendation[],
   dismissals: RecommendationDismissals,
-): RecommendationGroups => recommendations.reduce<RecommendationGroups>((groups, recommendation) => {
-  const target = dismissals[recommendation.id] === recommendation.version
-    ? groups.dismissed
-    : groups.active;
-  target.push(recommendation);
+): RecommendationGroups => {
+  const groups = recommendations.reduce<RecommendationGroups>((result, recommendation) => {
+    const target = dismissals[recommendation.id] === recommendation.version
+      ? result.dismissed
+      : result.active;
+    target.push(recommendation);
+    return result;
+  }, { active: [], dismissed: [] });
+  // Warnings lead the active list; the sort is stable, so the rest keep their order.
+  groups.active.sort((left, right) => (
+    Number(right.category === 'warning') - Number(left.category === 'warning')
+  ));
   return groups;
-}, { active: [], dismissed: [] });
+};

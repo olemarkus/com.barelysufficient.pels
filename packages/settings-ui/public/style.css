@@ -4021,8 +4021,32 @@ label.pels-text-settings-label {
   --md-dialog-supporting-text-color: var(--pels-text-primary);
 }
 
-.plan-card__control-warning-dialog > [slot="actions"] {
-  flex-wrap: wrap;
+.plan-card__control-warning-headline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+}
+
+.plan-card__control-warning-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The touch target reaches into the headline padding, so the icon sits in the corner. */
+.plan-card__control-warning-close {
+  flex: none;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
+  margin-block-start: calc(var(--spacing-3) * -1);
+  margin-inline-end: calc(var(--spacing-3) * -1);
+}
+
+.plan-card__control-warning-body {
+  margin: 0;
+}
+
+.plan-card__control-warning-hint {
+  margin-block-start: var(--spacing-3);
 }
 
 .plan-card__retry {

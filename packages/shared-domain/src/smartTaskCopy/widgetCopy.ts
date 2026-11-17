@@ -9,8 +9,10 @@ import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../objectiveWriteStrings';
 import type { SmartTaskListStatusId } from './listStatus';
 import {
   resolveSmartTaskPendingReason,
+  RESPOND_TO_PRICES_SETTINGS_PATH,
   SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
   SMART_TASK_DEVICE_UNMANAGED_WHY,
+  SMART_TASK_PRICES_OFF_WHY,
   WAITING_FOR_CAR_ASSOCIATION,
 } from './pendingReasons';
 import {
@@ -44,6 +46,7 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
   unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: 'EV is unplugged — plug in to resume.',
   paused_unmanaged: SMART_TASK_DEVICE_UNMANAGED_WHY,
+  paused_prices_off: SMART_TASK_PRICES_OFF_WHY,
   on_track: null, // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null, // disambiguated by budget vs time below
   cannot_meet: null, // resolved by floor cause / budget bucket count
@@ -58,20 +61,24 @@ Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
   waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
   invalid_session: 'EV is unplugged — plug in to start.',
   missing_capacity: 'Learning energy use from this device.',
-  price_feature_disabled: 'Respond to prices is off.',
+  price_feature_disabled: SMART_TASK_PRICES_OFF_WHY,
   device_in_sub_home: SMART_TASK_SUB_HOME_UNAVAILABLE,
   device_unmanaged: SMART_TASK_DEVICE_UNMANAGED_WHY,
 };
 
+const RECOURSE_PRICES_OFF = `Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH}.`;
+
 // Statuses whose recovery is an action the owner can take, reached through the
-// STATUS path rather than the pending one. `paused_unmanaged` needs its own
-// entry because a live diagnostic resolves it straight to the status id — the
-// pending branch (which carries `resolvePendingRecourseHint`) never sees it —
-// and a pause with no way out named is the one thing this state must not be.
+// STATUS path rather than the pending one. `paused_unmanaged` and
+// `paused_prices_off` need their own entries because the list status resolves
+// them straight to the status id — the pending branch (which carries
+// `resolvePendingRecourseHint`) never sees them — and a pause with no way out
+// named is the one thing these states must not be.
 // `paused_unplugged` has no entry: its why-line already ends in "plug in to
 // resume", and a second line would repeat it.
 const SMART_TASK_WIDGET_RECOURSE_BY_STATUS: Partial<Record<SmartTaskListStatusId, string>> = {
   paused_unmanaged: SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
+  paused_prices_off: RECOURSE_PRICES_OFF,
 };
 
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
@@ -84,9 +91,7 @@ const resolvePendingRecourseHint = (
 ): string | null => {
   if (reason === 'invalid_session') return RECOURSE_INVALID_SESSION;
   if (reason === 'device_unmanaged') return SMART_TASK_DEVICE_UNMANAGED_RECOURSE;
-  if (reason === 'price_feature_disabled') {
-    return 'Turn on Respond to prices in Settings → Electricity prices → Manage price-aware devices.';
-  }
+  if (reason === 'price_feature_disabled') return RECOURSE_PRICES_OFF;
   return null;
 };
 

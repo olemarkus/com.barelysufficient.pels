@@ -119,6 +119,8 @@ export const resolveOverviewSmartTaskRow = (params: {
   // Every paused member, not just the EV one: a task the owner has to act on is
   // the whole point of this rung, and omitting one makes the row either vanish
   // (single task) or claim "on track" over a task that is not (mixed cohort).
+  // `paused_prices_off` is absent: the Overview's Smart task status section
+  // names that pause for each task, with its way out.
   const paused = pickSoonest(statuses, ['paused_unplugged', 'paused_unmanaged']);
   if (paused !== null) {
     return {

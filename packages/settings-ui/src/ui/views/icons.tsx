@@ -40,6 +40,13 @@ export const ExpandMoreIcon = (props: IconProps) => (
   </svg>
 );
 
+// Material `close` glyph. The dismiss control in a dialog headline.
+export const CloseIcon = (props: IconProps) => (
+  <svg {...baseSvgProps(props)}>
+    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+  </svg>
+);
+
 // Material `tune` glyph. Marks the Budget page's Adjust trigger so the
 // entry into the budget-settings surface reads as "settings live here".
 export const TuneIcon = (props: IconProps) => (

@@ -47,10 +47,54 @@ test.describe('A device that does not keep what PELS sets', () => {
     await expect(page.getByRole('dialog')).toBeVisible();
     await dialog.getByRole('button', { name: 'Open device', exact: true }).click();
     await expect(page.locator('#device-detail-overlay')).toBeVisible();
-    await expect(page.locator('#device-detail-control-contest-notice')).toBeVisible();
+    await expect(page.locator('#device-detail-control-contest-notice')).toBeInViewport();
   });
 
-  test('shows an amber Overview icon and dismisses only the current conflict', async ({ page }, testInfo) => {
+  test('offers two actions and a close icon, with the dialog outside the card', async ({ page }) => {
+    await stubContestedDevice(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const card = page.locator('#plan-cards .plan-card').filter({ hasText: contested.name });
+    await card.locator('.plan-card__control-warning-icon').click();
+    const dialog = page.locator('.plan-card__control-warning-dialog');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(dialog.locator('[slot="actions"] md-text-button')).toHaveText(['Hide warning', 'Open device']);
+    await expect(dialog.locator('[slot="headline"]').getByRole('button', { name: 'Close', exact: true }))
+      .toBeVisible();
+    await expect(dialog).toContainText('Hide warning removes this icon until it happens again.');
+    // Under the body, so the scrim dims the cards after this one too.
+    expect(await dialog.evaluate((element) => element.parentElement === document.body)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.locator('#device-detail-overlay')).not.toBeVisible();
+  });
+
+  test.describe('at 320 px', () => {
+    test.use({ viewport: { width: 320, height: 800 } });
+
+    test('keeps the two actions on one row', async ({ page }, testInfo) => {
+      await stubContestedDevice(page);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      const card = page.locator('#plan-cards .plan-card').filter({ hasText: contested.name });
+      await card.locator('.plan-card__control-warning-icon').click();
+      const dialog = page.locator('.plan-card__control-warning-dialog');
+      const modal = page.getByRole('dialog');
+      await expect(modal).toBeVisible();
+      // Both boxes in one read: the dialog is still moving while it opens.
+      const readActions = () => dialog.evaluate((element) => {
+        const box = (label: string) => Array.from(element.querySelectorAll('md-text-button'))
+          .find((button) => button.textContent?.trim() === label)?.getBoundingClientRect();
+        const hide = box('Hide warning');
+        const open = box('Open device');
+        return hide && open ? { rowOffset: Math.abs(hide.top - open.top), gap: open.left - hide.right } : null;
+      });
+      await expect.poll(async () => (await readActions())?.rowOffset).toBeLessThan(1);
+      expect((await readActions())?.gap).toBeGreaterThanOrEqual(0);
+      expect(await modal.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await modal.screenshot({ path: testInfo.outputPath('overview-control-warning-dialog-320.png') });
+    });
+  });
+
+  test('shows an amber Overview icon and hides only the current conflict', async ({ page }, testInfo) => {
     await stubContestedDevice(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const card = page.locator('#plan-cards .plan-card').filter({ hasText: contested.name });
@@ -66,7 +110,7 @@ test.describe('A device that does not keep what PELS sets', () => {
     await expect(page.locator('#device-detail-overlay')).not.toBeVisible();
     expect(await modal.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     await modal.screenshot({ path: testInfo.outputPath('overview-control-warning-dialog.png') });
-    await dialog.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Hide warning', exact: true }).click();
     await expect(icon).not.toBeVisible();
     await expect(page.locator('#device-detail-overlay')).not.toBeVisible();
     const saved = await page.evaluate(() => {
@@ -120,9 +164,13 @@ test.describe('A device that does not keep what PELS sets', () => {
       hasText: "Gang nede ovn doesn't keep PELS's changes",
     });
     await expect(card).toBeVisible();
+    await expect(card.locator('.plan-chip')).toHaveText('Warning');
+    await expect(card.locator('.plan-chip')).toHaveClass(/plan-chip--warn/);
+    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card').first())
+      .toContainText("Gang nede ovn doesn't keep PELS's changes");
     await card.screenshot({ path: testInfo.outputPath('control-contest-recommendation.png') });
     await card.getByRole('button', { name: 'Open device' }).click();
     await expect(page.locator('#device-detail-overlay')).toBeVisible();
-    await expect(page.locator('#device-detail-control-contest-notice')).toBeVisible();
+    await expect(page.locator('#device-detail-control-contest-notice')).toBeInViewport();
   });
 });

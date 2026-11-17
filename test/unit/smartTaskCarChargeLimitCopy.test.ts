@@ -146,7 +146,7 @@ describe('the list status of a task held below target by the car\'s limit', () =
   it('does not serve a cached status or car limit when price response is off', () => {
     expect(resolveSmartTaskListStatus({
       ...base, diagnosticReasonCode: 'objective_price_feature_disabled', carChargeLimit: stopped,
-    }, 0)).toBe('building_plan');
+    }, 0)).toBe('paused_prices_off');
     expect(resolveSmartTaskListStatus(base, 0)).toBe('on_track');
   });
 
@@ -156,6 +156,7 @@ describe('the list status of a task held below target by the car\'s limit', () =
     [undefined, 'building_plan'],
     ['invalid_session', 'paused_unplugged'],
     ['device_unmanaged', 'paused_unmanaged'],
+    ['price_feature_disabled', 'paused_prices_off'],
     ['device_in_sub_home', 'unavailable'],
   ] as const)('keeps a pending plan on its pending ladder (%s)', (pendingReason, expected) => {
     expect(resolveSmartTaskListStatus({

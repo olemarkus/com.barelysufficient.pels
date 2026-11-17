@@ -1,6 +1,7 @@
 import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import {
   resolveBuildingPlanChipTone,
+  resolvePausedPricesOffChipTone,
   resolvePausedUnmanagedChipTone,
   resolvePausedUnpluggedChipTone,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
@@ -34,6 +35,7 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
   if (reason === 'device_in_sub_home') return 'unavailable';
   if (reason === 'invalid_session') return 'paused_unplugged';
   if (reason === 'device_unmanaged') return 'paused_unmanaged';
+  if (reason === 'price_feature_disabled') return 'paused_prices_off';
   return 'building_plan';
 };
 
@@ -41,7 +43,7 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
 // resolvers the list card also reads (via `SMART_TASK_LIST_STATUS_CHIP_VARIANT`)
 // so the "Building plan…" / "Paused — unplugged" pill never shows a different
 // colour on the list and the detail surface. The pending hero only ever
-// resolves to `building_plan` / `paused_unplugged` / `paused_unmanaged` via
+// resolves to `building_plan` or one of the paused states via
 // `resolvePendingLiveState`; the broader `DeadlineLiveState` union (`active` /
 // `queued` / `ok`) doesn't reach this resolver in practice, so the fallback
 // simply mirrors the `building_plan` tone. Per
@@ -51,6 +53,7 @@ export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone
   if (liveState === 'unavailable') return SMART_TASK_LIST_STATUS_CHIP_VARIANT.unavailable;
   if (liveState === 'paused_unplugged') return resolvePausedUnpluggedChipTone();
   if (liveState === 'paused_unmanaged') return resolvePausedUnmanagedChipTone();
+  if (liveState === 'paused_prices_off') return resolvePausedPricesOffChipTone();
   return resolveBuildingPlanChipTone();
 };
 

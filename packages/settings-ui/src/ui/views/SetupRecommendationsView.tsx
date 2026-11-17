@@ -32,9 +32,10 @@ type RecommendationCardProps = {
 
 // An optional feature is not "recommended": nothing is wrong with a home that
 // never uses it, and the chip must not say otherwise.
-const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
-  recommendation: 'Recommended',
-  optional: 'Optional',
+const CATEGORY_CHIP: Record<SetupRecommendation['category'], { label: string; tone: string }> = {
+  warning: { label: 'Warning', tone: 'plan-chip--warn' },
+  recommendation: { label: 'Recommended', tone: 'plan-chip--info' },
+  optional: { label: 'Optional', tone: 'plan-chip--info' },
 };
 
 // The actions that wait on Homey rather than open a page, and what their
@@ -56,8 +57,8 @@ const RecommendationCard = (props: RecommendationCardProps) => {
     <article class="pels-surface-card setup-recommendation-card" data-tone={dismissed ? 'muted' : undefined}>
       <div class="setup-recommendation-card__header">
         <h3 class="plan-card__title">{recommendation.title}</h3>
-        <span class={`plan-chip ${dismissed ? 'plan-chip--muted' : 'plan-chip--info'}`}>
-          {dismissed ? 'Dismissed' : CATEGORY_CHIP[recommendation.category]}
+        <span class={`plan-chip ${dismissed ? 'plan-chip--muted' : CATEGORY_CHIP[recommendation.category].tone}`}>
+          {dismissed ? 'Dismissed' : CATEGORY_CHIP[recommendation.category].label}
         </span>
       </div>
       <p class="pels-card-supporting">{recommendation.body}</p>
@@ -187,10 +188,11 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
 );
 
 // "N recommendations" means PELS would change something about this home's
-// setup. Optional features are not that: with only those active, the banner says
-// there is more on offer and lets the owner decide whether to look.
+// setup, a warning included. Optional features are not that: with only those
+// active, the banner says there is more on offer and lets the owner decide
+// whether to look.
 const resolveBannerCopy = (active: readonly SetupRecommendation[]): { title: string; action: string } => {
-  const recommendationCount = active.filter((recommendation) => recommendation.category === 'recommendation').length;
+  const recommendationCount = active.filter((recommendation) => recommendation.category !== 'optional').length;
   if (recommendationCount === 0) {
     return { title: 'PELS can do more for this home', action: 'See what' };
   }

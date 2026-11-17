@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { deadlineLabels } from '../../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
 import {
+  resolvePausedPricesOffChipTone,
   resolvePausedUnmanagedChipTone,
   resolveSmartTaskListStatus,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
@@ -12,6 +13,7 @@ import {
   SMART_TASK_WIDGET_STATUS_LABELS,
 } from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
 import {
+  RESPOND_TO_PRICES_SETTINGS_PATH,
   SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
   SMART_TASK_DEVICE_UNMANAGED_WHY,
 } from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
@@ -110,5 +112,58 @@ describe('un-managed device: smart-tasks list hero', () => {
     expect(hero?.tone).toBe('warn');
     // The paused branch names the ACTUAL recovery, never the unplugged default.
     expect(hero?.subline).toBe('Bathroom heater due 06:30 — not managed by PELS.');
+  });
+});
+
+describe('Respond to prices off: paused, not waiting for a plan', () => {
+  const committed = {
+    liveCompletion: { kind: 'unavailable' as const },
+    pending: false,
+    latest: { planStatus: 'on_track' as const, hours: [{ startsAtMs: 1, endsAtMs: 3_600_001, plannedKWh: 1 }] },
+    targetValue: 55,
+  };
+
+  it('reads paused on a committed plan and on a pending one', () => {
+    expect(resolveSmartTaskListStatus({
+      ...committed, diagnosticReasonCode: 'objective_price_feature_disabled',
+    }, 0)).toBe('paused_prices_off');
+    expect(resolveSmartTaskListStatus({
+      ...committed, pending: true, latest: null, pendingReason: 'price_feature_disabled',
+    }, 0)).toBe('paused_prices_off');
+  });
+
+  it('labels the chip as a pause on the list, the widget and the task page', () => {
+    expect(SMART_TASK_LIST_STATUS_LABELS.paused_prices_off).toBe('Paused — prices off');
+    expect(SMART_TASK_WIDGET_STATUS_LABELS.paused_prices_off).toBe('Prices off');
+    expect(SMART_TASK_LIST_STATUS_CHIP_VARIANT.paused_prices_off).toBe(resolvePausedPricesOffChipTone());
+    expect(resolvePausedPricesOffChipTone()).toBe('warn');
+    expect(deadlineLabels('temperature').liveStateChipLabel.paused_prices_off).toBe('Paused — prices off');
+  });
+
+  it('names one path to the switch on the widget and the task page', () => {
+    expect(RESPOND_TO_PRICES_SETTINGS_PATH).toBe('Settings → Price-aware devices');
+    expect(resolveSmartTaskWidgetDetailCopy({ statusId: 'paused_prices_off', firstPlannedTimeLabel: null })).toEqual({
+      whyLabel: 'Respond to prices is off.',
+      recourseHint: `Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH}.`,
+    });
+    expect(resolveSmartTaskWidgetDetailCopy({
+      statusId: 'building_plan', pendingReason: 'price_feature_disabled', firstPlannedTimeLabel: null,
+    }).recourseHint).toBe(`Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH}.`);
+    const hero = deadlineLabels('ev_soc').pendingHeroByReason.price_feature_disabled({
+      priceSource: 'unknown', lastFetchedShort: null, hasCurrentPrice: false,
+      deviceId: 'ev', deviceName: 'Charger', deadlineTime: '06:00',
+    });
+    expect(hero.body).toBe(`Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH} to build a charging plan.`);
+  });
+
+  it('counts the task as paused in the Smart tasks hero', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [{
+        deviceId: 'heater', deviceName: 'Bathroom heater', kind: 'temperature',
+        statusId: 'paused_prices_off', deadlineAtMs: 1000, firstActionAtMs: null,
+      }],
+      formatTime: () => '06:00',
+    });
+    expect(hero?.subline).toBe('Bathroom heater due 06:00 — Respond to prices is off.');
   });
 });

@@ -1,6 +1,6 @@
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { OverviewControlWarningIcon } from '../src/ui/views/OverviewControlWarning.tsx';
 import { resolveControlContestRecommendations } from '../src/ui/recommendationsModel.ts';
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
@@ -16,7 +16,16 @@ const [recommendation] = resolveControlContestRecommendations([withDescriptorIde
   controlContest: { setting: 'temperature', commanded: 22, observed: 28, count: 4, sinceMs: 1000 },
 })]);
 
-afterEach(() => { act(() => render(null, mount)); });
+let showDialog: MockInstance;
+beforeEach(() => {
+  // jsdom has no native dialog.showModal. The dialog mounts under the body, so
+  // it is connected and would call it; the test follows the open state instead.
+  showDialog = vi.spyOn(customElements.get('md-dialog')!.prototype, 'show').mockResolvedValue(undefined);
+});
+afterEach(() => {
+  act(() => render(null, mount));
+  showDialog.mockRestore();
+});
 
 describe('Overview warning icon', () => {
   it.each(['generic', 'temperature', 'stepped'])('appears on a %s device card', (kind) => {
@@ -30,7 +39,14 @@ describe('Overview warning icon', () => {
     expect(mount.querySelector('.plan-card .plan-card__control-warning-icon')).not.toBeNull();
   });
 
-  it('opens its explanation and dismisses without activating the device card', async () => {
+  const dialogButton = (label: string) => (
+    [...document.querySelectorAll('md-dialog md-text-button')].find((button) => button.textContent === label)
+  );
+  const openDialog = (): void => {
+    act(() => { mount.querySelector('md-icon-button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  };
+
+  it('opens its explanation and hides the warning without activating the device card', async () => {
     const activate = vi.fn();
     const dismiss = vi.fn().mockResolvedValue(undefined);
     act(() => render(h('div', { onClick: activate, onKeyDown: activate, onKeyUp: activate },
@@ -38,13 +54,15 @@ describe('Overview warning icon', () => {
     const icon = mount.querySelector('md-icon-button')!;
     expect(icon.querySelector('svg')).not.toBeNull();
     expect(mount.querySelector('.plan-chip')).toBeNull();
-    act(() => { icon.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-    expect(mount.querySelector('md-dialog')?.textContent).toContain('22 °C');
-    const dismissButton = [...mount.querySelectorAll('md-text-button')].find((button) => button.textContent === 'Dismiss')!;
+    openDialog();
+    const dialog = document.querySelector('md-dialog')!;
+    expect(dialog.textContent).toContain('22 °C');
+    expect(dialog.textContent).toContain('Hide warning removes this icon until it happens again.');
+    const hideButton = dialogButton('Hide warning')!;
     await act(async () => {
-      dismissButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      dismissButton.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
-      dismissButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      hideButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      hideButton.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+      hideButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(dismiss).toHaveBeenCalledOnce();
     expect(activate).not.toHaveBeenCalled();
@@ -52,10 +70,39 @@ describe('Overview warning icon', () => {
     expect(mount.querySelector('md-icon-button')).not.toBeNull();
   });
 
-  it('keeps an unavailable acknowledgement visible with Dismiss disabled', () => {
+  it('mounts the dialog under the body with two actions and a close icon', () => {
     act(() => render(h(OverviewControlWarningIcon, { warning: { recommendation } }), mount));
-    act(() => { mount.querySelector('md-icon-button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-    const dismissButton = [...mount.querySelectorAll('md-text-button')].find((button) => button.textContent === 'Dismiss');
-    expect(dismissButton?.hasAttribute('disabled')).toBe(true);
+    openDialog();
+    const dialog = document.querySelector('md-dialog')!;
+    // Outside the card, so its scrim dims every card and not only the ones before it.
+    expect(dialog.parentElement).toBe(document.body);
+    expect(mount.contains(dialog)).toBe(false);
+    expect([...dialog.querySelectorAll('md-text-button')].map((button) => button.textContent))
+      .toEqual(['Hide warning', 'Open device']);
+    const close = dialog.querySelector('[slot="headline"] md-icon-button[aria-label="Close"]')!;
+    act(() => { close.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(document.querySelector('md-dialog')).toBeNull();
+  });
+
+  it('opens the device page at the notice', () => {
+    const opened = vi.fn();
+    document.addEventListener('open-device-detail', opened);
+    try {
+      act(() => render(h(OverviewControlWarningIcon, { warning: { recommendation } }), mount));
+      openDialog();
+      act(() => { dialogButton('Open device')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      expect(opened).toHaveBeenCalledOnce();
+      expect((opened.mock.calls[0]![0] as CustomEvent).detail)
+        .toEqual({ deviceId: 'heater', focus: 'control-contest' });
+      expect(document.querySelector('md-dialog')).toBeNull();
+    } finally {
+      document.removeEventListener('open-device-detail', opened);
+    }
+  });
+
+  it('keeps an unavailable acknowledgement visible with Hide warning disabled', () => {
+    act(() => render(h(OverviewControlWarningIcon, { warning: { recommendation } }), mount));
+    openDialog();
+    expect(dialogButton('Hide warning')?.hasAttribute('disabled')).toBe(true);
   });
 });

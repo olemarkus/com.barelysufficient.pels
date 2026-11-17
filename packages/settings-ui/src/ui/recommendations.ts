@@ -319,7 +319,7 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
     return;
   }
   navigationRead.navigation.openPanel('devices');
-  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId, 'top');
+  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId, target.focus ?? 'top');
   if (target.kind === 'device-start-policy') navigationRead.navigation.openDevice(target.deviceId, 'start-policy');
   if (target.kind === 'device-shed-limit') navigationRead.navigation.openDevice(target.deviceId, 'shed-limit');
   if (target.kind === 'device-control-model') navigationRead.navigation.openDevice(target.deviceId, 'control-model');

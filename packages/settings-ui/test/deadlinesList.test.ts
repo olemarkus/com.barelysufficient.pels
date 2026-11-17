@@ -494,6 +494,7 @@ describe('resolveDeadlinesListCards', () => {
     [{ pending: true, latest: null }, 'building_plan'],
     [{ pending: false, diagnosticReasonCode: 'objective_invalid_session' as const }, 'paused_unplugged'],
     [{ pending: false, diagnosticReasonCode: 'objective_device_unmanaged' as const }, 'paused_unmanaged'],
+    [{ pending: false, diagnosticReasonCode: 'objective_price_feature_disabled' as const }, 'paused_prices_off'],
     [{ pending: false, diagnosticReasonCode: 'objective_device_in_sub_home' as const }, 'unavailable'],
   ])('shows no car-limit line beside a %o card', (fields, statusId) => {
     // A car on its way to a lower limit: the line would contradict the chip.
