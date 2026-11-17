@@ -60,6 +60,8 @@ const resolveReleaseIntent = (
   releasesViaBinary: boolean,
   device: PlanInputDevice | undefined,
 ): 'binary_release' | 'shed_release' | undefined => {
+  // Its solar-surplus posture pauses and runs it in an hour the task skips.
+  if (device !== undefined && followsSurplusWhileWaiting(device)) return undefined;
   if (releasesViaBinary) return 'binary_release';
   return device?.control.commandAuthority === false ? 'shed_release' : undefined;
 };
@@ -222,6 +224,19 @@ const contributesCommandAuthority = (
 );
 
 /**
+ * Whether a device keeps following its solar-surplus setting in an hour its
+ * smart task skips (owner ruling 2026-11-17). The task waits for a cheaper
+ * hour to buy energy; surplus the home would export costs nothing, so a device
+ * the owner put on "Run on solar surplus" or "Charge on solar surplus" still
+ * takes it, and what it takes counts toward the task like any other draw. The
+ * posture spends measured export only, so the device still never runs on grid
+ * import in a skipped hour. In a booked hour the task decides, as before.
+ */
+export const followsSurplusWhileWaiting = (
+  device: Pick<PlanInputDevice, 'surplusOnly' | 'surplusTracking'>,
+): boolean => device.surplusOnly === true || device.surplusTracking;
+
+/**
  * A deferred hour holds a device that has command authority of its OWN (Power-limit
  * control on, or "Only PELS starts this device" in force) off, through the planner.
  *
@@ -234,12 +249,17 @@ const contributesCommandAuthority = (
  *
  * A device the task lends authority to keeps its configured release posture.
  * Both holds are task scheduling, not capacity pressure.
+ *
+ * A device on a solar-surplus posture is not held by the task in an hour it
+ * skips (`followsSurplusWhileWaiting`): its own posture holds it off and runs
+ * it on measured export.
  */
 const resolveDeferredHold = (
   decision: DeferredAdmissionDecision,
   device: PlanInputDevice,
 ): PlanInputDevice['deferredHold'] => {
   if (decision.kind !== 'idle') return undefined;
+  if (followsSurplusWhileWaiting(device)) return undefined;
   if (device.control.commandAuthority) return 'off';
   return contributesCommandAuthority(decision, device) ? 'configured' : undefined;
 };

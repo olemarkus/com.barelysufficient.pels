@@ -5,10 +5,12 @@ import type {
   DeferredHoldCause,
   ChargingPhaseTaskRequirement,
 } from '../../../packages/planner-types/src/deferredDecoration';
+import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import { addPerfDuration } from '../../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
 import {
   applyDeferredAdmissionToInput,
+  followsSurplusWhileWaiting,
   applyDeferredObjectiveAdmission,
   buildDeferredDemandDeviceIds,
   buildDeferredReleaseIntents,
@@ -86,7 +88,7 @@ export class DeferredObjectiveDecorationController {
       forceShedSet: admission.forceShedSet,
       deferredHoldCauseByDeviceId: resolveDeferredHoldCauses(decisions),
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
-      admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
+      admittedDeviceIds: resolveAdmittedDeviceIds(decisions, devices),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
       lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
       externalOffHoldLiftedDeviceIds: admission.externalOffHoldLiftedDeviceIds,
@@ -227,16 +229,24 @@ const recordCycles = (
 // cannot plan does not keep a device out of the hold. A satisfied task still
 // governs until its deadline, which ends it.
 //
+// An `idle` device on a solar-surplus posture is the exception
+// (`followsSurplusWhileWaiting`): in an hour its task skips, the posture governs
+// it, so the surplus allocator and the surplus hold must see it.
+//
 // A `planned` hour booked at 0 kWh is governed too: the task booked it on price (or
 // needs every hour because it cannot finish), so during an active task it decides
 // whether the device runs, also on grid import for a "Run on solar surplus" device
 // (owner ruling 2026-09-25: during an active smart task, the task decides).
 const resolveAdmittedDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  devices: readonly PlanInputDevice[],
 ): ReadonlySet<string> => {
+  const surplusFollowers = new Set(devices.filter(followsSurplusWhileWaiting).map((device) => device.id));
   const admitted = new Set<string>();
   for (const [deviceId, decision] of decisions) {
-    if (decision.kind === 'planned' || decision.kind === 'idle') admitted.add(deviceId);
+    if (decision.kind === 'planned' || (decision.kind === 'idle' && !surplusFollowers.has(deviceId))) {
+      admitted.add(deviceId);
+    }
   }
   return admitted;
 };

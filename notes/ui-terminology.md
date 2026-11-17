@@ -2609,9 +2609,10 @@ settings. No tour-completed flag is persisted.
   start managing, or turn off simulation now.` with `Open Simulation mode`, for as long as the
   visit stays in setup. Guided setup reached any other way does not show it.
 - `Waiting for solar surplus` is a normal runtime state; do not substitute it
-  for missing readings or incomplete solar configuration. Before combining a
-  Smart task with solar-only operation, state that the active task decides when
-  the device runs and may use grid electricity.
+  for missing readings or incomplete solar configuration. Where a Smart task
+  is combined with a solar-surplus setting, state that the task runs the
+  device in the periods it plans, also on grid electricity, and that between
+  them the device still runs on solar surplus (owner ruling 2026-11-17).
 
 ### Tailoring by market: geography only
 
