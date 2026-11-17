@@ -105,11 +105,12 @@ const emitDeferredDebug = getDebugEmitter('deferred_objectives', 'deferred_objec
 // last public status; older records fall back to the retained verdict/overlays.
 const previousEffectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
-): DeferredObjectiveActivePlanStatusV1 | null => (
-  effectivePlanStatusOf(plan)
-    ?? (isSmartTaskPricePaused(plan) && plan.latest !== null
-      ? plan.pricePausePreviousStatus ?? resolveEffectivePlanStatus(plan.latest.planStatus, plan) : null)
-);
+): DeferredObjectiveActivePlanStatusV1 | null => {
+  if (!isSmartTaskPricePaused(plan) || plan.latest === null) return effectivePlanStatusOf(plan);
+  return plan.pricePausePreviousStatus === undefined
+    ? resolveEffectivePlanStatus(plan.latest.planStatus, plan)
+    : plan.pricePausePreviousStatus;
+};
 
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently
 // return empty/malformed data; if a plan cycle ever produces an empty
@@ -173,7 +174,7 @@ export class DeferredObjectiveActivePlanRecorder {
       return;
     }
     const previousPlanStatus = existing !== undefined && existing.deadlineAtMs > nowMs
-      ? effectivePlanStatusOf(existing)
+      ? previousEffectivePlanStatusOf(existing)
       : null;
     this.plans[seed.deviceId] = createPlanFromSeed(seed, nowMs);
     this.lastSeenAtMs.set(seed.deviceId, nowMs);

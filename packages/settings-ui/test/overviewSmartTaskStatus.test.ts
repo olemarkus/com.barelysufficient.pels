@@ -47,6 +47,19 @@ const resolve = (
   currentPrices, nowMs);
 
 describe('Overview current smart-task status', () => {
+  it('omits a queued cached risk but shows its price-off blocker', () => {
+    const current = plan();
+    if (current.latest === null) throw new Error('fixture needs a revision');
+    const queued = plan({
+      latest: { ...current.latest, planStatus: 'at_risk' },
+      diagnosticReasonCode: 'objective_waiting_for_plan',
+      pendingReason: 'awaiting_horizon_plan',
+    });
+    expect(resolve(queued)).toEqual([]);
+    expect(resolve({ ...queued, diagnosticReasonCode: 'objective_price_feature_disabled' }))
+      .toEqual([expect.objectContaining({ tone: 'warn', headline: 'Respond to prices is off' })]);
+  });
+
   it('explains price-off even when an old on-track revision and reached car limit remain', () => {
     const rows = resolve(plan({
       diagnosticReasonCode: 'objective_price_feature_disabled',

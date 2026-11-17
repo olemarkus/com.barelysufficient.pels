@@ -110,7 +110,7 @@ export const refreshActivePlanLiveFacts = (
   );
   let previousStatus = current.pricePausePreviousStatus;
   if (!isSmartTaskPricePaused(refreshed)) previousStatus = undefined;
-  else if (!isSmartTaskPricePaused(current)) previousStatus = effectivePlanStatusOf(current) ?? undefined;
+  else if (!isSmartTaskPricePaused(current)) previousStatus = effectivePlanStatusOf(current);
   if (current.diagnosticReasonCode === reasonCode
     && sameCarChargeLimit(current.carChargeLimit, carChargeLimit)
     && sameLiveCompletion(current.liveCompletion, liveCompletion)
