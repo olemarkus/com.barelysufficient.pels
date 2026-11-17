@@ -86,8 +86,29 @@ describe('simulation action previews', () => {
     expect(status.factText).toBe('21.9 °C · target 28 °C → 22 °C');
     expect(status.reading).toMatchObject({ targetC: 22 });
     // One value when the device already sits where PELS wants it.
-    const settled = { ...heldOff, temperature: { ...heldOff.temperature, plannedTarget: 28 } };
+    const settled: DeviceStatusInput = {
+      ...heldOff,
+      temperature: { currentTemperature: 21.9, currentTarget: 28, plannedTarget: 28, thermalDirection: 'heating' },
+    };
     expect(buildDeviceStatus(settled, false, 0).factText).toBe('21.9 °C · target 28 °C');
+  });
+
+  it('names only the device\'s setpoint while a finished Smart task holds it until its ready-by time', () => {
+    // The plan's target is still the task's 20, but PELS writes nothing to a
+    // device it holds off, and at the ready-by time the mode's target applies.
+    const device = runningPowerHold();
+    const held = (code: DeviceReason['code']): DeviceStatusInput => ({
+      ...device, currentState: 'off', currentDrawKw: 0, reason: { code } as DeviceReason,
+      temperature: { currentTemperature: 20.7, currentTarget: 18, plannedTarget: 20, thermalDirection: 'heating' },
+      execution: { ...device.execution, physicalState: 'off', targetProgress: 'undriven' },
+    });
+
+    const done = buildDeviceStatus(held(PLAN_REASON_CODES.deferredObjectiveSatisfied), false, 0);
+    expect(done.factText).toBe('20.7 °C · target 18 °C');
+    expect(done.reading).toMatchObject({ targetC: 18 });
+    // A task still waiting for cheaper hours will run and set its target: the arrow stays.
+    expect(buildDeviceStatus(held(PLAN_REASON_CODES.deferredObjectiveAvoid), false, 0).factText)
+      .toBe('20.7 °C · target 18 °C → 20 °C');
   });
 
   it('does not use hypothetical wording for an ordinary live target change', () => {
