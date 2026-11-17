@@ -282,6 +282,31 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
 export type SetupReviewDevice = {
   id: string; name: string; control: string | null; status: string | null; configuration: readonly string[];
 };
+/** A managed device's control line when no saved control has anything to act on. */
+export const REVIEW_DEVICE_NO_JOB = 'Nothing for PELS to do yet';
+
+/**
+ * The review's line for a home where no managed device has a job: starting to
+ * manage then changes nothing, and the per-device lines alone leave that for
+ * the owner to add up. It points at `Choose what PELS does` while that page has
+ * something to offer, and otherwise names what gives PELS a job.
+ */
+export const resolveReviewNoJobNote = (
+  devices: readonly SetupReviewDevice[],
+  goalsOffered: boolean,
+): string | null => {
+  if (devices.length === 0 || devices.some((device) => device.control !== REVIEW_DEVICE_NO_JOB)) return null;
+  return goalsOffered
+    ? 'No device has a job yet, so PELS has nothing to control. Choose what PELS does to give one a job.'
+    : 'No device has a job yet, so PELS has nothing to control. Turn on a power limit, '
+      + 'or manage a device that can follow prices, take a Smart task or use solar.';
+};
+
+const ReviewNoJobNote = ({ devices, goalsOffered }: { devices: readonly SetupReviewDevice[]; goalsOffered: boolean }) => {
+  const note = resolveReviewNoJobNote(devices, goalsOffered);
+  return note === null ? null : <p class="pels-notice-info" data-setup-review="no-job">{note}</p>;
+};
+
 export type SetupReviewProps = {
   path: SetupPath | null;
   activeMode: string | null;
@@ -324,6 +349,7 @@ export const SetupReview = (props: SetupReviewProps) => {
               {device.status && <p class="pels-card-supporting">{device.status}</p>}
             </div>
           ))}
+          <ReviewNoJobNote devices={props.devices} goalsOffered={props.onChooseGoals !== null} />
           {props.onChooseGoals && (
             <div class="setup-recommendation-card__actions">
               <MdTextButton type="button" disabled={props.busy} onClick={props.onChooseGoals}>Choose what PELS does</MdTextButton>
