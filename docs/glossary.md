@@ -1,6 +1,6 @@
 ---
 title: "PELS Glossary: kW vs kWh, Hard Cap, Safe Pace, Capacity Tariff & More"
-description: Plain-language definitions of the words PELS uses — power vs energy, hard cap, safe pace, safety margin, capacity tariff, daily budget, managed vs background, priority, modes, Smart tasks, and state of charge.
+description: Plain-language definitions of the words PELS uses, from power vs energy, hard cap and safe pace to capacity tariff, daily budget, priority and Smart tasks.
 ---
 
 # Glossary

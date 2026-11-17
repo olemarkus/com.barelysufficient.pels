@@ -1,5 +1,5 @@
 ---
-title: "PELS for Homey Pro: capacity limits, EV charging, cheap hours"
+title: "PELS Energy Manager for Homey Pro: capacity limits, EV charging, cheap hours"
 titleTemplate: false
 description: PELS keeps your Homey Pro home under its power limit, shifts EV charging, heating, and hot water into the cheapest hours, and puts your solar and home battery to work.
 aside: false

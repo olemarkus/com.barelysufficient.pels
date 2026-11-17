@@ -1,5 +1,5 @@
 ---
-title: Tesla vehicle charging
+title: Tesla charging with Homey and PELS
 description: Control Tesla charging through Tesla Car & Energy with the PELS EV charger settings.
 ---
 

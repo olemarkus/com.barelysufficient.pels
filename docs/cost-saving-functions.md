@@ -1,5 +1,5 @@
 ---
-title: Cost-Saving Functions
+title: Compare PELS Cost-Saving Functions
 description: Compare power limiting, daily budget, price-based temperature shift, and Smart tasks so you can choose the right PELS feature.
 ---
 
