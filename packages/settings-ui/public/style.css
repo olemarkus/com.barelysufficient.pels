@@ -813,6 +813,26 @@ md-primary-tab.tab[active] {
   line-height: var(--font-line-height-normal);
 }
 
+.pels-device-card__title-line {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.pels-device-card__power-warning {
+  --md-icon-button-icon-color: var(--color-state-warning-text);
+  --md-icon-button-hover-icon-color: var(--color-state-warning-text);
+  --md-icon-button-focus-icon-color: var(--color-state-warning-text);
+  --md-icon-button-pressed-icon-color: var(--color-state-warning-text);
+  --md-icon-button-state-layer-color: var(--color-state-warning-text);
+
+  flex: 0 0 auto;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
+  color: var(--color-state-warning-text);
+}
+
 .pels-device-card__cell {
   display: flex;
   justify-content: center;
@@ -4097,7 +4117,10 @@ label.pels-text-settings-label {
 /* Idle-classification copy carries its own tone through the shared reason
    slot (the retired `__idle-line--warning` element's role): an unresponsive
    device's "Not drawing power (…)" keeps its warning emphasis. */
-.plan-card--temperature .plan-card__temp-reason[data-tone="warning"] {
+.plan-card--temperature .plan-card__temp-reason[data-tone="warning"],
+.plan-card__reason[data-tone="warning"],
+.device-detail-live-status__reason[data-tone="warning"],
+#device-detail-managed-hint[data-tone="warning"] {
   color: var(--pels-status-on-warning);
 }
 
@@ -4447,6 +4470,23 @@ label.pels-text-settings-label {
 .tippy-box[data-theme~='pels'] .tippy-content {
   padding: var(--spacing-2) var(--spacing-3);
   white-space: pre-line;
+}
+
+.pels-tooltip-guide {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.pels-tooltip-guide p {
+  margin: 0;
+}
+
+.pels-tooltip-guide a {
+  display: flex;
+  align-items: center;
+  min-height: var(--pels-touch-target-min);
+  color: inherit;
+  text-decoration: underline;
 }
 
 .inline-actions {

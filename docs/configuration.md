@@ -231,6 +231,27 @@ while **Power-limit control** is off, once the device has had a Smart task.
 **Change** on a Smart task's **When the task is done** card opens the device page
 at **Power-limit control**.
 
+### On/off devices without power metering {#device-energy-settings}
+
+A supported device with on/off control can appear on **Devices** and be made **Managed**
+before it has power information. PELS shows a setup warning on its device page
+and Overview, and does not limit its power use until Homey supplies a power value.
+Modes can still adjust a device's temperature target.
+
+Configure the power use in **Homey's device settings**, outside PELS:
+
+1. Open the device in the Homey app and open its device settings.
+2. Go to **Advanced settings → Energy**.
+3. Set **Energy used when on** to the watts the connected device draws when on.
+   Set **Energy used when off** to its standby watts.
+4. Return to **Devices** in PELS and choose **Refresh devices**.
+5. Turn on **Limit**, or **Power-limit control** on the device page, to let PELS
+   limit the device.
+
+PELS uses the power value Homey supplies for the device. The setup warning
+clears when Homey has its power information. A device with its own power meter
+uses that reading instead.
+
 ### Missing a device?
 
 **Missing a device?** is the last card on the Devices page. Its **Request support** button lists every device in Homey by zone, with a search field for name or zone. Each row shows the device type, and **On Devices** when PELS already supports it. Tap a device PELS does not support to send a device support request: describe the device and what PELS should do with it, and PELS sends the request through Homey with what Homey reports about the device (its type, its app and its capabilities) and the app's logs. Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is. To hear back, post in the PELS forum thread and quote the reference PELS shows after sending, or email the developer.

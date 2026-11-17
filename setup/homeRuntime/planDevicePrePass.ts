@@ -99,9 +99,10 @@ const runSnapshotPrePass = (
  * `isRuntimePlannedDevice` is the SAME predicate the create-smart-task candidate
  * list and create-time validation use, so a `managed: false` device can never be
  * offered or persisted but left unplanned. `isPlannableDevice` (`lib/plan`) says
- * which of those the plan can act on: a device with a power reading, a
+ * which of those appear in the plan: a device with a power reading, a
  * temperature device, which without a reading gets its setpoints and no power
- * limiting, or a home battery with a storage cluster.
+ * limiting, or a home battery with a storage cluster. An unmetered binary
+ * device appears as Manual for setup guidance, with no executable commands.
  */
 export const buildHomePlanDevices = (
   ctx: AppContext,

@@ -290,6 +290,7 @@ describe('appSnapshotHelpers', () => {
       managed: true,
       isBatteryOrSolar: false,
       starvationSupported: false,
+      powerSetupRequired: false,
       controllable: true,
       countsAsManagedUsage: true,
       currentOn: true,
@@ -422,6 +423,7 @@ describe('appSnapshotHelpers', () => {
       managed: true,
       isBatteryOrSolar: false,
       starvationSupported: false,
+      powerSetupRequired: false,
       controllable: true,
       // Missing power evidence does not alter the saved owner preference.
       countsAsManagedUsage: true,

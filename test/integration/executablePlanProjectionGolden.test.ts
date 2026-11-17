@@ -30,6 +30,18 @@ import {
 } from '../utils/planConvergenceFixtures';
 
 describe('executable plan projection (characterization)', () => {
+  it.each(['keep', 'shed'] as const)('omits binary commands for an unmetered device planned %s', (plannedState) => {
+    const plan = buildPlan([buildBinaryDevice({
+      unmetered: true,
+      plannedState,
+      ...(plannedState === 'shed' ? { plannedShedTargetKind: 'binary_off' as const } : {}),
+    })]);
+    expect(plan.devices[0]).not.toHaveProperty('currentDrawKw');
+    expect(buildExecutablePlan(plan)).toEqual({
+      devices: [{ commandAuthority: true, id: 'dev-2', name: 'Heater', projection: 'decided' }],
+    });
+  });
+
   it('projects a binary device the plan keeps', () => {
     expect(buildExecutablePlan(buildPlan([buildBinaryDevice()]))).toEqual({
       "devices": [

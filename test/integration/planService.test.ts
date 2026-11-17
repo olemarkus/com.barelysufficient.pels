@@ -207,6 +207,7 @@ const buildPlan = (
 // engine, Homey, device reads and whatever it overrides.
 const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServiceDeps,
   | 'hasStandingCommandGrant'
+  | 'getDevicePowerSetupRequired'
   | 'getHomeBatteryCard'
   | 'getDeviceControlAdapter'
   | 'isBuiltInControlHeldByFlow'
@@ -221,6 +222,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'getLastPowerUpdate'> => ({
   ...planServiceWiring(),
   hasStandingCommandGrant: () => false,
+  getDevicePowerSetupRequired: () => false,
   getDeviceControlAdapter: () => undefined,
   isBuiltInControlHeldByFlow: () => false,
   isTargetPowerControlRefused: () => false,
@@ -2295,6 +2297,7 @@ describe('PlanService', () => {
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
+          currentDrawKw: 0,
           currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
@@ -2302,6 +2305,7 @@ describe('PlanService', () => {
           currentTemperature: 20,
         }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
+          currentDrawKw: 0,
           currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,

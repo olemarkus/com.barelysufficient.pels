@@ -1,4 +1,4 @@
-import { delegate, hideAll } from 'tippy.js';
+import { delegate, hideAll, type Instance, type Props } from 'tippy.js';
 
 const TOOLTIP_SELECTOR = '[data-tooltip]';
 
@@ -29,14 +29,42 @@ export const prefersTouch = (): boolean => {
   return window.matchMedia('(hover: none), (pointer: coarse)').matches;
 };
 
+const showTooltip = (instance: Instance): false | undefined => {
+  const content = getTooltipContent(instance.reference);
+  if (!content) return false;
+  hideAll({ exclude: instance });
+  const reference = instance.reference as HTMLElement;
+  if (!reference.dataset.tooltipGuide) {
+    instance.setContent(content);
+    return undefined;
+  }
+  const guide = document.createElement('div');
+  guide.className = 'pels-tooltip-guide';
+  const text = document.createElement('p');
+  text.textContent = content;
+  const link = document.createElement('a');
+  link.href = reference.dataset.tooltipGuide;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = reference.dataset.tooltipGuideLabel ?? 'Read the guide';
+  link.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    reference.focus();
+    if (event.shiftKey) event.preventDefault();
+    else instance.hide();
+  });
+  guide.append(text, link);
+  instance.setContent(guide);
+  return undefined;
+};
+
 export const initTooltips = (): void => {
   if (typeof document === 'undefined' || !document.body) return;
 
   const useTouch = prefersTouch();
   const trigger = useTouch ? 'click' : 'mouseenter focus';
 
-  delegate(document.body, {
-    target: TOOLTIP_SELECTOR,
+  const options: Partial<Props> = {
     allowHTML: false,
     animation: 'fade',
     arrow: false,
@@ -49,12 +77,26 @@ export const initTooltips = (): void => {
     appendTo: () => document.body,
     theme: 'pels',
     trigger,
-    onShow(instance) {
-      const content = getTooltipContent(instance.reference);
-      if (!content) return false;
-      hideAll({ exclude: instance });
-      instance.setContent(content);
-      return undefined;
+    onShow: showTooltip,
+  };
+  delegate(document.body, {
+    ...options,
+    target: `${TOOLTIP_SELECTOR}:not([data-tooltip-guide])`,
+  });
+  delegate(document.body, {
+    ...options,
+    target: `${TOOLTIP_SELECTOR}[data-tooltip-guide]`,
+    interactive: true,
+    trigger: useTouch ? 'click' : 'mouseenter focus click',
+    onCreate: (instance) => {
+      instance.reference.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent) || event.key !== 'Tab'
+          || event.shiftKey || !instance.state.isVisible) return;
+        const link = instance.popper.querySelector('a');
+        if (!link) return;
+        event.preventDefault();
+        link.focus();
+      });
     },
   });
 };

@@ -18,5 +18,6 @@ export const initExternalLinks = (): void => {
     event.preventDefault();
     // A method call: Homey's `openURL` reads its own `this`.
     client.openURL(new URL(href, window.location.href).href);
-  });
+  // Run before card/popover handlers can stop bubbling to Homey's bridge.
+  }, { capture: true });
 };

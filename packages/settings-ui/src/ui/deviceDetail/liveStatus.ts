@@ -93,6 +93,7 @@ const renderHeroRows = (params: {
   }
   const reasonText = dev.status.reason?.text ?? '';
   mounts.reasonEl.textContent = reasonText;
+  mounts.reasonEl.dataset.tone = dev.status.reason?.tone ?? 'neutral';
   mounts.reasonEl.hidden = reasonText === '';
   mounts.row.hidden = false;
 };

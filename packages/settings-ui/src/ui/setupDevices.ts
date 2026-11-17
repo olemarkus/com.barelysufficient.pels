@@ -16,6 +16,7 @@ import { isDumpLoadDeviceShape } from './deviceDetail/solarSurplus.ts';
 import { hasActiveDeadlineObjective, state } from './state.ts';
 import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplusTrackingCopy.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import { needsHomeyEnergySetup, HOMEY_ENERGY_SETUP_REASON } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { resolveBatteryManagedHint, BATTERY_WATCH_MANAGED_HINT } from './deviceDetail/batterySection.ts';
 
 export type SolarSetupAction = {
@@ -106,7 +107,10 @@ const setupDeviceHint = (
   if (isHomeBatteryClassKey(device.deviceClass)) {
     return manageability.supportsPower ? resolveBatteryManagedHint() : BATTERY_WATCH_MANAGED_HINT;
   }
-  return manageability.supportsPower ? 'PELS may lower or pause this device.' : 'PELS may adjust its temperature.';
+  if (needsHomeyEnergySetup(device)) return HOMEY_ENERGY_SETUP_REASON;
+  if (manageability.supportsPower) return 'PELS may lower or pause this device.';
+  return manageability.supportsTemperature
+    ? 'PELS may adjust its temperature.' : 'PELS needs a power reading to limit this device.';
 };
 
 export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): SetupDeviceChoices => {

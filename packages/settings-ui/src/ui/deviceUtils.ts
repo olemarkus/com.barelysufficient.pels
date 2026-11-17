@@ -51,6 +51,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
+    | 'capabilities'
     | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar' | 'managed'
   >
   // Whether PELS can drive a home battery and whether the owner took it over,
@@ -69,7 +70,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
 // stays structurally assignable, so callers pass unchanged.
 export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
-    'capabilities' | 'flowConflict' | 'automaticPowerControl'
+    'flowConflict' | 'automaticPowerControl'
   >
   // Present while the device keeps moving away from what PELS set.
   & ControlContestDecoration

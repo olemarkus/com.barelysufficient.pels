@@ -149,6 +149,42 @@ describe('device settings initial load guard', () => {
     expect(getValue()).toEqual({ 'device-1': true });
   });
 
+  it.each([false, true])('allows management before binary power setup, with Managed %s', async (isManaged) => {
+    const { managedCheckbox, controllableCheckbox, priceOptCheckbox, debouncedSetSetting } = await setupHarness({
+      initialLoadComplete: true,
+      isManaged,
+      deviceOverrides: {
+        deviceClass: 'socket', deviceType: 'onoff', binaryControllable: true,
+        capabilities: ['onoff'], powerCapable: false,
+      },
+    });
+
+    expect(managedCheckbox.getAttribute('aria-disabled')).not.toBe('true');
+    expect(managedCheckbox.getAttribute('aria-checked')).toBe(String(isManaged));
+    expect(controllableCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(priceOptCheckbox.getAttribute('aria-disabled')).toBe('true');
+    const warning = document.querySelector<HTMLElement>('.pels-device-card__power-warning');
+    expect(warning?.getAttribute('aria-label')).toContain('Power use needs setup');
+    expect(warning?.dataset.tooltip).toContain('Advanced settings in Homey');
+    expect(warning?.dataset.tooltipGuide).toContain('#device-energy-settings');
+    expect(document.querySelector('.pels-device-card__reasons')).toBeNull();
+    if (!isManaged) {
+      managedCheckbox.click();
+      await Promise.resolve();
+      const managedWrite = debouncedSetSetting.mock.calls.find(([key]) => key === 'managed_devices');
+      expect(managedWrite?.[1]()).toEqual({ 'device-1': true });
+      expect(debouncedSetSetting.mock.calls.some(([key]) => key === 'controllable_devices')).toBe(false);
+    }
+  });
+
+  it('does not show the setup warning once Homey has power information', async () => {
+    await setupHarness({ initialLoadComplete: true, deviceOverrides: {
+      deviceClass: 'socket', deviceType: 'onoff', binaryControllable: true,
+      capabilities: ['onoff'], powerCapable: true,
+    } });
+    expect(document.querySelector('.pels-device-card__power-warning')).toBeNull();
+  });
+
   it('blocks controllable and price toggles before initial load completes', async () => {
     const {
       controllableCheckbox,

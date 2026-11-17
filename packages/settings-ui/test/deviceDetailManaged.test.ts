@@ -9,6 +9,7 @@ import type {
 } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
+import { HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT } from '../../shared-domain/src/homeyEnergySetup.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -42,6 +43,8 @@ const buildDom = () => {
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
         <md-switch id="device-detail-managed"></md-switch>
+        <small id="device-detail-managed-hint"></small>
+        <a id="device-detail-homey-energy-setup" hidden></a>
         <md-switch id="device-detail-controllable"></md-switch>
         <md-switch id="device-detail-price-opt"></md-switch>
         <md-switch id="device-detail-budget-exempt"></md-switch>
@@ -123,6 +126,51 @@ describe('device detail managed state saves', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each([false, true])('allows management and explains binary power setup with Managed %s', async (isManaged) => {
+    mockDeviceDetailCollaborators();
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock({ settings: { managed_devices: { plug: isManaged } } }));
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [buildDevice('plug', 'Fan plug', {
+      deviceClass: 'socket', deviceType: 'onoff', binaryControllable: true,
+      targets: [], capabilities: ['onoff'], powerCapable: false,
+    }), buildDevice('metered', 'Metered plug', {
+      deviceClass: 'socket', deviceType: 'onoff', binaryControllable: true,
+      targets: [], capabilities: ['onoff', 'measure_power'], powerCapable: true,
+    })];
+    state.managedMap = { plug: isManaged };
+    state.controllableMap = {};
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { plug: 1, metered: 2 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('plug');
+    await flushPromises();
+
+    const managed = document.querySelector<HTMLElement & { selected: boolean; disabled: boolean }>('#device-detail-managed');
+    const limit = document.querySelector<HTMLElement & { disabled: boolean }>('#device-detail-controllable');
+    const hint = document.getElementById('device-detail-managed-hint');
+    const link = document.querySelector<HTMLAnchorElement>('#device-detail-homey-energy-setup');
+    expect(managed?.disabled).toBe(false);
+    expect(managed?.selected).toBe(isManaged);
+    expect(limit?.disabled).toBe(true);
+    expect(hint?.textContent).toBe(HOMEY_ENERGY_SETUP_HINT);
+    expect(hint?.dataset.tone).toBe('warning');
+    expect(link?.hidden).toBe(false);
+    expect(link?.href).toBe(HOMEY_ENERGY_SETUP_DOCS_URL);
+
+    openDeviceDetail('metered');
+    await flushPromises();
+    expect(link?.hidden).toBe(true);
+    expect(hint?.textContent).not.toBe(HOMEY_ENERGY_SETUP_HINT);
+    expect(hint?.dataset.tone).toBe('neutral');
   });
 
   it('keeps the currently open device panel stable when an earlier managed save resolves late', async () => {

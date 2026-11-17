@@ -176,8 +176,9 @@ export const buildSteppedDevice = (
 };
 
 export const buildBinaryDevice = (
-  overrides: LooseOutputDevice = {},
+  overrides: LooseOutputDevice & { unmetered?: true } = {},
 ): DevicePlan['devices'][number] => {
+  const { unmetered, ...fields } = overrides;
   const merged = {
     id: 'dev-2',
     name: 'Heater',
@@ -188,7 +189,10 @@ export const buildBinaryDevice = (
     plannedTarget: 21,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
-    ...overrides,
+    // Ordinary binary-command cases model an accepted sample; setup cases
+    // explicitly omit the power axis instead of inventing a zero reading.
+    ...(unmetered ? {} : { currentDrawKw: 1 }),
+    ...fields,
   };
   return asOutputDevice({ ...merged, currentOn: resolveFixtureCurrentOn(merged) });
 };

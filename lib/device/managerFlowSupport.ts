@@ -16,6 +16,7 @@ export function shouldSkipFlowBackedCandidate(params: {
   requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   powerCapable: boolean;
+  nativeOnOffControl: boolean;
 }): boolean {
   const {
     flowAugmentedDeviceType,
@@ -25,6 +26,7 @@ export function shouldSkipFlowBackedCandidate(params: {
     requiredFlowCapabilityIds,
     reportedCapabilities,
     powerCapable,
+    nativeOnOffControl,
   } = params;
   if (flowAugmentedDeviceType === 'unsupported') return false;
 
@@ -38,7 +40,8 @@ export function shouldSkipFlowBackedCandidate(params: {
       requiredCapabilityIds: requiredFlowCapabilityIds,
       reportedCapabilities,
     });
-  const isMissingDirectPowerSupport = effectiveFlowCapabilityIds.length === 0 && powerCapable === false;
+  const isMissingDirectPowerSupport = effectiveFlowCapabilityIds.length === 0 && powerCapable === false
+    && !(flowAugmentedDeviceType === 'binary' && nativeOnOffControl);
   return hasIncompleteFlowSupport || isMissingDirectPowerSupport;
 }
 

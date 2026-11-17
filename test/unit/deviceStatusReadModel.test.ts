@@ -6,7 +6,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
   priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, builtInControlHeldByFlow: false, targetPowerControlRefused: false,
-  standingCommandGrant: true, hasPowerReading: true,
+  standingCommandGrant: true, hasPowerReading: true, powerSetupRequired: false,
   carIdentificationState: 'not_waiting',
   execution: {
     available: true, physicalState: 'on', observedStepId: null,
@@ -373,6 +373,15 @@ describe('Manual cards', () => {
   const manual = (overrides: Partial<DeviceStatusInput>, dryRun = false) => buildDeviceStatus(runningPowerHold({
     controllable: false, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.capacityControlOff }, ...overrides,
   }), dryRun, 0);
+
+  it.each([false, true])('names Homey Energy setup before command grants, granted=%s', (standingCommandGrant) => {
+    const status = manual({ standingCommandGrant, hasPowerReading: false, powerSetupRequired: true,
+      currentDrawKw: undefined });
+    expect(status.kind).toBe('manual');
+    expect(status.reason).toMatchObject({ tone: 'warning', offersHomeyEnergySetup: true });
+    expect(status.reason?.text).toContain('Advanced settings in Homey');
+    expect(status.powerText).toBeNull();
+  });
 
   it.each([false, true])('names Power-limit control when the owner granted none, in simulation %s', (dryRun) => {
     const status = manual({ standingCommandGrant: false }, dryRun);

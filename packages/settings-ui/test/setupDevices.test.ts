@@ -21,6 +21,18 @@ const device = (id: string, name: string, extra: Partial<SettingsUiDeviceListIte
 });
 
 describe('Setup device choices', () => {
+  it('offers Managed for an unconfigured plug and names its Homey Energy setup', async () => {
+    const { readSetupDeviceChoices } = await load();
+    const choices = readSetupDeviceChoices([
+      device('plug', 'Utility plug', { deviceClass: 'socket', powerCapable: false, capabilities: ['onoff'] }),
+    ]);
+    if (choices.state !== 'ready') throw new Error('Choices unavailable');
+    expect(choices.devices).toHaveLength(1);
+    expect(choices.devices[0]).toMatchObject({ id: 'plug', disabled: false });
+    expect(choices.devices[0].hint).toContain('Advanced settings in Homey');
+    expect(choices.devices[0].hint).not.toContain('temperature');
+  });
+
   it('keeps the same order when a newly managed device moves first in the API payload', async () => {
     const { state, readSetupDeviceChoices } = await load();
     const alpha = device('a', 'Alpha');

@@ -41,6 +41,7 @@ import { formatStepDisplayLabel } from '../../packages/shared-domain/src/stepped
 import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
 import type { DevicePlanDevice } from './planTypes';
+import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/homeyEnergySetup';
 
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
   /** The adapter's live presentation, independently of its plan-time configuration. */
@@ -57,6 +58,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   standingCommandGrant: boolean;
   /** The plan had a power reading for the device (`isMeteredPlanDevice`), which authority also takes. */
   hasPowerReading: boolean;
+  /** The device owner's resolved Homey Energy setup requirement. */
+  powerSetupRequired: boolean;
   carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
@@ -265,7 +268,8 @@ function resolveNotControlledReason(
  * reading, and it has something PELS could switch or step
  * (`resolveDeviceControlPosture`).
  *
- * Without the grant the line names the owner's Power-limit control setting
+ * Missing Homey Energy setup names the device setting the owner needs first.
+ * Otherwise, without the grant the line names the owner's Power-limit control setting
  * rather than asking for it, because a device left unlimited on purpose (a
  * fridge, a PC) is fine. With the grant but no power reading it says that. Any
  * other Manual card (a thermostat whose only control is switched off, or a plan
@@ -273,6 +277,9 @@ function resolveNotControlledReason(
  * owner has already turned on.
  */
 function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] {
+  if (device.powerSetupRequired) {
+    return { text: HOMEY_ENERGY_SETUP_REASON, tone: 'warning', offersHomeyEnergySetup: true };
+  }
   if (!device.standingCommandGrant) return { text: MANUAL_REASON_TEXT };
   return device.hasPowerReading ? null : { text: NO_POWER_READING_REASON_TEXT };
 }
@@ -348,6 +355,7 @@ function resolvePhysicalFact(device: DeviceStatusInput): string | null {
 function resolvePower(
   device: DeviceStatusInput, limited: boolean, dryRun: boolean,
 ): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
+  if (device.powerSetupRequired) return { powerText: null, powerVariant: 'expected' };
   const measuredOnly = device.steppedLoad !== undefined || device.temperature !== undefined;
   const draw = device.currentDrawKw;
   if (limited && !measuredOnly && draw !== undefined && draw > 0.05) {

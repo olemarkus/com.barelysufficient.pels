@@ -1523,7 +1523,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            expect(deviceManager.getSnapshot()).toEqual([]);
+            expect(deviceManager.getSnapshot()).toMatchObject([{ powerCapable: false, binaryControllable: true }]);
         });
 
         it('uses Homey energy live report as measured fallback when direct power capabilities are absent', async () => {

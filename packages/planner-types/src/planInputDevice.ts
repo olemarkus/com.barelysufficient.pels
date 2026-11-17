@@ -938,7 +938,8 @@ export type PlanDeviceCarriedKey =
   | 'stepCommandRetryCount' | 'stepCommandStatus' | 'targets';
 
 /**
- * Stripped before planning: raw observations and the decorator's own stamps.
+ * Stripped before planning: raw observations, device-only configuration, and
+ * the decorator's own stamps.
  * (The transport's binding ids — `binaryCapabilityId` and its kin — are no
  * longer in this list because they are no longer on the input: since stage 6
  * of the snapshot decomposition the producer takes the join of the two
@@ -948,6 +949,6 @@ export type PlanDeviceStrippedKey =
   'acknowledgedStep' | 'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
   | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'carCurrentRangeUnavailable'
   | 'chargerPhaseCurrentsA'
-  | 'evChargingState' | 'measuredPowerKw'
+  | 'evChargingState' | 'measuredPowerKw' | 'powerSetupRequired'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

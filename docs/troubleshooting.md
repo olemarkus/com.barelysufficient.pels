@@ -346,6 +346,14 @@ then leaves it to its own app for your solar too.
   1–2 days, depending on how complex the device is. See
   [Missing a device?](/configuration#missing-a-device).
 
+## A managed device asks for Homey Energy setup
+
+Open the device's settings in the Homey app and configure **Energy used when
+on** under **Advanced settings → Energy**. Then refresh Devices in PELS and
+turn on **Limit**. See [On/off devices without power metering](/configuration#device-energy-settings)
+for the steps. Managed can be on while this is being set up; PELS leaves the
+device alone until it has a power value and Power-limit control is enabled.
+
 ## Still stuck?
 
 If a problem doesn't fit any of these, the [Technical Reference](/technical)

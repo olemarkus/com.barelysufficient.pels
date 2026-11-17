@@ -189,6 +189,7 @@ function resolveDeviceSnapshotControl(params: {
         capabilities: overlay.capabilities, capabilityObj: overlay.capabilityObj,
         requiredFlowCapabilityIds: overlay.requiredFlowCapabilityIds,
         reportedCapabilities: overlay.reportedCapabilities, powerCapable,
+        nativeOnOffControl: binaryCapabilityId === 'onoff' && binaryControl !== undefined,
     })) {
         return null;
     }

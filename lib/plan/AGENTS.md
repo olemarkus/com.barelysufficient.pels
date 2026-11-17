@@ -6,6 +6,7 @@
 
 - The planner consumes `PlanInputDevice` facts from `lib/planInput/`, without reading Homey or reinterpreting source evidence. It must not import objectives, executor, or thermostat modules. The allowed device producer seams and architecture guards are in `.dependency-cruiser.cjs` and `npm run arch:grep`.
 - Only metered devices carry `currentDrawKw`. A temperature device without a per-device reading still receives temperature planning, but does not participate in power sums, shedding, restore admission, swaps, reserves, or surplus decisions. Do not fabricate zero draw. Use `isMeteredPlanDevice` and `isPlannableDevice` for their distinct questions.
+- A managed binary device awaiting its first power information remains visible as Manual, with its setup requirement. Without a power reading it produces no executable binary command, including an uncontrolled resume.
 - Temperature direction and setpoint arithmetic belong to `lib/thermostat/`. The planner uses resolved `TemperatureSetpoints` and compares setpoints only for equality.
 - Do not add an EV-specific plan-device cluster. Boost is a kind-free `boostActive` decision. `PlanInputDevice.stateOfCharge` remains available to deferred-objective progress; changing that input requires tracing its actual consumer.
 - Capacity control uses the selected tariff period (`CapacitySettings.periodMinutes`, 15 or 60). Daily budgets, price, usage history, and smart-task allocation remain hourly. A partial first/reset quarter is not favourable capacity evidence. See `notes/capacity-periods.md`.

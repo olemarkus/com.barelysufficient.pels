@@ -23,13 +23,14 @@ export const resolveDeviceDetailControlState = (
   const supportsPower = supportsPowerDevice(device);
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
   // A temperature device without power support is still managed for its mode
-  // target and price shift; only power limiting waits for a reading. A home
+  // target and price shift; a binary device can be selected before its power
+  // use is configured. Power limiting still waits for support. A home
   // battery listed here is one PELS can manage, unless its Managed map does not
   // parse: the runtime then treats it as unmanaged, and the switch shows off,
   // unavailable, until the value is repaired.
   const canManageDevice = isHomeBattery
     ? isBatteryControlReadable()
-    : (supportsPower || supportsTemperature) && !nativeWiringRequired;
+    : (supportsPower || supportsTemperature || device?.binaryControllable === true) && !nativeWiringRequired;
   return {
     isHomeBattery,
     // Only a battery PELS can drive has a Power-limit control that does anything.

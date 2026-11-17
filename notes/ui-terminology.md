@@ -261,7 +261,7 @@ Cards, device detail, and activity logs consume the same presentation:
 | **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
 | **Resuming** | PELS has decided to bring the device back and is turning it on, raising its level, or counting down a short restart wait. A device still waiting for power reads **Limited**. |
-| **Manual** | The device is managed but PELS has neither power-limit control nor a driven temperature target for it right now. A mode-only thermostat keeps its factual Running/Idle/Off state. Without the owner's grant (Power-limit control, or "Only PELS starts this device") the reason line is `Power-limit control is off`: it names the owner's setting and asks for nothing, because a device left unlimited on purpose (a fridge, a PC) is fine as it is. With the grant but no power reading it reads `No power reading from this device`. Any other Manual card has no reason line, rather than name a setting the owner has turned on. |
+| **Manual** | The device is managed but PELS has neither power-limit control nor a driven temperature target for it right now. A mode-only thermostat keeps its factual Running/Idle/Off state. A native on/off device awaiting Homey Energy setup first shows `Set “Energy used when on” in this device’s Advanced settings in Homey`. Otherwise, without the owner's grant (Power-limit control, or "Only PELS starts this device") the reason line is `Power-limit control is off`: it names the owner's setting and asks for nothing, because a device left unlimited on purpose (a fridge, a PC) is fine as it is. With the grant but no power reading it reads `No power reading from this device`. Any other Manual card has no reason line, rather than name a setting the owner has turned on. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. A device Homey reports unavailable reads `Homey reports this device unavailable`; an integration that explains its own (a Tesla) keeps its line. |
 
 A vehicle adapter's confirmed unplugged or completed charging session is an
@@ -2897,6 +2897,32 @@ permission enabled in the schedule whenever the task is planned to run. A
 stored `Waiting for the device's current Smart task to end.` from an earlier
 version reads as `Skipped because this device already has a Smart task.`;
 current occurrences never wait for an existing task to end.
+
+## Homey Energy device setup
+
+A supported native on/off device can be listed and made Managed before power
+information is configured. Limit remains unavailable while power support is
+absent. Managed devices stay visible as Manual on Overview, without an invented
+power figure or executable binary command.
+
+On Devices, show a warning triangle beside its name instead of the long Limit
+reason. Hover, keyboard focus or tap reveals the Homey setup instruction and
+the `Set up power use in Homey` documentation link. The link uses Homey's
+external-link bridge when hosted in its settings view.
+
+When the device owner reports that Homey Energy setup is required, its reason
+line is `Set “Energy used when on” in this device’s Advanced settings in Homey`.
+This takes precedence over `Power-limit control is off`: configuration is the
+next step even when the owner has not enabled Limit. Keep the ordinary
+`No power reading from this device` reason for devices whose power support is
+already configured.
+
+The device's Setup hint says `PELS is not limiting this device. Open the device
+in Homey, go to Advanced settings → Energy, and set “Energy used when on” to the
+watts it draws when on.` Both the device page and Overview link to
+`configuration#device-energy-settings` with `Set up power use in Homey`.
+The documentation names Homey's device settings, Refresh devices, and enabling
+Limit as separate steps. Source: `packages/shared-domain/src/homeyEnergySetup.ts`.
 
 ## Report a problem: after sending
 

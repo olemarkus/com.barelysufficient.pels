@@ -22,6 +22,7 @@ import {
   formatGrantedRescuePermissionsLine,
 } from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import { HOMEY_ENERGY_SETUP_DOCS_URL } from '../../../../shared-domain/src/homeyEnergySetup.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps, dispatchOpenDeviceDetail } from '../cardActivation.ts';
 import {
@@ -358,6 +359,19 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children 
         </div>
       </div>
       {children}
+      {dev.status.reason?.offersHomeyEnergySetup === true && (
+        <a
+          class="plan-card__quiet-link"
+          href={HOMEY_ENERGY_SETUP_DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={stopActivation}
+          onKeyDown={handleChipKeyDown}
+          onKeyUp={handleChipKeyUp}
+        >
+          Set up power use in Homey
+        </a>
+      )}
       {dev.status.reason?.offersPhaseSetting === true && (
         <button
           type="button"
@@ -388,6 +402,16 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children 
 
 // ─── Generic plan card ────────────────────────────────────────────────────────
 
+const GenericReasonLine = ({ reason, evStateLine }: {
+  reason: PlanDeviceSnapshot['status']['reason'];
+  evStateLine: string | null;
+}) => {
+  // The device's own reason wins; a charger's EV smart-task line fills the
+  // slot only when the device has no reason.
+  const text = reason?.text ?? evStateLine ?? '';
+  return text === '' ? null : <p class="plan-card__reason" data-tone={reason?.tone}>{text}</p>;
+};
+
 export const PlanGenericCard = ({
   dev,
   dryRun,
@@ -410,9 +434,6 @@ export const PlanGenericCard = ({
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
   const powerReadout: PowerReadout | null = presentation.powerText === null ? null
     : { text: presentation.powerText, variant: presentation.powerVariant };
-  // One reason line per card: the device's own reason wins; a charger's EV
-  // smart-task line fills the slot only when no reason renders.
-  const singleReason = presentation.reason?.text ?? evStateLine ?? '';
 
   return (
     <PlanCardShell
@@ -455,7 +476,7 @@ export const PlanGenericCard = ({
       {/* The device's own facts, between the state row and the reason: a
           home battery's charge level (and, in its own mode, its direction). */}
       {presentation.factText !== null && <span class="plan-card__secondary-line">{presentation.factText}</span>}
-      {singleReason !== '' && <p class="plan-card__reason">{singleReason}</p>}
+      <GenericReasonLine reason={presentation.reason} evStateLine={evStateLine} />
     </PlanCardShell>
   );
 };

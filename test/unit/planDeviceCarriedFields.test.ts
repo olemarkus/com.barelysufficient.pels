@@ -29,12 +29,22 @@ type _CarriedKeysAreDeclared = Assert<KeySetsEqual<
   PlanDeviceCarriedKey
 >>;
 
+type _SetupRequirementIsStripped = Assert<KeySetsEqual<
+  [Extract<PlanDeviceStrippedKey, 'powerSetupRequired'>, Extract<PlanDeviceCarriedKey, 'powerSetupRequired'>],
+  ['powerSetupRequired', never]
+>>;
+
 describe('plan device carried fields', () => {
   // The type assertion above is the real check; this keeps the suite honest about
   // having run, since a type-only file would pass by existing.
   it('declares every field the producer spread carries', () => {
     const declared: _CarriedKeysAreDeclared = true;
     expect(declared).toBe(true);
+  });
+
+  it('keeps device setup guidance outside planner input', () => {
+    const stripped: _SetupRequirementIsStripped = true;
+    expect(stripped).toBe(true);
   });
 
   // Two entries worth naming, because both are the kind of thing the equality

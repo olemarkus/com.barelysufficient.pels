@@ -14,6 +14,7 @@ const snapshot: RuntimeDeviceRead = {
   isBatteryOrSolar: false,
   isEvCharger: false,
   starvationSupported: false,
+  powerSetupRequired: false,
   setpointShedFloorC: 10,
   managed: true,
   controlModel: 'stepped_load',
