@@ -47,7 +47,7 @@ import type {
   DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
-  buildAllocationContextSignature,
+  withTaskAllocationContexts, HigherRankedLoad,
   buildPriorityReservations,
   buildTaskAllocationContextSignature,
   orderDeferredObjectives,
@@ -85,7 +85,7 @@ import {
 } from './freshDiagnostic';
 import {
   isFreshTaskEvaluation, isReviewedTurn, isSelectedFreshTurn, readAllocationContext, resolveReportedContext,
-  planningTurnContext, resolveTaskAllocationMode, shouldWaitForPlanningTurn, taskReplanRequested,
+  resolveTaskAllocationMode, shouldWaitForPlanningTurn, taskReplanRequested,
   type TaskAllocationMode, type TaskPlanningTurns,
 } from './taskPlanningTurns';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
@@ -235,36 +235,6 @@ const holdsItsBookings = (
 ): boolean => task.reservationEligible && completion.kind !== 'accepted_near_target'
   && !reservationSuppressed;
 
-// The higher-ranked load a task's forecast must hold. A higher device whose load
-// is already known needs no reserve: a governing task's device reaches the task
-// as its bookings, a device that delivery evidence confirms is not taking power
-// reaches it as nothing until it draws again, and a device PELS has no standing
-// command authority over (Power limit off, a battery or panel) draws as
-// background, which the forecast already holds. Every other higher device
-// reaches it as its maximum known step. A higher device with no known step cannot
-// be bounded, so the load is not accounted for and the task keeps its
-// minimum-step floor.
-const resolveHigherRankedLoad = (
-  higherRankedDeviceIds: readonly string[],
-  knownLoadHigherDeviceIds: ReadonlySet<string>,
-  deviceById: ReadonlyMap<string, ObjectiveDeviceInput>,
-): Pick<CoordinatedDeferredObjective, 'higherPriorityUnbookedPowerKw' | 'higherRankedLoadAccountedFor'> => {
-  let higherPriorityUnbookedPowerKw = 0;
-  let higherRankedLoadAccountedFor = true;
-  for (const higherId of higherRankedDeviceIds) {
-    if (knownLoadHigherDeviceIds.has(higherId)) continue;
-    const higherDevice = deviceById.get(higherId);
-    if (higherDevice?.control.commandAuthority === false) continue;
-    const maxStepPowerKw = higherDevice ? resolveHighestObjectiveAdmissionPowerKw(higherDevice) : null;
-    if (maxStepPowerKw === null) {
-      higherRankedLoadAccountedFor = false;
-    } else {
-      higherPriorityUnbookedPowerKw += maxStepPowerKw;
-    }
-  }
-  return { higherPriorityUnbookedPowerKw, higherRankedLoadAccountedFor };
-};
-
 // A task that no longer governs its device reaches the tasks below as the
 // device's maximum step, not also as the bookings it settled. Only a device with
 // no known maximum (one missing through grace) keeps its settled bookings.
@@ -295,34 +265,32 @@ export const buildDeferredObjectiveTaskResults = (
   const { nowMs, activePlans } = snapshot;
   const deviceById = new Map(snapshot.devices.map((device) => [device.id, device]));
   const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(readers.resolveDeviceExclusion);
-  const ordered = orderDeferredObjectives(
+  const ordered = withTaskAllocationContexts(orderDeferredObjectives(
     snapshot.settings,
     deviceById,
     isDeviceExcluded,
     snapshot.allocationRoster,
     activePlans,
     readers.getPrioritiesForDevices,
-  );
+  ), activePlans);
   const bounded = lane.kind === 'scheduled' || lane.kind === 'serving';
   const selected = lane.kind === 'scheduled' ? lane.turns.begin(ordered, snapshot) : new Set<string>();
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;
   const knownLoadHigherDeviceIds = new Set<string>();
-  const results = ordered.map((orderedTask, index) => {
+  const higherLoad = new HigherRankedLoad(deviceById);
+  const results = ordered.map((orderedTask) => {
     const task: CoordinatedDeferredObjective = {
       ...orderedTask,
-      ...resolveHigherRankedLoad(orderedTask.higherRankedDeviceIds, knownLoadHigherDeviceIds, deviceById),
+      ...higherLoad.advance(orderedTask, knownLoadHigherDeviceIds),
       rescuePermissions: taskPermissionsForObjective(orderedTask.objective),
     };
     const { deviceId, objective, device } = task;
     // Lower-priority edits cannot churn an already-committed higher task.
-    const rosterSignature = buildAllocationContextSignature(ordered.slice(0, index + 1));
-    const claimSignature = buildTaskAllocationContextSignature({
-      rosterSignature, higherPriorityReservations: reservations,
-    });
+    const { rosterSignature } = orderedTask;
     const allocationContextSignature = bounded
-      ? planningTurnContext(ordered.slice(0, index + 1), snapshot.activePlans)
-      : claimSignature;
+      ? orderedTask.planningContextSignature
+      : buildTaskAllocationContextSignature({ rosterSignature, higherPriorityReservations: reservations });
     const latestSignature = activePlans.plansByDeviceId[deviceId]?.latest?.allocationContextSignature;
     // Legacy single-task revisions have no coordination signature, but their
     // frozen commitment is still safe to serve until the ordinary :58 settle.

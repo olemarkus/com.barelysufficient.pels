@@ -1,6 +1,4 @@
-import type { OrderedDeferredObjective } from './priorityAllocation';
-import { buildAllocationContextSignature } from './priorityAllocation';
-import type { DeferredObjectiveActivePlansV2 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { ContextualDeferredObjective, OrderedDeferredObjective } from './priorityAllocation';
 import type { TaskEvaluationReport, TaskEvaluationSnapshot } from './taskEvaluationCoordinator';
 import { resolveObjectiveProgressDirectionRead } from '../types';
 import { resolveDeadlineBoundFrozenReadInputs } from './frozenDiagnostic';
@@ -112,18 +110,6 @@ export const shouldWaitForPlanningTurn = (
 ): boolean => allocation === 'wait' && hasFrozen
   && snapshot.priceOptimizationEnabled && !isObjectiveProgressSatisfied(progress);
 
-/** Stable committed claims, never the live draw windows that narrow as time passes. */
-export const planningTurnContext = (
-  prefix: readonly OrderedDeferredObjective[],
-  activePlans: DeferredObjectiveActivePlansV2,
-): string => JSON.stringify([
-  buildAllocationContextSignature(prefix),
-  prefix.slice(0, -1).map(({ deviceId }) => {
-    const plan = activePlans.plansByDeviceId[deviceId];
-    return [deviceId, plan?.objectiveSignature, plan?.latest?.revision, plan?.latest?.revisedAtMs];
-  }),
-]);
-
 export const hasPlanningCommitment = (
   task: OrderedDeferredObjective,
   snapshot: TaskEvaluationSnapshot,
@@ -165,7 +151,7 @@ export class TaskPlanningTurns {
     }
   }
 
-  begin(ordered: readonly OrderedDeferredObjective[], snapshot: TaskEvaluationSnapshot): ReadonlySet<string> {
+  begin(ordered: readonly ContextualDeferredObjective[], snapshot: TaskEvaluationSnapshot): ReadonlySet<string> {
     const generation = Math.floor((snapshot.nowMs - SCHEDULE_SETTLE_OFFSET_MS) / HOUR_MS);
     const eligible = ordered.filter((task) => task.device && task.objective.deadlineAtMs > snapshot.nowMs);
     const liveIds = new Set(eligible.map((task) => task.deviceId));
@@ -174,7 +160,7 @@ export class TaskPlanningTurns {
     if (!snapshot.priceOptimizationEnabled) return new Set();
     for (const task of eligible) {
       const previous = this.attempted.get(task.deviceId);
-      const context = planningTurnContext(ordered.slice(0, ordered.indexOf(task) + 1), snapshot.activePlans);
+      const context = task.planningContextSignature;
       if (!previous && hasSettledPlanningContext(task, snapshot, context, generation)) {
         this.attempted.set(task.deviceId, { context, generation, completed: true });
         continue;
@@ -182,14 +168,13 @@ export class TaskPlanningTurns {
       if (!previous?.completed || previous.generation !== generation || previous.context !== context
         || !hasPlanningCommitment(task, snapshot)) this.waiting.add(task.deviceId);
     }
-    const selected = this.waiting.values().next();
-    if (selected.done) return new Set();
-    const deviceId = selected.value;
+    const nextDeviceId = this.waiting.values().next().value;
+    const selected = eligible.find((task) => task.deviceId === nextDeviceId);
+    if (selected === undefined) return new Set();
+    const { deviceId } = selected;
     this.waiting.delete(deviceId);
     this.attempted.set(deviceId, {
-      context: planningTurnContext(
-        ordered.slice(0, ordered.findIndex((task) => task.deviceId === deviceId) + 1), snapshot.activePlans,
-      ),
+      context: selected.planningContextSignature,
       generation, completed: false,
     });
     return new Set([deviceId]);

@@ -4,6 +4,7 @@ import type { DeferredObjectiveHorizonBucket, DeferredObjectivePowerLimit } from
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import { resolvePlanningCeilingKw } from '../../power/capacityModel';
+import { PriorityReservationIndex } from './policyReservationIndex';
 
 export type { PriceHorizonEntry };
 
@@ -198,12 +199,13 @@ export const buildDeferredObjectivePolicyHorizon = (
   const reasonCode = resolveDeferredObjectivePolicyHorizonReason(params);
   if (reasonCode !== null) return unavailable(reasonCode);
   const sourceBuckets = collectPriceBuckets(nowMs, deadlineAtMs, priceHorizon, dailyBudgetSnapshot);
+  const reservationIndex = new PriorityReservationIndex(higherPriorityReservations);
   return {
     buckets: mapPolicyBuckets(
-      splitPolicyBucketsAtReservationBoundaries(sourceBuckets, higherPriorityReservations),
+      splitPolicyBucketsAtReservationBoundaries(sourceBuckets, reservationIndex),
       exemptFromBudget,
       resolvePlanningCeilingKw(powerLimits),
-      higherPriorityReservations,
+      reservationIndex,
       higherPriorityUnbookedPowerKw,
     ),
     horizonBucketCount: sourceBuckets.length,
@@ -388,11 +390,11 @@ const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
   planningCeilingKw: number | null,
-  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
+  reservationIndex: PriorityReservationIndex,
   higherPriorityUnbookedPowerKw: number,
 ): DeferredObjectiveHorizonBucket[] => {
   return buckets.map((bucket) => {
-    const higher = resolveReservationsForBucket(bucket, higherPriorityReservations);
+    const higher = resolveReservationsForBucket(bucket, reservationIndex);
     const higherPriorityAdmissionPowerKw = higherPriorityUnbookedPowerKw + (higher?.admissionPowerKw ?? 0);
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     const reservedHeadroomKw = resolveReservedHeadroomKw(
@@ -449,18 +451,15 @@ const boundaryParts = (ordered: readonly number[]): Array<{ startMs: number; end
 
 const splitPolicyBucketsAtReservationBoundaries = (
   buckets: readonly PolicyBucketSource[],
-  reservations: readonly DeferredObjectivePriorityReservation[],
+  reservationIndex: PriorityReservationIndex,
 ): PolicyBucketSource[] => buckets.flatMap((bucket) => {
   const boundaries = new Set<number>([bucket.startMs, bucket.endMs]);
-  for (const reservation of reservations) {
-    for (const segment of reservation.energySegments) {
-      if (!overlapsBucket(bucket, segment)) continue;
-      if (segment.startMs > bucket.startMs && segment.startMs < bucket.endMs) {
-        boundaries.add(segment.startMs);
-      }
-      if (segment.endMs > bucket.startMs && segment.endMs < bucket.endMs) {
-        boundaries.add(segment.endMs);
-      }
+  for (const { segment } of reservationIndex.overlapping(bucket)) {
+    if (segment.startMs > bucket.startMs && segment.startMs < bucket.endMs) {
+      boundaries.add(segment.startMs);
+    }
+    if (segment.endMs > bucket.startMs && segment.endMs < bucket.endMs) {
+      boundaries.add(segment.endMs);
     }
   }
   const ordered = [...boundaries].sort((left, right) => left - right);
@@ -485,28 +484,20 @@ type HourReservation = {
   energySegments: Array<{ startMs: number; endMs: number; plannedKWh: number }>;
 };
 
-const overlapsBucket = (
-  bucket: Pick<PolicyBucketSource, 'startMs' | 'endMs'>,
-  segment: { startMs: number; endMs: number },
-): boolean => segment.startMs < bucket.endMs && segment.endMs > bucket.startMs;
-
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const resolveReservationsForBucket = (
   bucket: PolicyBucketSource,
-  reservations: readonly DeferredObjectivePriorityReservation[],
+  reservationIndex: PriorityReservationIndex,
 ): HourReservation | undefined => {
   const admissionByDeviceId = new Map<string, number>();
   const energySegments: HourReservation['energySegments'] = [];
-  for (const reservation of reservations) {
-    const overlappingSegments = reservation.energySegments
-      .filter((segment) => overlapsBucket(bucket, segment));
-    if (overlappingSegments.length === 0) continue;
+  for (const { reservation, segment } of reservationIndex.overlapping(bucket)) {
     admissionByDeviceId.set(
       reservation.deviceId,
       Math.max(admissionByDeviceId.get(reservation.deviceId) ?? 0, reservation.admissionPowerKw),
     );
     if (!reservation.exemptFromBudget) {
-      for (const segment of overlappingSegments) energySegments.push(segment);
+      energySegments.push(segment);
     }
   }
   if (admissionByDeviceId.size === 0) return undefined;

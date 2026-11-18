@@ -12,12 +12,12 @@ import {
 } from '../types';
 import type { DeferredObjectivePriorityReservation } from './policyHorizon';
 import {
-  buildAllocationContextSignature, committedPriorityReservations, narrowPriorityReservations,
-  orderDeferredObjectives, type OrderedDeferredObjective,
+  withTaskAllocationContexts, committedPriorityReservations, narrowPriorityReservations,
+  orderDeferredObjectives, type ContextualDeferredObjective,
 } from './priorityAllocation';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import type { TaskEvaluationSource } from './taskEvaluationCoordinator';
-import { planningTurnContext, servesSavedCommitment } from './taskPlanningTurns';
+import { servesSavedCommitment } from './taskPlanningTurns';
 import { buildObjectiveDeviceExclusionPredicate } from './deviceExclusion';
 
 type ReservationReaders = Pick<TaskEvaluationSource,
@@ -45,14 +45,13 @@ const admissionReservations = (
 
 /** Resolve one configured obligation completely before including it in the household read. */
 function readTaskReservations(
-  task: OrderedDeferredObjective,
+  task: ContextualDeferredObjective,
   activePlans: DeferredObjectiveActivePlansV2,
   powerLimits: PowerLimitSettings,
   nowMs: number,
-  prefix: readonly OrderedDeferredObjective[],
 ): TaskReservationsRead {
   const { deviceId, objective, device } = task;
-  const allocationContext = planningTurnContext(prefix, activePlans);
+  const allocationContext = task.planningContextSignature;
   const plan = activePlans.plansByDeviceId[deviceId];
   if (plan === undefined) return { kind: 'waiting' };
   const committed = resolveActiveCommittedPlan(deviceId, objective, resolveObjectiveProgressDirectionRead({
@@ -69,7 +68,7 @@ function readTaskReservations(
   // Every saved plan the evaluator serves in a changed context spends its bookings too.
   const heldContext = committed.latest.allocationContextSignature;
   if (plan.diagnosticReasonCode === 'objective_waiting_for_plan' || (heldContext !== allocationContext
-    && !servesSavedCommitment(heldContext, allocationContext, buildAllocationContextSignature(prefix)))) {
+    && !servesSavedCommitment(heldContext, allocationContext, task.rosterSignature))) {
     return { kind: 'waiting' };
   }
   const reservations = committedPriorityReservations(
@@ -115,13 +114,13 @@ export class ObjectiveTaskReservationSource<Device extends { id: string }> imple
     const devicesById = new Map(devices.map((device) => [device.id, device]));
     const activePlans = this.readers.getDeferredObjectiveActivePlans();
     const powerLimits = this.readers.getCapacitySettings();
-    const ordered = orderDeferredObjectives(
+    const ordered = withTaskAllocationContexts(orderDeferredObjectives(
       { objectivesByDeviceId: Object.fromEntries(tasks) }, devicesById,
       buildObjectiveDeviceExclusionPredicate(this.readers.resolveDeviceExclusion),
       this.readers.allocationRoster.read(nowMs), activePlans, this.readers.getPrioritiesForDevices,
-    );
-    const ready = ordered.map((task, index) => readTaskReservations(
-      task, activePlans, powerLimits, nowMs, ordered.slice(0, index + 1),
+    ), activePlans);
+    const ready = ordered.map((task) => readTaskReservations(
+      task, activePlans, powerLimits, nowMs,
     )).filter((task) => task.kind === 'ready');
     if (ready.length !== tasks.length) return { kind: 'waiting' };
     return {
