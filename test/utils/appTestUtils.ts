@@ -2,7 +2,7 @@
 // Use explicit .ts extension to avoid resolving app.json instead of app.ts.
 // Static import goes through Vitest's esbuild transform, which handles `export =`.
 import MyApp from '../../app.ts';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, type MockDevice } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
@@ -258,6 +258,19 @@ export function getDeviceSurfacesForTests(): DeviceSurfaces[] {
  * Clean up all tracked app instances by calling onUninit().
  * Should be called in afterEach().
  */
+/**
+ * Have `device` report its draw twice more and PELS read each. A learned peak
+ * is the third-highest of a device's readings, and a reading counts when its
+ * value changed, so a fixture whose draw PELS should know needs these after the
+ * reading the app took at boot.
+ */
+export async function reportPowerAgain(app: MyApp, device: MockDevice, watts: number): Promise<void> {
+  for (const reportedW of [watts + 1, watts]) {
+    await device.setCapabilityValue('measure_power', reportedW);
+    await app.refreshTargetDevicesSnapshot();
+  }
+}
+
 export async function cleanupApps(): Promise<void> {
   for (const app of appInstances) {
     if (app && typeof app.onUninit === 'function') {

@@ -390,7 +390,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
   it('pauses a charging charger during an idle EV deadline bucket', async () => {
     setTestClock(EV_DEADLINE_TEST_NOW_MS);
-    const charger = new EaseeMockCharger();
+    const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in_charging');
     const app = await createEvApp(charger, [charger], {
       evDeadlinePricesByRelativeHour: [100, 1, 1, 1],
@@ -438,7 +438,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
   it('pauses a charging cap-off charger during an idle deadline bucket', async () => {
     setTestClock(EV_DEADLINE_TEST_NOW_MS);
-    const charger = new EaseeMockCharger();
+    const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in_charging');
     const app = await createEvApp(charger, [charger], {
       evDeadlinePricesByRelativeHour: [100, 1, 1, 1],

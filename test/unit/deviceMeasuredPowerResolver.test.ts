@@ -309,8 +309,9 @@ describe('DeviceMeasuredPowerResolver', () => {
       observation: { measurePower: { watts, observedAtMs: 1234 } },
     });
 
-    expect(resolve(100_000).measuredPowerKw).toBe(100);
-    expect(resolve(100_001)).toEqual({ observedAtMs: 1234 });
+    expect(resolve(25_000).measuredPowerKw).toBe(25);
+    expect(resolve(25_001)).toEqual({ observedAtMs: 1234 });
+    expect(resolve(88_000)).toEqual({ observedAtMs: 1234 });
     expect(resolve(524_288)).toEqual({ observedAtMs: 1234 });
   });
 

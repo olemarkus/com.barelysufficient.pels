@@ -1530,22 +1530,26 @@ describe('DeviceTransport', () => {
             vi.useFakeTimers();
             await deviceManager.init();
             try {
-                vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-04-01T11:59:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     dev1: homeyDevice({ id: 'dev1', name: 'Virtual Light', class: 'socket' }, {
                         onoff: true,
                     }, stampedNow()),
                 });
-                mockGetLiveReport.mockResolvedValue({
-                    items: [
-                        {
-                            type: 'device',
-                            id: 'dev1',
-                            values: { W: 125 },
-                        },
-                    ],
-                });
+                const reportLiveWatts = (watts: number): void => {
+                    mockGetLiveReport.mockResolvedValue({
+                        items: [{ type: 'device', id: 'dev1', values: { W: watts } }],
+                    });
+                };
 
+                // A learned peak takes three separate readings of the live report.
+                reportLiveWatts(125);
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                reportLiveWatts(126);
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                expect(deviceManager.getSnapshot()[0].expectedPowerSource).not.toBe('measured-peak');
+                vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                reportLiveWatts(125);
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 const snapshot = deviceManager.getSnapshot();
@@ -2015,7 +2019,8 @@ describe('DeviceTransport', () => {
 
             const snapshot = deviceManager.getSnapshot();
             expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
-            expect(snapshot[0].expectedPowerKw).toBe(2);
+            // Two readings are not yet a learned peak: the default stands.
+            expect(snapshot[0].expectedPowerKw).toBe(1);
             expect(logCapture.findEvent('device_update_processed')).toMatchObject({
                 event: 'device_update_processed',
                 source: 'device_update',
@@ -4055,7 +4060,8 @@ describe('DeviceTransport', () => {
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
                 measuredPowerKw: 2.865,
-                expectedPowerKw: 2.865,
+                // Two readings are not yet a learned peak: the default stands.
+                expectedPowerKw: 1,
             }));
             expect(realtimeListener).not.toHaveBeenCalled();
         });

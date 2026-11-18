@@ -31,12 +31,15 @@ export const hasObservedMeasuredPower = <T extends MeasuredPowerObservedProbe>(
 );
 
 /**
- * The most one device can plausibly draw, in kW. A home on a 3 × 125 A, 400 V
- * supply draws under 90 kW in total, so no single device in it reaches this.
- * One corrupt reading above it would otherwise become the device's learned peak
- * and hold it off for a month, because no restore can fit that much power.
+ * The most one device can plausibly draw, in kW. A household device is fed by
+ * at most three phases of 32 A, which is 22 kW at 230 V and 24.3 kW at the
+ * highest mains voltage allowed, so no device reaches this.
+ * A reading above it is dropped, and so is a learned peak stored above it: that
+ * peak would hold the device off for a month, because no restore can fit that
+ * much power. It was 100 kW until a floor thermostat's stored peak of about
+ * 88 kW did exactly that.
  */
-export const MAX_PLAUSIBLE_DEVICE_POWER_KW = 100;
+export const MAX_PLAUSIBLE_DEVICE_POWER_KW = 25;
 
 /**
  * The ONE rule for what counts as a device's measured power reading, applied by

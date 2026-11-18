@@ -19,7 +19,15 @@ import { preserveNewerReportedStepObservation } from './transport/reportedStepOb
 import { preserveNewerAcknowledgedStep } from './acknowledgedStep';
 import { mergeDeviceUpdateObservations } from './transport/observationMerge';
 import { mergeTemperatureRejectionsIntoDeviceUpdate } from './transport/managerObservation';
-import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
+import {
+  MIN_PEAK_LEARNING_KW,
+  nextLearnedPeak,
+  recordPeakReading,
+  resolveLearnedPeakKw,
+  resolvePeakLevelKw,
+  type LearnedPeaksByDeviceId,
+  type PeakReadings,
+} from './devicePowerPeak';
 import type { ObservedCapabilityChange } from '../ports/observedStateEvents';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
@@ -45,15 +53,38 @@ type RealtimeReconcileResult = {
 /**
  * Record a measured reading against the device's learned peak.
  *
- * The max/expiry policy lives in `devicePowerPeak.ts`; this owns the mutation,
- * the change log, and telling the wiring the record moved. `nowMs` is
- * when PELS took the reading — see that module for why the window must not be
- * anchored on the capability's `lastUpdated`.
+ * The sample-window, max and expiry policy lives in `devicePowerPeak.ts`; this owns
+ * the mutation, the change log, and telling the wiring the record moved. `nowMs`
+ * is when PELS took the reading — see that module for why the window must not be
+ * anchored on the capability's `lastUpdated`. Every accepted reading comes
+ * here, standby included: the policy needs it to tell the next reading apart.
+ */
+type PeakLearningState = {
+  lastKnownPowerKw: LearnedPeaksByDeviceId;
+  peakReadings: Map<string, PeakReadings>;
+};
+
+/**
+ * Drop a peak whose window has closed, with the readings that vouched for it.
+ *
+ * A steady device adds no readings, so the ones behind an expired peak can be
+ * as old as the peak. Left in place they would name the same level again and
+ * re-anchor it with no observation at that level. Answers whether one went.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+const retireExpiredPeak = (state: PeakLearningState, deviceId: string, nowMs: number): boolean => {
+  const peak = state.lastKnownPowerKw[deviceId];
+  if (!peak || resolveLearnedPeakKw(peak, nowMs) !== null) return false;
+  // eslint-disable-next-line no-param-reassign
+  delete state.lastKnownPowerKw[deviceId];
+  state.peakReadings.delete(deviceId);
+  return true;
+};
+/* eslint-enable functional/immutable-data */
+
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateLastKnownPower(params: {
-  state: {
-    lastKnownPowerKw: LearnedPeaksByDeviceId;
+  state: PeakLearningState & {
     lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   };
   deviceId: string;
@@ -78,8 +109,17 @@ export function updateLastKnownPower(params: {
     nowMs,
     onPeakChanged,
   } = params;
+  if (retireExpiredPeak(state, deviceId, nowMs)) onPeakChanged?.();
   const previous = state.lastKnownPowerKw[deviceId];
-  const next = nextLearnedPeak(previous, measuredKw, nowMs);
+  const readings = recordPeakReading(state.peakReadings.get(deviceId), measuredKw);
+  state.peakReadings.set(deviceId, readings);
+  // Gated at the credibility floor: a standby trickle can rarely displace an
+  // established peak, but it could establish the first one, and a device whose
+  // only draw so far is 3 W would carry a 3 W expectation into the restore axis.
+  if (measuredKw < MIN_PEAK_LEARNING_KW) return;
+  const levelKw = resolvePeakLevelKw(resolveLearnedPeakKw(previous, nowMs), readings.samplesKw, measuredKw);
+  if (levelKw === null) return;
+  const next = nextLearnedPeak(previous, levelKw, nowMs);
   if (!next) return;
 
   state.lastKnownPowerKw[deviceId] = next;

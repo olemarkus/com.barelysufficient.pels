@@ -67,7 +67,7 @@ import type { DeviceParseSources } from './transport/managerParseDevice';
 import type { LiveMeterReadings, MeterMonthlyPeakRead, MeterPhasesRead } from '../ports/homeMeterReadings';
 import {
   createEstimateDecisionLogState,
-  createPeakPowerLogState,
+  createPeakLearningState,
   type DeviceTransportOptions,
   type DeviceTransportPowerState,
   type ResolvedTransportPowerState,
@@ -294,7 +294,7 @@ export class DeviceTransport {
         this.powerState = {
             ...powerState,
             lastEstimateDecisionLogByDevice: createEstimateDecisionLogState(),
-            lastPeakPowerLogByDevice: createPeakPowerLogState(),
+            ...createPeakLearningState(),
             onLearnedPeakChanged: () => options.flowBacked.persistLearnedPeaks(),
         };
         // The measured-power resolver, built with what it retains restored from the

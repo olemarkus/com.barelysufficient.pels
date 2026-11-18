@@ -22,6 +22,12 @@
  * produces.
  * `observedAtMs` here is when PELS took the reading, not when the device last
  * changed its mind.
+ *
+ * WHY ONE READING IS NOT A PEAK. A corrupt frame is a single observation: a
+ * floor thermostat that draws 0.4 kW reported 88 kW once, under the plausible
+ * ceiling, and the home then sized every restore of it against 88 kW. The level
+ * recorded is therefore the third-highest of the device's last ten separate
+ * readings (`rankedPeakLevelKw`), which are held in memory for the run.
  */
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 import { MAX_PLAUSIBLE_DEVICE_POWER_KW } from '../../packages/shared-domain/src/measuredPowerObservedState';
@@ -99,7 +105,8 @@ export const resolveLearnedPeakKw = (
 /**
  * The entry to store for a new reading, or `null` to leave the store untouched.
  *
- * Four cases, and the last is the whole point of the window:
+ * `measuredKw` is the level `resolvePeakLevelKw` named, or a persisted peak
+ * being merged. Four cases, and the last is the whole point of the window:
  * - no entry yet → the reading anchors one;
  * - reading above the standing peak → it IS the peak, and re-anchors the window;
  * - reading that matches the standing peak → re-anchors the window once the
@@ -123,6 +130,75 @@ export const nextLearnedPeak = (
   }
   return isExpired(peak, nowMs) ? { kw: measuredKw, observedAtMs: nowMs } : null;
 };
+
+/**
+ * Below this a reading is standby noise, not evidence of what the device draws
+ * when working: it is never a peak sample. 5 W.
+ */
+export const MIN_PEAK_LEARNING_KW = 0.005;
+
+/** How many of a device's latest separate readings the peak level is read from. */
+export const PEAK_SAMPLE_WINDOW = 10;
+
+/**
+ * Which of those readings, counted from the highest, is the level: the third.
+ * Two corrupt readings among the ten therefore never reach the peak, whether or
+ * not they resemble each other, and a device needs three readings before it has
+ * a learned peak at all.
+ */
+export const PEAK_SAMPLE_RANK = 3;
+
+/** What peak learning keeps of one device's readings during a run. */
+export type PeakReadings = {
+  /** The device's latest reading, standby included: the next one is new only if it differs. */
+  lastKw: number;
+  /** Its latest separate readings at or above `MIN_PEAK_LEARNING_KW`, oldest first. */
+  samplesKw: readonly number[];
+};
+
+/**
+ * A device's readings with one more taken into account.
+ *
+ * A reading is a new sample only when its value differs from the device's last
+ * one. Homey re-dates a capability only when its value changes, and one report
+ * reaches PELS more than once with different times (the live event at arrival,
+ * the full read at Homey's own stamp), so neither the clock nor a count of
+ * reads tells readings apart; a changed value does. A standby reading is no
+ * sample but still counts as the last one, so a device that only ever reports
+ * 0 W and one fixed draw gives a sample each time it runs.
+ */
+export const recordPeakReading = (readings: PeakReadings | undefined, kw: number): PeakReadings => {
+  if (readings?.lastKw === kw) return readings;
+  const samplesKw = readings?.samplesKw ?? [];
+  return {
+    lastKw: kw,
+    samplesKw: kw >= MIN_PEAK_LEARNING_KW ? [...samplesKw, kw].slice(-PEAK_SAMPLE_WINDOW) : samplesKw,
+  };
+};
+
+/**
+ * The level a device's latest readings vouch for: the `PEAK_SAMPLE_RANK`-highest,
+ * or `null` while there are too few readings to name one.
+ */
+export const rankedPeakLevelKw = (samplesKw: readonly number[]): number | null => (
+  [...samplesKw].sort((left, right) => right - left)[PEAK_SAMPLE_RANK - 1] ?? null
+);
+
+/**
+ * The level to record against the standing peak (`nextLearnedPeak`) for one
+ * reading at or above `MIN_PEAK_LEARNING_KW`, or `null` for none.
+ *
+ * A reading at or below the standing peak needs no vouching: it can only match
+ * the peak, which keeps a steady device's window open, or be ignored. Anything
+ * above it, and any reading while there is no standing peak, goes by rank.
+ */
+export const resolvePeakLevelKw = (
+  standingKw: number | null,
+  samplesKw: readonly number[],
+  measuredKw: number,
+): number | null => (
+  standingKw !== null && measuredKw <= standingKw ? measuredKw : rankedPeakLevelKw(samplesKw)
+);
 
 /**
  * Drop entries whose window closed long enough ago that they can no longer

@@ -83,6 +83,10 @@ async function simulateLabHour(backgroundW: (poll: number) => number): Promise<{
   mockHomeyInstance.settings.set('capacity_priorities', {
     Home: Object.fromEntries(HEATERS.map(({ id, priority }) => [id, priority])),
   });
+  // The lab's heaters have their draw entered on the device page.
+  mockHomeyInstance.settings.set('device_expected_power_overrides', Object.fromEntries(
+    HEATERS.map(({ id, watts }) => [id, { kw: watts / 1000, ts: nowMs }]),
+  ));
   mockHomeyInstance.settings.set(OVERSHOOT_BEHAVIORS, Object.fromEntries(HEATERS.map(({ id }) => [id, { action: 'turn_off' }])));
 
   // The heater mocks report their nameplate while on and nothing while off.

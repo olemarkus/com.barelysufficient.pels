@@ -364,7 +364,6 @@ describe('device owner control resolution', () => {
       binaryControllable: false,
       canSetControl: undefined,
       capabilities: configuration?.capabilities?.filter(id => id !== 'onoff'),
-      expectedPowerKw: 2.15,
     });
     const next = transport.getSnapshotByDeviceId('heater')!;
     expect(next.binaryCapabilityId).toBeUndefined();
