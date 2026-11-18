@@ -1,3 +1,5 @@
+import type { ChargingCurrentRead } from '../../contracts/src/chargingControl.ts';
+
 // The model reads `state`, the home roster and the setup facts, so each test
 // loads fresh copies and publishes what it needs.
 const savedPlans = vi.fn<() => Promise<Record<string, unknown>>>(async () => ({}));
@@ -115,6 +117,47 @@ describe('Choose what PELS does', () => {
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
     state.surplusPoolReachable = true;
     expect(ready(goals.resolveSetupGoalChoices()).map((device) => device.solar?.label)).toEqual(['Run on solar surplus']);
+  });
+
+  it('keeps the saved solar choice while directing a car to its missing consent', async () => {
+    let carSetup: ChargingCurrentRead = {
+      deviceId: 'charger', name: 'Family car', scope: 'vehicle',
+      setup: { method: 'built_in', confirmation: 'none' }, capabilityWritable: false,
+      sharedInstallation: false, flowCheck: 'clear', flowNames: [],
+      currentRoute: 'built_in', missingCompanion: 'none',
+    };
+    vi.doMock('../src/ui/homey.ts', async (importOriginal) => ({
+      ...await importOriginal<typeof import('../src/ui/homey.ts')>(),
+      callApi: async (_method: string, path: string) => (path === '/ui_charging_current'
+        ? [carSetup] : { configured: true, state: 'ready' }),
+    }));
+    try {
+      const { goals, state } = await load();
+      manage(state, [charger]);
+      state.surplusPoolReachable = true;
+      state.deviceTargetPowerConfigs = { charger: { enabled: true, preset: 'ev_charger_3_phase' } };
+      state.priceOptimizationSettings = {
+        charger: { enabled: false, cheapDelta: 0, expensiveDelta: 0,
+          priceConfigured: false, surplusWilling: true, surplusDelta: 0 },
+      };
+      const charging = await import('../src/ui/chargingSetupFacts.ts');
+      await charging.loadChargingSetup();
+      expect(ready(goals.resolveSetupGoalChoices())[0]?.solar).toMatchObject({
+        configured: true,
+        hint: 'Turn on “Control charging through this car” in Setup.',
+        actionLabel: 'Finish charging setup',
+        focus: 'charging-control',
+      });
+
+      carSetup = { ...carSetup, setup: { ...carSetup.setup, confirmation: 'vehicle' } };
+      await charging.loadChargingSetup();
+      expect(ready(goals.resolveSetupGoalChoices())[0]?.solar).toMatchObject({
+        configured: true, hint: null, actionLabel: 'Charge on solar surplus', focus: 'solar',
+      });
+      expect(state.priceOptimizationSettings.charger?.surplusWilling).toBe(true);
+    } finally {
+      vi.doUnmock('../src/ui/homey.ts');
+    }
   });
 
   describe('a home battery', () => {

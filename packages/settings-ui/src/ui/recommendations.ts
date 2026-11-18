@@ -1,7 +1,6 @@
 import { chargingRecommendations } from './chargingRecommendations.ts';
 import { registerOverviewRecommendationDismissals } from './overviewControlWarnings.ts';
-import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
-import { CHARGING_ACCESS_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
+import { loadChargingSetup } from './chargingSetupFacts.ts';
 import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
 import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
@@ -94,10 +93,7 @@ async function loadChargingRecommendations(force = false): Promise<void> {
   chargingReadAt = Date.now();
   const generation = ++chargingReadGeneration;
   try {
-    const [devices, access] = await Promise.all([
-      callApi<ChargingCurrentRead[]>('GET', CHARGING_CURRENT_PATH),
-      callApi<ChargingAccessStatus>('GET', CHARGING_ACCESS_PATH),
-    ]);
+    const { devices, access } = await loadChargingSetup();
     if (generation !== chargingReadGeneration) return;
     currentChargingRecommendations = chargingRecommendations(devices, access);
     refreshRecommendationSurfaces();

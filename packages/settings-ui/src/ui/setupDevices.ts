@@ -18,6 +18,9 @@ import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplus
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { needsHomeyEnergySetup, HOMEY_ENERGY_SETUP_REASON } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { resolveBatteryManagedHint, BATTERY_WATCH_MANAGED_HINT } from './deviceDetail/batterySection.ts';
+import {
+  FINISH_CHARGING_SETUP, VEHICLE_CHARGING_SETUP_HINT, vehicleChargingConsentMissing,
+} from './chargingSetupFacts.ts';
 
 export type SolarSetupAction = {
   label: string;
@@ -49,6 +52,9 @@ const solarSetupPrerequisite = (device: SettingsUiDeviceListItem): SolarSetupPre
   }
   if (!supportsPowerDevice(device)) return { hint: 'This device needs a power reading.', focus: 'top' };
   if (!control.isManaged) return { hint: 'Turn on Managed by PELS first.', focus: 'managed' };
+  if (vehicleChargingConsentMissing(device.id)) {
+    return { hint: VEHICLE_CHARGING_SETUP_HINT, focus: 'charging-control' };
+  }
   if (supportsTemperatureDevice(device)) {
     return control.canControlTemperature ? null : {
       hint: 'Choose “Return to mode target” under “When the temperature changes outside PELS”.',
@@ -76,6 +82,7 @@ const solarSetupPrerequisite = (device: SettingsUiDeviceListItem): SolarSetupPre
 
 const solarSetupActionLabel = (prerequisite: SolarSetupPrerequisite | null, label: string): string => {
   if (!prerequisite) return label;
+  if (prerequisite.focus === 'charging-control') return FINISH_CHARGING_SETUP;
   if (prerequisite.focus === 'top') return 'Device settings';
   if (prerequisite.focus === 'solar') return 'Solar settings';
   return 'Set up solar control';

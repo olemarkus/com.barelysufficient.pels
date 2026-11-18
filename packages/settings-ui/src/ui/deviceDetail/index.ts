@@ -1,4 +1,6 @@
 import { renderChargerCurrentLimits } from './chargingCurrentLimits.tsx';
+import { CHARGING_SETUP_UPDATED } from '../chargingSetupFacts.ts';
+import { cancelChargingControlFocus } from './chargingCurrent.tsx';
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
 import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
 import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
@@ -406,6 +408,7 @@ export const openDeviceDetail = (deviceId: string) => {
 };
 
 export const closeDeviceDetail = () => {
+  cancelChargingControlFocus();
   setContinuousBatteryPlanDevice(null);
   setBatteryApiKeyDevice(null);
   resetDeviceDetailDiagnosticsRequests();
@@ -481,6 +484,11 @@ export const openDeviceDetailAt = (deviceId: string, focus: DeviceDetailFocus): 
 };
 
 export const initDeviceDetailHandlers = () => {
+  document.addEventListener(CHARGING_SETUP_UPDATED, () => {
+    if (!currentDetailDeviceId) return;
+    const device = findLatestDevice(currentDetailDeviceId);
+    if (device) syncDeviceDetailSolarRows(currentDetailDeviceId, device);
+  });
   initContinuousBatteryPlanRefresh();
   // An owner's toggle shows or hides its on-only hints at once; a save that
   // fails redraws the page, which syncs them again.
@@ -523,6 +531,7 @@ export const initDeviceDetailHandlers = () => {
   });
   initDeviceDetailSurplusTrackingHandlers({
     getCurrentDetailDeviceId,
+    revealChargingSetup: () => revealDeviceDetailFocus('charging-control'),
   });
   initDeviceDetailBudgetExemptHandler({
     getCurrentDetailDeviceId,

@@ -1,6 +1,7 @@
 import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
 import type { SetupRecommendation } from './recommendationsModel.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import { FINISH_CHARGING_SETUP, needsVehicleChargingConsent } from './chargingSetupFacts.ts';
 
 /**
  * A car PELS controls whose app offers a companion device the owner has not
@@ -52,7 +53,7 @@ function setupRecommendations(
       title = `Remove duplicate current control for ${name}`;
       body = 'A current-setting Flow is configured alongside built-in access. Remove that action, check again, '
         + 'then explicitly choose built-in control. Adding a key does not switch your existing Flow.';
-    } else if (device.scope === 'vehicle' && device.setup.confirmation !== 'vehicle') {
+    } else if (needsVehicleChargingConsent(device)) {
       kind = 'charging-owner';
       title = `Choose how PELS controls ${name}`;
       body = 'Control either the car or its physical charger. '
@@ -68,6 +69,8 @@ function setupRecommendations(
           + 'One key works for all supported cars and chargers on this Homey.';
     }
     return [{ id: `${kind}:${encodeURIComponent(device.deviceId)}`, version: 1, category: 'recommendation',
-      title, body, actionLabel: 'Review device', target: { kind: 'device', deviceId: device.deviceId } }];
+      title, body, actionLabel: kind === 'charging-owner' ? FINISH_CHARGING_SETUP : 'Review device',
+      target: { kind: 'device', deviceId: device.deviceId,
+        ...(kind === 'charging-owner' ? { focus: 'charging-control' as const } : {}) } }];
   });
 }
