@@ -16,7 +16,8 @@ import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { toPlanDevice } from '../../setup/appInit/toPlanDevice';
 import { partialDouble } from '../helpers/partialDouble';
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
-import { planningTurnContext, reviewedContextSignature } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { reviewedContextSignature } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { fixturePlanningTurnContext } from '../helpers/taskAllocationContext';
 import { orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion } from '../helpers/deferredObjectiveWiringFixtures';
@@ -43,7 +44,7 @@ const plan = (latest: Partial<DeferredObjectiveActivePlanRevisionV1> = {}): Defe
     commitment: { committedAtMs: NOW, hours: [booking] }, liveCompletion: { kind: 'unmet', status: 'on_track' },
     latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
       revision: 1, revisedAtMs: NOW,
-      allocationContextSignature: planningTurnContext([{
+      allocationContextSignature: fixturePlanningTurnContext([{
         deviceId: device.id, objective, device, priority: 1, reservationEligible: true, higherRankedDeviceIds: [],
       }], { version: 2, plansByDeviceId: {} }),
       hours: [booking], reservationSegments: [{ startMs: START, endMs: END, plannedKWh: 0.56, plannedAdmissionPowerKw: 3 }],
@@ -76,7 +77,7 @@ const withPlanningContexts = (
     const record = tasks.plansByDeviceId[entry.deviceId];
     if (!record?.latest) throw new Error('Expected a committed fixture');
     return [entry.deviceId, { ...record, latest: {
-      ...record.latest, allocationContextSignature: planningTurnContext(ordered.slice(0, index + 1), tasks),
+      ...record.latest, allocationContextSignature: fixturePlanningTurnContext(ordered.slice(0, index + 1), tasks),
     } }];
   })) };
 };

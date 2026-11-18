@@ -58,6 +58,42 @@ export type CoordinatedDeferredObjective = OrderedDeferredObjective & {
 /** Task scheduling policy resolved once for both fresh allocation and frozen serving. */
 export type ScheduledDeferredObjective = CoordinatedDeferredObjective & { prefersContinuousCharging: boolean };
 
+/** One priority walk's ordinary load, before the task currently being evaluated. */
+export class HigherRankedLoad {
+  private cursor = 0;
+  private higherPriorityUnbookedPowerKw = 0;
+  private higherRankedLoadAccountedFor = true;
+
+  constructor(private readonly deviceById: ReadonlyMap<string, ObjectiveDeviceInput>) {}
+
+  // Ordered tasks extend the same unique device prefix. A known-load addition
+  // belongs to the task just evaluated, which has not entered that prefix yet.
+  // Resolve new ids only after that addition, preserving the original sum order.
+  advance(
+    task: OrderedDeferredObjective,
+    knownLoadHigherDeviceIds: ReadonlySet<string>,
+  ): Pick<CoordinatedDeferredObjective, 'higherPriorityUnbookedPowerKw' | 'higherRankedLoadAccountedFor'> {
+    const addedIds = task.higherRankedDeviceIds.slice(this.cursor);
+    this.cursor = task.higherRankedDeviceIds.length;
+    for (const higherId of addedIds) {
+      if (knownLoadHigherDeviceIds.has(higherId)) continue;
+      const higherDevice = this.deviceById.get(higherId);
+      // Devices without standing authority are already background load.
+      if (higherDevice?.control.commandAuthority === false) continue;
+      const maxStepPowerKw = higherDevice ? resolveHighestObjectiveAdmissionPowerKw(higherDevice) : null;
+      if (maxStepPowerKw === null) {
+        this.higherRankedLoadAccountedFor = false;
+      } else {
+        this.higherPriorityUnbookedPowerKw += maxStepPowerKw;
+      }
+    }
+    return {
+      higherPriorityUnbookedPowerKw: this.higherPriorityUnbookedPowerKw,
+      higherRankedLoadAccountedFor: this.higherRankedLoadAccountedFor,
+    };
+  }
+}
+
 // Keep the same locale-independent tie-break as `lib/plan/planSort.ts` without
 // importing across the objectives→plan boundary.
 const compareDeviceIdAsc = (left: string, right: string): number => {
@@ -134,13 +170,47 @@ const objectiveSignature = (entry: OrderedDeferredObjective): string => buildObj
   }),
 );
 
-export const buildAllocationContextSignature = (
-  entries: readonly OrderedDeferredObjective[],
-): string => JSON.stringify(entries.map((entry) => [
+const allocationRosterEntry = (entry: OrderedDeferredObjective): string => JSON.stringify([
   entry.deviceId,
   entry.priority,
   objectiveSignature(entry),
-]));
+]);
+
+/** An ordered task with the stable context of its complete allocation prefix. */
+export type ContextualDeferredObjective = OrderedDeferredObjective & {
+  rosterSignature: string;
+  planningContextSignature: string;
+};
+
+/**
+ * Serialize each roster entry and committed revision once per walk. Appending
+ * JSON tuples preserves the persisted format, including nulls in revision tuples.
+ */
+export const withTaskAllocationContexts = (
+  ordered: readonly OrderedDeferredObjective[],
+  activePlans: DeferredObjectiveActivePlansV2,
+): ContextualDeferredObjective[] => {
+  let roster = '[';
+  let quotedRoster = '"[';
+  let higherClaims = '[';
+  return ordered.map((task, index) => {
+    const separator = index === 0 ? '' : ',';
+    const entry = allocationRosterEntry(task);
+    roster += separator + entry;
+    // Escape each entry once rather than re-escaping every complete prefix.
+    quotedRoster += separator + JSON.stringify(entry).slice(1, -1);
+    const contextual = {
+      ...task,
+      rosterSignature: `${roster}]`,
+      planningContextSignature: `[${quotedRoster}]",${higherClaims}]]`,
+    };
+    const plan = activePlans.plansByDeviceId[task.deviceId];
+    higherClaims += separator + JSON.stringify([
+      task.deviceId, plan?.objectiveSignature, plan?.latest?.revision, plan?.latest?.revisedAtMs,
+    ]);
+    return contextual;
+  });
+};
 
 export const buildTaskAllocationContextSignature = (params: {
   rosterSignature: string;

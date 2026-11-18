@@ -11,7 +11,7 @@ import { buildObjectiveSignatureForEntry } from '../../lib/objectives/deferredOb
 import type { ObjectiveDeviceSource } from '../../lib/objectives/types';
 import { partialDouble } from '../helpers/partialDouble';
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
-import { planningTurnContext } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import { fixturePlanningTurnContext } from '../helpers/taskAllocationContext';
 import { noDeviceExclusion } from '../helpers/deferredObjectiveWiringFixtures';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
@@ -73,7 +73,7 @@ const task = (plannedKWh: number, startMs = NOW, endMs = NOW + HOUR_MS): Deferre
     liveCompletion: { kind: 'unmet', status: 'on_track' },
     latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
       revision: 1, revisedAtMs: NOW,
-      allocationContextSignature: planningTurnContext([{
+      allocationContextSignature: fixturePlanningTurnContext([{
         deviceId: 'ev', objective: taskObjective(endMs), priority: 1,
         reservationEligible: true, higherRankedDeviceIds: [],
       }], { version: 2, plansByDeviceId: {} }),
