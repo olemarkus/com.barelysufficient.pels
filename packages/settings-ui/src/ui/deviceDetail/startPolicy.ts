@@ -11,6 +11,7 @@ import { syncRespectExternalOffRow } from './respectExternalOff.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { deviceDetailSetupDisclosure } from '../dom.ts';
 import type { DeviceDetailFocus } from '../cardActivation.ts';
+import { requestChargingControlFocus } from './chargingCurrent.tsx';
 import { formatDevicePageStartRule, resolveDeviceStartRule } from '../deviceStartRule.ts';
 import { hasUsedSmartTasks } from '../smartTaskUsage.ts';
 import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
@@ -155,6 +156,12 @@ const revealCarSection = (): void => {
 
 /** Land on the row a deep link names; `top` leaves the page where it opened. */
 export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
+  if (focus === 'charging-control') {
+    revealDetailRow(document.getElementById('device-detail-vehicle-control-row')
+      ?? document.getElementById('device-detail-charging-current'));
+    requestChargingControlFocus();
+    return;
+  }
   if (focus === 'start-policy') revealStartPolicyRow();
   if (focus === 'power-limit') revealPowerLimitRow();
   if (focus === 'shed-limit') revealShedLimitRow();

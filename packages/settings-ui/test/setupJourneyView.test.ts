@@ -1,7 +1,7 @@
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import {
-  REVIEW_DEVICE_NO_JOB, resolveReviewNoJobNote, SetupDevicePicker, SetupGoalPicker, SetupJourneyHeader,
+  REVIEW_DEVICE_NO_JOB, resolveReviewNoJobNote, SetupDevicePicker, SetupGoalPicker, SetupJourneyHeader, SetupReview,
   type SetupJourneyHeaderProps,
 } from '../src/ui/views/SetupJourney.tsx';
 import type { SetupGoalChoice } from '../src/ui/setupGoals.ts';
@@ -221,5 +221,28 @@ describe('setup review', () => {
     expect(resolveReviewNoJobNote([idle[0]!, device('heater', 'Price-based control on')], true)).toBeNull();
     expect(resolveReviewNoJobNote([], true)).toBeNull();
     expect(resolveReviewNoJobNote([device('heater', null)], true)).toBeNull();
+  });
+
+  it('offers the remaining charging setup at the exact device control', () => {
+    const root = mount();
+    const onOpenDevice = vi.fn();
+    act(() => render(h(SetupReview, {
+      path: { steps: [], doneCount: 0, lede: '', simulating: true },
+      activeMode: null, meterSummary: null, busy: false, error: null, solarNote: null,
+      devices: [{
+        ...device('car', REVIEW_DEVICE_NO_JOB),
+        setupAction: { label: 'Finish charging setup', focus: 'charging-control',
+          hint: 'Turn on “Control charging through this car” in Setup.' },
+      }],
+      onStart: vi.fn(), onContinue: vi.fn(), onChooseGoals: null, onOpenDevice,
+    }), root));
+    expect(root.textContent).toContain('Turn on “Control charging through this car” in Setup.');
+    expect(root.querySelector('[data-setup-review="no-job"]')?.textContent)
+      .toContain('No device has a job PELS can act on yet.');
+    const action = [...root.querySelectorAll<HTMLElement>('md-text-button')]
+      .find((element) => element.textContent === 'Finish charging setup');
+    expect(action).toBeDefined();
+    act(() => action!.click());
+    expect(onOpenDevice).toHaveBeenCalledWith('car', 'charging-control');
   });
 });

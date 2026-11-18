@@ -25,6 +25,7 @@ import {
 } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { hasUsableSteppedLoadLadder } from '../../../../shared-domain/src/deviceControlProfiles.ts';
+import { vehicleChargingConsentMissing } from '../chargingSetupFacts.ts';
 import {
   SURPLUS_TRACKING_HINTS,
   SURPLUS_TRACKING_LABELS,
@@ -94,6 +95,11 @@ const hideTrackingRow = (): void => {
   if (deviceDetailSurplusTrackPowerLimitHint) deviceDetailSurplusTrackPowerLimitHint.hidden = true;
 };
 
+const syncChargingSetupNotice = (deviceId: string | null, show: boolean): void => {
+  const notice = document.getElementById('device-detail-solar-charging-setup');
+  if (notice) notice.hidden = !show || deviceId === null || !vehicleChargingConsentMissing(deviceId);
+};
+
 /**
  * Sync the "match solar surplus" toggle row for the open device. Shown when the
  * device is a fresh candidate (shape-valid AND the home has solar) OR is ALREADY
@@ -114,6 +120,7 @@ export const setDeviceDetailSurplusTrackingControl = (
   const optedIn = deviceId !== null
     && state.priceOptimizationSettings[deviceId]?.surplusWilling === true;
   const showRow = shape && (resolveSurplusControlAvailable() || optedIn);
+  syncChargingSetupNotice(deviceId, showRow && optedIn);
   deviceDetailSurplusTrackRow.hidden = !showRow;
   if (!showRow || !deviceId || !device) {
     hideTrackingRow();
@@ -141,7 +148,11 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
 
 export const initDeviceDetailSurplusTrackingHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
+  revealChargingSetup: () => void;
 }): void => {
+  document.getElementById('device-detail-solar-charging-setup-action')?.addEventListener('click', () => {
+    params.revealChargingSetup();
+  });
   const save = async (surplusWilling: boolean): Promise<void> => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;

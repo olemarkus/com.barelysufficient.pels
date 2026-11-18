@@ -2,6 +2,9 @@ import type { ContinuousBatteryPlanConfigs } from '../../../contracts/src/contin
 import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
+import { CHARGING_SETUP_UPDATED, FINISH_CHARGING_SETUP, VEHICLE_CHARGING_SETUP_HINT,
+  vehicleChargingConsentMissing } from './chargingSetupFacts.ts';
+import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import {
   hasOpenSmartTask, isHomeBatteryDeviceId, resolveHomeHasSolar, resolveSolarSurplusPending,
   resolveSolarSurplusPendingNote, state,
@@ -172,11 +175,16 @@ const limitControlActs = (device: SettingsUiDeviceListItem): boolean => (
   readSetupLimitsInForce() !== false || (isHomeBatteryClassKey(device.deviceClass) && resolveHomeHasSolar())
 );
 
+const solarChargingSetupMissing = (deviceId: string): boolean => (
+  state.priceOptimizationSettings[deviceId]?.surplusWilling === true && vehicleChargingConsentMissing(deviceId)
+);
+
 // What PELS will do with the device once it manages it: each saved control
 // that has something to act on. Price-based control acts while PELS responds to
 // prices, as Power-limit control does while a limit is in force.
 const describeDeviceJobs = (device: SettingsUiDeviceListItem): string | null => {
   if (state.loadedModeHomeId !== MAIN_HOME_ID) return null;
+  if (solarChargingSetupMissing(device.id)) return REVIEW_DEVICE_NO_JOB;
   const solar = resolveSolarSetupAction(device);
   const jobs = [
     supportsTemperatureControlDevice(device) ? 'Follows mode temperatures' : null,
@@ -203,6 +211,10 @@ const readReviewDevices = (): SetupReviewDevice[] => {
       name: formatDisplayDeviceName(device.name),
       control: describeDeviceJobs(device),
       status: statuses.get(device.id) ?? null,
+      ...(solarChargingSetupMissing(device.id) ? {
+        setupAction: { label: FINISH_CHARGING_SETUP, focus: 'charging-control' as const,
+          hint: VEHICLE_CHARGING_SETUP_HINT },
+      } : {}),
       configuration: [
         ...(order === null ? [] : [`Priority ${order.getPriority(device.id)}`]),
         ...readReviewTarget(device, mode),
@@ -247,6 +259,7 @@ const paintReview = (): void => {
     onStart: startManaging,
     onContinue: continueSetup,
     onChooseGoals: offersSetupGoals() ? openSetupGoals : null,
+    onOpenDevice: dispatchOpenDeviceDetail,
   }), root);
 };
 
@@ -412,6 +425,7 @@ const refreshLivePreview = async (): Promise<void> => {
 };
 
 export const initSetupJourney = (): void => {
+  document.addEventListener(CHARGING_SETUP_UPDATED, repaintJourney);
   void loadSetupBatteryPlans();
   document.addEventListener('pels:tab-shown', () => {
     error = null;

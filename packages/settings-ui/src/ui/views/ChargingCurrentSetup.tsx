@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useLayoutEffect, useState } from 'preact/hooks';
 import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } from '../../../../contracts/src/chargingControl.ts';
 import { MdFilledButton, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 import { HomeyApiKeySetup, resolveHomeyApiKeySaveLabel, type HomeyApiKeyCopy } from './HomeyApiKeySetup.tsx';
@@ -13,6 +13,7 @@ export type ChargingCurrentSetupProps = {
   onCheck: () => Promise<boolean>;
   onRemove: () => Promise<boolean>;
   onSaveMethod: (setup: ChargingCurrentSetup) => Promise<boolean>;
+  onReady?: () => void;
 };
 
 export function ChargingCurrentLoadView(props: { busy: boolean; onRetry: () => Promise<void> }) {
@@ -48,6 +49,7 @@ function pausedHint(flowNames: readonly string[]): string {
 
 export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const { device, access, busy } = props;
+  useLayoutEffect(() => { props.onReady?.(); }, [device.deviceId, busy]);
   const [singleCharger, setSingleCharger] = useState(device.setup.confirmation === 'single_charger');
   const [vehicleControl, setVehicleControl] = useState(device.setup.confirmation === 'vehicle');
   // A charger-scoped command reaches only this charger, so it needs no confirmation.
@@ -97,9 +99,9 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
         : 'Enable it below, or set up a Flow to send current changes to the car or charger.'}</p>}
     </div>
     {device.scope === 'vehicle' && <div>
-      <label class="md-switch-row">
+      <label class="md-switch-row" id="device-detail-vehicle-control-row">
         <span class="md-switch-row__content"><span class="md-switch-row__label">Control charging through this car</span></span>
-        <MdSwitch aria-label="Control charging through this car" selected={vehicleControl} disabled={busy}
+        <MdSwitch id="device-detail-vehicle-control" aria-label="Control charging through this car" selected={vehicleControl} disabled={busy}
           onChange={(event: Event) => setVehicleControl(readSwitchSelected(event))} />
       </label>
       {!builtIn && <p class="field__hint">This switch allows control through the car. To adjust current without a Flow, finish setup with “Use built-in control” or “Save key and enable”.</p>}

@@ -9,6 +9,7 @@ const SURPLUS_ROW_ORDER = [
   'device-detail-surplus-opt-row',
   'device-detail-dump-load-row',
   'device-detail-surplus-track-row',
+  'device-detail-solar-charging-setup',
   'device-detail-solar-pending-hint',
 ];
 
@@ -140,6 +141,7 @@ describe('applyDeviceDetailSectionLayout', () => {
     // no Solar surplus card.
     expect(childIds('device-detail-charging-section')).toEqual([
       'device-detail-surplus-track-row',
+      'device-detail-solar-charging-setup',
       'device-detail-solar-pending-hint',
     ]);
     expect(childIds('device-detail-surplus-section')).toEqual([

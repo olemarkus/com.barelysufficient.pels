@@ -36,6 +36,10 @@ const buildDom = () => {
           <small id="device-detail-surplus-track-disabled-hint" hidden></small>
           <small id="device-detail-surplus-track-power-limit-hint" hidden></small>
         </div>
+        <div id="device-detail-expected-power-row">
+          <input id="device-detail-expected-power">
+          <small id="device-detail-expected-power-source"></small>
+        </div>
         <md-switch id="device-detail-budget-exempt"></md-switch>
         <div id="device-detail-control-model-row">
           <select id="device-detail-control-model"></select>
@@ -367,4 +371,17 @@ describe('device detail solar-surplus tracking gating', () => {
     });
 
   });
+});
+
+
+it('keeps an unsaved power figure when accepted charging setup changes', async () => {
+  vi.resetModules();
+  buildDom();
+  mockSiblings();
+  await openPanel({ device: buildBinaryPump({ expectedPowerKw: 0.8, expectedPowerSource: 'default' }) });
+  const field = document.getElementById('device-detail-expected-power') as HTMLInputElement;
+  field.value = '1500';
+  const { CHARGING_SETUP_UPDATED } = await import('../src/ui/chargingSetupFacts.ts');
+  document.dispatchEvent(new Event(CHARGING_SETUP_UPDATED));
+  expect(field.value).toBe('1500');
 });

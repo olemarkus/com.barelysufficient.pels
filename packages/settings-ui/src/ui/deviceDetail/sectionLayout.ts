@@ -154,19 +154,23 @@ const placeElectricalConnectionRow = (kind: DeviceDetailKind): void => {
 const placeSurplusTrackRow = (kind: DeviceDetailKind): void => {
   const row = document.getElementById('device-detail-surplus-track-row');
   const pendingNote = document.getElementById('device-detail-solar-pending-hint');
+  const chargingSetup = document.getElementById('device-detail-solar-charging-setup');
   if (kind === 'ev_charger') {
-    // The note closes the card and the row sits just above it, so a refresh
-    // finds both in place and moves nothing.
+    // The row and its setup notice sit before the note that closes the card.
+    // Place them from the final anchor backward so an unchanged refresh moves nothing.
     if (!pendingNote) {
-      appendTo(row, sectionContent('charging'));
+      appendTo(chargingSetup ?? row, sectionContent('charging'));
+      placeBefore(row, chargingSetup);
       return;
     }
     appendTo(pendingNote, sectionContent('charging'));
-    placeBefore(row, pendingNote);
+    placeBefore(chargingSetup, pendingNote);
+    placeBefore(row, chargingSetup ?? pendingNote);
     return;
   }
   placeAfter(row, document.getElementById('device-detail-dump-load-row'));
-  placeAfter(pendingNote, row);
+  placeAfter(chargingSetup, row);
+  placeAfter(pendingNote, chargingSetup ?? row);
 };
 
 // A battery's page shows its own section and none of a load's: Setup holds

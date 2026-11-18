@@ -46,3 +46,11 @@ test('the location advice waits until the owner chooses to control charging thro
   expect(chargingRecommendations([car], { configured: true, state: 'ready' }).map(({ id }) => id))
     .toEqual(['charging-owner:charger']);
 });
+test('missing vehicle consent links directly to its charging setup', () => {
+  const car: ChargingCurrentRead = { ...device, scope: 'vehicle' };
+  const [recommendation] = chargingRecommendations([car], { configured: true, state: 'ready' });
+  expect(recommendation).toMatchObject({
+    actionLabel: 'Finish charging setup',
+    target: { kind: 'device', deviceId: car.deviceId, focus: 'charging-control' },
+  });
+});

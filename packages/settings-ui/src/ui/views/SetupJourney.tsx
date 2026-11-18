@@ -281,6 +281,7 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
 
 export type SetupReviewDevice = {
   id: string; name: string; control: string | null; status: string | null; configuration: readonly string[];
+  setupAction?: { label: string; focus: DeviceDetailFocus; hint: string };
 };
 /** A managed device's control line when no saved control has anything to act on. */
 export const REVIEW_DEVICE_NO_JOB = 'Nothing for PELS to do yet';
@@ -296,6 +297,9 @@ export const resolveReviewNoJobNote = (
   goalsOffered: boolean,
 ): string | null => {
   if (devices.length === 0 || devices.some((device) => device.control !== REVIEW_DEVICE_NO_JOB)) return null;
+  if (devices.some((device) => device.setupAction)) {
+    return 'No device has a job PELS can act on yet. Finish charging setup to let PELS charge the car on solar surplus.';
+  }
   return goalsOffered
     ? 'No device has a job yet, so PELS has nothing to control. Choose what PELS does to give one a job.'
     : 'No device has a job yet, so PELS has nothing to control. Turn on a power limit, '
@@ -319,6 +323,7 @@ export type SetupReviewProps = {
   onContinue: () => void;
   /** Back to `Choose what PELS does`, while it has something to offer; `null` hides the link. */
   onChooseGoals: (() => void) | null;
+  onOpenDevice?: (id: string, focus: DeviceDetailFocus) => void;
 };
 
 export const SetupReview = (props: SetupReviewProps) => {
@@ -346,7 +351,14 @@ export const SetupReview = (props: SetupReviewProps) => {
               <strong>{device.name}</strong>
               {device.configuration.map((line) => <p class="pels-card-supporting" key={line}>{line}</p>)}
               {device.control !== null && <p class="pels-card-supporting">{device.control}</p>}
+              {device.setupAction && <p class="pels-card-supporting">{device.setupAction.hint}</p>}
               {device.status && <p class="pels-card-supporting">{device.status}</p>}
+              {device.setupAction && props.onOpenDevice && (
+                <MdTextButton type="button" disabled={props.busy}
+                  onClick={() => props.onOpenDevice?.(device.id, device.setupAction!.focus)}>
+                  {device.setupAction.label}
+                </MdTextButton>
+              )}
             </div>
           ))}
           <ReviewNoJobNote devices={props.devices} goalsOffered={props.onChooseGoals !== null} />
