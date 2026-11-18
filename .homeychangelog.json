@@ -856,5 +856,8 @@
   },
   "3.41.0": {
     "en": "A Smart task schedule that cannot run because its device is no longer managed now says so on the Smart tasks page, the Schedules page and the device page, before the night it was meant for. Request support lists every Homey device by room, and a device already on Devices opens it. A device that is off for a reason outside PELS says what to check, or that PELS tries again within an hour. Zaptec chargers: a session the car ended is recognised in newer Zaptec apps too. A car that Homey reports unavailable, and a Grid import limit of 0 kW, are explained where you set them."
+  },
+  "3.42.0": {
+    "en": "New: PELS controls KEBA P20 and P30 chargers, reads a WARP charger's session and steps its current, and controls a Fronius GEN24 battery. The Overview shows a warning icon on a device that does not keep the changes PELS makes, with what PELS saw and what to check, and it shows Smart tasks that cannot run. Turning off Respond to prices now warns that Smart tasks will pause, and a paused task says so. A planned battery now supplies what the house actually draws, and a device waiting for its Smart task can run on solar surplus. A device with an on/off switch can be managed before its power use is set up in Homey. A home left in Simulation mode gets one reminder after a day.\n\nFixed: one faulty power reading from a device could become its learned power, so PELS kept other devices limited with room to spare. A lower-priority Smart task no longer pauses its device while it waits to be replanned after an update."
   }
 }
