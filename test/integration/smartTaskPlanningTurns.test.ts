@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  buildDeferredObjectiveTaskResults, SERVING_LANE,
+  buildDeferredObjectiveTaskResults, LIVE_LANE, SERVING_LANE,
   type TaskEvaluationLane, type TaskEvaluationReaders, type TaskEvaluationReport,
   type TaskEvaluationSnapshot,
 } from '../../lib/objectives/deferredObjectives/taskEvaluationCoordinator';
@@ -8,6 +8,7 @@ import { TaskPlanningTurns } from '../../lib/objectives/deferredObjectives/taskP
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
+import * as policyHorizon from '../../lib/objectives/deferredObjectives/policyHorizon';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
@@ -89,6 +90,8 @@ const freshIds = (reports: readonly TaskEvaluationReport[]): string[] => reports
 ));
 
 describe('bounded smart-task planning turns', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('reports price-off ahead of a queued cached allocation and retains its planning turn', () => {
     const home = createHarness(2);
     home.tick(START_MS);
@@ -139,17 +142,82 @@ describe('bounded smart-task planning turns', () => {
     expect(home.recorder.getActivePlan('load-6')?.latest?.revisedAtMs).toBe(START_MS + 150_000);
   });
 
-  it('serves committed plans without price reads or fresh allocations', () => {
+  it('serves committed plans without price reads or building policy horizons', () => {
     const home = createHarness(2);
     home.tick(START_MS);
     home.tick(START_MS + 30_000);
     const readsBefore = home.priceReadCount();
+    const buildPolicyHorizon = vi.spyOn(policyHorizon, 'buildDeferredObjectivePolicyHorizon');
 
     const reports = home.evaluate(START_MS + 60_000, SERVING_LANE);
 
     expect(freshIds(reports)).toEqual([]);
     expect(reports.map(({ evaluation }) => evaluation.planning.kind)).toEqual(['allocated', 'allocated']);
     expect(home.priceReadCount()).toBe(readsBefore);
+    expect(buildPolicyHorizon).not.toHaveBeenCalled();
+  });
+
+  describe.each(['frozen', 'replanning'] as const)('%s horizon availability', (path) => {
+    it.each(['disabled', 'missing', 'available'] as const)('preserves the %s outcome', (availability) => {
+      const home = createHarness(1);
+      home.tick(START_MS - 10 * 60_000);
+      const committed = home.recorder.getActivePlan('load-1')?.latest;
+      expect(committed).toBeDefined();
+      home.setPriceEnabled(availability !== 'disabled');
+      if (availability === 'missing') home.setPriceRead(() => []);
+      const buildPolicyHorizon = vi.spyOn(policyHorizon, 'buildDeferredObjectivePolicyHorizon');
+
+      const reports = path === 'frozen'
+        ? home.evaluate(START_MS - 5 * 60_000, LIVE_LANE)
+        : home.evaluate(START_MS);
+      const report = reports[0];
+
+      if (availability === 'disabled') {
+        expect(report?.diagnostic.reasonCode).toBe('objective_price_feature_disabled');
+        expect(report?.diagnostic.horizonPlan).toBeUndefined();
+        expect(report?.evaluation.planning.kind).toBe('inactive');
+      } else if (path === 'replanning' && availability === 'available') {
+        expect(freshIds(reports)).toEqual(['load-1']);
+        expect(buildPolicyHorizon).toHaveBeenCalled();
+        return;
+      } else {
+        expect(report?.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+        expect(report?.diagnostic.horizonBucketCount).toBe(committed?.hours.length);
+        expect(freshIds(reports)).toEqual([]);
+      }
+      expect(buildPolicyHorizon).not.toHaveBeenCalled();
+      expect(home.recorder.getActivePlan('load-1')?.latest).toEqual(committed);
+    });
+  });
+
+  it('does not build a policy horizon when a selected turn serves a live step gap frozen', () => {
+    const home = createHarness(1);
+    home.tick(START_MS - 10 * 60_000);
+    delete home.devices[0]!.steppedLoadProfile;
+    home.devices[0]!.steppedLadderMissing = true;
+    const buildPolicyHorizon = vi.spyOn(policyHorizon, 'buildDeferredObjectivePolicyHorizon');
+
+    const [report] = home.evaluate(START_MS);
+
+    expect(report?.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+    expect(report?.diagnostic.liveStepsUnavailable).toBe(true);
+    expect(buildPolicyHorizon).not.toHaveBeenCalled();
+  });
+
+  it.each(['serving', 'scheduled'] as const)('reports a missing bootstrap horizon on the %s lane', (lane) => {
+    const home = createHarness(1);
+    home.setPriceRead(() => []);
+    const buildPolicyHorizon = vi.spyOn(policyHorizon, 'buildDeferredObjectivePolicyHorizon');
+
+    const report = (lane === 'serving' ? home.evaluate(START_MS, SERVING_LANE) : home.evaluate(START_MS))[0];
+
+    expect(report?.diagnostic.trajectory).toEqual({
+      kind: 'unavailable', reasonCode: 'objective_missing_price_horizon',
+    });
+    expect(report?.diagnostic.reasonCode).toBe('objective_missing_price_horizon');
+    expect(report?.evaluation.planning.kind).toBe('inactive');
+    expect(buildPolicyHorizon).not.toHaveBeenCalled();
+    expect(home.recorder.getActivePlan('load-1')?.latest).toBeUndefined();
   });
 
   it('keeps compatible settled plans frozen when the planning queue restarts mid-hour', () => {
@@ -216,17 +284,20 @@ describe('bounded smart-task planning turns', () => {
     const committed = home.recorder.getActivePlan('load-1')?.latest;
     expect(committed).toBeDefined();
     home.setPriceRead(() => []);
+    const buildPolicyHorizon = vi.spyOn(policyHorizon, 'buildDeferredObjectivePolicyHorizon');
 
     const duringGap = home.tick(START_MS);
 
     expect(freshIds(duringGap)).toEqual([]);
     expect(duringGap[0]?.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
     expect(home.recorder.getActivePlan('load-1')?.latest).toEqual(committed);
+    expect(buildPolicyHorizon).not.toHaveBeenCalled();
     home.setPriceRead(() => prices().map((period) => ({
       ...period, price: 100 - period.price, moneyPrice: 100 - period.moneyPrice,
     })));
 
     expect(freshIds(home.tick(START_MS + 30_000))).toEqual(['load-1']);
+    expect(buildPolicyHorizon).toHaveBeenCalled();
     expect(home.recorder.getActivePlan('load-1')?.latest?.revision).toBeGreaterThan(committed?.revision ?? 0);
   });
 

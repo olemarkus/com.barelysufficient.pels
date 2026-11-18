@@ -141,13 +141,53 @@ export const resolveDeferredObjectivePowerLimit = (
   return { kind: 'limited', admissionCeilingKw };
 };
 
+// Availability depends only on the price source, never budget overlays or
+// reservations. Walk the unsplit spans in the same order as the bucket builder.
+export const resolveDeferredObjectivePolicyHorizonReason = (
+  inputs: DeferredObjectivePolicyHorizonInputs,
+): DeferredObjectivePolicyHorizonUnavailableReason | null => {
+  if (!inputs.priceOptimizationEnabled) return 'objective_price_feature_disabled';
+  let coveredUntilMs = inputs.nowMs;
+  for (const entry of inputs.priceHorizon) {
+    if (entry.endMs <= inputs.nowMs || entry.startMs >= inputs.deadlineAtMs) continue;
+    // The builder sorts each entry's boundaries; equal bounds produce no piece.
+    const startMs = Math.min(entry.startMs, entry.endMs);
+    const endMs = Math.max(entry.startMs, entry.endMs);
+    if (endMs === startMs) continue;
+    if (startMs > coveredUntilMs) return 'objective_missing_price_horizon';
+    if (endMs > coveredUntilMs) coveredUntilMs = endMs;
+    if (coveredUntilMs >= inputs.deadlineAtMs) return null;
+  }
+  return 'objective_missing_price_horizon';
+};
+
+export const resolveDeadlineAwarePolicyHorizonReason = (
+  inputs: DeferredObjectivePolicyHorizonInputs,
+): DeferredObjectivePolicyHorizonUnavailableReason | null => (
+  inputs.deadlineAtMs <= inputs.nowMs ? null : resolveDeferredObjectivePolicyHorizonReason(inputs)
+);
+
+// Unknown frozen diagnostics report the source-piece count, before reservation
+// splits. Count just those boundaries without materializing allocation buckets.
+export const countDeferredObjectivePolicyHorizonBuckets = (
+  inputs: DeferredObjectivePolicyHorizonInputs,
+): number => {
+  if (inputs.deadlineAtMs <= inputs.nowMs || resolveDeferredObjectivePolicyHorizonReason(inputs) !== null) return 0;
+  const overlays = collectBudgetOverlays(inputs.dailyBudgetSnapshot);
+  let count = 0;
+  for (const entry of inputs.priceHorizon) {
+    if (entry.endMs <= inputs.nowMs || entry.startMs >= inputs.deadlineAtMs) continue;
+    count += policyBucketBoundaries(entry, overlays).length - 1;
+  }
+  return count;
+};
+
 export const buildDeferredObjectivePolicyHorizon = (
   params: DeferredObjectivePolicyHorizonInputs,
 ): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
     deadlineAtMs,
-    priceOptimizationEnabled,
     priceHorizon,
     dailyBudgetSnapshot,
     exemptFromBudget,
@@ -155,13 +195,9 @@ export const buildDeferredObjectivePolicyHorizon = (
     higherPriorityReservations,
     higherPriorityUnbookedPowerKw,
   } = params;
-  if (!priceOptimizationEnabled) {
-    return unavailable('objective_price_feature_disabled');
-  }
+  const reasonCode = resolveDeferredObjectivePolicyHorizonReason(params);
+  if (reasonCode !== null) return unavailable(reasonCode);
   const sourceBuckets = collectPriceBuckets(nowMs, deadlineAtMs, priceHorizon, dailyBudgetSnapshot);
-  if (!sourceBuckets || sourceBuckets.length === 0) {
-    return unavailable('objective_missing_price_horizon');
-  }
   return {
     buckets: mapPolicyBuckets(
       splitPolicyBucketsAtReservationBoundaries(sourceBuckets, higherPriorityReservations),
@@ -242,22 +278,17 @@ const NO_BUDGET_OVERLAY: BudgetOverlay = {
 
 // Build the allocation base buckets from the PRICE-LAYER horizon (price + grid)
 // and overlay the OPTIONAL daily-budget snapshot for the budget fields only.
-// Returns null when the price horizon is empty or does not cover
-// `[nowMs, deadlineAtMs)`.
+// Availability is resolved before building these source pieces.
 const collectPriceBuckets = (
   nowMs: number,
   deadlineAtMs: number,
   priceHorizon: PriceHorizonEntry[],
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
-): PolicyBucketSource[] | null => {
+): PolicyBucketSource[] => {
   const overlays = collectBudgetOverlays(dailyBudgetSnapshot);
   const allBuckets = priceHorizon.flatMap((entry) => {
     if (entry.endMs <= nowMs || entry.startMs >= deadlineAtMs) return [];
-    const boundaries = [...new Set([
-      entry.startMs, entry.endMs,
-      ...overlays.flatMap((overlay) => [overlay.startMs, overlay.startMs + HOUR_MS])
-        .filter((boundary) => boundary > entry.startMs && boundary < entry.endMs),
-    ])].sort((left, right) => left - right);
+    const boundaries = policyBucketBoundaries(entry, overlays);
     return boundaries.slice(0, -1).flatMap((startMs, index): PolicyBucketSource[] => {
       const endMs = boundaries[index + 1];
       if (endMs === undefined) return [];
@@ -274,7 +305,6 @@ const collectPriceBuckets = (
       }];
     });
   });
-  if (allBuckets.length === 0 || !coversHorizon(allBuckets, nowMs, deadlineAtMs)) return null;
   return allBuckets;
 };
 
@@ -345,15 +375,14 @@ const nonNegativeOrNull = (value: number | undefined): number | null => {
   return finite === null || finite < 0 ? null : finite;
 };
 
-const coversHorizon = (buckets: PolicyBucketSource[], nowMs: number, deadlineAtMs: number): boolean => {
-  let coveredUntilMs = nowMs;
-  for (const bucket of buckets) {
-    if (bucket.startMs > coveredUntilMs) return false;
-    if (bucket.endMs > coveredUntilMs) coveredUntilMs = bucket.endMs;
-    if (coveredUntilMs >= deadlineAtMs) return true;
-  }
-  return false;
-};
+const policyBucketBoundaries = (
+  entry: PriceHorizonEntry,
+  overlays: readonly (BudgetOverlay & { startMs: number })[],
+): number[] => [...new Set([
+  entry.startMs, entry.endMs,
+  ...overlays.flatMap((overlay) => [overlay.startMs, overlay.startMs + HOUR_MS])
+    .filter((boundary) => boundary > entry.startMs && boundary < entry.endMs),
+])].sort((left, right) => left - right);
 
 const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
