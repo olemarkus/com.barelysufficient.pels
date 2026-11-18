@@ -11,6 +11,7 @@ import {
   cleanupApps,
   getLatestTargetSnapshotForTests,
   getDeviceSurfacesForTests,
+  reportPowerAgain,
 } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
@@ -89,6 +90,7 @@ describe('On/off device integration', () => {
 
     const app = createApp();
     await app.onInit();
+    await reportPowerAgain(app, device, 1200);
 
     const snapshot = getDeviceSurfacesForTests() as Array<{
       id: string;
@@ -236,17 +238,12 @@ describe('On/off device integration', () => {
         capabilities: ['onoff'],
       }),
     });
-    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
-      items: [
-        {
-          type: 'device',
-          id: 'device-a',
-          values: { W: 125 },
-        },
-      ],
-    });
-
-    await app.refreshTargetDevicesSnapshot();
+    // A learned peak takes three separate readings of the live report.
+    const liveReport = vi.spyOn(homeyApi, 'getEnergyLiveReport');
+    for (const watts of [125, 126, 125]) {
+      liveReport.mockResolvedValue({ items: [{ type: 'device', id: 'device-a', values: { W: watts } }] });
+      await app.refreshTargetDevicesSnapshot();
+    }
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;

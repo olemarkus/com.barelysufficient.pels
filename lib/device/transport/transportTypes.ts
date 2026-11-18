@@ -20,6 +20,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
 import type { DeviceJournal } from '../../ports/deviceJournal';
 import type { PowerEstimateState } from '../devicePowerEstimate';
+import type { PeakReadings } from '../devicePowerPeak';
 import type { ObservedStateEmitterDispatcher } from '../../ports/observedStateEvents';
 
 /**
@@ -62,7 +63,13 @@ export type DeviceTransportPowerState = Pick<PowerEstimateState, 'expectedPowerK
  * The transport's own power bag: every estimator field resolved, plus the
  * learned-peak notification the parse path forwards to `updateLastKnownPower`.
  */
-export type ResolvedTransportPowerState = PowerEstimateState & LearnedPeakChangedListener;
+export type ResolvedTransportPowerState = PowerEstimateState & LearnedPeakChangedListener & {
+  /**
+   * Per device, the latest readings its peak level is read from
+   * (`rankedPeakLevelKw`). Held for the run only: a restart collects them again.
+   */
+  peakReadings: Map<string, PeakReadings>;
+};
 
 export type SnapshotRefreshMetrics = {
     availableDevices: number;
@@ -142,7 +149,10 @@ export type DeviceTransportOptions = {
 };
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
-export const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
+/** The transport's own run state for peak learning: its log dedupe and each device's latest readings. */
+export const createPeakLearningState = (): Pick<
+  ResolvedTransportPowerState, 'lastPeakPowerLogByDevice' | 'peakReadings'
+> => ({ lastPeakPowerLogByDevice: new Map(), peakReadings: new Map() });
 export function summarizeSnapshotRefreshMetrics(snapshot: TransportDeviceSnapshot[]): SnapshotRefreshMetrics {
     let availableDevices = 0;
     let temperatureKnownDevices = 0;

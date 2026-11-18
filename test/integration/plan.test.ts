@@ -14,7 +14,7 @@ import {
   MockDriver,
   setAutoEnableMockDevices,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests, reportPowerAgain } from '../utils/appTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/planTestUtils';
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
@@ -2002,6 +2002,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    await reportPowerAgain(app, hoiax, 3000);
 
     const snapshot = getLatestTargetSnapshotForTests();
     expect(snapshot).toHaveLength(1);
@@ -2375,6 +2376,9 @@ describe('Device plan snapshot', () => {
     // spec's own sample below opens the gate instead.
     const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
+    // Both devices' 0.3 kW draw is known: a learned peak takes three readings.
+    await reportPowerAgain(app, pendingLowPriorityTarget, 300);
+    await reportPowerAgain(app, higherPriorityCandidate, 300);
 
     steerCapacityPace(app, 1.4);
 

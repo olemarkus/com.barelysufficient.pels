@@ -7,6 +7,9 @@ import {
   parseExpectedPowerOverrides,
   parseLearnedPeaks,
   pruneExpiredLearnedPeaks,
+  rankedPeakLevelKw,
+  recordPeakReading,
+  resolvePeakLevelKw,
   resolveLearnedPeakKw,
 } from '../../lib/device/devicePowerPeak';
 
@@ -77,6 +80,67 @@ describe('nextLearnedPeak', () => {
   });
 });
 
+describe('recordPeakReading and rankedPeakLevelKw', () => {
+  const samplesAfter = (...kws: number[]) => kws.reduce<ReturnType<typeof recordPeakReading> | undefined>(
+    (readings, kw) => recordPeakReading(readings, kw),
+    undefined,
+  )?.samplesKw ?? [];
+
+  it('names no level until a device has three readings', () => {
+    expect(rankedPeakLevelKw(samplesAfter())).toBeNull();
+    expect(rankedPeakLevelKw(samplesAfter(1.4, 1.38))).toBeNull();
+    expect(rankedPeakLevelKw(samplesAfter(1.4, 1.38, 1.41))).toBe(1.38);
+  });
+
+  it('keeps one corrupt reading out of the level', () => {
+    // The reported case: a 0.4 kW floor thermostat sent one far higher frame.
+    expect(rankedPeakLevelKw(samplesAfter(0.4, 0.41, 20, 0.4, 0.42))).toBe(0.41);
+  });
+
+  it('keeps two corrupt readings out of the level, alike or not', () => {
+    expect(rankedPeakLevelKw(samplesAfter(0.4, 20, 0.41, 20, 0.4))).toBe(0.41);
+    expect(rankedPeakLevelKw(samplesAfter(0.4, 20, 0.41, 19, 0.4))).toBe(0.41);
+  });
+
+  it('counts a reading once however often and under whatever date it is read', () => {
+    // One report reaches PELS from the live event and again from each full read.
+    expect(samplesAfter(0.4, 20, 20, 20, 0.4, 19, 19)).toEqual([0.4, 20, 0.4, 19]);
+    expect(rankedPeakLevelKw(samplesAfter(0.4, 20, 20, 20, 0.4, 19, 19))).toBe(0.4);
+  });
+
+  it('takes a sample each time a device that reports one fixed draw runs', () => {
+    // 0 W is no sample, but it sets the next 2 kW apart from the last.
+    expect(samplesAfter(2, 0, 2, 0, 0, 2)).toEqual([2, 2, 2]);
+    expect(samplesAfter(2, 0.003, 2)).toEqual([2, 2]);
+  });
+
+  it('follows a device that steps up once three readings reach the new level', () => {
+    expect(rankedPeakLevelKw(samplesAfter(1.4, 1.41, 1.4, 7.2, 7.21))).toBe(1.41);
+    expect(rankedPeakLevelKw(samplesAfter(1.4, 1.41, 1.4, 7.2, 7.21, 7.1))).toBe(7.1);
+  });
+
+  it('reads the level from the last ten readings only', () => {
+    const samplesKw = samplesAfter(3, 3.1, 3.2, ...Array.from({ length: 10 }, (_, index) => 1 + index / 100));
+    expect(samplesKw).toHaveLength(10);
+    expect(rankedPeakLevelKw(samplesKw)).toBe(1.07);
+  });
+});
+
+describe('resolvePeakLevelKw', () => {
+  it('passes a reading at or below the standing peak straight through', () => {
+    // A steady device re-read after a restart has one reading and must still
+    // keep its window open by matching the peak.
+    expect(resolvePeakLevelKw(2, [2], 2)).toBe(2);
+    expect(resolvePeakLevelKw(2, [2, 0.5], 0.5)).toBe(0.5);
+  });
+
+  it('goes by rank above the standing peak and when there is none', () => {
+    expect(resolvePeakLevelKw(0.41, [20], 20)).toBeNull();
+    expect(resolvePeakLevelKw(null, [20], 20)).toBeNull();
+    expect(resolvePeakLevelKw(0.41, [3, 3.01, 3.02], 3.02)).toBe(3);
+  });
+});
+
 describe('pruneExpiredLearnedPeaks', () => {
   it('keeps live entries and drops closed ones', () => {
     expect(pruneExpiredLearnedPeaks({ live: withinWindow, dead: expired }, NOW))
@@ -98,9 +162,12 @@ describe('parseLearnedPeaks', () => {
 
   it('drops a stored peak no device can reach and keeps the rest', () => {
     expect(parseLearnedPeaks({
-      ceiling: { kw: 100, observedAtMs: NOW },
+      ceiling: { kw: 25, observedAtMs: NOW },
+      // A stored 88 kW peak held a 0.4 kW floor thermostat off: it goes at the
+      // next start, with no new reading needed from the device.
+      spike: { kw: 88, observedAtMs: NOW },
       corrupt: { kw: 524.288, observedAtMs: NOW },
-    })).toEqual({ ceiling: { kw: 100, observedAtMs: NOW } });
+    })).toEqual({ ceiling: { kw: 25, observedAtMs: NOW } });
   });
 
   it('answers an empty record for a missing or malformed setting', () => {

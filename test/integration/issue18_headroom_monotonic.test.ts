@@ -79,7 +79,8 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
 
         const deviceId = 'dev1';
 
-        // 1. Initial state: Device is drawing 1.67 kW
+        // 1. Initial state: Device is drawing 1.67 kW, its learned peak
+        lastKnownPowerKw[deviceId] = { kw: 1.67, observedAtMs: Date.now() };
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 1670)); // 1.67 kW
 
         // Refresh to populate measured power
@@ -129,7 +130,8 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         await deviceManager.init();
         const deviceId = 'dev1';
 
-        // Initial measured power is 3.0 kW.
+        // Initial measured power is 3.0 kW, its learned peak.
+        lastKnownPowerKw[deviceId] = { kw: 3, observedAtMs: Date.now() };
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 3000));
 
         await deviceManager.refreshSnapshot({ meterDeviceIds: [] });

@@ -18,6 +18,7 @@ const MINUTE_MS = 60_000;
 
 type AppLike = {
   onInit: () => Promise<void>;
+  refreshTargetDevicesSnapshot: () => Promise<void>;
   latestTargetSnapshot: Array<{ id: string; expectedPowerKw?: number }>;
 };
 
@@ -49,7 +50,14 @@ async function reportOffHeaterDraw(heater: MockDevice, measuredW: number): Promi
   await vi.advanceTimersByTimeAsync(1_000);
 }
 
-async function runAfterOffReading(offReadingW: number) {
+/** The running heater reports a new draw and PELS reads it. */
+async function readRunningHeaterDraw(app: AppLike, heater: MockDevice, measuredW: number): Promise<void> {
+  await vi.advanceTimersByTimeAsync(1_000);
+  await heater.setCapabilityValue('measure_power', measuredW);
+  await app.refreshTargetDevicesSnapshot();
+}
+
+async function runAfterOffReading(offReadingW: number, runningSpikeW?: number) {
   const heater = new MockDevice(
     HEATER_ID,
     'Water heater',
@@ -73,7 +81,8 @@ async function runAfterOffReading(offReadingW: number) {
   mockHomeyInstance.settings.set(MANAGED_DEVICES, enabled);
   mockHomeyInstance.settings.set('overshoot_behaviors', { [HEATER_ID]: { action: 'turn_off' } });
 
-  let totalW = 13_000;
+  // Under the limit while the running heater's draw is learned.
+  let totalW = 5_000;
   reportHomePower(() => totalW);
   const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
   const writes = (value: boolean) => putSpy.mock.calls.filter(
@@ -83,6 +92,14 @@ async function runAfterOffReading(offReadingW: number) {
   connectLiveFeed();
   const app = createApp() as unknown as AppLike;
   await app.onInit();
+  // Three readings of the running heater make 3 kW its learned draw.
+  await readRunningHeaterDraw(app, heater, 3004);
+  await readRunningHeaterDraw(app, heater, 3000);
+  if (runningSpikeW !== undefined) {
+    await readRunningHeaterDraw(app, heater, runningSpikeW);
+    await readRunningHeaterDraw(app, heater, 3000);
+  }
+  totalW = 13_000;
   await vi.advanceTimersByTimeAsync(MINUTE_MS);
   await drainUntil(() => writes(false) >= 1);
   expect(writes(false)).toBeGreaterThanOrEqual(1);
@@ -119,6 +136,14 @@ describe('a single corrupt power reading from a limited water heater', () => {
 
   it('turns the heater back on after an ordinary off reading', async () => {
     const result = await runAfterOffReading(0);
+    expect(result.expectedPowerKw).toBeCloseTo(3, 1);
+    expect(result.turnedBackOn).toBeGreaterThanOrEqual(1);
+  });
+
+  it('turns the heater back on after one 20 kW reading while it ran', async () => {
+    // Under the plausible ceiling, so the reading is accepted: one reading
+    // alone must not become the heater's learned draw.
+    const result = await runAfterOffReading(0, 20_000);
     expect(result.expectedPowerKw).toBeCloseTo(3, 1);
     expect(result.turnedBackOn).toBeGreaterThanOrEqual(1);
   });

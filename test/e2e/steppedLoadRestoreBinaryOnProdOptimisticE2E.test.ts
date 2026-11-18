@@ -103,6 +103,7 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
     lastKnownPowerKw: {},
     lastEstimateDecisionLogByDevice: new Map(),
     lastPeakPowerLogByDevice: new Map(),
+    peakReadings: new Map(),
     onLearnedPeakChanged: () => undefined,
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver(),

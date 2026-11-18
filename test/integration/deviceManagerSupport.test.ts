@@ -43,7 +43,11 @@ import {
 import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
 import type Homey from 'homey';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
-import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import {
+  PEAK_REANCHOR_INTERVAL_MS,
+  PEAK_WINDOW_MS,
+  type LearnedPeaksByDeviceId,
+} from '../../lib/device/devicePowerPeak';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
@@ -249,9 +253,18 @@ describe('device manager support helpers', () => {
     const logger = createLogger();
     const state = {
       lastKnownPowerKw: { dev1: { kw: 0.5, observedAtMs: 0 } },
+      peakReadings: new Map(),
       lastPeakPowerLogByDevice: new Map(),
     };
-    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1', nowMs: 0 });
+    // Readings above the standing peak count once three have reached a level:
+    // the peak is the third-highest of them.
+    [1.2, 1.3].forEach((kw) => updateLastKnownPower({
+      state, deviceId: 'dev1', measuredKw: kw, deviceLabel: 'Device 1', nowMs: 0,
+    }));
+    expect(state.lastKnownPowerKw.dev1?.kw).toBe(0.5);
+    updateLastKnownPower({
+      state, deviceId: 'dev1', measuredKw: 1.25, deviceLabel: 'Device 1', nowMs: 0,
+    });
     expect(state.lastKnownPowerKw.dev1?.kw).toBe(1.2);
 
     const mockGet = vi.fn().mockResolvedValue([{ id: 'direct' }]);
@@ -301,6 +314,7 @@ describe('device manager support helpers', () => {
     // the announcement sits ahead of it.
     const state = {
       lastKnownPowerKw: { dev1: { kw: 2, observedAtMs: 0 } },
+      peakReadings: new Map(),
       lastPeakPowerLogByDevice: new Map(),
     };
     const onPeakChanged = vi.fn();
@@ -312,16 +326,56 @@ describe('device manager support helpers', () => {
     expect(onPeakChanged).not.toHaveBeenCalled();
 
     updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS, onPeakChanged,
+      state,
+      deviceId: 'dev1',
+      measuredKw: 2,
+      deviceLabel: 'Device 1',
+      nowMs: PEAK_REANCHOR_INTERVAL_MS,
+      onPeakChanged,
     });
     expect(state.lastKnownPowerKw.dev1?.observedAtMs).toBe(PEAK_REANCHOR_INTERVAL_MS);
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
 
     // A lower reading inside the open window moves nothing, so it announces nothing.
     updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw: 1, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS + 1000, onPeakChanged,
+      state,
+      deviceId: 'dev1',
+      measuredKw: 1,
+      deviceLabel: 'Device 1',
+      nowMs: PEAK_REANCHOR_INTERVAL_MS + 1000,
+      onPeakChanged,
     });
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires an expired peak with its readings instead of re-anchoring it from them', () => {
+    const state = {
+      lastKnownPowerKw: { dev1: { kw: 3, observedAtMs: 0 } },
+      peakReadings: new Map(),
+      lastPeakPowerLogByDevice: new Map(),
+    };
+    const onPeakChanged = vi.fn();
+    const read = (measuredKw: number, nowMs: number): void => updateLastKnownPower({
+      state, deviceId: 'dev1', measuredKw, deviceLabel: 'Device 1', nowMs, onPeakChanged,
+    });
+    [3, 3.1, 3.2].forEach((kw) => read(kw, 0));
+    expect(state.lastKnownPowerKw.dev1?.kw).toBe(3);
+
+    // The device then holds a steady 1 kW until the window has closed: the old
+    // readings must not name 3 kW again.
+    const afterWindowMs = PEAK_WINDOW_MS + 1;
+    read(1, 1000);
+    onPeakChanged.mockClear();
+    read(1, afterWindowMs);
+    read(1, afterWindowMs + 60_000);
+    expect(state.lastKnownPowerKw.dev1).toBeUndefined();
+    expect(onPeakChanged).toHaveBeenCalledTimes(1);
+
+    // Three readings at the new level make it the peak.
+    read(1.01, afterWindowMs + 120_000);
+    read(1, afterWindowMs + 180_000);
+    read(1.02, afterWindowMs + 240_000);
+    expect(state.lastKnownPowerKw.dev1?.kw).toBe(1);
   });
 
   it('forwards the learned-peak announcement from the transport parse path', async () => {
@@ -337,8 +391,7 @@ describe('device manager support helpers', () => {
       { lastKnownPowerKw },
     );
 
-    const lastUpdated = new Date().toISOString();
-    await seedTransportDevices(deviceManager, [{ ...HOMEY_DEVICE_FIELDS,
+    const heaterReporting = (watts: number, lastUpdated: string): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
       id: 'heater-1',
       name: 'Heater',
       class: 'heater',
@@ -347,10 +400,25 @@ describe('device manager support helpers', () => {
       ready: true,
       capabilitiesObj: {
         onoff: { value: true, lastUpdated },
-        measure_power: { value: 1800, lastUpdated },
+        measure_power: { value: watts, lastUpdated },
       },
-    } as unknown as HomeyDeviceLike]);
+    } as unknown as HomeyDeviceLike);
+    const firstReport = new Date(Date.now() - 60_000).toISOString();
 
+    // The first report is one reading however often it is read and whatever
+    // date it carries, and a second is not enough: no peak yet.
+    await seedTransportDevices(deviceManager, [heaterReporting(1800, firstReport)]);
+    await seedTransportDevices(deviceManager, [heaterReporting(1800, firstReport)]);
+    await seedTransportDevices(deviceManager, [
+      heaterReporting(1800, new Date(Date.now() - 45_000).toISOString()),
+    ]);
+    await seedTransportDevices(deviceManager, [
+      heaterReporting(1820, new Date(Date.now() - 30_000).toISOString()),
+    ]);
+    expect(lastKnownPowerKw['heater-1']).toBeUndefined();
+    expect(onLearnedPeakChanged).not.toHaveBeenCalled();
+
+    await seedTransportDevices(deviceManager, [heaterReporting(1810, new Date().toISOString())]);
     expect(lastKnownPowerKw['heater-1']?.kw).toBeCloseTo(1.8);
     expect(onLearnedPeakChanged).toHaveBeenCalled();
   });
@@ -358,12 +426,15 @@ describe('device manager support helpers', () => {
   it('dedupes peak-power updates within the same rounded band', () => {
     const state = {
       lastKnownPowerKw: { dev1: { kw: 1.231, observedAtMs: 0 } },
+      peakReadings: new Map(),
       lastPeakPowerLogByDevice: new Map(),
     };
 
-    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.232, deviceLabel: 'Device 1', nowMs: 0 });
-    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.234, deviceLabel: 'Device 1', nowMs: 0 });
-    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.29, deviceLabel: 'Device 1', nowMs: 0 });
+    // The peak is the third-highest reading so far: 1.232 after three readings
+    // (the standing band), 1.234 after four (same band), 1.29 after five.
+    [1.232, 1.234, 1.29, 1.3, 1.31].forEach((kw) => updateLastKnownPower({
+      state, deviceId: 'dev1', measuredKw: kw, deviceLabel: 'Device 1', nowMs: 0,
+    }));
 
     const peakEvents = logCapture.findEvents('power_estimate_peak_updated');
     expect(peakEvents).toHaveLength(2);

@@ -5,7 +5,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getDeviceSurfacesForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getDeviceSurfacesForTests, reportPowerAgain } from '../utils/appTestUtils';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
@@ -104,6 +104,7 @@ describe('Heatpump device integration', () => {
 
         const app = createApp();
         await app.onInit();
+        await reportPowerAgain(app, device, 2000);
 
         const snapshot = getDeviceSurfacesForTests();
         const entry = snapshot.find((snap) => snap.id === device.idValue);
