@@ -81,6 +81,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
         text: 'Limit Through a Virtual Thermostat',
         link: '/how-to-virtual-thermostat-power',
       },
+      { text: 'Custom Control With an External Meter', link: '/how-to-virtual-dishwasher-power' },
       { text: 'Configure an EV Charger', link: '/ev-charger' },
       { text: 'Configure an Easee EV Charger', link: '/easee-ev-charger' },
       { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
