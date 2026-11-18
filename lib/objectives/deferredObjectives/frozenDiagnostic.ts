@@ -6,7 +6,7 @@ import type {
   DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
-import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
+import { isObjectiveProgressSatisfied, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import type { FrozenDrawWindow, FrozenReadInputs } from './frozenHorizonPlan';
 import {
@@ -129,6 +129,17 @@ export const buildDeadlineAwarePolicyHorizon = (
 ): DeferredObjectivePolicyHorizonResult => (
   params.deadlineAtMs <= params.nowMs ? EMPTY_POLICY_HORIZON : buildDeferredObjectivePolicyHorizon(params)
 );
+
+// Satisfied tasks retain their empty allocation horizon; other fresh allocations
+// have already passed availability, progress, energy and executable-step gates.
+export const buildTaskAllocationPolicyHorizon = (
+  progress: DeferredObjectiveProgressResolution,
+  inputs: DeferredObjectivePolicyHorizonInputs,
+): Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }> => {
+  const horizon = isObjectiveProgressSatisfied(progress)
+    ? EMPTY_POLICY_HORIZON : buildDeadlineAwarePolicyHorizon(inputs);
+  return horizon.reasonCode === null ? horizon : EMPTY_POLICY_HORIZON;
+};
 
 // Assemble the diagnostic from the plan `buildFrozenHorizonPlan` replayed off the
 // persisted commitment + live measured value (folded into

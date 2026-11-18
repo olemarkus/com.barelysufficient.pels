@@ -2975,6 +2975,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic.reasonCode).toBe('objective_missing_capacity');
+    // Unknown frozen reads retain the policy source-piece count in diagnostics.
+    expect(diagnostic.horizonBucketCount).toBe(4);
     expect(diagnostic.evaluation.planning).toEqual({ kind: 'inactive' });
   });
 

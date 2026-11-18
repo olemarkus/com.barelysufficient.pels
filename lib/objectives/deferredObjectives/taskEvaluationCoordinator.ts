@@ -36,8 +36,9 @@ import {
   type DeferredObjectiveProgressResolution,
 } from './diagnosticProgress';
 import {
+  countDeferredObjectivePolicyHorizonBuckets,
+  resolveDeadlineAwarePolicyHorizonReason,
   type DeferredObjectivePolicyHorizonInputs,
-  type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePriorityReservation,
 } from './policyHorizon';
 import { resolveHorizonPlanWithRescue } from './rescueReplan';
@@ -74,9 +75,8 @@ import {
   ZERO_ENERGY_RESOLUTION,
 } from './diagnosticFields';
 import {
-  buildDeadlineAwarePolicyHorizon,
+  buildTaskAllocationPolicyHorizon,
   buildFrozenDiagnostic,
-  EMPTY_POLICY_HORIZON,
   resolveDeadlineBoundFrozenReadInputs,
 } from './frozenDiagnostic';
 import { buildFrozenHorizonPlan, type FrozenReadInputs } from './frozenHorizonPlan';
@@ -495,7 +495,7 @@ const buildDeferredObjectiveDiagnostic = (
     prefersContinuousCharging: isEvDevice(task.device) && readers.prefersContinuousCharging(deviceId) };
   if (isObjectiveProgressSatisfied(progress)) {
     const satisfied = buildDiagnosticWithPolicyHorizon(
-      snapshot, scheduledTask, progress, EMPTY_POLICY_HORIZON, horizonInputs, null, true,
+      snapshot, scheduledTask, progress, horizonInputs, null, true,
     );
     // A satisfied task governs its device until the deadline, but the task is
     // price-dependent: with price optimization off it governs nothing, exactly as
@@ -526,38 +526,39 @@ const buildDeferredObjectiveDiagnostic = (
   // to inactive for want of a live horizon (transient price/budget-snapshot gap, or
   // a gap that coincides with the settle window). See
   // notes/deferred-load-objectives/execution-adaptation.md.
-  const rawPolicyHorizon = buildDeadlineAwarePolicyHorizon(horizonInputs);
+  const horizonReason = resolveDeadlineAwarePolicyHorizonReason(horizonInputs);
   // Price optimization turned OFF is a deliberate config state, not a transient data
   // gap: the deferred objective is price-dependent, so it goes inactive (the device
   // returns to normal control) — exactly as before C. We must NOT keep serving the
   // stale price-optimized commitment frozen here. Only a transient
   // `objective_missing_price_horizon` (SDK read gap) is served frozen below.
-  if (rawPolicyHorizon.reasonCode === 'objective_price_feature_disabled') {
+  if (horizonReason === 'objective_price_feature_disabled') {
     return buildHorizonUnavailableDiagnostic(
-      buildTaskDiagnosticBase(snapshot, task), progress, rawPolicyHorizon, task, powerTracker,
+      buildTaskDiagnosticBase(snapshot, task), progress,
+      { buckets: [], horizonBucketCount: 0, reasonCode: horizonReason }, task, powerTracker,
     );
   }
-  const horizonAvailable = rawPolicyHorizon.reasonCode === null;
+  const horizonAvailable = horizonReason === null;
   const replan = taskReplanRequested(allocation, frozenFallback !== null, nowMs) && horizonAvailable;
-  if (!frozenFallback && rawPolicyHorizon.reasonCode !== null) {
+  if (!frozenFallback && horizonReason !== null) {
     // Bootstrap (or empty/all-elapsed commitment) with no usable horizon
     // (`objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
     // Before the next day's prices are published this is the normal state of a task
     // due the next day, so the task still governs its device (`withAwaitingPricesPlanning`).
     return withAwaitingPricesPlanning(buildHorizonUnavailableDiagnostic(
-      buildTaskDiagnosticBase(snapshot, task), progress, rawPolicyHorizon, task, powerTracker,
+      buildTaskDiagnosticBase(snapshot, task), progress,
+      { buckets: [], horizonBucketCount: 0, reasonCode: horizonReason }, task, powerTracker,
     ), horizonInputs.priceHorizon, nowMs);
   }
-  const policyHorizon = rawPolicyHorizon.reasonCode === null ? rawPolicyHorizon : EMPTY_POLICY_HORIZON;
 
   // Serve frozen unless we are re-planning; `replan` already required the horizon
-  // to be available, so the fresh path always has a usable `policyHorizon`.
+  // to be available, so the fresh path can build a usable policy horizon.
   // `frozenFallback` also covers a live step-ladder gap: when the fresh path cannot
   // allocate (no executable steps), a committed task is served frozen even on a
   // replan-due cycle — the replan is deferred, not the commitment dropped. Null
   // exactly when there is no commitment to serve.
   return buildDiagnosticWithPolicyHorizon(
-    snapshot, planningTask, progress, policyHorizon, horizonInputs, frozenFallback, replan,
+    snapshot, planningTask, progress, horizonInputs, frozenFallback, replan,
   );
 };
 
@@ -577,7 +578,6 @@ const buildDiagnosticWithPolicyHorizon = (
   snapshot: TaskEvaluationSnapshot,
   task: ScheduledDeferredObjective & { device: ObjectiveDeviceInput },
   progress: DeferredObjectiveProgressResolution,
-  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>,
   horizonInputs: DeferredObjectivePolicyHorizonInputs,
   frozenFallback: FrozenReadInputs | null,
   replan: boolean,
@@ -595,7 +595,7 @@ const buildDiagnosticWithPolicyHorizon = (
       evaluation,
       completion: evaluation.completion,
       ...(extra ?? {}),
-      horizonBucketCount: policyHorizon.horizonBucketCount,
+      horizonBucketCount: countDeferredObjectivePolicyHorizonBuckets(horizonInputs),
     }, reasonCode);
   };
   if (progress.reasonCode) return unknownWithProgress(progress.reasonCode);
@@ -681,6 +681,9 @@ const buildDiagnosticWithPolicyHorizon = (
     );
   }
   if (!replan) return buildWaitingForPlanDiagnostic(base, objective, progress, 'unchanged');
+  // Only allocation needs policy buckets. Frozen serving (including a live step
+  // gap on a planning turn) and unknown diagnostics need no reservation mapping.
+  const policyHorizon = buildTaskAllocationPolicyHorizon(progress, horizonInputs);
   const horizonPlan = resolveHorizonPlanWithRescue(
     task, profileEnergy, steps, commitment, aheadOfHourMilestone, policyHorizon, horizonInputs,
   );
