@@ -859,5 +859,8 @@
   },
   "3.42.0": {
     "en": "New: PELS controls KEBA P20 and P30 chargers, reads a WARP charger's session and steps its current, and controls a Fronius GEN24 battery. The Overview shows a warning icon on a device that does not keep the changes PELS makes, with what PELS saw and what to check, and it shows Smart tasks that cannot run. Turning off Respond to prices now warns that Smart tasks will pause, and a paused task says so. A planned battery now supplies what the house actually draws, and a device waiting for its Smart task can run on solar surplus. A device with an on/off switch can be managed before its power use is set up in Homey. A home left in Simulation mode gets one reminder after a day.\n\nFixed: one faulty power reading from a device could become its learned power, so PELS kept other devices limited with room to spare. A lower-priority Smart task no longer pauses its device while it waits to be replanned after an update."
+  },
+  "3.42.1": {
+    "en": "A car set to charge on solar surplus now says when “Control charging through this car” is still off. The device page, Choose what PELS does and Review setup show the missing step, and Finish charging setup opens that switch."
   }
 }
