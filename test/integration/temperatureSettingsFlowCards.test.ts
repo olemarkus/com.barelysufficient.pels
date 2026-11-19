@@ -287,11 +287,23 @@ describe('set_device_temporary_temperature and end_device_temporary_temperature'
     expect(info).toHaveBeenLastCalledWith(expect.objectContaining({ setting: 'temporary_temperature_end', outcome: 'unchanged' }));
   });
 
-  it('rejects a duration outside 1 to 1440 whole minutes', async () => {
+  it.each([3 * 24 * 60, 7 * 24 * 60])('accepts a duration of %i minutes', async (minutes) => {
     const { run } = register();
-    for (const minutes of [0, 1441, 2.5, 'soon']) {
+    const untilMs = NOW_MS + minutes * 60_000;
+
+    await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes }))
+      .resolves.toBe(true);
+
+    expect(settings.get(HEATER_OVERRIDE)).toEqual({ untilMs, setting: { type: 'temperature', targetC: 23 } });
+    expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS)).toBe(23);
+    expect(readActiveTemporaryTemperatureC(settings, 'heater', untilMs)).toBeNull();
+  });
+
+  it('rejects a duration outside 1 to 10080 whole minutes', async () => {
+    const { run } = register();
+    for (const minutes of [0, 10081, 2.5, 'soon']) {
       await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes }))
-        .rejects.toThrow('Duration must be a whole number of minutes from 1 to 1440.');
+        .rejects.toThrow('Duration must be a whole number of minutes from 1 to 10080.');
     }
     expect(settings.get(HEATER_OVERRIDE)).toBeNull();
   });
