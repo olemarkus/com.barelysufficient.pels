@@ -40,7 +40,6 @@ import {
 } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
 import {
-  refreshActivePlanLiveFacts,
   resolveDiagnosticReasonCode,
   resolveCarChargeLimitOverlay,
   sameCarChargeLimit,
@@ -81,7 +80,8 @@ import {
   hasLearnedRateDeviated,
   hasMetadataDriftedWithinSchedule,
   isFrozenServedDiagnostic,
-  withReviewedContext,
+  withBackfilledAllocationRank,
+  withDiagnosticOverlay,
   MAX_HISTORY_REVISIONS,
   reportedPlanStatus,
   resolveCommitment,
@@ -263,10 +263,8 @@ export class DeferredObjectiveActivePlanRecorder {
     // Capture before refreshing live causes. A price-paused task compares
     // recovery against its retained verdict because pause has no public token.
     const previousEffective = previousEffectivePlanStatusOf(current);
-    const backfilled = this.refreshDiagnosticReasonCode(
-      this.backfillCommitmentIfMissing(current, signature, nowMs),
-      diag,
-    );
+    const committed = this.backfillCommitmentIfMissing(current, signature, nowMs);
+    const backfilled = this.storeOverlay(committed, withDiagnosticOverlay(committed, diag));
     // End-of-hour settle gate: a replan revision settles at most once per clock
     // hour (at/after :58); a user objective edit bypasses it. The planner's
     // per-cycle admission is unaffected — only the persisted RECORD is
@@ -334,12 +332,10 @@ export class DeferredObjectiveActivePlanRecorder {
     return backfilled;
   }
 
-  // Refresh public live facts every cycle while preserving the settled revision.
-  private refreshDiagnosticReasonCode(
+  private storeOverlay(
     current: DeferredObjectiveActivePlanV1,
-    diag: DeferredObjectiveDiagnostic,
+    refreshed: DeferredObjectiveActivePlanV1,
   ): DeferredObjectiveActivePlanV1 {
-    const refreshed = withReviewedContext(refreshActivePlanLiveFacts(current, diag), diag);
     if (refreshed === current) return current;
     this.plans[current.deviceId] = refreshed;
     this.dirty = true;
@@ -359,7 +355,7 @@ export class DeferredObjectiveActivePlanRecorder {
       // writes no revision, so it announces that change itself.
       if (!existing.pending) {
         const previousEffective = previousEffectivePlanStatusOf(existing);
-        const refreshed = this.refreshDiagnosticReasonCode(existing, diag);
+        const refreshed = this.storeOverlay(existing, withDiagnosticOverlay(existing, diag));
         publishOverlayOnlyStatusChange(this.deps, refreshed, previousEffective);
         return;
       }
@@ -589,7 +585,10 @@ export class DeferredObjectiveActivePlanRecorder {
       metadataDriftedWithinSchedule,
       sourceChanged,
       measuredDeviation,
-    )) return false;
+    )) {
+      this.storeOverlay(current, withBackfilledAllocationRank(current, diag.allocationRank));
+      return false;
+    }
     const reason = resolveReplanReason(
       objectiveChanged,
       sigDiff.directionOnly,

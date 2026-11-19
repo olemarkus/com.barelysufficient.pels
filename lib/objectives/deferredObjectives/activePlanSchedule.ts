@@ -418,7 +418,6 @@ export const resolveCoordinatedScheduleUpdate = (
     || (diag.replaceCommitment === true && priorityAllocationChanged);
   const metadataDriftedWithinSchedule = !scheduleChanged && [
     latest.allocationContextSignature !== diag.allocationContextSignature,
-    latest.allocationRank !== diag.allocationRank,
     coordinatedAllocationChanged,
     metadataDrifted,
   ].includes(true);

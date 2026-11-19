@@ -23,7 +23,7 @@ import {
   formatEstimatedDuration,
 } from './activePlanDuration';
 import {
-  resolveCarChargeLimitOverlay, resolveDiagnosticReasonCode, resolveLiveCompletion,
+  refreshActivePlanLiveFacts, resolveCarChargeLimitOverlay, resolveDiagnosticReasonCode, resolveLiveCompletion,
 } from './activePlanDiagnosticReason';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
@@ -193,7 +193,7 @@ export const isFrozenServedDiagnostic = (diag: DeferredObjectiveDiagnostic): boo
  * A queue turn that could not allocate keeps its revision and records the
  * context it was reviewed in, so the saved commitment is served there.
  */
-export const withReviewedContext = (
+const withReviewedContext = (
   current: DeferredObjectiveActivePlanV1,
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanV1 => {
@@ -202,6 +202,22 @@ export const withReviewedContext = (
   if (diag.contextReviewed !== true || latest === null || reviewed === undefined
     || latest.allocationContextSignature === reviewed) return current;
   return { ...current, latest: { ...latest, allocationContextSignature: reviewed } };
+};
+
+/** Refresh the public live facts while preserving the settled revision. */
+export const withDiagnosticOverlay = (
+  current: DeferredObjectiveActivePlanV1,
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanV1 => withReviewedContext(refreshActivePlanLiveFacts(current, diag), diag);
+
+/** Fill a display field on a compatible plan without invalidating lower commitments. */
+export const withBackfilledAllocationRank = (
+  current: DeferredObjectiveActivePlanV1,
+  allocationRank: number | undefined,
+): DeferredObjectiveActivePlanV1 => {
+  const { latest } = current;
+  if (latest === null || latest.allocationRank !== undefined || allocationRank === undefined) return current;
+  return { ...current, latest: { ...latest, allocationRank } };
 };
 
 export const resolvePendingReason = (
