@@ -1,5 +1,5 @@
 import {
-  chargingRecommendationStatus, currentChargingAdvice, loadChargingRecommendations,
+  chargingRecommendationStatus, currentChargingAdvice, loadChargingRecommendations, withoutUnroutedReportBack,
 } from './chargingRecommendationRead.ts';
 import { registerOverviewRecommendationDismissals } from './overviewControlWarnings.ts';
 import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
@@ -168,18 +168,19 @@ const resolveCurrentRecommendations = (
   // devices, by name. A device PELS does not manage gets none: its wiring,
   // its car and its Flows are not PELS's to set up until the owner chooses it.
   const managed = state.latestDevices.filter((device) => state.managedMap[device.id] === true);
+  const chargingAdvice = currentChargingAdvice(managed);
   return [
     ...(afterSetupRead.state === 'resolved'
       ? resolveAfterSetupRecommendations(afterSetupRead.facts, dismissals)
       : []),
-    ...currentChargingAdvice(managed),
-    ...resolveSetupRecommendations(
+    ...chargingAdvice,
+    ...withoutUnroutedReportBack(resolveSetupRecommendations(
       managed,
       cars,
       state.evCarAssociations,
       state.nativeWiringMap,
       evSocReporters,
-    ),
+    ), chargingAdvice),
     ...resolveDeviceSettingRecommendations(),
     ...resolveHardCapReachRecommendations(
       readHardCapReachStatus() === 'resolved' ? readHardCapReachFacts() : null, Date.now(), getHomeyTimezone(),

@@ -24,7 +24,7 @@ const device = () => {
     getDeviceExecutionState: () => executionStateFixture(planned),
     observed: noPlanServiceObservedReads,
     getDeviceControlAdapter: () => undefined,
-    isBuiltInControlHeldByFlow: () => false,
+    getUnusedBuiltInControl: () => 'none' as const,
     isTargetPowerControlRefused: () => false,
     getHomeBatteryCard: () => ({ kind: 'none' }),
   });

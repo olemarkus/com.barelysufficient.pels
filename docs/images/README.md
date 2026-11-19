@@ -5,8 +5,6 @@ These files are hand-maintained documentation screenshots or Flow examples. Refr
 ## Referenced Flow examples
 
 - `howto_book_cheap_hours_flow_example.png` — `docs/how-to-book-cheap-hours-with-flows.md`
-- `howto_ev_charger_flow_example.png` — `docs/ev-charger.md`
-- `howto_zaptec_ev_charger_flow_example.png` — `docs/zaptec-ev-charger.md`
 - `howto_virtual_thermostat_flows.png` — `docs/how-to-virtual-thermostat-power.md`
 - `howto_temporary_heater_handover_flow.png` — `docs/use-cases/homey-temporary-heater-temperature.md`
 

@@ -47,7 +47,7 @@ import type { PlanServiceDeps } from './planServiceDeps';
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'observed' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
-  | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'isBuiltInControlHeldByFlow' | 'isTargetPowerControlRefused'
+  | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'getUnusedBuiltInControl' | 'isTargetPowerControlRefused'
   | 'hasStandingCommandGrant'
   | 'getDevicePowerSetupRequired'
   | 'getSteppedLoadProfileById'
@@ -242,7 +242,7 @@ function buildLoadOverviewDevice(
   const overviewShape = {
     ...device,
     adapterUnavailableStatus: deps.getDeviceControlAdapter(device.id)?.unavailableStatus,
-    builtInControlHeldByFlow: deps.isBuiltInControlHeldByFlow(device.id),
+    unusedBuiltInControl: deps.getUnusedBuiltInControl(device.id),
     targetPowerControlRefused: deps.isTargetPowerControlRefused(device.id),
     standingCommandGrant: deps.hasStandingCommandGrant(device.id),
     hasPowerReading: isMeteredPlanDevice(device),

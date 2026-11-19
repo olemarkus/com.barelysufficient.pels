@@ -39,3 +39,10 @@ export function resolveNativeWiringEnabled(
     : autoDecisions[deviceId] === true;
   return isBuiltInControlInEffect(chosen, Object.prototype.hasOwnProperty.call(flowConflicts, deviceId));
 }
+
+/**
+ * Why PELS does not set a device's level itself although it could. `held_by_flow`:
+ * a Flow writes the same setting. `not_set_up`: Charging current setup is
+ * unfinished and no Flow sets the current, so level changes reach no one.
+ */
+export type UnusedBuiltInControl = 'none' | 'held_by_flow' | 'not_set_up';

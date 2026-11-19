@@ -5,10 +5,11 @@ const device: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage', setup
 }, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
 flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
 
-test('recommends a key while preserving the Flow alternative', () => {
+test('recommends a key and offers no Flow to a charger nothing controls', () => {
   const [recommendation] = chargingRecommendations([device], { configured: false, state: 'not_configured' });
+  expect(recommendation?.body).toContain('Nothing changes the charging current of this device yet.');
   expect(recommendation?.body).toContain('API key');
-  expect(recommendation?.body).toContain('Flow');
+  expect(recommendation?.body).not.toMatch(/keep a|current-setting Flow/);
 });
 test.each([false, true])('keeps a working Flow after the owner chooses Use a Flow (writable: %s)', (writable) => {
   const flow = { ...device, capabilityWritable: writable, flowCheck: 'conflict' as const };

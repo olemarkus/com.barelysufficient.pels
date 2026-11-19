@@ -287,6 +287,37 @@ describe('recommendation loading', () => {
     }
   });
 
+  it.each([
+    ['its charging setup card', undefined],
+    ['the Automatic review that replaces it', { mode: 'manual' as const, profile: { steps: [
+      { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 },
+    ] } }],
+  ])('a charger nothing controls shows %s, not a report-back Flow card', async (_case, automaticPowerControl) => {
+    const charger = device({
+      id: 'charger-1', name: 'Garage', isEvCharger: true, levelUnconfirmed: true,
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+      ...(automaticPowerControl ? { automaticPowerControl } : {}),
+    } as Parameters<typeof device>[0]);
+    const recommendations = await loadSubject([charger]);
+    const { state } = await import('../src/ui/state.ts');
+    state.devicePowerControlModes = {};
+    state.devicePowerControlModesLoaded = true;
+    getSetting.mockResolvedValue({});
+    getSettingFresh.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    chargingApi.mockResolvedValue([{
+      deviceId: charger.id, name: charger.name, setup: { method: 'flow', confirmation: 'none' },
+      capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+      flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none',
+    }]);
+    await recommendations.loadRecommendationData();
+    recommendations.refreshRecommendationSurfaces();
+    const text = document.getElementById('setup-recommendations-root')?.textContent ?? '';
+    expect(text).toContain(automaticPowerControl
+      ? 'Automatic charging control is available for Garage' : 'Set up charging-current control for Garage');
+    expect(text).not.toContain('does not report its level');
+  });
+
   it('turns on the daily report from its card without raising the banner or the Settings chip', async () => {
     if (afterSetupRead.state !== 'resolved') throw new Error('Expected resolved after-setup facts.');
     afterSetupRead = { state: 'resolved', facts: { ...afterSetupRead.facts, dailyDiagnosticsReportOff: true } };

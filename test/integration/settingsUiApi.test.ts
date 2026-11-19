@@ -49,7 +49,7 @@ describe('settingsUiApi', () => {
     getDeviceExecutionState: () => executionStateFixture(device),
     observed: noPlanServiceObservedReads,
     getDeviceControlAdapter: () => undefined,
-    isBuiltInControlHeldByFlow: () => false,
+    getUnusedBuiltInControl: () => 'none' as const,
     isTargetPowerControlRefused: () => false,
     getHomeBatteryCard: () => ({ kind: 'none' } as const),
   });

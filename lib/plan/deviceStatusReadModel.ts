@@ -13,6 +13,7 @@ import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/device
 import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { AdapterUnavailableStatus, DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
 import { isBuiltInSteppedLoadControlEnabled } from '../device/deviceActionProjection';
+import type { UnusedBuiltInControl } from '../device/builtInControlFlowGate';
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
@@ -46,8 +47,8 @@ import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/home
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
   /** The adapter's live presentation, independently of its plan-time configuration. */
   adapterUnavailableStatus: AdapterUnavailableStatus | undefined;
-  /** A Flow writes the setting built-in control would write, so built-in control waits for it to go. */
-  builtInControlHeldByFlow: boolean;
+  /** Why PELS does not set the level itself although it could. */
+  unusedBuiltInControl: UnusedBuiltInControl;
   /** The device's app refused Homey's control of its power level, so PELS only switches it. */
   targetPowerControlRefused: boolean;
   /**
@@ -139,14 +140,20 @@ function resolveBinaryReason(
 // PELS asks, and the card would otherwise keep saying it is moving. The line
 // names what carries the level back: the device itself under built-in control,
 // else the owner's Flow. A device whose built-in control a Flow holds back is
-// pointed at built-in control instead, which needs no Flow to report back.
+// pointed at built-in control instead, which needs no Flow to report back. A
+// charger with neither built-in control nor a current-setting Flow has nothing
+// applying its level, so it is pointed at its unfinished setup.
 // Simulation sends no commands, so it has none to say.
+const UNANSWERED_STEP_LINES: Record<UnusedBuiltInControl, string> = {
+  none: 'Level change not confirmed — check the Flow that reports the level back',
+  held_by_flow: 'Level change not confirmed — disable your Flow to use built-in control',
+  not_set_up: 'Level change not applied — finish Charging current setup',
+};
+
 function resolveUnansweredStepLine(device: DeviceStatusInput, dryRun: boolean): string | null {
   if (dryRun || !device.execution.stepCommandUnanswered) return null;
   if (isBuiltInSteppedLoadControlEnabled(device)) return 'Level change not confirmed by the device';
-  return device.builtInControlHeldByFlow
-    ? 'Level change not confirmed — disable your Flow to use built-in control'
-    : 'Level change not confirmed — check the Flow that reports the level back';
+  return UNANSWERED_STEP_LINES[device.unusedBuiltInControl];
 }
 
 function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | null {

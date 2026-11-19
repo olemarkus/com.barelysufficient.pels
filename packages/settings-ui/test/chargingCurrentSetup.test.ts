@@ -178,6 +178,26 @@ test('a charger-scoped device enables built-in control without a scope confirmat
   expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_current/charger', { method: 'built_in', confirmation: 'none' });
 });
 
+test('a charger nothing controls is offered built-in control and no Flow', async () => {
+  await act(async () => setChargingCurrentDevice('charger', true));
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
+  expect(document.body.textContent).toContain('Until you enable it below, nothing changes the charging current.');
+  expect(document.body.textContent).not.toContain('Use a Flow');
+  expect(document.body.textContent).not.toContain('Stepped device target changed');
+});
+
+test.each([
+  { flowCheck: 'conflict', sharedInstallation: false },
+  { flowCheck: 'clear', sharedInstallation: true },
+] as const)('keeps the Flow choice for an owner who has a Flow or a shared installation: %o', async (facts) => {
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [{ ...charger, ...facts }] : { configured: false, state: 'not_configured' });
+  await act(async () => setChargingCurrentDevice('charger', true));
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
+  expect(button('Use a Flow')).toBeDefined();
+  expect(document.body.textContent).not.toContain('nothing changes the charging current');
+});
+
 test('says a selected built-in route is paused while a Flow sets the same current', async () => {
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [{ ...charger, setup: { method: 'built_in', confirmation: 'single_charger' }, flowCheck: 'conflict', flowNames: ['Night charge'], currentRoute: 'flow' }]
@@ -239,7 +259,9 @@ test('does not steal focus when a pending charging destination was closed', asyn
 
 test.each(['built_in', 'flow'] as const)('clears the prerequisite only after saving vehicle consent through %s', async (method) => {
   const { vehicleChargingConsentMissing } = await import('../src/ui/chargingSetupFacts.ts');
-  let current: ChargingCurrentRead = { ...charger, scope: 'vehicle', setup: { method, confirmation: 'none' } };
+  // A Flow is offered only to an owner whose Flow already sets the current.
+  let current: ChargingCurrentRead = { ...charger, scope: 'vehicle', setup: { method, confirmation: 'none' },
+    flowCheck: method === 'flow' ? 'conflict' : 'clear' };
   callApi.mockImplementation(async (verb: string, path: string, body: ChargingCurrentRead['setup']) => {
     if (verb === 'PUT' && path === '/ui_charging_current/charger') current = { ...current, setup: body };
     return path === '/ui_charging_current' ? [current] : { configured: true, state: 'ready' };

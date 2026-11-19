@@ -438,11 +438,20 @@ executor's `stepCommandUnanswered`):
 | Levels set through the owner's Flow | `Level change not confirmed — check the Flow that reports the level back` |
 | Levels set through the owner's Flow because that Flow holds built-in control back | `Level change not confirmed — disable your Flow to use built-in control` |
 | Levels set by built-in control | `Level change not confirmed by the device` |
+| A charger PELS can set the current of, with built-in control not selected and no Flow setting the current | `Level change not applied — finish Charging current setup` |
 
 A device whose built-in control a Flow holds back (`flowConflict`, see
 `notes/native-wiring/README.md` § "The conflict rule") is pointed at built-in
 control rather than at a report-back Flow: built-in control reads the level from
 the device itself, so it needs no Flow to carry it back.
+
+A charger with a charging-current binding whose owner has not selected built-in
+control, and whose current no Flow sets (`ChargingCurrentControl.lacksCurrentRoute`),
+has nothing applying its level, so there is no Flow to check. Its line names the
+unfinished setup. **Setup → Charging current** offers such a charger built-in
+control only; **Use a Flow** appears there once a Flow sets the current, or for
+a shared installation. Setup & recommendations shows its charging setup card
+and leaves out the level-report card.
 
 Without it the card kept saying `Increasing to 16 A`, or a retry countdown, for
 as long as PELS kept asking: the Flow that never reports back read as PELS

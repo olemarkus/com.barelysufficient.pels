@@ -10,6 +10,7 @@ import type {
   PlanServiceObservedReads,
 } from '../observer/observedDeviceStateProjection';
 import type { PelsStatus } from './pelsStatus';
+import type { UnusedBuiltInControl } from '../device/builtInControlFlowGate';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
@@ -114,11 +115,10 @@ export type PlanServiceDeps = {
   /** Live adapter-owned presentation; the plan's copy may predate a device event. */
   getDeviceControlAdapter: (deviceId: string) => DeviceControlAdapterSnapshot | undefined;
   /**
-   * Whether a Homey Flow holds this device's built-in control back: the device
-   * supports built-in control and a Flow writes the same setting
+   * Why PELS does not set this device's level itself although it could
    * (`lib/device/builtInControlFlowGate.ts`). Presentation only.
    */
-  isBuiltInControlHeldByFlow: (deviceId: string) => boolean;
+  getUnusedBuiltInControl: (deviceId: string) => UnusedBuiltInControl;
   /**
    * Whether the device's app refused Homey's control of its watt target, so
    * PELS plans it through its switch alone until the claim is retried

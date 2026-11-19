@@ -1,7 +1,7 @@
 import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
 import type { SetupRecommendation } from './recommendationsModel.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { FINISH_CHARGING_SETUP, needsVehicleChargingConsent } from './chargingSetupFacts.ts';
+import { FINISH_CHARGING_SETUP, lacksChargingCurrentRoute, needsVehicleChargingConsent } from './chargingSetupFacts.ts';
 
 /**
  * A car PELS controls whose app offers a companion device the owner has not
@@ -30,6 +30,14 @@ export function chargingRecommendations(
 ): SetupRecommendation[] {
   return [...setupRecommendations(devices, access), ...devices.flatMap(missingCompanionRecommendation)];
 }
+
+// A charger no Flow controls is told so: until the key is added, nothing sets its current.
+const keySetupBody = (device: ChargingCurrentRead): string => (
+  `${lacksChargingCurrentRoute(device)
+    ? 'Nothing changes the charging current of this device yet. ' : 'PELS can set the charging current itself. '}`
+  + 'Add a Homey API key with Flow permission on its device page. '
+  + 'One key works for all supported cars and chargers on this Homey.'
+);
 
 function setupRecommendations(
   devices: readonly ChargingCurrentRead[],
@@ -62,8 +70,7 @@ function setupRecommendations(
       body = device.capabilityWritable
         ? 'This device exposes writable current control. '
           + 'Review the installation and choose built-in control on its device page.'
-        : 'Use a Homey API key with Flow permission for built-in current control, or keep a current-setting Flow. '
-          + 'One key works for all supported cars and chargers on this Homey.';
+        : keySetupBody(device);
     }
     return [{ id: `${kind}:${encodeURIComponent(device.deviceId)}`, version: 1, category: 'recommendation',
       title, body, actionLabel: kind === 'charging-owner' ? FINISH_CHARGING_SETUP : 'Review device',

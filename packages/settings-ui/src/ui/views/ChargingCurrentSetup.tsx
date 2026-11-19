@@ -47,6 +47,19 @@ function pausedHint(flowNames: readonly string[]): string {
     + 'To keep the Flow instead, choose “Use a Flow” below.';
 }
 
+// PELS sets the current itself, so a Flow is offered only to an owner who has
+// one setting it, or whose shared installation a Flow coordinates.
+const keepsFlow = (device: ChargingCurrentRead): boolean => device.flowCheck === 'conflict' || device.sharedInstallation;
+
+/** With built-in control not selected: what sets the current meanwhile. */
+function FlowRouteHint({ device }: { device: ChargingCurrentRead }) {
+  if (device.flowCheck === 'conflict') {
+    return <p class="field__hint">Your current-setting Flow remains in use until you switch.</p>;
+  }
+  if (device.flowCheck !== 'clear' || device.sharedInstallation) return null;
+  return <p class="field__hint">Until you enable it below, nothing changes the charging current.</p>;
+}
+
 export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const { device, access, busy } = props;
   useLayoutEffect(() => { props.onReady?.(); }, [device.deviceId, busy]);
@@ -94,9 +107,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
         ? (paused ? 'Built-in current control is paused.' : 'Built-in current control is selected.')
         : device.flowCheck === 'conflict' ? 'Flow control is selected.' : 'Built-in current control is not enabled.'}</strong></p>
       {paused && <p class="field__hint">{pausedHint(flowNames)}</p>}
-      {!builtIn && <p class="field__hint">{device.flowCheck === 'conflict'
-        ? 'Your current-setting Flow remains in use until you switch.'
-        : 'Enable it below, or set up a Flow to send current changes to the car or charger.'}</p>}
+      {!builtIn && <FlowRouteHint device={device} />}
     </div>
     {device.scope === 'vehicle' && <div>
       <label class="md-switch-row" id="device-detail-vehicle-control-row">
@@ -131,10 +142,10 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
       {!builtIn && !device.sharedInstallation && !needsKey && <MdFilledButton disabled={busy || !canEnable} onClick={() => props.onSaveMethod({ method: 'built_in', confirmation: chosenConfirmation })}>Use built-in control</MdFilledButton>}
       <MdOutlinedButton disabled={busy} onClick={props.onCheck}>Check again</MdOutlinedButton>
     </div>
-    <details>
-      <summary>Set up a Flow instead</summary>
+    {keepsFlow(device) && <details>
+      <summary>Keep using a Flow</summary>
       <p class="field__hint">Use PELS “Stepped device target changed” for this device. Connect it to the charger’s charging-current action using the EV charger current (A) tag. PELS controls start and stop separately.</p>
       <MdOutlinedButton disabled={busy} onClick={() => props.onSaveMethod({ method: 'flow', confirmation: chosenConfirmation })}>Use a Flow</MdOutlinedButton>
-    </details>
+    </details>}
   </section>;
 }

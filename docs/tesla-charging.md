@@ -16,17 +16,6 @@ PELS can manage charging through the **Battery & charging** device in **Tesla Ca
 
 If you already have a current-setting Flow, remove that action and select **Check again** before enabling built-in control. Keep unrelated Flows. Setup is complete when the page says **Built-in current control is selected**. If you add a current-setting Flow later, PELS cannot stop it, and the two would override each other: the page then says **Built-in current control is paused**, PELS leaves the current to the Flow, and built-in control resumes on its own once you remove that action and choose **Check again**. You can replace or remove the saved key under **Manage API key**.
 
-## Use a Flow instead
-
-Select the Flow method and use:
-
-| Flow part | Card |
-| --- | --- |
-| **When** | PELS: **Stepped device target changed** for the charging device |
-| **Then** | Tesla Car & Energy: set charging current using the **EV charger current (A)** tag |
-
-PELS handles start and stop separately. Do not add a second current controller alongside the selected method.
-
 ## Charging at home
 
 Control requires an online, stationary vehicle connected for AC charging at Homey's configured location. With a **Location & navigation** device, PELS checks that the car is within 100 m of that location; two of them for one car block control. Without one, PELS treats every stationary AC session as charging at home, so a session at work or at a friend's AC charger also counts toward your home's power. PELS then recommends adding the device; you can dismiss the recommendation. Moving away, disconnecting or becoming unavailable revokes the confirmed session. Control returns as soon as the car again reports that state, including after a restart while it stays parked. Keep Homey's location accurate.

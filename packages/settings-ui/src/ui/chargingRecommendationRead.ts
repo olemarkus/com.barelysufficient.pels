@@ -1,5 +1,5 @@
 import { chargingRecommendations } from './chargingRecommendations.ts';
-import { loadChargingSetup } from './chargingSetupFacts.ts';
+import { isReportBackCardForUnroutedCharger, loadChargingSetup } from './chargingSetupFacts.ts';
 import type { SettingsUiDeviceDetailItem } from './deviceUtils.ts';
 import { resolveAutomaticChargingControlRecommendations, type SetupRecommendation } from './recommendationsModel.ts';
 import { state } from './state.ts';
@@ -50,4 +50,20 @@ export const currentChargingAdvice = (managed: readonly SettingsUiDeviceDetailIt
       && !(id.startsWith('charging-setup:') && automaticReviewDeviceIds.has(target.deviceId))),
     ...automaticRecommendations,
   ];
+};
+
+/**
+ * Drops the level-report card of a charger with no current route while its
+ * setup card (charging setup, or the Automatic review replacing it) is shown.
+ */
+export const withoutUnroutedReportBack = (
+  recommendations: readonly SetupRecommendation[],
+  chargingAdvice: readonly SetupRecommendation[],
+): SetupRecommendation[] => {
+  const setupCardDeviceIds = new Set(chargingAdvice.flatMap(({ target }) => (
+    'deviceId' in target ? [target.deviceId] : []
+  )));
+  return recommendations.filter((recommendation) => (
+    !isReportBackCardForUnroutedCharger(recommendation, setupCardDeviceIds)
+  ));
 };

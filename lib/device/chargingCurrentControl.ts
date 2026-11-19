@@ -11,7 +11,7 @@ import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictS
 import { normalizeError } from '../utils/errorUtils';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { HomeyRequestInFlightError } from '../utils/homeyRequestInFlightError';
-import { isBuiltInControlInEffect } from './builtInControlFlowGate';
+import { isBuiltInControlInEffect, type UnusedBuiltInControl } from './builtInControlFlowGate';
 import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
@@ -199,16 +199,45 @@ export class ChargingCurrentControl {
     return this.getDevices().find((entry) => entry.id === deviceId) ?? this.observedDevices.get(deviceId);
   }
 
+  /**
+   * Whether nothing sets this device's current: PELS can set it itself, but
+   * built-in control is not selected and no Flow is known to set it either.
+   * Its level changes then reach no one until the owner finishes Charging
+   * current setup. A shared installation is left to its coordinating Flow.
+   */
+  lacksCurrentRoute(deviceId: string): boolean {
+    const device = this.findDevice(deviceId);
+    const adapter = device && resolveChargingCurrentAdapter(device);
+    if (!device || !adapter || this.automaticWattsOwnRoute(device)) return false;
+    if (hasSharedChargingInstallation(adapter, this.knownDevices())) return false;
+    return this.setup(deviceId).method !== 'built_in' && currentSettingFlows(adapter, this.flowWrites).size === 0;
+  }
+
+  /**
+   * Why PELS does not set the device's level itself although it could, for its
+   * card. A Flow that holds built-in control back (`flowConflict`, also set for
+   * the built-in control of devices without a charging-current binding) is
+   * named before an unfinished setup.
+   */
+  unusedBuiltInControl(
+    deviceId: string,
+    snapshot: Pick<TransportDeviceSnapshot, 'flowConflict'> | undefined,
+  ): UnusedBuiltInControl {
+    if (snapshot?.flowConflict !== undefined) return 'held_by_flow';
+    return this.lacksCurrentRoute(deviceId) ? 'not_set_up' : 'none';
+  }
+
+  // Automatic watts own the route; an existing manual current choice stays in force.
+  private automaticWattsOwnRoute(device: HomeyDeviceLike): boolean {
+    return hasNativeTargetPowerLadder(device.capabilities, device.capabilitiesObj)
+      && this.deviceSettings.resolveDevicePowerControlMode(
+        device.id, this.requiresManualControl(device.id),
+      ) === 'automatic';
+  }
+
   private routesBuiltInFor(deviceId: string, setup: ChargingCurrentSetup): boolean {
     const device = this.findDevice(deviceId);
-    // Automatic watts own the route; an existing manual current choice stays in force.
-    if (device
-      && hasNativeTargetPowerLadder(device.capabilities, device.capabilitiesObj)
-      && this.deviceSettings.resolveDevicePowerControlMode(
-        deviceId, this.requiresManualControl(deviceId),
-      ) === 'automatic') {
-      return false;
-    }
+    if (device && this.automaticWattsOwnRoute(device)) return false;
     const adapter = device && resolveChargingCurrentAdapter(device);
     return isBuiltInControlInEffect(
       setup.method === 'built_in',
