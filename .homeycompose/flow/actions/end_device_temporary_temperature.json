@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "End temporary temperature for device"
+    "en": "End temperature override for device"
   },
   "titleFormatted": {
-    "en": "End the temporary temperature for [[device]]"
+    "en": "End the temperature override for [[device]]"
   },
   "hint": {
-    "en": "Returns the device to its mode target now, with price and solar adjustments."
+    "en": "Ends the override now and returns the device to its mode target, with price and solar adjustments."
   },
   "args": [
     {

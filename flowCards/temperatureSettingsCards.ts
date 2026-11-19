@@ -3,6 +3,7 @@ import type { ModeTargetSelection } from '../lib/home/modeDeviceTargetWrite';
 import { writeDevicePriceAdjustment } from '../lib/price/priceOptimizationSettingsStore';
 import { writeTemperatureControlMode } from '../lib/device/temperatureControlSettings';
 import { endDeviceOverride, startDeviceOverride } from '../lib/overrides/deviceOverrides';
+import { MAX_DEVICE_OVERRIDE_MINUTES } from '../packages/shared-domain/src/settings/deviceOverrides';
 import {
   MAX_PRICE_ADJUSTMENT_C,
   type PriceAdjustmentKind,
@@ -38,9 +39,6 @@ const isTemperatureDevice: DeviceGate = (device) => !device.isBatteryOrSolar && 
 
 const isManagedTemperatureDevice: DeviceGate = (device) => isTemperatureDevice(device) && device.managed;
 
-// The card's own duration range; an override started elsewhere may last longer.
-const MAX_TEMPORARY_TEMPERATURE_MINUTES = 24 * 60;
-
 const ACTIVE_MODE_OPTION = {
   id: 'active-mode',
   name: 'Active mode',
@@ -67,8 +65,8 @@ function registerTemporaryTemperatureCards(deps: FlowCardDeps): void {
     const temperature = readFlowNumberArg(args, 'temperature');
     if (temperature === null) throw new Error('Temperature must be a number.');
     const minutes = readFlowNumberArg(args, 'minutes');
-    if (minutes === null || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TEMPORARY_TEMPERATURE_MINUTES) {
-      throw new Error(`Duration must be a whole number of minutes from 1 to ${MAX_TEMPORARY_TEMPERATURE_MINUTES}.`);
+    if (minutes === null || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_DEVICE_OVERRIDE_MINUTES) {
+      throw new Error(`Duration must be a whole number of minutes from 1 to ${MAX_DEVICE_OVERRIDE_MINUTES}.`);
     }
     const targetC = normalizeTemperature(deps, device.id, temperature);
     const outcome = startDeviceOverride(
@@ -77,7 +75,7 @@ function registerTemporaryTemperatureCards(deps: FlowCardDeps): void {
     if (outcome === 'temperature_control_off') {
       throw new Error(`${device.name} is set to Keep the new temperature, so PELS does not set its temperature.`);
     }
-    if (outcome === 'unavailable') throw new Error('PELS could not save the temperature. Try again shortly.');
+    if (outcome === 'unavailable') throw new Error('PELS could not save the override. Try again shortly.');
     logSettingSaved(deps, device, { setting: 'temporary_temperature', outcome, targetC, minutes });
     return true;
   });
@@ -89,7 +87,7 @@ function registerTemporaryTemperatureCards(deps: FlowCardDeps): void {
   end.registerRunListener(async (args: unknown) => {
     const device = await requireDevice(args, deps, isManagedTemperatureDevice);
     const outcome = endDeviceOverride(deps.homey.settings, device.id, deps.getNow().getTime());
-    if (outcome === 'unavailable') throw new Error('PELS could not end the temperature. Try again shortly.');
+    if (outcome === 'unavailable') throw new Error('PELS could not end the override. Try again shortly.');
     logSettingSaved(deps, device, { setting: 'temporary_temperature_end', outcome });
     return true;
   });

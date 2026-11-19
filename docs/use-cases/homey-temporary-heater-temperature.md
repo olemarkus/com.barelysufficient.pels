@@ -37,10 +37,10 @@ Choose by who should set the temperature meanwhile.
 
 ## Keep PELS in control
 
-Use **Set temporary temperature for device**. One card is enough: PELS ends the temporary temperature itself.
+Use **Start temperature override for device**. PELS ends the override when the duration is up.
 
 1. Add **This Flow is started**, or any other trigger, such as a button.
-2. Add **Set temporary temperature for device**. Choose the thermostat, enter the temperature and the number of minutes (up to 1440, one day).
+2. Add **Start temperature override for device**. Choose the thermostat, enter the temperature and the number of minutes (up to 10,080, or seven days).
 
 PELS sets the thermostat to exactly that temperature, without price or solar adjustments, and the device card shows an **Override** chip. When the time is up, PELS returns the thermostat to the target of whichever mode is active, with its adjustments. A mode change in the meantime does not end it, and neither does a Homey restart.
 
@@ -69,7 +69,7 @@ A mode change during the delay does not change the temperature. On/off limiting 
 
 ## End it with an event instead of a timer
 
-To end a session when something happens, such as a switch turning off, add **End temporary temperature for device** to a second Flow with that trigger. Set the duration long enough to cover the session. In the handover recipe, leave out the delay and put the last card in the second Flow.
+To end a session when something happens, such as a switch turning off, add **End temperature override for device** to a second Flow with that trigger. Set the duration long enough to cover the session. In the handover recipe, leave out the delay and put the last card in the second Flow.
 
 ## Related
 
