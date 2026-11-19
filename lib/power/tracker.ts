@@ -478,10 +478,10 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   const previousTs = state.lastTimestamp as number;
   const previousPower = state.lastPowerW as number;
   const {
-    heldFromMs, recoveredW, measuredUntilMs, importCounter, capacityQuarter, capacityMonthlyPeak,
+    heldFromMs, recoveredW, importCounter, capacityQuarter, capacityMonthlyPeak,
   } = accrueSampleImport(params, nowMs, budgetKWh, nextBuckets, nextBudgets);
   const unreliablePeriods = withEndedSuspectStretch(
-    resolveUnreliablePeriods({ state, previousTs: measuredUntilMs, nowMs }), state.heldReading, heldReading);
+    resolveUnreliablePeriods({ state, previousTs, nowMs }), state.heldReading, heldReading);
   // Nothing attributed the recovered energy to a device, so it is background.
   if (state.lastUncontrolledPowerW !== undefined && sample.uncontrolledPowerW !== undefined) {
     calculateEnergyAcrossBoundaries({

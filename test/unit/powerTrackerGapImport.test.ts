@@ -63,15 +63,17 @@ describe('a gap between two whole-home readings', () => {
     expect(home.state.importCounter).toMatchObject({ importedKWh: home.counter, verified: true });
   });
 
-  it('splits the counter step over both hours of a gap that crosses the hour', async () => {
+  it('splits the counter step over both hours of a gap that crosses the hour, and flags the gap', async () => {
     const home = new SampledHome();
     await home.runSteady(6000, HOUR_START + 50 * MINUTE);
+    const gapStartMs = home.state.lastTimestamp as number;
     home.passUnsampled(20 * MINUTE, 3000);
     await home.sample(3000, home.counter);
 
     expect(home.state.buckets?.[HOUR_KEY]).toBeCloseTo(5 + 0.5, 3);
     expect(home.state.buckets?.[NEXT_HOUR_KEY]).toBeCloseTo(0.5, 3);
-    expect(home.state.unreliablePeriods ?? []).toEqual([]);
+    // The total is the counter's; how it split across the hour is not measured.
+    expect(home.state.unreliablePeriods).toEqual([{ start: gapStartMs, end: gapStartMs + 20 * MINUTE }]);
   });
 
   it('counts the recovered energy as background', async () => {
