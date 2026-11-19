@@ -1,3 +1,4 @@
+import { norwayMonthKey } from './norwayMonthlyCapacityHistory';
 import type { NorwayCapacityTariffRead } from '../../packages/contracts/src/norwayCapacityTariff';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
@@ -27,10 +28,6 @@ const CONFIGURATION_KEYS = [
   'nettleie_orgnr', 'nettleie_tariffgruppe',
 ];
 const EMPTY: SavedChoice = { choice: { state: 'normal' }, outcome: { state: 'idle' } };
-const monthAt = (atMs: number): string => new Intl.DateTimeFormat('sv-SE', {
-  timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit',
-}).format(atMs);
-
 /** Durable explicit owner choice. The normal capacity setting is never overwritten. */
 export class NorwayCapacityChoice {
   private saved: SavedChoice = EMPTY;
@@ -87,8 +84,9 @@ export class NorwayCapacityChoice {
   }
 
   readState(scalars: CapacityScalarSettings, atMs: number): NorwayCapacityChoiceState {
-    const choice = this.readChoice(scalars);
-    return choice.state === 'active' && choice.offer.monthKey === monthAt(atMs) ? choice : { state: 'normal' };
+    const { choice } = this.saved;
+    if (choice.state !== 'active' || choice.offer.monthKey !== norwayMonthKey(atMs)) return { state: 'normal' };
+    return this.readChoice(scalars);
   }
 
   private readChoice(scalars: CapacityScalarSettings): NorwayCapacityChoiceState {
@@ -129,7 +127,7 @@ export class NorwayCapacityChoice {
   /** Normal settings plus the accepted choice, resolved later for each planned period. */
   forPlanning(scalars: CapacityScalarSettings, nowMs: number): CapacityScalarSettings {
     const choice = this.readChoice(scalars);
-    return choice.state === 'active' && choice.offer.monthKey <= monthAt(nowMs) ? {
+    return choice.state === 'active' && choice.offer.monthKey <= norwayMonthKey(nowMs) ? {
       ...scalars, monthlyCapacityChoice: { monthKey: choice.offer.monthKey, limitKw: choice.offer.limitKw },
     } : scalars;
   }
@@ -155,7 +153,7 @@ export class NorwayCapacityChoice {
       return true;
     }
     const current = request.offer;
-    const matches = offer !== null && current.monthKey === monthAt(nowMs) && current.monthKey === offer.monthKey
+    const matches = offer !== null && current.monthKey === norwayMonthKey(nowMs) && current.monthKey === offer.monthKey
       && current.tariffIdentity === offer.tariffIdentity && current.limitKw === offer.limitKw
       && current.revision === offer.revision;
     if (!matches || !scalars.capacityEnabled || scalars.periodMinutes !== 60) {

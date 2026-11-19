@@ -329,7 +329,8 @@ type PreviewContext = {
   // cases use a zero margin, which makes the two equal. Capacity limit on and
   // grid import limit off unless a case says otherwise.
   capacitySettings: Pick<PowerLimitSettings, 'limitKw' | 'marginKw'>
-    & Partial<Pick<ScheduledPowerLimits, 'capacityEnabled' | 'gridImportLimitKw' | 'periodMinutes' | 'monthPeak'>>;
+    & Partial<Pick<ScheduledPowerLimits,
+      'capacityEnabled' | 'gridImportLimitKw' | 'periodMinutes' | 'monthPeak' | 'monthlyCapacityChoice'>>;
   // No solar production unless a case says otherwise.
   hasSolarProduction?: boolean;
   // Optional override for the price-RATE label fed into the preview. Defaults
@@ -927,6 +928,12 @@ describe('previewDeferredObjectivePlan', () => {
     expect(atLimitFor(7_000, {
       ...limits, monthPeak: { limitKw: 7, endsAtMs: NOW_MS + HOUR_MS },
     })).toBe('capacity');
+  });
+
+  it('measures current draw against the monthly hard cap while it applies', () => {
+    const limits = { limitKw: 10, marginKw: 0.3 };
+    expect(atLimitFor(5_000, { ...limits, monthlyCapacityChoice: { monthKey: '2026-01', limitKw: 5 } })).toBe('capacity');
+    expect(atLimitFor(5_000, { ...limits, monthlyCapacityChoice: { monthKey: '2025-12', limitKw: 5 } })).toBeUndefined();
   });
 
   it('flags no limit at a switched-off hard cap when no power limit is enabled', () => {
