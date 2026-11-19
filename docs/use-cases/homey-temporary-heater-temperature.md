@@ -1,9 +1,11 @@
 ---
-title: Temporarily change one heater's temperature with Homey Flows
-description: Use a PELS Flow card to warm one room for an hour or a session, then return the thermostat to its normal target automatically.
+title: Temporarily change one heater's temperature
+description: Set a one-time temperature override, schedule it to repeat, or trigger it from a Homey Flow.
 ---
 
-# Temporarily change one heater's temperature with Homey Flows
+<span id="temporarily-change-one-heaters-temperature-with-homey-flows"></span>
+
+# Temporarily change one heater's temperature
 
 Warm the bathroom for an hour, heat the basement for a film, or keep a guest room at a fixed temperature overnight. PELS holds the thermostat at the temperature for the time you choose, then returns it to normal control.
 

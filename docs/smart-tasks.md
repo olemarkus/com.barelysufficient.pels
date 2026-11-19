@@ -22,7 +22,7 @@ If you only want the whole home to spend more energy during cheap hours, use [Da
 
 ## How a Task Is Created
 
-The quickest way is **New smart task** on the **Smart tasks** page: choose a managed device, set the goal and ready-by time, and PELS previews the times it plans to use and the estimated cost before you create the task. A device's own page offers the same as **Add smart task**, and shows the device's current task with a link to it once there is one. A device carries one task at a time, so choosing a device that already has one opens that task instead.
+The quickest way is **New smart task** on the **Smart tasks** page: choose a managed device, set the goal and ready-by time, and PELS previews the times it plans to use and the estimated cost before you create the task. On a device’s own page, **Temporary > Smart task > Add** opens the same form. Once the device has a task, that row links to it. A device carries one task at a time, so choosing a device that already has one opens that task instead.
 
 The preview also says what happens to the device **When the task is done**, from the device's own settings (see [Power-Limit Control and Tasks](#power-limit-control-and-tasks)). **Change** opens those settings without losing what you have typed.
 
@@ -195,7 +195,7 @@ Progress is the energy the device takes after the task starts, counted from its 
 
 Which devices can take one: plain on/off devices and EV chargers, including chargers with current control. Other stepped loads, thermostats and other devices with a target temperature are not eligible. The device also needs a live power reading, its own power measurement or Homey Energy's live figure for it. A device that only reports a cumulative energy meter is not offered, because its power figure lags behind switching it on and off.
 
-**For an EV charger**, use the **Add energy task** Flow card, select the charger, and set an amount such as `20 kWh` by `07:00`. While a charger is plugged in and PELS has no battery level for the car, **New smart task**, the device page's **Add smart task** and the **Create smart task** widget offer an energy task instead of a battery target, and the widget offers `10 kWh` to `40 kWh` as one-tap choices. Otherwise they create battery-target tasks. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
+**For an EV charger**, open **New smart task** while the car is plugged in. If PELS has live charger power and no battery level, choose an energy target such as `20 kWh` by `07:00`. The **Create smart task** widget offers the same kind of task with one-tap choices from `10 kWh` to `40 kWh`. If the picker offers a battery target and you specifically want kWh, use the **Add energy task** Flow card. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
 
 A task starts when it is created. For a nightly task, use **Settings → Schedules** to create it at 22:00 with ready-by `06:00`. A Flow running **Add energy task** at 22:00 works too. Running that card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 
@@ -264,7 +264,7 @@ For **abandoned** runs, the usual answer is that there is nothing to fix. Only i
 
 ### Charge an EV by morning
 
-Create a Flow that runs when the car is plugged in:
+For one morning, choose **New smart task** on the **Smart tasks** page. For a regular departure, use **Settings → Schedules → New schedule → Smart task**. To start the task whenever a car plugs in, create this Flow:
 
 | Flow part | Card |
 | --- | --- |

@@ -49,8 +49,8 @@ Once the behavior matches your expectations, expand the managed device set.
 | Problem | What to check |
 | --- | --- |
 | No power samples received | Check **Power source** and **Whole-home meter** under **Settings > Limits & safety**. On the **Flow card** source, make sure a Flow calls **Report power usage** whenever your meter updates. |
-| Devices do not appear | Confirm they expose supported capabilities and device classes. |
-| PELS is not controlling devices | Verify **Managed by PELS** is on, **Power-limit control** is enabled, and **Simulation mode** is off. |
+| Devices do not appear | Open **Devices > Missing a device? > Request support**. Select the device to open its settings if it is already supported or send a support request. |
+| PELS is not controlling devices | Check **Managed by PELS** and that the device’s home is actively managing. For power limiting, also check **Power-limit control** and the device’s power reading. For temperature or price control, check the device’s target and **Price-based control** if applicable. |
 | Expected power looks wrong | Check the device Energy settings in Homey or set a more accurate load in the device settings. |
 | No price data | Confirm the configured source is correct and external Flow payloads contain full-day JSON. |
 | EV charger current does not change | Check the control model. For a supported charger, check that built-in control is on and not paused by a Flow. For other chargers, check the **EV charger current (A)** Flow tag and charger-app action. |

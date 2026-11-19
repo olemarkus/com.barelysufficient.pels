@@ -1,16 +1,11 @@
 ---
 title: Use Home, Away, Night and Vacation modes for energy behavior
-description: Use PELS modes with Homey Flows to change comfort targets and device priorities when the home is occupied, empty, asleep or on vacation.
+description: Use schedules for fixed times and Homey Flows for events to change comfort targets and device priorities when the home is occupied, empty, asleep or on vacation.
 ---
 
 # Use Home, Away, Night and Vacation modes for energy behavior
 
-Homey already knows how to detect presence, run schedules, react to alarm state, or trigger from a manual button. PELS does not try to replace any of that. PELS is the layer that turns the active mode into actual energy behavior for heating, hot water, EV charging and other managed devices.
-
-The split:
-
-- **Homey decides when the mode changes.** Presence apps, schedules, virtual switches, alarm state, or anything else that can drive a Flow.
-- **PELS decides what the mode means.** Per-mode comfort targets and per-mode device priorities for the loads PELS manages.
+Use a PELS schedule for a regular change such as Night at 23:00. Use a Homey Flow for an event such as the last person leaving home. Each mode sets the comfort targets and priorities of your managed devices.
 
 A mode is a name. PELS ships with `Home` as the default; you create the others (`Away`, `Night`, `Vacation`, or anything else that fits your household).
 
@@ -51,7 +46,7 @@ This is usually enough. Lowering heating targets in `Away` and dropping living-r
 
 Worth being explicit so you do not duplicate logic that PELS already runs:
 
-- **Hard cap** — always protected. Modes cannot raise or relax it.
+- **Hard cap** — when Capacity limit is on, the same cap applies in every mode.
 - **Daily energy budget** — global, runs the same in every mode.
 - **Price control** — managed price-aware devices react to price the same way regardless of mode.
 - **Resume cooldowns** — global timing rules; not per-mode.
@@ -89,6 +84,10 @@ Vacation is the strictest energy-saving mode.
 - Low priority on flexible loads.
 - Frost protection and Smart tasks still run.
 
+## Switching modes at a set time
+
+For the Main home, open **Settings > Schedules > New schedule** and choose **Mode**. Under **Set mode to**, pick the mode, then choose the time and days. For example, set **Night** at 23:00 every evening and exclude **Vacation** under **Check mode when the schedule fires**.
+
 ## Switching modes from Homey Flows
 
 Anything that can trigger a Homey Flow can change the Main home's PELS mode.
@@ -107,14 +106,6 @@ When the first person comes home:
 ```text
 When:  The first person comes home
 Then:  Set PELS operating mode to Home
-```
-
-On a schedule:
-
-```text
-When:  Time is 23:00
-And:   Operating mode is not Vacation
-Then:  Set PELS operating mode to Night
 ```
 
 From a virtual switch:
@@ -138,7 +129,7 @@ The trigger can be Homey's built-in presence, a presence app, a calendar, a butt
 
 <figure class="docs-figure">
   <img class="docs-diagram" src="/diagrams/modes-handoff.svg" alt="Diagram showing presence, time, buttons or calendar events triggering a Homey Flow, the Flow setting the PELS mode, and PELS applying per-mode targets and priorities." />
-  <figcaption>Homey decides when the routine changes. PELS decides how managed devices behave in that routine.</figcaption>
+  <figcaption>For an event-driven routine, a Homey Flow sets the mode. PELS decides how managed devices behave in that routine.</figcaption>
 </figure>
 
 ## Reacting to mode changes from other Flows
@@ -208,7 +199,7 @@ This is usually better than building one Flow per device per situation.
 ## What you need
 
 - The PELS modes you want to use, configured under **Settings > Modes** (target temperature and priority per device, per mode).
-- One Homey Flow per trigger source (presence, schedule, button, alarm, …) that calls **Set operating mode**.
+- A PELS schedule for fixed times, or a Homey Flow that calls **Set operating mode** for a presence change, button or alarm.
 - Smart tasks for anything that must be ready by a specific time.
 
 ## Related setup guides

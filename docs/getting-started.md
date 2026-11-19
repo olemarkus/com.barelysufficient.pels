@@ -107,7 +107,7 @@ Your first setup needs a connected meter, one suitable managed device, and confi
 
 ### Modes and priorities
 
-Priorities are assigned automatically. Change them or add custom modes under **Settings > Modes** when needed. For temperature devices, review the existing target. [Configuration reference](/configuration).
+Priorities are assigned automatically. Change them or add custom modes under **Settings > Modes** when needed. For temperature devices, review the existing target. Use **Settings > Schedules** for fixed-time mode changes or a Homey Flow for presence changes. [Configuration reference](/configuration).
 
 <span id="step-5-add-price-optimization-optional"></span>
 

@@ -104,7 +104,7 @@ editLink: false
 
   ### Use Home, Away and Night for different energy behavior
 
-  If your home should behave differently when you are home, away or asleep, configure modes and switch them from Homey Flows. Modes can change comfort targets and priorities without rebuilding your automations.
+  If your home should behave differently when you are home, away or asleep, configure modes, then use a PELS schedule for fixed times or a Homey Flow for presence changes. Modes can change comfort targets and priorities without rebuilding your automations.
 
   [Read the modes use case](./use-cases/homey-home-away-night-energy-modes.md) · [Temporarily change one heater's temperature](./use-cases/homey-temporary-heater-temperature.md) · [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
 

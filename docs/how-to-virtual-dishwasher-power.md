@@ -58,7 +58,7 @@ Check the finished setup: the virtual watts should match the meter, turning the 
 
 For an AEG dishwasher, use the same setup with the names **Dishwasher**, **Dishwasher meter** and **Dishwasher (PELS)**. Select **On / Off** and **Power** when creating the virtual device:
 
-[![AEG example: virtual device with On / Off and Power selected](images/howto_dishwasher_capabilities.png)](images/howto_dishwasher_capabilities.png)
+[![AEG example: virtual device with On / Off and Power selected](/images/howto_dishwasher_capabilities.png)](./images/howto_dishwasher_capabilities.png)
 
 The three Flows become:
 
@@ -70,11 +70,11 @@ The three Flows become:
 
 Select a screenshot to open it at full size.
 
-[![AEG example: copy the separate meter's power reading](images/howto_dishwasher_power.png)](images/howto_dishwasher_power.png)
+[![AEG example: copy the separate meter's power reading](/images/howto_dishwasher_power.png)](./images/howto_dishwasher_power.png)
 
-[![AEG example: pause only when the dishwasher reports Running](images/howto_dishwasher_pause.png)](images/howto_dishwasher_pause.png)
+[![AEG example: pause only when the dishwasher reports Running](/images/howto_dishwasher_pause.png)](./images/howto_dishwasher_pause.png)
 
-[![AEG example: resume only when the dishwasher reports Paused](images/howto_dishwasher_resume.png)](images/howto_dishwasher_resume.png)
+[![AEG example: resume only when the dishwasher reports Paused](/images/howto_dishwasher_resume.png)](./images/howto_dishwasher_resume.png)
 
 Start the wash yourself. These Flows use **Pause** and **Resume**, so they continue the existing programme. Do not use **Start** or **Stop / Reset**: those can start a new programme or cancel the current one.
 

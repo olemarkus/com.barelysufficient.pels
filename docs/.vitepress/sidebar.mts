@@ -73,6 +73,12 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
   {
     text: 'Device Integrations',
     items: [
+      { text: 'Configure an EV Charger', link: '/ev-charger' },
+      { text: 'Configure an Easee EV Charger', link: '/easee-ev-charger' },
+      { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
+      { text: 'Configure a Futurehome EV Charger', link: '/futurehome-ev-charger' },
+      { text: 'Tesla vehicle charging', link: '/tesla-charging' },
+      { text: 'Configure an OSO Water Heater', link: '/oso-water-heater' },
       {
         text: 'Wire a Flow-Based Load Device',
         link: '/how-to-headroom-expected-power-flow-control',
@@ -82,12 +88,6 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
         link: '/how-to-virtual-thermostat-power',
       },
       { text: 'Custom Control With an External Meter', link: '/how-to-virtual-dishwasher-power' },
-      { text: 'Configure an EV Charger', link: '/ev-charger' },
-      { text: 'Configure an Easee EV Charger', link: '/easee-ev-charger' },
-      { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
-      { text: 'Configure a Futurehome EV Charger', link: '/futurehome-ev-charger' },
-      { text: 'Tesla vehicle charging', link: '/tesla-charging' },
-      { text: 'Configure an OSO Water Heater', link: '/oso-water-heater' },
     ],
   },
   {

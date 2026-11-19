@@ -27,7 +27,7 @@ Use a [Smart task](/smart-tasks) instead when you want PELS to plan from a targe
 
 You will create two Flows:
 
-1. A Flow that enables **Power-limit control** when the current hour is one of the cheapest hours before your end time.
+1. A Flow that enables **Power-limit control** in a selected hour. If the device uses **Leave off until turned on again**, the Flow also needs to turn it on when the booked window opens.
 2. A Flow that disables **Power-limit control** outside those selected hours and tells the device app to stop or turn off.
 
 The device stays managed by PELS. Your Flow decides when it may run. During allowed hours, PELS still manages available power and protects the hard cap.
@@ -52,6 +52,8 @@ Create a Flow like this:
 | --- | --- |
 | **When** | PELS: **Current price is one of the lowest before a time** |
 | **Then** | PELS: **Enable power-limit control for device** |
+
+If **Leave off until turned on again** is enabled and the previous window ended by turning the device off, add a device-on action at the start of the next booked window. PELS can then limit and resume it while that window is open.
 
 Card arguments:
 
@@ -96,6 +98,7 @@ Flows:
 | Purpose | Cards |
 | --- | --- |
 | Allow charging in selected hours | **Current price is one of the lowest before a time** with `Hours = 12`, `Lowest count = 5`, `End hour = 7` -> **Enable power-limit control for device** |
+| Start a charger held off by **Leave off until turned on again** | At the start of the booked window, use the charger app’s start action. |
 | Stop allowing charging outside selected hours | Hourly trigger + same lowest-price condition is false -> **Disable power-limit control for device** -> charger app: stop charging |
 
 During selected hours, PELS can start or increase charging only when the hard cap and priority rules allow it. Outside selected hours, PELS does not try to run the charger as part of power limiting.
@@ -115,7 +118,7 @@ This lets the water heater run in the 3 cheapest hours before 06:00. If the home
 | Problem | Fix |
 | --- | --- |
 | The device runs outside selected hours | Make sure **Power-limit control** is disabled outside the chosen hours and that the Flow also tells the device app to stop or turn off. |
-| The device never runs | Confirm prices are available, the device is managed, and the hard cap leaves enough available power. |
+| The device never runs | Check prices and available power. If the device says **Turned off elsewhere — turn it on to resume**, have the opening Flow turn it on at the start of the booked window. |
 | More hours match than expected | Ties at the cutoff price are included. |
 | The wrong night is selected | Use **Current price is one of the lowest before a time**, not today's-only pricing, when the window crosses midnight. |
 | Charging current does not change | For a supported charger, check that built-in control is on and not paused by a Flow. For other EV chargers, check the current-control Flow and **EV charger current (A)**. |

@@ -5,32 +5,6 @@ description: Connect an EV charger to PELS with current control, battery reporti
 
 # Configure an EV Charger
 
-## Automatic charging phases
-
-With the community **Peblar EV Charger** integration, open the charger's
-**Charging** section and choose **Charging phases**:
-
-- **Leave to charger** leaves the phase setting with the charger.
-- **Automatic** selects one or three phases using available power, solar and
-  the current smart task.
-- **One phase** requests single-phase charging.
-- **Three phases** permits three-phase charging; the car can use fewer phases.
-
-Before enabling it, select the house phase used for single-phase charging and
-confirm that the installation has a 400 V three-phase supply with neutral and
-that the charger and car support phase switching. This uses the same electrical
-connection setting shown under **Power limiting**.
-
-PELS lowers charging current before changing phases and keeps room for the
-transition. It waits for independent power readings rather than treating the
-requested setting as completed charging. Short solar changes do not cause
-repeated switching. A transition that cannot be confirmed pauses further attempts
-until the car reconnects.
-
-Choosing **Leave to charger**, turning off management or enabling simulation
-returns the phase setting PELS recorded before taking control. Returning to a
-setting that permits more phases can pause charging first.
-
 ## Charging-current setup
 
 Use this guide when an EV charger is paired in Homey and PELS should decide how much charging current is available.
@@ -65,7 +39,7 @@ If one of your Flows already sets the charger's current, PELS keeps that Flow wo
 
 - PELS must already be installed and configured with live whole-home power data.
 - Your EV charger must already be paired in Homey.
-- You need to know whether the charger should be controlled as 1-phase or 3-phase charging.
+- If you need a manual current-control model, check the supply and charging phases in the charger’s settings.
 
 If PELS is not set up yet, start with [Getting Started](/getting-started).
 
@@ -79,7 +53,7 @@ Open the charger in the **Devices** tab and check **Control model**.
 
 When PELS can read the charger's power levels from its Homey app, **Control model** offers **Automatic** and **Manual**. **Automatic** is the default for a newly managed charger: PELS takes the levels from the charger's own settings, such as its phases, grid type and current limits, and shows them as **Charging range**. It follows changes to those settings. A charger you set up before Automatic was available keeps its manual setup until you review Automatic; **Setup & recommendations** offers that review.
 
-Otherwise, or under **Manual**, choose the EV model that matches your installation:
+For a charger with adjustable current that uses a manual model, choose the preset that matches your installation. A start/stop charger needs no current preset.
 
 | Control model | Use when |
 | --- | --- |
@@ -206,17 +180,43 @@ Charge boost and **Charge to a battery level** do different jobs: boost takes po
 Start with **Simulation mode** if you are still tuning the rest of PELS. Then verify:
 
 1. The charger is visible as a managed device in PELS.
-2. **Control model** is **Automatic**, or **EV 1-phase** or **EV 3-phase**.
-3. Current control matches the charger: Easee, Peblar and Alfen Pro-line/ACE have **Use built-in device control** on. Alfen (the Alfen app), Enua and other chargers controlled through their charging power have no such switch: PELS always controls them directly. A Zaptec, Futurehome, Wallbox, WARP, amina, go-e, KEBA or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Only a charger PELS cannot control directly, or one you chose to keep on a Flow, receives **EV charger current (A)** in a current-control Flow.
-4. Charging current changes in the charger app when PELS asks for a lower or higher level.
+2. For a charger with adjustable current, check **Automatic** where offered or the manual model that matches your installation.
+3. Check the control method in the [charger table](#charging-current-setup). A charger controlled through writable charging power, including a Zaptec using its automatic power range, needs no current-control switch. If the charger offers **Use built-in device control**, check that it is on. If you enabled built-in control under **Setup → Charging current**, check that it shows **Built-in current control is selected**.
+4. Once simulation is off, check in the charger app that it follows the requested current or power level. For a start/stop charger, check that charging pauses and resumes.
 5. If you configured battery reporting, the charger's **Car** section or charging readout shows the battery percentage from your chosen source.
+
+## Automatic charging phases
+
+With the community **Peblar EV Charger** integration, open the charger's
+**Charging** section and choose **Charging phases**:
+
+- **Leave to charger** leaves the phase setting with the charger.
+- **Automatic** selects one or three phases using available power, solar and
+  the current smart task.
+- **One phase** requests single-phase charging.
+- **Three phases** permits three-phase charging; the car can use fewer phases.
+
+Before enabling it, select the house phase used for single-phase charging and
+confirm that the installation has a 400 V three-phase supply with neutral and
+that the charger and car support phase switching. This uses the same electrical
+connection setting shown under **Power limiting**.
+
+PELS lowers charging current before changing phases and keeps room for the
+transition. It waits for independent power readings rather than treating the
+requested setting as completed charging. Short solar changes do not cause
+repeated switching. A transition that cannot be confirmed pauses further attempts
+until the car reconnects.
+
+Choosing **Leave to charger**, turning off management or enabling simulation
+returns the phase setting PELS recorded before taking control. Returning to a
+setting that permits more phases can pause charging first.
 
 ## Troubleshooting
 
 | Problem | What to check |
 | --- | --- |
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. If it is still missing, choose **Request support** on the **Missing a device?** card there. |
-| The Flow does not trigger | For a Flow-controlled charger, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. If the charger is in the table under [Charging-current setup](#charging-current-setup), use built-in control instead of the Flow. |
+| The Flow does not trigger | For a Flow-controlled charger, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. Check the [charger table](#charging-current-setup) to see whether your charger offers built-in control. |
 | The charger receives the wrong current | Under **Manual**, check that the device uses the correct **EV 1-phase** or **EV 3-phase** model. Under **Automatic**, check the phase and current settings in the charger's own app. |
 | Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check that your battery-reporting Flow selects the correct charger. |
 | PELS never limits the charger | Check the charger priority, your limits in **Limits & safety**, and whether Simulation mode is still enabled. |
