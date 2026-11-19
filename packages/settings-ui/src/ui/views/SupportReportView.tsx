@@ -124,7 +124,7 @@ const IncidentFields = ({ state, actions, homeName }: SupportReportViewProps) =>
       </p>}
       <MdFilledTextField type="textarea" rows="3" label="What happened?" required
         value={draft.problem} maxlength={SUPPORT_REPORT_PROBLEM_MAX_LENGTH} disabled={disabled}
-        supporting-text="Include what you noticed."
+        supporting-text="Include what you noticed or what you’re unsure about."
         data-report-field="problem" onInput={(event: Event) => actions.edit({ ...draft, problem: fieldValue(event) })} />
       <MdFilledTextField type="textarea" rows="2" label="What did you expect?"
         value={draft.expected} maxlength={SUPPORT_REPORT_EXPECTED_MAX_LENGTH} disabled={disabled}

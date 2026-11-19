@@ -4,6 +4,7 @@ import { AppBar } from './AppBar.tsx';
 import { MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
 import { SetupPathCard } from './SetupPathCard.tsx';
 import type { SetupPathRead } from '../setupPathFacts.ts';
+import { openContextualProblemReport } from '../problemReportAction.ts';
 
 export type SetupRecommendationsViewProps = {
   active: readonly SetupRecommendation[];
@@ -49,6 +50,21 @@ const busyActionLabel = (recommendation: SetupRecommendation): string | null => 
   return kind === 'quarter-hour' || kind === 'daily-report' ? 'Saving…' : null;
 };
 
+const RecommendationReportAction = ({ recommendation, dismissed }: Pick<
+  RecommendationCardProps, 'recommendation' | 'dismissed'
+>) => {
+  const { target, category, title, body } = recommendation;
+  if (dismissed || category === 'optional') return null;
+  return (
+    <MdTextButton type="button" onClick={() => openContextualProblemReport({
+      deviceId: 'deviceId' in target ? target.deviceId : undefined,
+      message: `${title}\n\n${body}`,
+    })}>
+      {category === 'warning' ? 'Report a problem' : 'Ask about this'}
+    </MdTextButton>
+  );
+};
+
 const RecommendationCard = (props: RecommendationCardProps) => {
   const { recommendation, dismissed, onAction, onDismiss, onRestore } = props;
   // One action runs at a time: every card that has one waits, and only the
@@ -82,6 +98,7 @@ const RecommendationCard = (props: RecommendationCardProps) => {
         >
           {dismissed ? 'Show again' : 'Dismiss'}
         </MdTextButton>}
+        <RecommendationReportAction recommendation={recommendation} dismissed={dismissed} />
       </div>
       {!dismissed && recommendation.guideLink && (
         <div class="setup-recommendation-card__actions">

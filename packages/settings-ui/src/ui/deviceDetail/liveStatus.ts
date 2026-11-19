@@ -15,6 +15,7 @@ import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { parsePlanSnapshot } from '../planSnapshotParse.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
+import { openContextualProblemReport } from '../problemReportAction.ts';
 
 const getRow = (): {
   row: HTMLElement;
@@ -23,6 +24,7 @@ const getRow = (): {
   factEl: HTMLElement | null;
   targetEl: HTMLElement | null;
   reasonEl: HTMLElement;
+  reportButton: HTMLElement | null;
 } | null => {
   const row = document.getElementById('device-detail-live-status');
   const stateEl = document.getElementById('device-detail-live-state');
@@ -36,6 +38,7 @@ const getRow = (): {
     factEl: document.getElementById('device-detail-live-fact'),
     targetEl: document.getElementById('device-detail-live-target'),
     reasonEl,
+    reportButton: document.getElementById('device-detail-live-report'),
   };
 };
 
@@ -68,6 +71,13 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   const nowMs = Date.now();
   dev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   renderHeroRows({ mounts, dev });
+  const { reportButton } = mounts;
+  const { reason } = dev.status;
+  if (reportButton) {
+    reportButton.hidden = reason?.offersProblemReport !== true;
+    reportButton.onclick = reason?.offersProblemReport === true
+      ? () => openContextualProblemReport({ deviceId, message: reason.text }) : null;
+  }
 };
 
 const renderHeroRows = (params: {

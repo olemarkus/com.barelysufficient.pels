@@ -1101,6 +1101,10 @@ md-primary-tab.tab[active] {
   overflow-wrap: anywhere;
 }
 
+.device-detail-live-status__report {
+  justify-self: start;
+}
+
 .settings-detail-panel {
   display: grid;
   gap: var(--spacing-3);
