@@ -1,3 +1,4 @@
+import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { PowerEstimateState } from '../../lib/device/devicePowerEstimate';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
@@ -6,7 +7,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const buildState = (): Required<PowerEstimateState> => ({
-  expectedPowerKwOverrides: {} as Record<string, { kw: number; ts: number }>,
+  expectedPowerKwOverrides: {} as DeviceExpectedPowerOverrides,
   lastKnownPowerKw: {} as LearnedPeaksByDeviceId,
   lastEstimateDecisionLogByDevice: new Map(),
   lastPeakPowerLogByDevice: new Map(),
@@ -295,7 +296,7 @@ describe('estimatePower', () => {
 
   it('rung 1 — a manual override outranks every other source', () => {
     const state = buildState();
-    state.expectedPowerKwOverrides['dev-1'] = { kw: 2.4, ts: 0 };
+    state.expectedPowerKwOverrides['dev-1'] = { kw: 2.4, ts: 0, origin: 'settings' };
     state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(650), deviceId: 'dev-1', deviceLabel: 'Device 1',
@@ -312,7 +313,7 @@ describe('estimatePower', () => {
     // max(currentDraw, expected, planning), so a device really pulling more still
     // reserves what it is drawing.
     const state = buildState();
-    state.expectedPowerKwOverrides['dev-1'] = { kw: 2.4, ts: 0 };
+    state.expectedPowerKwOverrides['dev-1'] = { kw: 2.4, ts: 0, origin: 'settings' };
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-1', deviceLabel: 'Device 1',
       measuredPowerKw: 5, now: Date.now(), state,
@@ -326,7 +327,7 @@ describe('estimatePower', () => {
     // that `expectedPowerKw` is a usable number does not rest on the writers of
     // the override map. A 0 or NaN override is not an instruction, it is junk.
     const state = buildState();
-    state.expectedPowerKwOverrides['dev-1'] = { kw: 0, ts: 0 };
+    state.expectedPowerKwOverrides['dev-1'] = { kw: 0, ts: 0, origin: 'settings' };
     const result = estimatePower({
       device: buildDevice(900), deviceId: 'dev-1', deviceLabel: 'Device 1',
       now: Date.now(), state,

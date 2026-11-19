@@ -384,6 +384,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
       getHomeyDevicesForFlow: vi.fn(async () => []),
       emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
+      powerFigureChecks: partialDouble<FlowBackedDeviceState['powerFigureChecks']>({
+        recordSoleSwitchOffFall: vi.fn(), read: vi.fn(() => undefined), readAll: vi.fn(() => []),
+      }),
     }),
     resolveManagedState: vi.fn(() => false),
     // Tests often swap in a partial device manager without the battery query;

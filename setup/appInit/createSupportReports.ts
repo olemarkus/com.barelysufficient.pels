@@ -21,7 +21,8 @@ export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'capacityGuard'
   | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules' | 'powerTracker'>
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules' | 'powerTracker'
+  | 'flowBacked' | 'getSettingsUiManagedDevices'>
   & Pick<PelsHost, 'readDeviceDiagnosticConfiguration'>
   & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
@@ -77,6 +78,9 @@ export const createSupportReportReads = (
   },
   readObjectiveProfiles: () => app.powerTracker.objectiveProfiles,
   readHeatingShadowDaily: (capturedAtMs) => heatingShadow.readDaily(capturedAtMs),
+  readPowerFigureChecks: (nowMs) => (
+    app.flowBacked.powerFigureChecks.readAll(app.getSettingsUiManagedDevices(), nowMs)
+  ),
   readAppMemory: () => captureAppMemorySnapshot(appMemory),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (

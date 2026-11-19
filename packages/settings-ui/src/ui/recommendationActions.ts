@@ -2,6 +2,7 @@ import type { DeviceDetailFocus } from './cardActivation.ts';
 import type { RecommendationTarget } from './recommendationsModel.ts';
 import type { SetupJourneyStep } from './setupJourneyState.ts';
 import { turnOnDailyDiagnosticsReport } from './diagnosticsReportSwitches.ts';
+import { saveExpectedPowerFigure } from './deviceDetail/expectedPower.ts';
 import {
   checkFlowConflictNow, hasEvSocFlowReporter, readIgnoredPowerUsageFlows, refreshFlowConflictFactsExplicit,
 } from './flowConflictRefresh.ts';
@@ -22,6 +23,12 @@ export const resolveRecommendationTask = (
 ): RecommendationTask | null => {
   if (target.kind === 'quarter-hour' && navigation) {
     return { run: navigation.useQuarterHour, failureMessage: 'Could not save the capacity period.' };
+  }
+  if (target.kind === 'expected-power') {
+    return {
+      run: () => saveExpectedPowerFigure(target.deviceId, target.kw),
+      failureMessage: 'Could not save the power for this device.',
+    };
   }
   if (target.kind === 'daily-report') {
     return { run: turnOnDailyDiagnosticsReport, failureMessage: 'Could not turn on the daily report.' };

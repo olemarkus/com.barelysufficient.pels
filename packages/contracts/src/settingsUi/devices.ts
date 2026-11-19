@@ -1,6 +1,7 @@
 import type { BatteryEfficiencyMeasurement, ContinuousBatteryPlanRead } from '../continuousBatteryPlan.js';
 import type { ControlContestDecoration } from '../controlContest.js';
 import type { DeviceOverviewStrings } from '../deviceOverview.js';
+import type { PowerFigureCheck } from '../powerFigureCheck.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
 import type { CarIdentificationState } from '../evCarLink.js';
 import type { SchedulesResponse } from '../schedules.js';
@@ -31,6 +32,8 @@ export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOf
      * change is not confirmed (`STEP_COMMAND_UNANSWERED_AFTER`).
      */
     levelUnconfirmed?: true;
+    /** Present while PELS sees the device draw well above the figure it plans it with. */
+    powerFigureCheck?: PowerFigureCheck;
     /** Present while a plugged-in charger waits to identify its car: the wait as its card states it. */
     carIdentificationState?: Exclude<CarIdentificationState, 'not_waiting'>;
     /** The name of the device's Homey zone; absent until PELS has read a zone tree that holds it. */

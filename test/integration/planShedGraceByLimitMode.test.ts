@@ -85,6 +85,7 @@ const buildHarness = (scenario: Scenario) => {
     drawEvidence: noDrawEvidence,
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',
+    soleSwitchOffFalls: { recordSoleSwitchOffFall: () => {} },
     getInferredSurplusKw: () => 0,
     getStorageDischargeObservations: () => new Map(),
   inverterCurtailment: NO_INVERTER_PLANNER,

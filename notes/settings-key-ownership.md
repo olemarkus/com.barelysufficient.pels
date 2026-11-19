@@ -312,7 +312,9 @@ carries it, where the userdata store would need an API route of its own
   `charging_current_flow_writes`, one row per device, diffed), each written
   through as it changes, and the learned power peaks
   (`lib/device/learnedPowerPeakStore.ts`, one row per device, diffed, so a
-  peak that moves writes its own row), and the learned solar forecast's
+  peak that moves writes its own row), and the home meter's falls at each
+  device's lone switch-offs (`lib/device/homeMeterFallStore.ts`, table
+  `device_home_meter_falls`, one row per device, the newest 12 within 30 days), and the learned solar forecast's
   generation history (`lib/solar/pvForecastStateStore.ts`, one row per hour, diffed, so the
   five-minute persist writes the hour that changed), and when PELS last controlled each device
   (`lib/plan/lastControlledStore.ts`, one row per home and device, diffed;

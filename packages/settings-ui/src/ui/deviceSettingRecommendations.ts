@@ -1,3 +1,4 @@
+import { resolvePowerFigureRecommendations } from './powerFigureRecommendations.ts';
 import {
   resolveBatteryApiKeyRecommendations,
   resolveSetpointShedLimitRecommendations,
@@ -27,4 +28,6 @@ export const resolveDeviceSettingRecommendations = (): SetupRecommendation[] => 
     : []),
   // A battery's Managed switch is its own setting, so `managedMap` does not hold it.
   ...resolveBatteryApiKeyRecommendations(state.latestDevices.filter(({ id }) => resolveManagedState(id))),
+  // The figure PELS plans a device with: Power when running, its load setting or its levels.
+  ...resolvePowerFigureRecommendations(state.latestDevices.filter(({ id }) => resolveManagedState(id))),
 ];

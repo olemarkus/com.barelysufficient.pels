@@ -6,6 +6,7 @@ import { PhasePeakLog } from '../../lib/power/phasePeakLog';
 import { vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
+import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceState';
 import { partialDouble } from './partialDouble';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
@@ -49,6 +50,11 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     deviceManager: undefined,
     controlContests: { contestedControl: () => undefined },
     steppedCommandStore: partialDouble<SteppedCommandStore>({ isLevelUnconfirmed: () => false }),
+    flowBacked: partialDouble<FlowBackedDeviceState>({
+      powerFigureChecks: partialDouble<FlowBackedDeviceState['powerFigureChecks']>({
+        read: () => undefined, readAll: () => [],
+      }),
+    }),
     planService: undefined,
     priceCoordinator: undefined,
     batteryControl: undefined,

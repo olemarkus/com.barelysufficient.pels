@@ -281,7 +281,7 @@ export const parseExpectedPowerOverrides = (raw: unknown): DeviceExpectedPowerOv
     const entry = asUnknownRecord(value);
     if (!entry) continue;
     if (!isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.ts)) continue;
-    parsed[deviceId] = { kw: entry.kw, ts: entry.ts };
+    parsed[deviceId] = { kw: entry.kw, ts: entry.ts, origin: entry.origin === 'flow' ? 'flow' : 'settings' };
   }
   return parsed;
 };

@@ -143,7 +143,7 @@ describe('device detail power when running', () => {
 
     expect(homey.set).toHaveBeenCalledWith(
       DEVICE_EXPECTED_POWER_OVERRIDES,
-      { 'heater-1': { kw: 2.4, ts: expect.any(Number) } },
+      { 'heater-1': { kw: 2.4, ts: expect.any(Number), origin: 'settings' } },
       expect.any(Function),
     );
     expect(state.deviceExpectedPowerOverrides['heater-1']?.kw).toBe(2.4);
@@ -160,7 +160,26 @@ describe('device detail power when running', () => {
       DEVICE_EXPECTED_POWER_OVERRIDES,
       {
         'other-1': { kw: 3, ts: 10 },
-        'heater-1': { kw: 2.4, ts: expect.any(Number) },
+        'heater-1': { kw: 2.4, ts: expect.any(Number), origin: 'settings' },
+      },
+      expect.any(Function),
+    );
+  });
+
+  it('saves the recommendation action\'s figure on the same record, keeping a Flow-set neighbour', async () => {
+    const { homey } = await openDetailFor(buildDevice(), {
+      [DEVICE_EXPECTED_POWER_OVERRIDES]: { 'other-1': { kw: 3, ts: 10, origin: 'flow' } },
+    });
+    const { resolveRecommendationTask } = await import('../src/ui/recommendationActions.ts');
+
+    await resolveRecommendationTask({ kind: 'expected-power', deviceId: 'heater-1', kw: 4.5 }, null)?.run();
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      DEVICE_EXPECTED_POWER_OVERRIDES,
+      {
+        'other-1': { kw: 3, ts: 10, origin: 'flow' },
+        'heater-1': { kw: 4.5, ts: expect.any(Number), origin: 'settings' },
       },
       expect.any(Function),
     );

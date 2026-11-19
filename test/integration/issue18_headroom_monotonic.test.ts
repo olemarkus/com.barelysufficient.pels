@@ -38,7 +38,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         structuredLog: Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock };
     };
     // Shared state objects
-    let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
+    let expectedPowerKwOverrides: Record<string, { kw: number; ts: number; origin: 'settings' | 'flow' }>;
     let lastKnownPowerKw: LearnedPeaksByDeviceId;
     let apiGetSpy: MockInstance;
 
@@ -91,7 +91,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
 
         // 2. Flow action: Set expected power to 3.0 kW
         const overrideTs = Date.now() - 10;
-        expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
+        expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs, origin: 'settings' };
 
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 1670)); // Still 1.67 kW
 
@@ -112,7 +112,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
 
         // Set expected power to 3.0 kW
         const overrideTs = Date.now();
-        expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
+        expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs, origin: 'settings' };
 
         // Measured power jumps to 3.5 kW
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 3500)); // 3.5 kW
@@ -139,7 +139,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
 
         // User sets expected power to 2.0 kW while measured is still 3.0 kW.
-        expectedPowerKwOverrides[deviceId] = { kw: 2.0, ts: Date.now() };
+        expectedPowerKwOverrides[deviceId] = { kw: 2.0, ts: Date.now(), origin: 'settings' };
         await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(2.0);

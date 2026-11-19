@@ -1,4 +1,3 @@
-import type { SettingsUiTaskPricePeriod } from './packages/contracts/src/settingsUi/prices';
 import { ScheduleService, createScheduleReceiptStore, ScheduleActionExecutor } from './lib/schedules';
 import { registerScheduleFlowCards } from './flowCards/scheduleCards';
 import type { SchedulesResponse } from './packages/contracts/src/schedules';
@@ -62,7 +61,7 @@ import type {
   HomeyPriceFormulaUiStatus,
   PowerhourSourceUiStatus,
   PvForecastSourceUiStatus,
-  SettingsUiPriceSourcePayloads,
+  SettingsUiPriceSourcePayloads, SettingsUiTaskPricePeriod,
 } from './packages/contracts/src/settingsUi/prices';
 import { createModeDeviceTargetFill } from './setup/appInit/createSnapshotSettingsPasses';
 import { normalizeError } from './lib/utils/errorUtils';
@@ -554,6 +553,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,
     getLearnedPowerPeaks: () => this.lastKnownPowerKw,
     getLearnedPowerPeakStore: () => this.getLearnedPowerPeakStore(),
+    getUserdataDatabase: () => this.getUserdataDatabase(),
     timers: this.timers,
     syncHeadroomUsageObservation: (deviceId, kw) => { this.planService.syncHeadroomUsageObservation(deviceId, kw); },
   });

@@ -190,7 +190,17 @@ describe('parseExpectedPowerOverrides', () => {
       good: { kw: 2.4, ts: NOW },
       zero: { kw: 0, ts: NOW },
       noTs: { kw: 2.4 },
-    })).toEqual({ good: { kw: 2.4, ts: NOW } });
+    })).toEqual({ good: { kw: 2.4, ts: NOW, origin: 'settings' } });
+  });
+
+  it('keeps the writer a figure was stored with, and reads any other as typed on the device page', () => {
+    expect(parseExpectedPowerOverrides({
+      byFlow: { kw: 2.4, ts: NOW, origin: 'flow' },
+      odd: { kw: 1, ts: NOW, origin: 'elsewhere' },
+    })).toEqual({
+      byFlow: { kw: 2.4, ts: NOW, origin: 'flow' },
+      odd: { kw: 1, ts: NOW, origin: 'settings' },
+    });
   });
 
   it('rejects an entry keyed on the empty device id', () => {
@@ -229,7 +239,7 @@ describe('classifyExpectedPowerOverridesSetting', () => {
     expect(classifyExpectedPowerOverridesSetting({
       raw: { good: { kw: 2.4, ts: NOW }, bad: { kw: 'x', ts: NOW } },
       ...absent,
-    })).toEqual({ state: 'resolved', overrides: { good: { kw: 2.4, ts: NOW } } });
+    })).toEqual({ state: 'resolved', overrides: { good: { kw: 2.4, ts: NOW, origin: 'settings' } } });
   });
 
   it('is unavailable for a record whose entries ALL fail validation', () => {

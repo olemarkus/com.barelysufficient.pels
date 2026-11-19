@@ -7,8 +7,8 @@ describe('applyExpectedPowerOverrides', () => {
     // (`setExpectedOverride`) leaving the app in the same state: a re-persist of
     // an unchanged record must not re-seed the headroom card's tracked usage.
     const target: DeviceExpectedPowerOverrides = {
-      unchanged: { kw: 1.5, ts: 1 },
-      changed: { kw: 1.5, ts: 1 },
+      unchanged: { kw: 1.5, ts: 1, origin: 'settings' },
+      changed: { kw: 1.5, ts: 1, origin: 'settings' },
     };
     const notified: Array<[string, number]> = [];
 
@@ -16,9 +16,9 @@ describe('applyExpectedPowerOverrides', () => {
       {
         state: 'resolved',
         overrides: {
-          unchanged: { kw: 1.5, ts: 2 },
-          changed: { kw: 2.5, ts: 2 },
-          added: { kw: 3, ts: 2 },
+          unchanged: { kw: 1.5, ts: 2, origin: 'settings' },
+          changed: { kw: 2.5, ts: 2, origin: 'settings' },
+          added: { kw: 3, ts: 2, origin: 'settings' },
         },
       },
       target,
@@ -30,45 +30,45 @@ describe('applyExpectedPowerOverrides', () => {
   });
 
   it('mutates the map in place so the transport keeps reading the same object', () => {
-    const target: DeviceExpectedPowerOverrides = { gone: { kw: 1, ts: 1 } };
+    const target: DeviceExpectedPowerOverrides = { gone: { kw: 1, ts: 1, origin: 'settings' } };
     const held = target;
 
     expect(applyExpectedPowerOverrides(
-      { state: 'resolved', overrides: { kept: { kw: 2, ts: 2 } } },
+      { state: 'resolved', overrides: { kept: { kw: 2, ts: 2, origin: 'settings' } } },
       target,
       'persisted',
       () => {},
     )).toBe(true);
 
     expect(held).toBe(target);
-    expect(target).toEqual({ kept: { kw: 2, ts: 2 } });
+    expect(target).toEqual({ kept: { kw: 2, ts: 2, origin: 'settings' } });
   });
 
   it('lets the held figure stand under held authority, filling only the gaps', () => {
     // The write fence's late read: the owner typed `typed` this run and it has
     // not reached settings yet, so the record may add what it knows about other
     // devices but must not undo the newer instruction — nor report one.
-    const target: DeviceExpectedPowerOverrides = { typed: { kw: 2.4, ts: 9 } };
+    const target: DeviceExpectedPowerOverrides = { typed: { kw: 2.4, ts: 9, origin: 'settings' } };
     const notified: string[] = [];
 
     applyExpectedPowerOverrides(
       {
         state: 'resolved',
-        overrides: { typed: { kw: 1, ts: 1 }, stored: { kw: 7, ts: 1 } },
+        overrides: { typed: { kw: 1, ts: 1, origin: 'settings' }, stored: { kw: 7, ts: 1, origin: 'settings' } },
       },
       target,
       'held',
       (deviceId) => notified.push(deviceId),
     );
 
-    expect(target).toEqual({ typed: { kw: 2.4, ts: 9 }, stored: { kw: 7, ts: 1 } });
+    expect(target).toEqual({ typed: { kw: 2.4, ts: 9, origin: 'settings' }, stored: { kw: 7, ts: 1, origin: 'settings' } });
     expect(notified).toEqual(['stored']);
   });
 
   it('leaves the map untouched and answers false when the read is unavailable', () => {
     // An unreadable key is not an empty record. Answering `false` is what keeps
     // the caller's write fence shut, so nothing overwrites what it cannot read.
-    const target: DeviceExpectedPowerOverrides = { heater: { kw: 2.4, ts: 1 } };
+    const target: DeviceExpectedPowerOverrides = { heater: { kw: 2.4, ts: 1, origin: 'settings' } };
 
     expect(applyExpectedPowerOverrides(
       { state: 'unavailable' },
@@ -79,6 +79,6 @@ describe('applyExpectedPowerOverrides', () => {
       },
     )).toBe(false);
 
-    expect(target).toEqual({ heater: { kw: 2.4, ts: 1 } });
+    expect(target).toEqual({ heater: { kw: 2.4, ts: 1, origin: 'settings' } });
   });
 });

@@ -170,6 +170,13 @@ export type EvChargeTargetConfig = {
 export type EvChargeTargetSettings = Record<string, EvChargeTargetConfig>;
 
 /**
+ * Who wrote a "Power when running" figure: the device page (`settings`) or the
+ * "Set expected power" Flow card (`flow`). A figure stored before the field
+ * existed reads as `settings`.
+ */
+export type ExpectedPowerOverrideOrigin = 'settings' | 'flow';
+
+/**
  * One device's manual "Power when running" figure — the top rung of the
  * expected-power ladder (`lib/device/devicePowerEstimate.ts`).
  *
@@ -182,6 +189,7 @@ export type EvChargeTargetSettings = Record<string, EvChargeTargetConfig>;
 export type ExpectedPowerOverride = {
     kw: number;
     ts: number;
+    origin: ExpectedPowerOverrideOrigin;
 };
 
 /** Manual expected-power figures by device id, keyed as persisted. */

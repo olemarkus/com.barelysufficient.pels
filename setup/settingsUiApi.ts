@@ -283,6 +283,8 @@ const buildSettingsUiDeviceList = (
       ...(carIdentificationState && carIdentificationState !== 'not_waiting' ? { carIdentificationState } : {}),
       ...(controlContest ? { controlContest } : {}),
       ...(levelUnconfirmed ? { levelUnconfirmed: true as const } : {}),
+      // Absent from the served JSON while PELS does not doubt the figure.
+      powerFigureCheck: host.flowBacked.powerFigureChecks.read(device, Date.now()),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...zoneNameField(zoneTree, device.zoneId),
       ...readSettingsUiBatteryState(host, device),

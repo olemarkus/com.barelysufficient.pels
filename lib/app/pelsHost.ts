@@ -77,6 +77,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getHomeyPriceFormulaUiStatus'
   | 'getPowerhourSourceUiStatus'
   | 'steppedCommandStore'
+  | 'flowBacked'
 > & {
   readDeviceDiagnosticConfiguration(deviceId: string): DeviceDiagnosticConfiguration;
   readSchedules(): SchedulesResponse;
