@@ -1,5 +1,6 @@
 import {
-  createHeldCapacityLimitRead, powerLimitsAt, resolveHeldPowerLimits, resolveScheduledPowerLimits,
+  createHeldCapacityLimitRead, planningCeilingSchedule, powerLimitsAt, resolveHeldPowerLimits,
+  resolveScheduledPowerLimits,
 } from '../../lib/power/heldCapacityLimit';
 import type { CapacityMonthPeak } from '../../lib/power/capacityPeak';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
@@ -74,6 +75,20 @@ describe('resolveScheduledPowerLimits', () => {
     expect(limits).toMatchObject({ limitKw: 5, monthPeak: { limitKw: 7.5, endsAtMs } });
     expect(powerLimitsAt(limits, endsAtMs - 1)).toMatchObject({ limitKw: 7.5, marginKw: 0.3, gridImportLimitKw: 11 });
     expect(powerLimitsAt(limits, endsAtMs).limitKw).toBe(5);
+  });
+});
+
+describe('a monthly capacity choice in the schedule', () => {
+  const choiceLimits = { ...SCALARS, periodMinutes: 60 as const, gridImportLimitKw: null,
+    monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'),
+      endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 } };
+  it('applies the chosen cap until the Oslo month ends', () => {
+    expect(powerLimitsAt(choiceLimits, Date.parse('2026-11-30T22:00:00Z')).limitKw).toBe(9.9);
+    expect(powerLimitsAt(choiceLimits, Date.parse('2026-11-30T23:00:00Z')).limitKw).toBe(5);
+    const schedule = planningCeilingSchedule(choiceLimits);
+    expect(schedule.changesAtMs).toBe(Date.parse('2026-11-30T23:00:00Z'));
+    expect(schedule.at(Date.parse('2026-11-30T22:00:00Z'))).toBeCloseTo(9.6);
+    expect(schedule.at(Date.parse('2026-11-30T23:00:00Z'))).toBeCloseTo(4.7);
   });
 });
 
