@@ -4,6 +4,7 @@ import type { DeferredObjectiveHorizonBucket, DeferredObjectivePowerLimit } from
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import { resolvePlanningCeilingKw } from '../../power/capacityModel';
+import { planningCeilingSchedule, type ScheduledPowerLimits } from '../../power/heldCapacityLimit';
 import { PriorityReservationIndex } from './policyReservationIndex';
 
 export type { PriceHorizonEntry };
@@ -98,15 +99,10 @@ export type DeferredObjectivePolicyHorizonInputs = {
   // soft daily-budget throttle; physical capacity stays enforced downstream at
   // admission and the capacity guard.
   exemptFromBudget: boolean;
-  // The house's power-limit settings, from which the horizon resolves its
-  // planning ceiling (`resolvePlanningCeilingKw`, `lib/power`): the lower enabled
-  // limit's working rate (hard cap minus safety margin, grid import target),
-  // which bounds each bucket's reserved headroom. With only Capacity limit on it
-  // is the rate the capacity guard will admit (`limitKw - marginKw`). With no
-  // power limit enabled there is no ceiling, and no bucket carries a reserved
-  // headroom. The planner reads the same settings as a whole
-  // (`resolveDeferredObjectivePowerLimit`).
-  powerLimits: PowerLimitSettings;
+  // The power owner's ceiling schedule bounds each bucket's reserved headroom.
+  // It applies the lower working rate of the enabled limits, or leaves the
+  // bucket without a ceiling when both limits are off.
+  powerLimits: ScheduledPowerLimits;
   // Whether the home has solar production (a role-detected PV device). Export can
   // lift live grid headroom past the grid import target, so a PV home's plan is
   // not cut at that target (`resolveDeferredObjectivePowerLimit`).
@@ -175,10 +171,11 @@ export const countDeferredObjectivePolicyHorizonBuckets = (
 ): number => {
   if (inputs.deadlineAtMs <= inputs.nowMs || resolveDeferredObjectivePolicyHorizonReason(inputs) !== null) return 0;
   const overlays = collectBudgetOverlays(inputs.dailyBudgetSnapshot);
+  const { changesAtMs } = planningCeilingSchedule(inputs.powerLimits);
   let count = 0;
   for (const entry of inputs.priceHorizon) {
     if (entry.endMs <= inputs.nowMs || entry.startMs >= inputs.deadlineAtMs) continue;
-    count += policyBucketBoundaries(entry, overlays).length - 1;
+    count += policyBucketBoundaries(entry, overlays, changesAtMs).length - 1;
   }
   return count;
 };
@@ -198,13 +195,14 @@ export const buildDeferredObjectivePolicyHorizon = (
   } = params;
   const reasonCode = resolveDeferredObjectivePolicyHorizonReason(params);
   if (reasonCode !== null) return unavailable(reasonCode);
-  const sourceBuckets = collectPriceBuckets(nowMs, deadlineAtMs, priceHorizon, dailyBudgetSnapshot);
+  const { at: ceilingAt, changesAtMs } = planningCeilingSchedule(powerLimits);
+  const sourceBuckets = collectPriceBuckets(nowMs, deadlineAtMs, priceHorizon, dailyBudgetSnapshot, changesAtMs);
   const reservationIndex = new PriorityReservationIndex(higherPriorityReservations);
   return {
     buckets: mapPolicyBuckets(
       splitPolicyBucketsAtReservationBoundaries(sourceBuckets, reservationIndex),
       exemptFromBudget,
-      resolvePlanningCeilingKw(powerLimits),
+      ceilingAt,
       reservationIndex,
       higherPriorityUnbookedPowerKw,
     ),
@@ -286,11 +284,12 @@ const collectPriceBuckets = (
   deadlineAtMs: number,
   priceHorizon: PriceHorizonEntry[],
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+  monthEndMs: number | null,
 ): PolicyBucketSource[] => {
   const overlays = collectBudgetOverlays(dailyBudgetSnapshot);
   const allBuckets = priceHorizon.flatMap((entry) => {
     if (entry.endMs <= nowMs || entry.startMs >= deadlineAtMs) return [];
-    const boundaries = policyBucketBoundaries(entry, overlays);
+    const boundaries = policyBucketBoundaries(entry, overlays, monthEndMs);
     return boundaries.slice(0, -1).flatMap((startMs, index): PolicyBucketSource[] => {
       const endMs = boundaries[index + 1];
       if (endMs === undefined) return [];
@@ -380,8 +379,10 @@ const nonNegativeOrNull = (value: number | undefined): number | null => {
 const policyBucketBoundaries = (
   entry: PriceHorizonEntry,
   overlays: readonly (BudgetOverlay & { startMs: number })[],
+  monthEndMs: number | null,
 ): number[] => [...new Set([
   entry.startMs, entry.endMs,
+  ...(monthEndMs !== null && monthEndMs > entry.startMs && monthEndMs < entry.endMs ? [monthEndMs] : []),
   ...overlays.flatMap((overlay) => [overlay.startMs, overlay.startMs + HOUR_MS])
     .filter((boundary) => boundary > entry.startMs && boundary < entry.endMs),
 ])].sort((left, right) => left - right);
@@ -389,7 +390,7 @@ const policyBucketBoundaries = (
 const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
-  planningCeilingKw: number | null,
+  ceilingAt: (atMs: number) => number | null,
   reservationIndex: PriorityReservationIndex,
   higherPriorityUnbookedPowerKw: number,
 ): DeferredObjectiveHorizonBucket[] => {
@@ -399,7 +400,7 @@ const mapPolicyBuckets = (
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     const reservedHeadroomKw = resolveReservedHeadroomKw(
       bucket,
-      planningCeilingKw,
+      ceilingAt(bucket.startMs),
       higherPriorityAdmissionPowerKw,
     );
     return {

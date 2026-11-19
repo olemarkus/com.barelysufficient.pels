@@ -6,6 +6,8 @@ import type {
 import type { PowerTrackerState } from './trackerTypes';
 import { resolveCurrentMonthCapacityPeak, type CapacityMonthPeak } from './capacityPeak';
 import type { MeterMonthlyPeak } from './meterMonthlyPeak';
+import { nextCapacityMonthStartMs } from './capacityQuarterTracking';
+import { resolvePlanningCeilingKw } from './capacityModel';
 
 export type { HardCapSource } from '../../packages/contracts/src/capacitySettings';
 
@@ -16,14 +18,18 @@ export type { HardCapSource } from '../../packages/contracts/src/capacitySetting
  * the configured ones.
  *
  * Only live control reads these (the plan builder, the capacity guard, the
- * power sample throttle and the plan's meta). Forward planning (daily budget,
- * smart tasks, budget price, the battery horizon, weather) and the hourly
- * budget the tracker records keep the configured hard cap.
+ * power sample throttle and the plan's meta). Smart-task and battery horizons
+ * use a dated override through month-end. Daily budget, budget prices, weather,
+ * and the hourly budget the tracker records use the configured cap.
  */
 export type HeldPowerLimitSettings = PowerLimitSettings & {
   hardCapSource: HardCapSource;
   configuredLimitKw: number;
 };
+
+const canFollowMonthPeak = (settings: CapacityScalarSettings): boolean => (
+  settings.followMonthPeak && settings.capacityEnabled && settings.periodMinutes === 15
+);
 
 /**
  * Hold the hard cap at this month's peak once it is higher than the configured
@@ -36,9 +42,8 @@ export function resolveHeldPowerLimits(
   scalars: CapacityScalarSettings,
   peak: CapacityMonthPeak,
 ): HeldPowerLimitSettings {
-  const { dryRun: _dryRun, followMonthPeak, ...settings } = scalars;
-  const follows = followMonthPeak && settings.periodMinutes === 15 && settings.capacityEnabled
-    && peak.state === 'recorded' && peak.peakKw > settings.limitKw;
+  const { dryRun: _dryRun, followMonthPeak: _followMonthPeak, ...settings } = scalars;
+  const follows = canFollowMonthPeak(scalars) && peak.state === 'recorded' && peak.peakKw > settings.limitKw;
   return follows
     ? { ...settings, limitKw: peak.peakKw, hardCapSource: 'month_peak', configuredLimitKw: settings.limitKw }
     : { ...settings, hardCapSource: 'configured', configuredLimitKw: settings.limitKw };
@@ -52,6 +57,48 @@ export const configuredPowerLimits = (held: HeldPowerLimitSettings): PowerLimitS
   const { hardCapSource: _hardCapSource, configuredLimitKw, ...settings } = held;
   return { ...settings, limitKw: configuredLimitKw };
 };
+
+/** Configured limits with a higher hard cap available until the local month ends. */
+export type ScheduledPowerLimits = PowerLimitSettings & {
+  monthPeak?: { limitKw: number; endsAtMs: number };
+};
+
+export function resolveScheduledPowerLimits(
+  scalars: CapacityScalarSettings,
+  readMonthPeak: (nowMs: number) => CapacityMonthPeak,
+  timeZone: string,
+  nowMs: number,
+): ScheduledPowerLimits {
+  const { dryRun: _dryRun, followMonthPeak: _followMonthPeak, ...configured } = scalars;
+  if (!canFollowMonthPeak(scalars)) return configured;
+  const held = resolveHeldPowerLimits(scalars, readMonthPeak(nowMs));
+  if (held.hardCapSource === 'configured') return configured;
+  return {
+    ...configured,
+    monthPeak: { limitKw: held.limitKw, endsAtMs: nextCapacityMonthStartMs(nowMs, timeZone) },
+  };
+}
+
+export function powerLimitsAt(limits: ScheduledPowerLimits, atMs: number): PowerLimitSettings {
+  const { monthPeak } = limits;
+  return monthPeak && atMs < monthPeak.endsAtMs ? { ...limits, limitKw: monthPeak.limitKw } : limits;
+}
+
+/** A ceiling read with the boundary that can split a price interval. */
+export function planningCeilingSchedule(limits: ScheduledPowerLimits): {
+  changesAtMs: number | null;
+  at: (atMs: number) => number | null;
+} {
+  const { monthPeak } = limits;
+  const configuredKw = resolvePlanningCeilingKw(limits);
+  if (!monthPeak) return { changesAtMs: null, at: () => configuredKw };
+  const heldKw = resolvePlanningCeilingKw({ ...limits, limitKw: monthPeak.limitKw });
+  if (heldKw === configuredKw) return { changesAtMs: null, at: () => configuredKw };
+  return {
+    changesAtMs: monthPeak.endsAtMs,
+    at: (atMs) => atMs < monthPeak.endsAtMs ? heldKw : configuredKw,
+  };
+}
 
 /**
  * One home's reads behind its held limits: its resolved scalars, its tracker,

@@ -1,4 +1,4 @@
-import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
+import { getDateKeyStartMs, getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   MAX_POWER_SAMPLE_GAP_MS,
   type CapacityMonthlyPeak,
@@ -124,3 +124,9 @@ export const projectCapacityMonthlyPeak = (
 };
 
 export const currentCapacityMonthKey = (nowMs: number, timeZone: string): string => monthKeyAt(nowMs, timeZone);
+
+export function nextCapacityMonthStartMs(nowMs: number, timeZone: string): number {
+  const { year, month } = getZonedParts(new Date(nowMs), timeZone);
+  const nextMonthDateKey = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  return getDateKeyStartMs(nextMonthDateKey, timeZone);
+}

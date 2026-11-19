@@ -8,6 +8,7 @@ import {
   requireDeferredObjectivePlanHistoryRecorder,
 } from './deferredRecorders';
 import { resolveSmartTaskDeviceExclusion } from './smartTaskHomeScope';
+import { readScheduledPowerLimits } from './scheduledPowerLimits';
 
 /**
  * The one binding of what the main home's smart-task evaluations read. The
@@ -30,7 +31,7 @@ export const buildTaskEvaluationSource = (
   getPowerTracker: () => ctx.powerTracker,
   getPriceOptimizationEnabled: () => requirePriceCoordinator(ctx).getPriceOptimizationEnabled(),
   getDeferredObjectiveActivePlans: () => requireDeferredObjectiveActivePlanRecorder(ctx).getActivePlansSnapshot(),
-  getCapacitySettings: () => ctx.capacitySettings,
+  getCapacitySettings: (nowMs) => readScheduledPowerLimits(ctx, nowMs),
   hasSolarProduction: () => ctx.deviceReads.hasProductionCandidate(),
   // Native price periods, resolved in the price owner for every evaluation lane.
   buildPriceHorizon: (nowMs, deadlineAtMs) => (

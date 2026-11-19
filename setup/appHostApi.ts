@@ -162,11 +162,11 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   );
 
   /** Main's month peak: its tracker against its selected meter's own peak. */
-  public getCurrentMonthCapacityPeak = (): CapacityMonthPeak => resolveCurrentMonthCapacityPeak(
+  public getCurrentMonthCapacityPeak = (nowMs = Date.now()): CapacityMonthPeak => resolveCurrentMonthCapacityPeak(
     this.context.powerTracker,
     this.meterMonthlyPeaks.currentMain(),
     this.getTimeZone(),
-    Date.now(),
+    nowMs,
   );
 
   // The read answers `unavailable` when the service is not wired yet, because

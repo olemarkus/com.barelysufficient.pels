@@ -211,7 +211,7 @@ export type AppContext = {
   /** This home's capacity scalars as the running app holds them, already resolved. */
   getCapacityScalars(): CapacityScalarSettings;
   /** Main's month peak (`resolveCurrentMonthCapacityPeak`). */
-  getCurrentMonthCapacityPeak(): CapacityMonthPeak;
+  getCurrentMonthCapacityPeak(nowMs?: number): CapacityMonthPeak;
   get capacitySettings(): PowerLimitSettings;
   set capacitySettings(value: PowerLimitSettings);
   get capacityDryRun(): boolean;

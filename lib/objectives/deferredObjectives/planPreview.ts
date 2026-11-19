@@ -2,6 +2,7 @@ import { resolveFloorShortfallCause } from './floorShortfallCause';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import type { PowerLimitAxis, PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
+import { powerLimitsAt } from '../../power/heldCapacityLimit';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -152,7 +153,7 @@ const resolveAtPowerLimitNow = (
   // The power-limit settings carry the level `atPowerLimitNow` is measured
   // against; the probes ran at the planning ceiling the policy horizon resolved
   // from the same settings.
-  const pressedAt = resolvePressedAt(snapshot.powerLimits);
+  const pressedAt = resolvePressedAt(powerLimitsAt(snapshot.powerLimits, nowMs));
   if (pressedAt === null) return undefined;
   const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs <= nowMs && nowMs < hour.endsAtMs);
   if (!runsCurrentHour) return undefined;

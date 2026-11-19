@@ -2,7 +2,7 @@ import type {
   DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV2 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
+import type { ScheduledPowerLimits } from '../../power/heldCapacityLimit';
 import type {
   TaskAdmissionReservation, TaskEnergyReservation, TaskReservationSource, TaskReservationsRead,
 } from '../../ports/taskReservations';
@@ -47,7 +47,7 @@ const admissionReservations = (
 function readTaskReservations(
   task: ContextualDeferredObjective,
   activePlans: DeferredObjectiveActivePlansV2,
-  powerLimits: PowerLimitSettings,
+  powerLimits: ScheduledPowerLimits,
   nowMs: number,
 ): TaskReservationsRead {
   const { deviceId, objective, device } = task;
@@ -113,7 +113,7 @@ export class ObjectiveTaskReservationSource<Device extends { id: string }> imple
     );
     const devicesById = new Map(devices.map((device) => [device.id, device]));
     const activePlans = this.readers.getDeferredObjectiveActivePlans();
-    const powerLimits = this.readers.getCapacitySettings();
+    const powerLimits = this.readers.getCapacitySettings(nowMs);
     const ordered = withTaskAllocationContexts(orderDeferredObjectives(
       { objectivesByDeviceId: Object.fromEntries(tasks) }, devicesById,
       buildObjectiveDeviceExclusionPredicate(this.readers.resolveDeviceExclusion),

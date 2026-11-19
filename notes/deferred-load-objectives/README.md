@@ -60,6 +60,9 @@ Daily-budget learning and allocation remain hourly. The policy horizon splits at
 boundaries and distributes each hour's background forecast and managed-energy allowance by overlap
 duration. It subtracts higher-priority reservations only over their actual overlap. The step-energy
 ceiling remains `usefulPowerKw × durationHours`; a quarter has `durationHours = 0.25`.
+When the home follows a higher monthly peak, the policy horizon uses the held cap
+up to local month-end. A price interval crossing that boundary is split and its
+budget allowance is prorated by duration.
 
 Active-plan schema v2 and history schema v7 store interval ends. Known legacy hourly bookings become
 60-minute intervals, retaining `coversFromMs`, energy and milestones. Archived money is retained,

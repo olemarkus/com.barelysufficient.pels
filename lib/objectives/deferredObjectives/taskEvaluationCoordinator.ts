@@ -1,5 +1,5 @@
 import type { TaskAllocationRoster, TaskAllocationRosterSnapshot } from './taskAllocationRoster';
-import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
+import type { ScheduledPowerLimits } from '../../power/heldCapacityLimit';
 import {
   buildLearningTaskEvaluation, buildUnallocatedTaskEvaluation, taskPermissionsForObjective,
 } from './taskEvaluationProducer';
@@ -116,9 +116,9 @@ export type TaskEvaluationSnapshot = {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
   activePlans: DeferredObjectiveActivePlansV2;
-  // The house's power-limit settings; the policy horizon and the reservation
-  // ledger resolve the planning ceiling from them.
-  powerLimits: PowerLimitSettings;
+  // Configured limits and the active month-end override used by the policy
+  // horizon and reservation ledger.
+  powerLimits: ScheduledPowerLimits;
   // Whether the home has solar production; see `DeferredObjectivePolicyHorizonInputs`.
   hasSolarProduction: boolean;
 };
@@ -164,10 +164,8 @@ export type TaskEvaluationSource = TaskEvaluationReaders & {
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV2;
-  // The persisted power-limit settings. The planning ceiling is derived in the
-  // domain from them: `lib/power` owns the ceiling, and `setup/` answers no
-  // power question.
-  getCapacitySettings: () => PowerLimitSettings;
+  // The power owner's configured limits and any active month-end override.
+  getCapacitySettings: (nowMs: number) => ScheduledPowerLimits;
   // Whether the home has solar production (a role-detected PV device): export can
   // lift live grid headroom past the grid import target, so the plan is not cut
   // at that target in a PV home.
@@ -204,7 +202,7 @@ export const buildTaskEvaluationSnapshot = (
     dailyBudgetSnapshot,
     priceOptimizationEnabled: source.getPriceOptimizationEnabled(),
     activePlans: source.getDeferredObjectiveActivePlans(),
-    powerLimits: source.getCapacitySettings(),
+    powerLimits: source.getCapacitySettings(nowMs),
     hasSolarProduction: source.hasSolarProduction(),
   };
 };

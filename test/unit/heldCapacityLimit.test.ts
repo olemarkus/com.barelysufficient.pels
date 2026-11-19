@@ -1,4 +1,6 @@
-import { createHeldCapacityLimitRead, resolveHeldPowerLimits } from '../../lib/power/heldCapacityLimit';
+import {
+  createHeldCapacityLimitRead, powerLimitsAt, resolveHeldPowerLimits, resolveScheduledPowerLimits,
+} from '../../lib/power/heldCapacityLimit';
 import type { CapacityMonthPeak } from '../../lib/power/capacityPeak';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 
@@ -51,6 +53,27 @@ describe('resolveHeldPowerLimits', () => {
     ['the peak equals the hard cap', SCALARS, { state: 'recorded', peakKw: 5, source: 'tracked' }],
   ])('keeps the configured hard cap when %s', (_label, scalars, peak) => {
     expect(resolveHeldPowerLimits(scalars, peak)).toEqual(configured(scalars));
+    const atMs = Date.parse('2026-09-30T21:58:00Z');
+    expect(resolveScheduledPowerLimits(scalars, () => peak, 'Europe/Brussels', atMs).monthPeak)
+      .toBeUndefined();
+  });
+});
+
+describe('resolveScheduledPowerLimits', () => {
+  it.each([
+    ['Europe/Brussels', '2026-09-30T21:58:00Z', '2026-09-30T22:00:00Z'],
+    ['Europe/Brussels', '2026-12-31T22:58:00Z', '2026-12-31T23:00:00Z'],
+    ['Asia/Kolkata', '2026-12-31T18:28:00Z', '2026-12-31T18:30:00Z'],
+  ])('uses the configured cap at local month-end in %s', (timeZone, now, monthEnd) => {
+    const nowMs = Date.parse(now);
+    const endsAtMs = Date.parse(monthEnd);
+    const readPeak = vi.fn(() => PEAK_ABOVE);
+    const limits = resolveScheduledPowerLimits(SCALARS, readPeak, timeZone, nowMs);
+
+    expect(readPeak).toHaveBeenCalledWith(nowMs);
+    expect(limits).toMatchObject({ limitKw: 5, monthPeak: { limitKw: 7.5, endsAtMs } });
+    expect(powerLimitsAt(limits, endsAtMs - 1)).toMatchObject({ limitKw: 7.5, marginKw: 0.3, gridImportLimitKw: 11 });
+    expect(powerLimitsAt(limits, endsAtMs).limitKw).toBe(5);
   });
 });
 
