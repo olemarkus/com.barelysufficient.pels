@@ -83,6 +83,41 @@ const advancedFlowsFixture = {
   },
 };
 
+describe('stepped-load Flow inventory', () => {
+  it('requires the trigger and either report action for the same device across enabled Flows', () => {
+    const trigger = (device: string) => ({
+      id: 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed',
+      args: { device: { id: device } },
+    });
+    const reportAsStep = {
+      id: 'homey:app:com.barelysufficient.pels:report_stepped_load_actual_step',
+      args: { device: { data: { id: lampId } } },
+    };
+    const reportByPower = {
+      id: 'homey:app:com.barelysufficient.pels:report_stepped_load_power',
+      args: { device: zaptecId },
+    };
+
+    const facts = normalizeUserFlowFacts({
+      target: { trigger: trigger(zaptecId), actions: [] },
+      step: { actions: [reportAsStep] },
+      disabled: { enabled: false, trigger: trigger(lampId), actions: [] },
+      broken: { broken: true, actions: [{ ...reportByPower, args: { device: easeeId } }] },
+    }, {
+      advanced: {
+        cards: {
+          matching: { ...reportByPower, type: 'action' },
+          unmatched: { ...trigger(easeeId), type: 'trigger' },
+          wrongRole: { ...trigger(lampId), type: 'action' },
+          noDevice: { ...reportAsStep, type: 'action', args: {} },
+        },
+      },
+    });
+
+    expect(facts.steppedLoadCards).toEqual({ [zaptecId]: 'both', [lampId]: 'report', [easeeId]: 'target' });
+  });
+});
+
 describe('parseDeviceCapabilityWrite', () => {
   it('extracts deviceId + capabilityId from a device card id', () => {
     expect(parseDeviceCapabilityWrite(`homey:device:${zaptecId}:charging_button`)).toEqual({

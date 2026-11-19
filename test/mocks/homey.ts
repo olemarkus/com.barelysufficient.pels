@@ -520,6 +520,7 @@ export const mockHomeyInstance = {
     // Body of `manager/energy/price/electricity/dynamic/user-costs`: `null` is
     // a real Homey with no user costs configured.
     _priceUserCosts: null as unknown,
+    _userFlows: null as { regular: Record<string, unknown>; advanced: Record<string, unknown> } | null,
     // App-to-app API (`homey.api.getApiApp`). `null` is a Homey where the call
     // is not allowed — a Cloud Homey, or a missing `homey:app:<id>` permission
     // — and the real SDK reports that by THROWING synchronously, which is the
@@ -569,6 +570,9 @@ export const mockHomeyInstance = {
         }
         return device.toHomeyApiDevice();
       }
+      const flows = mockHomeyInstance.api._userFlows;
+      if (flows && path === 'manager/flow/flow/') return flows.regular;
+      if (flows && path === 'manager/flow/advancedflow/') return flows.advanced;
       if (path === 'manager/energy/live') {
         return { items: [] };
       }
@@ -795,7 +799,12 @@ export const resetMockHomey = (): void => {
   flow._actionCardAutocompleteListeners = {};
   flow._conditionCardAutocompleteListeners = {};
   flow._triggerCardAutocompleteListeners = {};
+  mockHomeyInstance.api._userFlows = null;
   mockHomeyInstance.api.clearRealtimeEvents();
+};
+
+export const setMockUserFlows = (regular: Record<string, unknown>, advanced: Record<string, unknown> = {}): void => {
+  mockHomeyInstance.api._userFlows = { regular, advanced };
 };
 
 export const setMockDrivers = (drivers: Record<string, MockDriver>) => {

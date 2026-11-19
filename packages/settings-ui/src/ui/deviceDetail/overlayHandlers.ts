@@ -18,6 +18,7 @@ import type { createPendingDeviceDetailOpen, DeviceDetailFocus, OpenDeviceDetail
 import { buildDeadlineHref, followDeadlineHref, isDeadlinePlanRoute } from '../deadlineUrls.ts';
 import { dispatchOpenSmartTaskCreate } from '../smartTaskCreate.ts';
 import { findLatestDevice, state } from '../state.ts';
+import { showPendingSteppedLoadReminder } from './steppedLoadFlowSetup.ts';
 
 /**
  * The device-detail overlay's DOM subscriptions: close/escape/backdrop, the
@@ -59,25 +60,37 @@ export const noteDeviceDetailOpened = (): void => {
   window.history.pushState({ pelsDeviceDetail: true }, '', window.location.href);
 };
 
-const requestDeviceDetailClose = (closeDeviceDetail: () => void): void => {
+type DeviceDetailDismissContext = Pick<
+  DeviceDetailOverlayHandlerContext,
+  'closeDeviceDetail' | 'getCurrentDetailDeviceId'
+>;
+
+const dismissDeviceDetail = (ctx: DeviceDetailDismissContext): void => {
+  const deviceId = ctx.getCurrentDetailDeviceId();
+  const device = deviceId ? findLatestDevice(deviceId) : undefined;
+  ctx.closeDeviceDetail();
+  if (device) showPendingSteppedLoadReminder(device);
+};
+
+const requestDeviceDetailClose = (ctx: DeviceDetailDismissContext): void => {
   if (closeRequestInFlight) return;
   if (historyEntryActive) {
     closeRequestInFlight = true;
     window.history.back();
     return;
   }
-  closeDeviceDetail();
+  dismissDeviceDetail(ctx);
 };
 
 const initDeviceDetailHistoryHandler = (
-  ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
+  ctx: DeviceDetailDismissContext,
 ) => {
   window.addEventListener('popstate', () => {
     if (!historyEntryActive) return;
     historyEntryActive = false;
     closeRequestInFlight = false;
     if (deviceDetailOverlay && !deviceDetailOverlay.hidden) {
-      ctx.closeDeviceDetail();
+      dismissDeviceDetail(ctx);
     }
   });
   // A close that did not go through Back (a flow that leaves the overlay for
@@ -92,22 +105,22 @@ const initDeviceDetailHistoryHandler = (
 
 
 const initDeviceDetailCloseHandlers = (
-  ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
+  ctx: DeviceDetailDismissContext,
 ) => {
-  deviceDetailClose?.addEventListener('click', () => requestDeviceDetailClose(ctx.closeDeviceDetail));
+  deviceDetailClose?.addEventListener('click', () => requestDeviceDetailClose(ctx));
   deviceDetailOverlay?.addEventListener('click', (event) => {
     if (event.target === deviceDetailOverlay) {
-      requestDeviceDetailClose(ctx.closeDeviceDetail);
+      requestDeviceDetailClose(ctx);
     }
   });
 };
 
 const initDeviceDetailEscapeHandler = (
-  ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
+  ctx: DeviceDetailDismissContext,
 ) => {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
-      requestDeviceDetailClose(ctx.closeDeviceDetail);
+      requestDeviceDetailClose(ctx);
     }
   });
 };
@@ -223,7 +236,7 @@ const initOvershootSegmented = () => {
 
 /** Close/backdrop, whole-row switch tap, and the overshoot segmented control. */
 export const initDeviceDetailOverlayChrome = (
-  ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
+  ctx: DeviceDetailDismissContext,
 ) => {
   initDeviceDetailCloseHandlers(ctx);
   initDeviceDetailHistoryHandler(ctx);

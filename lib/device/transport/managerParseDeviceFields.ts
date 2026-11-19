@@ -244,7 +244,7 @@ export function assembleDeviceSnapshot(params: {
     if (!control) return null;
     // A rejected member gates its temperature facet, not valid sibling controls.
     if (capsStatus.targetCaps.length > 0 && !temperature
-        && !control.binaryCapabilityId && !overlay.steppedLoadProfile) return null;
+        && !control.binaryCapabilityId && !overlay.steppedLoadProfile && !overlay.pendingSteppedLoad) return null;
     const lastFreshDataMs = resolveLastFreshDataMs(overlay, control, temperature !== undefined, measuredPower);
     const evChargingObservedAtMs = toCapabilityTimestampMs(overlay.capabilityObj.evcharger_charging?.lastUpdated);
     const evChargingStateObservedAtMs = toCapabilityTimestampMs(
@@ -269,6 +269,8 @@ export function assembleDeviceSnapshot(params: {
         ...resolveParsedChargerPhaseCurrents(deviceClassKey, effectiveDevice, previousSnapshot),
         isBatteryOrSolar: isBatteryOrSolarClassKey(deviceClassKey),
         steppedLoadProfile: overlay.steppedLoadProfile,
+        pendingSteppedLoad: overlay.pendingSteppedLoad,
+        manualFlowSteppedLoad: overlay.manualFlowSteppedLoad,
         nativeWriteCapabilities: overlay.nativeWriteCapabilities,
         targetPowerConfig: overlay.targetPowerConfig,
         automaticPowerControl: overlay.automaticPowerControl,

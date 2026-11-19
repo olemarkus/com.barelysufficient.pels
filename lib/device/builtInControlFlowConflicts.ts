@@ -3,12 +3,13 @@
  * answer (notes/native-wiring/README.md).
  *
  * A scan reads the owner's Homey Flows (`detectNativeWiringConflicts`) and
- * decides three things together: which Hoiax or Easee devices native wiring
+ * decides which Hoiax or Easee devices native wiring
  * auto-enables, which of them a Flow conflicts with, and the Flow list the
  * charging-current routes (Tesla, Zaptec, Futurehome) are held back by
- * (`ChargingCurrentControl.acceptFlowFacts`). An accepted change is applied
- * atomically: the device snapshot is re-projected and the plan rebuilt, and
- * a failure puts all three back, so the next scan is not taken as "no change"
+ * (`ChargingCurrentControl.acceptFlowFacts`). The same scan finds the Flow
+ * cards that admit saved manual stepped-load profiles. An accepted change
+ * re-projects the device snapshot and rebuilds the plan. A failure restores
+ * the previous decisions, so the next scan is not taken as "no change"
  * and retries.
  *
  * Every scan runs through one `FlowConflictRefreshCoordinator`: background
@@ -21,7 +22,7 @@
  * always takes precedence over them. The conflicts are kept across a restart
  * (`NativeFlowConflictState`).
  */
-import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
+import type { DeviceDescriptorRead, PendingSteppedLoad } from '../../packages/contracts/src/types';
 import type { ChargingCurrentRead } from '../../packages/contracts/src/chargingControl';
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type { AcceptedFlowConflictSlice, NativeFlowConflicts } from '../flowApi/acceptedFlowConflictStore';
@@ -30,7 +31,7 @@ import {
   type FlowConflictRefreshResult,
 } from '../flowApi/flowConflictRefreshCoordinator';
 import type { FlowReadResult } from '../flowApi/readUserFlows';
-import type { UserFlowFacts } from '../flowApi/userFlows';
+import type { SteppedLoadFlowCards, UserFlowFacts } from '../flowApi/userFlows';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import type { ShutdownLatch } from '../utils/shutdownLatch';
@@ -75,6 +76,9 @@ export class BuiltInControlFlowConflicts {
   private readonly conflicts: NativeFlowConflictState;
   private readonly coordinator = new FlowConflictRefreshCoordinator();
   private autoDecisions: Readonly<Record<string, boolean>> = {};
+  private steppedLoadCards: SteppedLoadFlowCards | undefined;
+  private steppedSetupProjectionPending = false;
+  private steppedUpdateScanQueued = false;
 
   constructor(
     private readonly shutdown: ShutdownLatch,
@@ -83,12 +87,30 @@ export class BuiltInControlFlowConflicts {
     private readonly getDeviceDescriptors: () => readonly DeviceDescriptorRead[],
     private readonly getChargingCurrentControl: () => ChargingCurrentControl,
     private readonly planRuntime: FlowConflictPlanRuntime,
+    private readonly steppedLoadCardsStore: AcceptedFlowConflictSlice<SteppedLoadFlowCards | undefined>,
   ) {
     this.conflicts = new NativeFlowConflictState(store);
   }
 
   /** Runs when the userdata database opens, before the transport's first parse. */
-  restoreSaved(): void { this.conflicts.restoreSaved(); }
+  restoreSaved(): void {
+    this.conflicts.restoreSaved();
+    try {
+      this.steppedLoadCards = this.steppedLoadCardsStore.read();
+    } catch (error) {
+      logger.warn({ event: 'stepped_load_flow_cards_restore_failed', err: normalizeError(error) });
+    }
+  }
+
+  steppedLoadFlowSetup(deviceId: string): PendingSteppedLoad['reason'] | 'ready' {
+    if (this.steppedLoadCards === undefined) return 'unverified';
+    switch (this.steppedLoadCards[deviceId]) {
+      case 'both': return 'ready';
+      case 'target': return 'missing_report';
+      case 'report': return 'missing_trigger';
+      default: return 'missing_both';
+    }
+  }
 
   /** The owner's explicit choice, else the auto-enable decision, held back while a Flow conflicts. */
   resolveNativeWiringEnabled(deviceId: string): boolean {
@@ -110,6 +132,20 @@ export class BuiltInControlFlowConflicts {
       // logged once tearing down, where it would hit a closing worker rpc.
       if (this.shutdown.isStopped()) return;
       logger.error({ event: 'flow_conflict_detection_failed', err: normalizeError(error) });
+    });
+  }
+
+  /** A saved Flow may complete setup while another scan is already running. */
+  runSteppedLoadCardUpdateScan(): void {
+    if (this.shutdown.isStopped() || this.steppedUpdateScanQueued) return;
+    this.steppedUpdateScanQueued = true;
+    void this.coordinator.requestExplicit(() => {
+      this.steppedUpdateScanQueued = false;
+      return this.scanAndApply();
+    }).catch((error: unknown) => {
+      if (!this.shutdown.isStopped()) {
+        logger.warn({ event: 'stepped_load_flow_card_update_scan_failed', err: normalizeError(error) });
+      }
     });
   }
 
@@ -204,8 +240,20 @@ export class BuiltInControlFlowConflicts {
     const charging = this.getChargingCurrentControl();
     const previousFlowWrites = charging.acceptedFlowWrites;
     const chargingRoutesChanged = charging.acceptFlowFacts(flowFacts);
+    const nextSteppedLoadCards = flowFacts.steppedLoadCards;
+    const previousSteppedLoadCards = this.steppedLoadCards;
+    const steppedSetupChanged = this.getDeviceDescriptors().some(({ id }) => (
+      this.ownerChoices.getDeviceControlProfile(id) !== undefined
+      && (previousSteppedLoadCards === undefined || previousSteppedLoadCards[id] !== nextSteppedLoadCards[id])
+    ));
+    this.steppedLoadCards = nextSteppedLoadCards;
+    // A readable inventory can revoke authority before the snapshot or plan
+    // catches up. Save it independently of the reversible native-route apply.
+    this.saveSteppedLoadCards(nextSteppedLoadCards);
+    this.steppedSetupProjectionPending ||= steppedSetupChanged;
     if (
-      !chargingRoutesChanged
+      !this.steppedSetupProjectionPending
+      && !chargingRoutesChanged
       && decisionKey(this.autoDecisions) === decisionKey(decisions)
       && conflictKey(this.conflicts.all) === conflictKey(conflicts)
     ) {
@@ -226,6 +274,7 @@ export class BuiltInControlFlowConflicts {
       // A rebuild reports its failure instead of throwing; roll back on it too.
       const rebuild = await this.planRuntime.rebuildPlan();
       if (rebuild.failed) throw new Error('Plan rebuild failed after a Flow-conflict change');
+      this.steppedSetupProjectionPending = false;
     } catch (error) {
       this.autoDecisions = previousDecisions;
       this.conflicts.accept(previousConflicts);
@@ -235,6 +284,14 @@ export class BuiltInControlFlowConflicts {
       // commands would disagree about who sets the device until the next refresh.
       if (projected && !this.shutdown.isStopped()) await this.reprojectAfterRollback();
       throw error;
+    }
+  }
+
+  private saveSteppedLoadCards(cards: SteppedLoadFlowCards): void {
+    try {
+      this.steppedLoadCardsStore.write(cards);
+    } catch (error) {
+      logger.warn({ event: 'stepped_load_flow_cards_save_failed', err: normalizeError(error) });
     }
   }
 

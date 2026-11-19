@@ -10,4 +10,4 @@ export type FlowSteppedLoadObservation = {
 /** The device owner admits Flow feedback before command convergence consumes it. */
 export type FlowSteppedLoadAdmission =
   | { kind: 'accepted'; profile: SteppedLoadProfile; observation: FlowSteppedLoadObservation }
-  | { kind: 'native_control' | 'invalid' | 'unchanged' };
+  | { kind: 'native_control' | 'flow_cards_pending' | 'invalid' | 'unchanged' };

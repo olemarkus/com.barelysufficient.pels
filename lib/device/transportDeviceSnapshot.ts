@@ -24,6 +24,8 @@ export type TransportControlBindingProbe = {
   binaryWriteCapabilityId?: string;
   binaryObservationCapabilityId?: string;
   flowBackedCapabilityIds?: string[];
+  /** The selected ladder depends on verified manual Flow wiring for command authority. */
+  manualFlowSteppedLoad?: true;
 };
 
 export type TransportBinaryControlObservation = BinaryControlObservation;

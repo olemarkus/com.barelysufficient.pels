@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { setMockSteppedLoadFlow } from '../helpers/mockSteppedLoadFlow';
 import {
   readAllObjectives,
   type DeferredObjectivePlanPreviewCandidate,
@@ -108,6 +109,7 @@ describe('createDeferredObjective (app)', () => {
     mockHomeyInstance.settings.set(MANAGED_DEVICES, managed);
     if (options.stepped) {
       mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, { 'heater-1': STEPPED_HEATER_PROFILE });
+      setMockSteppedLoadFlow('heater-1');
     }
     if (options.dailyBudget) {
       mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
@@ -115,6 +117,7 @@ describe('createDeferredObjective (app)', () => {
     }
     const app = createApp();
     await app.onInit();
+    if (options.stepped) await app.refreshFlowConflictsForUi();
     return app;
   };
 

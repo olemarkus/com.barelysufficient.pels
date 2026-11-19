@@ -23,7 +23,7 @@
  */
 import { createJsonRowTable } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
-import type { FlowCapabilityWrites } from './userFlows';
+import type { FlowCapabilityWrites, SteppedLoadFlowCards } from './userFlows';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /** One device's native-wiring conflict, as native wiring applies it. */
@@ -86,6 +86,35 @@ export const createChargingFlowWritesStore = (
     ])))),
   };
 };
+
+const isSteppedLoadFlowCardInventory = (value: unknown): value is SteppedLoadFlowCards => (
+  isUnknownRecord(value) && Object.entries(value).every(([deviceId, roles]) => (
+    deviceId.length > 0 && (roles === 'target' || roles === 'report' || roles === 'both')
+  ))
+);
+
+/** Keeps the last trusted inventory, including a successful empty scan. */
+export const createSteppedLoadFlowCardsStore = (
+  db: UserdataDatabase,
+): AcceptedFlowConflictSlice<SteppedLoadFlowCards | undefined> => {
+  const table = createJsonRowTable<SteppedLoadFlowCards>(
+    db, 'stepped_load_flow_cards', ['snapshot_id', 'cards_json'],
+    (value) => isSteppedLoadFlowCardInventory(value) ? value : undefined,
+  );
+  const snapshotId = 'accepted';
+  return {
+    read: () => db.transaction(() => table.read().get(snapshotId)),
+    write: (cards) => {
+      if (cards !== undefined) db.transaction(() => table.write(new Map([[snapshotId, cards]])));
+    },
+  };
+};
+
+export const createAcceptedFlowStores = (db: UserdataDatabase) => ({
+  nativeConflicts: createNativeFlowConflictStore(db),
+  chargingWrites: createChargingFlowWritesStore(db),
+  steppedLoadCards: createSteppedLoadFlowCardsStore(db),
+});
 
 /**
  * A slice bound to the userdata database while it is open. A read while it is

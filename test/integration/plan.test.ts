@@ -32,6 +32,7 @@ import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { setMockSteppedLoadFlow } from '../helpers/mockSteppedLoadFlow';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -1564,9 +1565,11 @@ describe('Device plan snapshot', () => {
       'dev-1': { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 500 }] },
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await app.onInit();
+    await app.refreshFlowConflictsForUi();
     expect(app.deviceManager.getSnapshotByDeviceId('dev-1')).toMatchObject({
       binaryControllable: false,
       controlModel: 'stepped_load',

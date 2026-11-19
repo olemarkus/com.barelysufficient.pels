@@ -79,31 +79,28 @@ describe('resolveDeviceDetailKind', () => {
   });
 
   it('keeps a thermostat with a stepped control model as temperature', async () => {
-    const { state } = await import('../src/ui/state.ts');
     const { resolveDeviceDetailKind, isSteppedLoadControlModel } = await import('../src/ui/deviceKind.ts');
     const device = buildDevice({
       deviceClass: 'thermostat',
       deviceType: 'temperature',
       targets: [{ id: 'target_temperature', value: 65, unit: '\u00b0C' }],
-    });
-    state.deviceControlProfiles = {
-      [device.id]: {
+      steppedLoadProfile: {
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 2000 }],
       },
-    };
+    });
     expect(isSteppedLoadControlModel(device)).toBe(true);
     expect(resolveDeviceDetailKind(device)).toBe('temperature');
   });
 
   it('resolves a non-temperature stepped device as stepped', async () => {
-    const { state } = await import('../src/ui/state.ts');
     const { resolveDeviceDetailKind } = await import('../src/ui/deviceKind.ts');
-    const device = buildDevice({ deviceClass: 'heater', deviceType: 'onoff' });
-    state.deviceControlProfiles = {
-      [device.id]: {
+    const device = buildDevice({
+      deviceClass: 'heater',
+      deviceType: 'onoff',
+      steppedLoadProfile: {
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 3000 }],
       },
-    };
+    });
     expect(resolveDeviceDetailKind(device)).toBe('stepped');
   });
 

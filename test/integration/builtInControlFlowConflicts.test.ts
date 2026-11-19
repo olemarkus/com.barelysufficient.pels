@@ -2,9 +2,9 @@ import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
-import { ADVANCED_FLOW_API_PATH } from '../../lib/flowApi/readUserFlows';
+import { ADVANCED_FLOW_API_PATH, type FlowReadResult } from '../../lib/flowApi/readUserFlows';
 import { mockHomeyInstance } from '../mocks/homey';
-import { NATIVE_EV_WIRING_DEVICES } from '../../lib/utils/settingsKeys';
+import { DEVICE_CONTROL_PROFILES, NATIVE_EV_WIRING_DEVICES } from '../../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // Drives BuiltInControlFlowConflicts end-to-end: real flow read
@@ -56,6 +56,56 @@ describe('BuiltInControlFlowConflicts', () => {
     await app['builtInControlFlowConflicts'].applyBackgroundScan();
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('reprojects saved manual ladders as the Flow pair changes and retains verified setup on read failure', async () => {
+    const deviceId = 'heater';
+    const trigger = {
+      id: 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed',
+      args: { device: { id: deviceId } },
+    };
+    const report = {
+      id: 'homey:app:com.barelysufficient.pels:report_stepped_load_actual_step',
+      args: { device: { id: deviceId } },
+    };
+    let actions: typeof report[] = [];
+    let readFails = false;
+    setRestClient({
+      get: async (path) => {
+        if (readFails) throw new Error('Flow API unavailable');
+        return path === ADVANCED_FLOW_API_PATH ? {} : { heat: { trigger, actions } };
+      },
+      put: vi.fn(),
+    });
+    const descriptor = { ...hoiaxCandidate(deviceId), nativeWriteCapabilities: [] };
+    const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([descriptor]);
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, {
+      [deviceId]: { steps: [{ id: 'low', planningPowerW: 100 }, { id: 'high', planningPowerW: 200 }] },
+    });
+    app.deviceControlSettings.reload();
+    const owner = app.builtInControlFlowConflicts;
+    expect(owner.steppedLoadFlowSetup(deviceId)).toBe('unverified');
+
+    await app.refreshFlowConflictsForUi();
+    expect(owner.steppedLoadFlowSetup(deviceId)).toBe('missing_report');
+
+    actions = [report];
+    await app.refreshFlowConflictsForUi();
+    expect(owner.steppedLoadFlowSetup(deviceId)).toBe('ready');
+    expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
+
+    readFails = true;
+    await expect(app.refreshFlowConflictsForUi()).resolves.toEqual({ state: 'unavailable' });
+    expect(owner.steppedLoadFlowSetup(deviceId)).toBe('ready');
+
+    actions = [];
+    readFails = false;
+    rebuildPlanFromCache.mockResolvedValueOnce({ failed: true });
+    await expect(app.refreshFlowConflictsForUi()).rejects.toThrow('Plan rebuild failed');
+    expect(owner.steppedLoadFlowSetup(deviceId)).toBe('missing_report');
+    const previousBuildCount = rebuildPlanFromCache.mock.calls.length;
+    await app.refreshFlowConflictsForUi();
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(previousBuildCount + 1);
   });
 
   it('holds an explicit choice back when a conflicting Flow appears, and re-parses each time', async () => {
@@ -137,8 +187,7 @@ describe('BuiltInControlFlowConflicts', () => {
 
   const chargingDouble = (
     order: string[],
-    readFlows: () => Promise<{ status: 'ok'; facts: { writes: Map<string, never>; evSocReporters: [], powerUsageReporters: { flowCount: number } } }
-      | { status: 'unknown'; reason: string }>,
+    readFlows: () => Promise<FlowReadResult>,
     routesMove: () => boolean,
   ) => partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
     acceptFlowFacts: () => { order.push('accept'); return routesMove(); },
@@ -147,7 +196,7 @@ describe('BuiltInControlFlowConflicts', () => {
     readFlows: async () => { order.push('read'); return readFlows(); },
     describe: (flows) => { order.push(`describe:${flows.status}`); return []; },
   });
-  const clearFacts = { writes: new Map<string, never>(), evSocReporters: [] as [], powerUsageReporters: { flowCount: 0 } };
+  const clearFacts = { writes: new Map<string, never>(), evSocReporters: [] as [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} };
 
   it('reads and applies the charging page Flow list after a running scan, so it never lands over a newer one', async () => {
     let releaseScan: () => void = () => {};
@@ -290,7 +339,7 @@ describe('BuiltInControlFlowConflicts', () => {
     await background;
     await expect(explicit).resolves.toEqual({
       state: 'resolved',
-      flowFacts: { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } },
+      flowFacts: { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} },
     });
     expect(getCalls).toBe(4);
     expect(app['builtInControlFlowConflicts']['conflicts'].all).toEqual({});

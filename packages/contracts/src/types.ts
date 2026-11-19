@@ -433,6 +433,11 @@ export type BinaryControlObservation = {
     source: 'snapshot_refresh' | 'realtime_capability' | 'device_update';
 };
 
+export type PendingSteppedLoad = {
+    profile: SteppedLoadProfile;
+    reason: 'unverified' | 'missing_both' | 'missing_trigger' | 'missing_report';
+};
+
 /**
  * Static-ish identity, configuration, and capability metadata for a device.
  * One of the two surfaces that decompose `TargetDeviceSnapshot` by concern (see
@@ -493,6 +498,8 @@ export type DeviceDescriptor = {
     // CONFIGURE-stepping hint shown for NON-stepped (unconfigured) devices, so it is
     // not part of the stepped cluster.
     suggestedSteppedLoadProfile?: SteppedLoadProfile;
+    /** A saved Flow ladder exposed for setup, without stepped command authority. */
+    pendingSteppedLoad?: PendingSteppedLoad;
     automaticPowerControl?: AutomaticPowerControl;
     // Capabilities PELS writes when it natively controls this stepped-load
     // device (max_power_* / onoff / target_power / an Easee's

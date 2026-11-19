@@ -219,14 +219,12 @@ describe('limiting card statement vs radiogroup', () => {
       deviceClass: 'boiler',
       deviceType: 'temperature',
       targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+      steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] },
     });
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
     // A stepped water heater whose setpoint another Flow owns: the ladder stays,
     // the setpoint arm goes.
-    state.deviceControlProfiles = {
-      [device.id]: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] },
-    };
     state.temperatureControlDisabledMap = { [device.id]: true };
     state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 45, coolingTemperature: 28 } };
 

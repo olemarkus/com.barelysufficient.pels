@@ -1,7 +1,5 @@
 import {
-  getSteppedLoadHighestStep,
   normalizeDeviceControlProfiles,
-  resolveSteppedLoadPlanningPowerKw,
 } from '../../../shared-domain/src/deviceControlProfiles.ts';
 import type {
   DeviceControlModel,
@@ -99,11 +97,6 @@ export const appliesChargingCurrentLimits = (device: SettingsUiDeviceView): bool
   return chargingLadderCarriesCurrent(profile, getEffectiveTargetPowerConfig(device)?.preset);
 };
 
-const hasResolvedSteppedLoadProfile = (device: SettingsUiDeviceView): boolean => (
-  device.steppedLoadProfile !== undefined
-  || getStoredDeviceControlProfile(device.id) !== null
-);
-
 const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean => {
   const targetPowerConfig = getEffectiveTargetPowerConfig(device);
   return targetPowerConfig?.enabled !== false
@@ -115,9 +108,8 @@ const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean =>
  *
  * The device owner chooses the runtime ladder: enabled native control, then
  * configured target-power control, then a saved Flow profile. The published
- * `steppedLoadProfile` is that verdict. This UI also covers edits awaiting a
- * runtime reparse: a locally saved profile, an enabled EV target-power preset,
- * or an observed native activation.
+ * `steppedLoadProfile` is that verdict. A saved manual Flow profile alone
+ * leaves the effective control model at Default until the runtime admits it.
  *
  * What is deliberately NOT a rung: a bare `suggestedSteppedLoadProfile`. The
  * device owner keeps suggestions separate from active control, so a device
@@ -126,7 +118,7 @@ const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean =>
 export const isSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null): boolean => {
   if (!device) return false;
   if (isNativeSteppedLoadProfileActive(device)) return true;
-  if (hasResolvedSteppedLoadProfile(device)) return true;
+  if (device.steppedLoadProfile) return true;
   return hasEnabledEvTargetPowerPreset(device);
 };
 
@@ -145,8 +137,7 @@ export const hasSteppedLoadSupport = (device?: SettingsUiDeviceView | null): boo
 export const getEffectiveControlModel = (device: SettingsUiDeviceView): DeviceControlModel => {
   if (isNativeSteppedLoadProfileActive(device)) return 'stepped_load';
   if (device.controlModel) return device.controlModel;
-  const storedProfile = getStoredDeviceControlProfile(device.id);
-  if (storedProfile) return 'stepped_load';
+  if (device.steppedLoadProfile) return 'stepped_load';
   const storedTargetPowerConfig = getStoredTargetPowerConfig(device.id);
   if (storedTargetPowerConfig && storedTargetPowerConfig.enabled !== false) return 'stepped_load';
   return supportsTemperatureDevice(device) ? 'temperature_target' : 'binary_power';
@@ -191,6 +182,7 @@ export const applyLocalDeviceControlProfile = (
   const device = state.latestDevices.find((entry) => entry.id === deviceId);
   if (!device) return;
   if (!profile) {
+    delete device.pendingSteppedLoad;
     device.controlModel = supportsTemperatureDevice(device) ? 'temperature_target' : 'binary_power';
     delete device.steppedLoadProfile;
     delete device.desiredStepId;
@@ -199,13 +191,9 @@ export const applyLocalDeviceControlProfile = (
     return;
   }
 
-  const selectedStepId = device.selectedStepId
-    ?? device.desiredStepId
-    ?? getSteppedLoadHighestStep(profile)?.id;
-  device.controlModel = 'stepped_load';
-  device.steppedLoadProfile = profile;
-  device.selectedStepId = selectedStepId;
-  device.planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
+  if (!device.steppedLoadProfile) {
+    device.pendingSteppedLoad = { profile, reason: device.pendingSteppedLoad?.reason ?? 'unverified' };
+  }
 };
 
 export const normalizeDeviceTargetPowerConfigs = (value: unknown): DeviceTargetPowerConfigs => {

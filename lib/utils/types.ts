@@ -13,6 +13,7 @@ export type Logger = {
 export type FlowAutocompleteResult = { id: string; name: string };
 
 export type FlowCard = {
+    on?: (event: 'update', listener: () => void) => unknown;
     registerRunListener: (fn: (args: unknown, state?: unknown) => Promise<boolean> | boolean | void) => void;
     registerArgumentAutocompleteListener: (
         arg: string,

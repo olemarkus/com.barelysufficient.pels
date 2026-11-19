@@ -194,13 +194,14 @@ describe('applyDeviceDetailSectionLayout', () => {
   });
 
   it('leads the stepped page with the profile card', async () => {
-    const { module, state } = await loadLayout();
-    const device = buildDevice({ deviceClass: 'heater', deviceType: 'onoff' });
-    state.deviceControlProfiles = {
-      [device.id]: {
+    const { module } = await loadLayout();
+    const device = buildDevice({
+      deviceClass: 'heater',
+      deviceType: 'onoff',
+      steppedLoadProfile: {
         steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 3000 }],
       },
-    };
+    });
 
     module.applyDeviceDetailSectionLayout(device);
 

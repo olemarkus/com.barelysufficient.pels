@@ -70,7 +70,17 @@ export type UserFlowFacts = {
   writes: FlowCapabilityWrites;
   evSocReporters: EvSocFlowReporter[];
   powerUsageReporters: PowerUsageFlowReporters;
+  steppedLoadCards: SteppedLoadFlowCards;
 };
+
+/** Card roles found in enabled, valid Flows, by PELS device argument. */
+export type SteppedLoadFlowCards = Readonly<Record<string, 'target' | 'report' | 'both'>>;
+
+const STEPPED_TARGET_CARD_ID = 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed';
+const STEPPED_REPORT_CARD_IDS = new Set([
+  'homey:app:com.barelysufficient.pels:report_stepped_load_actual_step',
+  'homey:app:com.barelysufficient.pels:report_stepped_load_power',
+]);
 
 const DEVICE_CARD_ID_PREFIX = 'homey:device:';
 export const EV_SOC_REPORT_CARD_ID = 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level';
@@ -150,7 +160,21 @@ type FlowScan = {
   evSocReports: Map<string, Map<string, string>>;
   /** flowId → flowName for each enabled Flow that runs "Report power usage". */
   powerUsageReports: Map<string, string>;
+  steppedLoadCards: Map<string, SteppedLoadFlowCards[string]>;
 };
+
+function collectSteppedLoadCard(
+  cards: FlowScan['steppedLoadCards'],
+  card: unknown,
+  role: 'target' | 'report',
+): void {
+  if (!isUnknownRecord(card) || typeof card.id !== 'string' || !isUnknownRecord(card.args)) return;
+  if (role === 'target' ? card.id !== STEPPED_TARGET_CARD_ID : !STEPPED_REPORT_CARD_IDS.has(card.id)) return;
+  const deviceId = readFlowDeviceId(card.args.device);
+  if (!deviceId) return;
+  const previous = cards.get(deviceId);
+  cards.set(deviceId, previous !== undefined && previous !== role ? 'both' : role);
+}
 
 function collectFromCard(
   scan: FlowScan,
@@ -197,8 +221,10 @@ function collectFromFlatFlows(
     const actions = flow.actions;
     if (!Array.isArray(actions)) continue;
     const flowName = flowDisplayName(flow);
+    if (flow.broken !== true) collectSteppedLoadCard(scan.steppedLoadCards, flow.trigger, 'target');
     for (const action of actions) {
       collectFromCard(scan, action, flowId, flowName);
+      if (flow.broken !== true) collectSteppedLoadCard(scan.steppedLoadCards, action, 'report');
     }
   }
 }
@@ -209,12 +235,20 @@ function collectFromAdvancedFlows(
 ): void {
   for (const [flowId, flow] of Object.entries(advancedFlows)) {
     if (!isUnknownRecord(flow) || isDisabledFlow(flow)) continue;
-    const cards = flow.cards;
-    if (!isUnknownRecord(cards)) continue;
-    const flowName = flowDisplayName(flow);
-    for (const card of Object.values(cards)) {
-      if (!isUnknownRecord(card) || card.type !== 'action') continue;
+    collectAdvancedFlowCards(scan, flowId, flow);
+  }
+}
+
+function collectAdvancedFlowCards(scan: FlowScan, flowId: string, flow: Record<string, unknown>): void {
+  if (!isUnknownRecord(flow.cards)) return;
+  const flowName = flowDisplayName(flow);
+  for (const card of Object.values(flow.cards)) {
+    if (!isUnknownRecord(card)) continue;
+    if (card.type === 'action') {
       collectFromCard(scan, card, flowId, flowName);
+      if (flow.broken !== true) collectSteppedLoadCard(scan.steppedLoadCards, card, 'report');
+    } else if (card.type === 'trigger' && flow.broken !== true) {
+      collectSteppedLoadCard(scan.steppedLoadCards, card, 'target');
     }
   }
 }
@@ -231,7 +265,12 @@ export function normalizeUserFlowFacts(
   flatFlows: Record<string, unknown>,
   advancedFlows: Record<string, unknown>,
 ): UserFlowFacts {
-  const scan: FlowScan = { writes: new Map(), evSocReports: new Map(), powerUsageReports: new Map() };
+  const scan: FlowScan = {
+    writes: new Map(),
+    evSocReports: new Map(),
+    powerUsageReports: new Map(),
+    steppedLoadCards: new Map(),
+  };
   collectFromFlatFlows(scan, flatFlows);
   collectFromAdvancedFlows(scan, advancedFlows);
   const evSocReporters = [...scan.evSocReports.entries()].map(([chargerDeviceId, byFlow]) => {
@@ -243,7 +282,12 @@ export function normalizeUserFlowFacts(
     flowCount: scan.powerUsageReports.size,
     ...(powerUsageFlowName === undefined ? {} : { flowName: powerUsageFlowName }),
   };
-  return { writes: scan.writes, evSocReporters, powerUsageReporters };
+  return {
+    writes: scan.writes,
+    evSocReporters,
+    powerUsageReporters,
+    steppedLoadCards: Object.fromEntries(scan.steppedLoadCards),
+  };
 }
 
 /** The Flow's name when exactly one named Flow is responsible, else none. */

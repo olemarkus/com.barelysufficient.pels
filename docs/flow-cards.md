@@ -137,9 +137,11 @@ Use the device-state conditions to avoid duplicate actions:
 
 Check **Setup** on the device first. If PELS offers built-in level control, use it. For a device whose levels can only be set through vendor Flow cards:
 
-1. Configure the step list in the PELS device settings.
+1. Turn on **Managed by PELS**, then configure the step list in the device settings.
 2. Use **Stepped device target changed** for the device to map PELS intent to vendor actions.
 3. Report the resulting step back through one of the stepped-load feedback cards.
+
+PELS uses the device’s Default control until it finds the target-change card and a feedback card for that device in enabled Homey Flows. You can save and edit the profile while you wire the Flows. Use **Check Flows** on the device page after saving the Flows. After repeated level requests go unanswered, the device shows a level-confirmation warning.
 
 The full worked example lives in [Wire a Flow-Based Load Device](/how-to-headroom-expected-power-flow-control).
 

@@ -192,8 +192,8 @@ test('a Futurehome current-limit action in a Flow blocks built-in control', asyn
 test('a Flow found setting the current after built-in control was selected holds it back until the Flow is gone', async () => {
   const { control } = fixture(zaptec(true));
   await control.save('charger', selected);
-  const writing = { writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]), evSocReporters: [], powerUsageReporters: { flowCount: 0 } };
-  const clear = { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } };
+  const writing = { writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} };
+  const clear = { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} };
   const snapshot = { id: 'charger', controlAdapter: { kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: false } };
 
   expect(control.routesBuiltIn('charger')).toBe(true);
@@ -241,7 +241,7 @@ test('a held-back route stays held back across a restart on the same store', asy
   await first.control.save('charger', selected);
   first.control.acceptFlowFacts({
     writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]),
-    evSocReporters: [], powerUsageReporters: { flowCount: 0 },
+    evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {},
   });
 
   const restarted = fixture(zaptec(true), first.flowWritesStore);
@@ -254,15 +254,15 @@ test('an unreadable store is rewritten by the next accepted scan, even one with 
   const write = vi.fn();
   const store = { read: () => { throw new Error('disk'); }, write };
   const { control } = fixture(zaptec(true), store);
-  control.acceptFlowFacts({ writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } });
+  control.acceptFlowFacts({ writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} });
   // The store writes only the rows that changed, so saving the empty list clears what it still holds.
   expect(write).toHaveBeenCalledExactlyOnceWith(new Map());
 });
 
 test('a charger with neither built-in control nor a current-setting Flow has no current route', async () => {
   const { control, inventory } = fixture(zaptec(true));
-  const writing = { writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]), evSocReporters: [], powerUsageReporters: { flowCount: 0 } };
-  const clear = { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } };
+  const writing = { writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} };
+  const clear = { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {} };
 
   expect(control.lacksCurrentRoute('charger')).toBe(true);
   expect(control.lacksCurrentRoute('heater')).toBe(false);

@@ -113,7 +113,8 @@ import {
   applyDeviceDetailSectionLayout,
   autoExpandSetupWhenUnmanaged,
 } from './sectionLayout.ts';
-import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from '../deviceKind.ts';
+import { resolveSelectedDeviceDetailControlMode, resolveDeviceDetailKind } from '../deviceKind.ts';
+import { initSteppedLoadFlowCheck, renderSteppedLoadFlowSetup } from './steppedLoadFlowSetup.ts';
 import { createPendingDeviceDetailOpen, type DeviceDetailFocus } from './focus.ts';
 import {
   initDeviceDetailBudgetExemptHandler,
@@ -247,18 +248,19 @@ const syncControlModelRow = (
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): void => {
   if (!deviceDetailControlModel || !deviceDetailControlModelRow) return;
-  const effectiveControlMode = device ? resolveDeviceDetailControlMode(device) : 'default';
+  const selectedControlMode = device ? resolveSelectedDeviceDetailControlMode(device) : 'default';
   const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
-  syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
-  deviceDetailControlModel.value = effectiveControlMode;
+  syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, selectedControlMode);
+  deviceDetailControlModel.value = selectedControlMode;
   // Not gated on "Disable temperature control": picking a control model is
   // configuration, not a `target_temperature` write, and locking the select
   // is what kept a flagged device from ever being given a step ladder.
-  deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
+  const canSetControlModel = controlState.canManageDevice || device?.pendingSteppedLoad !== undefined;
+  deviceDetailControlModel.disabled = !canSetControlModel || nativeSteppedLoadLocked;
   const controlModelLabel = device?.automaticPowerControl ? 'Manual model' : 'Control model';
   deviceDetailControlModel.setAttribute('aria-label', controlModelLabel);
   if (deviceDetailControlModelLabel) deviceDetailControlModelLabel.textContent = controlModelLabel;
-  deviceDetailControlModelRow.hidden = !controlState.canManageDevice || isAutomaticPowerControlActive(device);
+  deviceDetailControlModelRow.hidden = !canSetControlModel || isAutomaticPowerControlActive(device);
 };
 
 const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDeviceView | null) => {
@@ -362,6 +364,7 @@ const refreshOpenDeviceDetail = () => {
 
 const renderDeviceDetailPowerModel = (device: SettingsUiDeviceView): void => {
   renderSteppedLoadDraft(device);
+  renderSteppedLoadFlowSetup(device);
   renderTargetPowerConfig(device);
   renderChargerCurrentLimits(device, refreshOpenDeviceDetail);
 };
@@ -518,6 +521,10 @@ export const initDeviceDetailHandlers = () => {
     closeDeviceDetail();
   });
   initDeviceDetailControlModelHandler();
+  initSteppedLoadFlowCheck(() => {
+    refreshSharedDeviceViews();
+    notifyDevicesUpdated();
+  });
   initAutomaticPowerControlHandlers(() => currentDetailDeviceId, () => {
     refreshSharedDeviceViews();
     refreshOpenDeviceDetail();

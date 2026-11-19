@@ -71,7 +71,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
 // stays structurally assignable, so callers pass unchanged.
 export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
-    'flowConflict' | 'automaticPowerControl'
+    'flowConflict' | 'automaticPowerControl' | 'pendingSteppedLoad'
   >
   & { phaseFootprintRead?: SettingsUiPhaseFootprintRead }
   & { chargingPhaseControl?: import('../../../contracts/src/chargingPhases.ts').ChargingPhaseRead }
