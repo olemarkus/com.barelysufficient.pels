@@ -46,6 +46,7 @@ export const buildPlanInputs = (
   // "Estimated — refining as PELS observes charging" note next to the rate
   // row; suppressed when the rate came from the learned profile.
   const { rateMean, usingBootstrap } = resolveDisplayRateAndSpeedMode(activePlan);
+  const { allocationRank } = activePlan.latest;
   const planningSpeedKw = resolvePositiveNumber(activePlan.latest.planningSpeedKw);
   return {
     perUnitRateLabel: objective.kind === 'energy' ? null : formatPerUnitRateLabel(rateMean),
@@ -53,8 +54,8 @@ export const buildPlanInputs = (
     maxPowerLabel: planningSpeedKw === null ? null : `At least ${formatMaxPowerLabel(planningSpeedKw)}`,
     maxPowerNote: planningSpeedKw === null ? null : SMART_TASK_GUARANTEE_COPY.conditions,
     measuredPowerLabel: hasObservedMeasuredPower(device) ? formatMaxPowerLabel(device.measuredPowerKw) : null,
-    priorityLabel: device.priority === undefined ? null : `Priority ${device.priority}`,
-    priorityNote: device.priority === undefined ? null : formatSmartTaskPriorityNote(device.priority),
+    priorityLabel: allocationRank === undefined ? null : `Priority ${allocationRank}`,
+    priorityNote: allocationRank === undefined ? null : formatSmartTaskPriorityNote(allocationRank),
     extraPermissionsValue: formatSmartTaskExtraPermissionsValue(objective.rescue),
     provenanceRows: resolveKwhPerUnitProvenanceRows(
       activePlan.kwhPerUnitProvenance,

@@ -227,6 +227,8 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // immediate coordinated replan; ordinary higher-task energy/rate drift on an
   // unchanged set of claimed intervals still obeys the hourly settle gate.
   allocationContextSignature?: string;
+  /** One-based rank used to allocate this revision. Older revisions omit it. */
+  allocationRank?: number;
 };
 
 export type DeferredObjectiveActivePlanPendingReason =

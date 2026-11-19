@@ -99,6 +99,7 @@ const buildHeaterActivePlan = (params: {
   // Producer-resolved verdict for the floor shortfall, and the only budget
   // signal a revision carries. Set it to mirror the producer's mapping for the
   // scenario under test; absence means the floor was not short at all.
+  allocationRank?: number;
   floorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
   planningSpeedKw?: number;
   initialPlanningSpeedKw?: number;
@@ -129,6 +130,7 @@ const buildHeaterActivePlan = (params: {
       ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
     ...(params.energyExpectedKWh !== undefined ? { energyExpectedKWh: params.energyExpectedKWh } : {}),
     planStatus: params.planStatus ?? ('on_track' as const),
+    ...(params.allocationRank === undefined ? {} : { allocationRank: params.allocationRank }),
     ...(params.floorShortfallCause !== undefined
       ? { floorShortfallCause: params.floorShortfallCause }
       : {}),
@@ -642,23 +644,28 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.maxPowerLabel).toBe('At least 1.19 kW');
   });
 
-  it.each([1, 2, 3])('explains priority %s and preserves a measured zero separately from the guarantee', (priority) => {
+  it.each([1, 2, 3, undefined])('shows the committed allocation rank (%s) with a measured zero', (allocationRank) => {
     const now = new Date(2026, 0, 1, 13);
     const deadline = atLocalHour(now, 6);
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
-        now, deadline, plannedHourOffsets: [0], plannedKWhPerHour: 2, planningSpeedKw: 2,
+        now, deadline, plannedHourOffsets: [0], plannedKWhPerHour: 2, planningSpeedKw: 2, allocationRank,
       })),
       deviceId: 'heater',
-      devices: heaterDevices({ temperature: heaterTemperature(18, 20), measuredPowerKw: 0, priority }),
+      devices: heaterDevices({ temperature: heaterTemperature(18, 20), measuredPowerKw: 0, priority: 47 }),
       prices: pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105])),
       nowMs: now.getTime(),
     }));
     expect(payload.planInputs.maxPowerLabel).toBe('At least 2.0 kW');
     expect(payload.planInputs.measuredPowerLabel).toBe('0 kW');
-    expect(payload.planInputs.priorityLabel).toBe(`Priority ${priority}`);
-    expect(payload.planInputs.priorityNote).toContain(priority === 1
-      ? 'No higher-priority devices' : priority === 2 ? 'priority 1 devices' : 'higher-priority devices');
+    if (allocationRank === undefined) {
+      expect(payload.planInputs.priorityLabel).toBeNull();
+      expect(payload.planInputs.priorityNote).toBeNull();
+    } else {
+      expect(payload.planInputs.priorityLabel).toBe(`Priority ${allocationRank}`);
+      expect(payload.planInputs.priorityNote).toContain(allocationRank === 1
+        ? 'No higher-priority devices' : allocationRank === 2 ? 'priority 1 devices' : 'higher-priority devices');
+    }
     expect(payload.planInputs.maxPowerNote).toContain('if background and higher-priority usage follow the forecasts');
   });
 

@@ -4447,6 +4447,24 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(normalizeDeferredObjectiveActivePlans(persisted).plansByDeviceId.dev).toBeUndefined();
     });
 
+    it.each([0, -1, 1.5, Number.POSITIVE_INFINITY, '2', null])(
+      'rejects a revision with invalid allocation rank %s', (allocationRank) => {
+        const normalized = normalizeDeferredObjectiveActivePlans({
+          version: 2, plansByDeviceId: { dev: basePlan({ allocationRank }) },
+        });
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      },
+    );
+
+    it.each([1, 47, undefined])('restores the recorded allocation rank %s', (allocationRank) => {
+      const normalized = normalizeDeferredObjectiveActivePlans({
+        version: 2, plansByDeviceId: { dev: basePlan(allocationRank === undefined ? {} : { allocationRank }) },
+      });
+      const latest = normalized.plansByDeviceId.dev?.latest;
+      expect(latest).toMatchObject({ revision: 1 });
+      expect(latest?.allocationRank).toBe(allocationRank);
+    });
+
     it('keeps a persisted plan carrying a stray legacy `devicePriority`', () => {
       // `devicePriority` was dropped from the revision contract once ordering
       // moved to the live mode catalog; nothing writes or reads it. A plan

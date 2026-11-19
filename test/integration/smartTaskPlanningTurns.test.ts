@@ -142,6 +142,36 @@ describe('bounded smart-task planning turns', () => {
     expect(home.recorder.getActivePlan('load-6')?.latest?.revisedAtMs).toBe(START_MS + 150_000);
   });
 
+  it('keeps the booked allocation rank during a roster review and updates it on fresh allocation', () => {
+    const home = createHarness(2);
+    // A higher-ranked managed load competes for headroom even without a task.
+    delete home.settings.objectivesByDeviceId['load-1'];
+    const laterIsCheaper = () => prices().map((period) => ({
+      ...period, price: 100 - period.price, moneyPrice: 100 - period.moneyPrice,
+    }));
+    home.setPriceRead(laterIsCheaper);
+    expect(freshIds(home.tick(START_MS))).toEqual(['load-2']);
+    const before = home.recorder.getActivePlan('load-2')?.latest;
+    expect(before?.allocationRank).toBe(2);
+
+    home.devices.shift();
+    home.setPriceRead(() => []);
+    const [reviewed] = home.tick(START_MS + 30_000);
+    expect(reviewed?.diagnostic.contextReviewed).toBe(true);
+    expect(reviewed?.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+    expect(home.recorder.getActivePlan('load-2')?.latest).toMatchObject({
+      revision: before?.revision, allocationRank: 2,
+    });
+
+    home.setPriceRead(laterIsCheaper);
+    expect(freshIds(home.tick(START_MS + 60_000))).toEqual(['load-2']);
+    const after = home.recorder.getActivePlan('load-2');
+    expect(after?.original?.allocationRank).toBe(2);
+    expect(after?.latest?.allocationRank).toBe(1);
+    expect(after?.latest?.hours.filter((hour) => hour.plannedKWh > 0))
+      .toEqual(before?.hours.filter((hour) => hour.plannedKWh > 0));
+  });
+
   it('serves committed plans without price reads or building policy horizons', () => {
     const home = createHarness(2);
     home.tick(START_MS);
@@ -381,15 +411,20 @@ describe('bounded smart-task planning turns', () => {
     // The earlier format: the roster, then each higher claim as a device and topology pair.
     const [rosterSignature] = JSON.parse(planned) as [string, unknown];
     lowerLatest.allocationContextSignature = JSON.stringify([rosterSignature, [['load-1', 'main']]]);
+    delete lowerLatest.allocationRank;
     const restarted = createHarness(2, () => saved);
     const lowerOf = (reports: readonly TaskEvaluationReport[]) => (
       reports.find(({ evaluation }) => evaluation.deviceId === 'load-2')
     );
 
-    expect(lowerOf(restarted.evaluate(START_MS + 60_000, SERVING_LANE))?.evaluation.planning)
+    const frozen = restarted.evaluate(START_MS + 60_000, SERVING_LANE);
+    expect(lowerOf(frozen)?.evaluation.planning)
       .toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+    restarted.recorder.observe(frozen.map(({ diagnostic }) => diagnostic), START_MS + 60_000);
+    expect(restarted.recorder.getActivePlan('load-2')?.latest).not.toHaveProperty('allocationRank');
     expect(freshIds(restarted.tick(START_MS + 60_000))).toEqual(['load-2']);
     expect(restarted.recorder.getActivePlan('load-2')?.latest?.allocationContextSignature).toBe(planned);
+    expect(restarted.recorder.getActivePlan('load-2')?.latest?.allocationRank).toBe(2);
     expect(lowerOf(restarted.evaluate(START_MS + 90_000, SERVING_LANE))?.evaluation.planning.kind).toBe('allocated');
   });
 

@@ -148,6 +148,7 @@ export const buildFreshDiagnostic = (
     horizonBucketCount: policyHorizon.horizonBucketCount,
     expectedStepId: planWithPriceWatermark.expectedStepId,
     ...reportAppliedPermissions(evaluation),
+    ...(task.reservationEligible ? { allocationRank: task.priority } : {}),
     horizonPlan: planWithPriceWatermark,
   };
 };
