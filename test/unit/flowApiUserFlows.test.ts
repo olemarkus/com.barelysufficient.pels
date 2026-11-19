@@ -264,6 +264,44 @@ describe('normalizeUserFlowFacts', () => {
   });
 });
 
+describe('normalizeUserFlowFacts power usage reporters', () => {
+  const reportPower = {
+    id: 'homey:app:com.barelysufficient.pels:report_power_usage',
+    args: { power: '[[trigger::meter::measure_power]]' },
+  };
+
+  it('names the one enabled Advanced Flow that runs Report power usage', () => {
+    const facts = normalizeUserFlowFacts({}, {
+      meter: {
+        name: ' Strømforbruk ',
+        cards: {
+          trigger: { id: 'homey:device:meter:measure_power_changed', type: 'trigger' },
+          report: { ...reportPower, type: 'action' },
+        },
+      },
+    });
+
+    expect(facts.powerUsageReporters).toEqual({ flowCount: 1, flowName: 'Strømforbruk' });
+  });
+
+  it('counts enabled Flows of both shapes, skips disabled ones and names none of several', () => {
+    const facts = normalizeUserFlowFacts(
+      {
+        flat: { name: 'Flat meter', actions: [reportPower] },
+        off: { name: 'Disabled', enabled: false, actions: [reportPower] },
+      },
+      { advanced: { name: 'Advanced meter', cards: { report: { ...reportPower, type: 'action' } } } },
+    );
+
+    expect(facts.powerUsageReporters).toEqual({ flowCount: 2 });
+  });
+
+  it('reports no Flows when none runs the card', () => {
+    expect(normalizeUserFlowFacts(flatFlowsFixture, advancedFlowsFixture).powerUsageReporters)
+      .toEqual({ flowCount: 0 });
+  });
+});
+
 describe('readFlowCapabilityWrites (fail-closed)', () => {
   const okGet = (responses: Record<string, unknown>): FlowApiGet => async (path) => {
     if (path in responses) return responses[path];

@@ -146,6 +146,7 @@ test.describe('Device detail panel', () => {
               controlAdapter: { ...conflicted.controlAdapter, activationEnabled: true },
             }],
             evSocReporters: [],
+            ignoredPowerUsageFlows: { state: 'none' },
           }),
         },
       };

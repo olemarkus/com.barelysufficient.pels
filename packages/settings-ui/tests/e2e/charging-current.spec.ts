@@ -32,7 +32,7 @@ for (const width of [320, 480]) {
                 configured = true; return { configured, state: 'ready' };
               },
               'POST /ui_charging_access/check': () => { conflict = false; return { configured, state: 'ready' }; },
-              'POST /ui_refresh_flow_conflicts': () => ({ devices: [], evSocReporters: [] }),
+              'POST /ui_refresh_flow_conflicts': () => ({ devices: [], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } }),
               'PUT /ui_charging_current/charging-test': () => { setup.method = 'built_in'; },
               'DELETE /ui_charging_access': () => { configured = false; return { configured, state: 'not_configured' }; },
             },

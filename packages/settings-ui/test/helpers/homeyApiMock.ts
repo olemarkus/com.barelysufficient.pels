@@ -535,6 +535,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
       ...(device.controlAdapter ? { controlAdapter: device.controlAdapter } : {}),
     })),
     evSocReporters: [],
+    ignoredPowerUsageFlows: { state: 'none' },
   }),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),

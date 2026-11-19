@@ -1,5 +1,8 @@
 import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
-import type { SettingsUiEvSocFlowReporter } from '../../../contracts/src/settingsUi/devices.ts';
+import type {
+  SettingsUiEvSocFlowReporter,
+  SettingsUiIgnoredPowerUsageFlows,
+} from '../../../contracts/src/settingsUi/devices.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import type { DevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
@@ -48,6 +51,8 @@ export type RecommendationTarget =
   | { kind: 'device-control-model'; deviceId: string }
   | { kind: 'flow-conflict-check'; deviceId: string }
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
+  // Scans Homey Flows again for "Report power usage" actions PELS ignores.
+  | { kind: 'power-usage-flow-check' }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
   | { kind: 'panel'; panelId: string }
   // Turns on the daily diagnostics report (Settings → Advanced holds the switch).
@@ -348,6 +353,31 @@ export const resolveEvSocFlowConflictRecommendations = (
       target: { kind: 'ev-soc-flow-conflict-check' as const, deviceId: charger.id },
     }];
   });
+};
+
+/**
+ * A Flow still sends "Report power usage" while Power meter is the power source:
+ * PELS ignores those readings, so the Flow can go. Not a warning, because PELS
+ * reads the meter it needs either way.
+ */
+export const resolveIgnoredPowerUsageFlowRecommendations = (
+  flows: SettingsUiIgnoredPowerUsageFlows,
+): SetupRecommendation[] => {
+  if (flows.state !== 'present') return [];
+  const body = flows.flowName
+    ? 'Power source is set to Power meter, so PELS ignores the “Report power usage” action in the Flow '
+      + `“${flows.flowName}”. Remove that action or disable the Flow if you no longer need it.`
+    : 'Power source is set to Power meter, so PELS ignores “Report power usage” actions in enabled Homey Flows. '
+      + 'Remove those actions or disable those Flows if you no longer need them.';
+  return [{
+    id: recommendationId('power-usage-flow-ignored', 'main'),
+    version: RECOMMENDATION_VERSION,
+    category: 'recommendation',
+    title: 'Remove unused power reporting',
+    body,
+    actionLabel: 'Check again',
+    target: { kind: 'power-usage-flow-check' },
+  }];
 };
 
 export const resolveSmartTaskStartPolicyRecommendations = (

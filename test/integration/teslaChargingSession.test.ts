@@ -764,7 +764,7 @@ test('a Flow setting the current holds the built-in route back for step requests
     const initial = devices();
     initial[0]!.capabilitiesObj!.measure_charge_current_max = { ...cap(16), setable: true };
     // As the Flow scan does: accept the Flow list, then refresh the snapshot.
-    transport.chargingCurrentControl.acceptFlowFacts({ evSocReporters: [],
+    transport.chargingCurrentControl.acceptFlowFacts({ evSocReporters: [], powerUsageReporters: { flowCount: 0 },
       writes: new Map([['battery', new Map([['charge_current', new Map([['f1', 'Night charge']])]])]]) });
     await seedTransportDevices(transport, initial);
     const put = vi.fn().mockResolvedValue(undefined);
@@ -777,7 +777,7 @@ test('a Flow setting the current holds the built-in route back for step requests
     expect(put).not.toHaveBeenCalled();
     expect(transport.reportSteppedLoadActualStep('battery', '6a', 4140)).toMatchObject({ kind: 'accepted' });
 
-    transport.chargingCurrentControl.acceptFlowFacts({ writes: new Map(), evSocReporters: [] });
+    transport.chargingCurrentControl.acceptFlowFacts({ writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } });
     await seedTransportDevices(transport, initial);
     setRestClient({ get: vi.fn().mockResolvedValue({}), put });
     await expect(transport.requestSteppedLoadStep(step))

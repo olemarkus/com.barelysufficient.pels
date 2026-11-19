@@ -137,7 +137,7 @@ describe('BuiltInControlFlowConflicts', () => {
 
   const chargingDouble = (
     order: string[],
-    readFlows: () => Promise<{ status: 'ok'; facts: { writes: Map<string, never>; evSocReporters: [] } }
+    readFlows: () => Promise<{ status: 'ok'; facts: { writes: Map<string, never>; evSocReporters: [], powerUsageReporters: { flowCount: number } } }
       | { status: 'unknown'; reason: string }>,
     routesMove: () => boolean,
   ) => partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
@@ -147,7 +147,7 @@ describe('BuiltInControlFlowConflicts', () => {
     readFlows: async () => { order.push('read'); return readFlows(); },
     describe: (flows) => { order.push(`describe:${flows.status}`); return []; },
   });
-  const clearFacts = { writes: new Map<string, never>(), evSocReporters: [] as [] };
+  const clearFacts = { writes: new Map<string, never>(), evSocReporters: [] as [], powerUsageReporters: { flowCount: 0 } };
 
   it('reads and applies the charging page Flow list after a running scan, so it never lands over a newer one', async () => {
     let releaseScan: () => void = () => {};
@@ -290,7 +290,7 @@ describe('BuiltInControlFlowConflicts', () => {
     await background;
     await expect(explicit).resolves.toEqual({
       state: 'resolved',
-      flowFacts: { writes: new Map(), evSocReporters: [] },
+      flowFacts: { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } },
     });
     expect(getCalls).toBe(4);
     expect(app['builtInControlFlowConflicts']['conflicts'].all).toEqual({});

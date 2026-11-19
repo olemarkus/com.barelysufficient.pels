@@ -43,7 +43,9 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], { label: string; to
 // button says meanwhile; any other kind has none.
 const busyActionLabel = (recommendation: SetupRecommendation): string | null => {
   const { kind } = recommendation.target;
-  if (kind === 'flow-conflict-check' || kind === 'ev-soc-flow-conflict-check') return 'Checking…';
+  if (kind === 'flow-conflict-check' || kind === 'ev-soc-flow-conflict-check' || kind === 'power-usage-flow-check') {
+    return 'Checking…';
+  }
   return kind === 'quarter-hour' || kind === 'daily-report' ? 'Saving…' : null;
 };
 

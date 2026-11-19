@@ -381,7 +381,8 @@ The reader returns a typed two-arm result, never a bare boolean:
 type FlowReadResult =
   | { status: 'ok';      facts: {
                             writes: FlowCapabilityWrites;
-                            evSocReporters: EvSocFlowReporter[]
+                            evSocReporters: EvSocFlowReporter[];
+                            powerUsageReporters: PowerUsageFlowReporters
                           } }
   | { status: 'unknown'; reason: string };
 ```

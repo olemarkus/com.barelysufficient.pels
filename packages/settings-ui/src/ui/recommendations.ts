@@ -16,6 +16,7 @@ import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
+  resolveIgnoredPowerUsageFlowRecommendations,
   resolveSetupRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
@@ -40,14 +41,9 @@ import {
   anyChargerHasSelectedCar, loadEvCarAssociations, readCarAssociationStatus,
 } from './deviceDetail/carAssociation.ts';
 import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './deviceDetail/settingsWrite.ts';
+import { renderSetupRecommendationsBanner, renderSetupRecommendationsView } from './views/SetupRecommendationsView.tsx';
 import {
-  renderSetupRecommendationsBanner,
-  renderSetupRecommendationsView,
-} from './views/SetupRecommendationsView.tsx';
-import {
-  readEvSocFlowReporters,
-  refreshFlowConflictFacts,
-  refreshFlowConflictFactsExplicit,
+  readEvSocFlowReporters, readIgnoredPowerUsageFlows, refreshFlowConflictFacts, refreshFlowConflictFactsExplicit,
   refreshEvSocReportersIfNeeded,
 } from './flowConflictRefresh.ts';
 import { showToastError } from './toast.ts';
@@ -182,6 +178,7 @@ const resolveCurrentRecommendations = (
       evSocReporters,
     ), chargingAdvice),
     ...resolveDeviceSettingRecommendations(),
+    ...resolveIgnoredPowerUsageFlowRecommendations(readIgnoredPowerUsageFlows()),
     ...resolveHardCapReachRecommendations(
       readHardCapReachStatus() === 'resolved' ? readHardCapReachFacts() : null, Date.now(), getHomeyTimezone(),
     ),

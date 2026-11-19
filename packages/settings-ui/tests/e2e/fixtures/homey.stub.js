@@ -2115,6 +2115,7 @@
         ...(device.controlAdapter ? { controlAdapter: device.controlAdapter } : {}),
       })),
       evSocReporters: [],
+      ignoredPowerUsageFlows: { state: 'none' },
     }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),
