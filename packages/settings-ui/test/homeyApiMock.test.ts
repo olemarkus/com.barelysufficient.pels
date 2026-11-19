@@ -1,4 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import { BATTERY_RECOVERY_PATH, type BatteryRecoveryRequest } from '../../contracts/src/batteryRecovery.ts';
 import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
@@ -42,6 +43,18 @@ describe('homeyApiMock', () => {
     } });
     await expect(callHomeyApi(configured, 'PUT', '/ui_charging_current/charger', { method: 'flow' }))
       .resolves.toEqual({ method: 'flow' });
+  });
+
+  it('requires an explicit fixture to recover a battery claim', async () => {
+    const uri = `${BATTERY_RECOVERY_PATH}/battery-1`;
+    const body: BatteryRecoveryRequest = { action: 'acknowledge', claimedAtMs: 123 };
+    await expect(callHomeyApi(createHomeyMock(), 'POST', uri, body))
+      .rejects.toThrow('Configure a battery recovery handler');
+
+    const configured = createHomeyMock({ apiHandlers: {
+      [`POST ${uri}`]: (request) => ({ body: request.body, uri: request.uri }),
+    } });
+    await expect(callHomeyApi(configured, 'POST', uri, body)).resolves.toEqual({ body, uri });
   });
 
   it('builds bootstrap settings from the production key list', async () => {
