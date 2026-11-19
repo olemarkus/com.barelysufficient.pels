@@ -32,7 +32,7 @@ export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
     getTimeZone: () => ctx.getTimeZone(),
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => priceCoordinator.getPriceOptimizationEnabled(),
-    getCapacitySettings: () => ctx.capacitySettings,
+    getCapacitySettings: () => ctx.getCapacityScalars('planning'),
     combinedPricesReader: priceCoordinator.combinedPricesReader,
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(ctx.homey),
     dailyBudgetStateStore: createDailyBudgetStateStoreForApp(ctx),

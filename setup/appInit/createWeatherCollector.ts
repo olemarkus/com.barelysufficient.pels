@@ -62,7 +62,7 @@ export function buildWeatherBudgetAdjustedTokens(
 export function createWeatherCollector(
   ctx: Pick<
     AppContext,
-    'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'capacitySettings'
+    'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'getCapacityScalars'
     | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
     | 'dailyBudgetService' | 'getUserdataDatabase'
   >,
@@ -104,7 +104,7 @@ export function createWeatherCollector(
     // day that just closed, so the value it reads still describes that day (the
     // midnight rollup runs before auto-apply writes the new one).
     getAppliedDailyBudgetKwh: () => ctx.dailyBudgetService?.getAppliedBudgetKwh(),
-    getPowerLimitSettings: () => ctx.capacitySettings,
+    getPowerLimitSettings: () => ctx.getCapacityScalars('planning'),
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     // Meter-scope fingerprint for the start()-time invalidation reconcile —
     // composed here (setup) because lib/weather must not read the homes config.
@@ -142,7 +142,7 @@ export function createWeatherCollector(
     recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
       getNowMs: () => ctx.getNow().getTime(),
       getTimeZone: () => ctx.getTimeZone(),
-      getPowerLimitSettings: () => ctx.capacitySettings,
+      getPowerLimitSettings: () => ctx.getCapacityScalars('planning'),
       logger,
     }),
     // Auto-apply seam: lib/weather never imports lib/dailyBudget, so the apply

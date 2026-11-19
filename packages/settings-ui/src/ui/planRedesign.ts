@@ -1,3 +1,5 @@
+import { classifyNorwayMonthlyCapacity } from './norwayMonthlyCapacityRead.ts';
+import type { NorwayMonthlyCapacityRead } from '../../../contracts/src/norwayMonthlyCapacity.ts';
 import { classifyPhaseLoad } from './phaseLoadRead.ts';
 import type { SettingsUiPhaseLoad } from '../../../contracts/src/settingsUi/power.ts';
 import './materialWeb.ts';
@@ -193,6 +195,7 @@ const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
     cachedPhaseLoad = classifyPhaseLoad(payload?.phaseLoad);
+    cachedMonthlyCapacity = classifyNorwayMonthlyCapacity(payload?.norwayMonthlyCapacity);
     return { solarNowInput: payload ? toSolarNowInput(payload.tracker) : null };
   } catch {
     return { solarNowInput: null };
@@ -213,6 +216,7 @@ const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
 // a premature empty-state verdict.
 let surfaceSkeletonCleared = false;
 let cachedPhaseLoad: SettingsUiPhaseLoad = { state: 'none' };
+let cachedMonthlyCapacity: NorwayMonthlyCapacityRead = { state: 'hidden' };
 
 // True once a plan payload has been DELIVERED (`renderPlan` ran; the payload
 // itself may legitimately be null, meaning the runtime has no plan yet).
@@ -225,6 +229,10 @@ let planPayloadReceived = false;
 // not all arrived, which the view must not mistake for "setup is complete".
 const resolveOverviewSetupPath = (): SetupPathRead => (
   overviewScope.kind === 'main' ? readSetupPath() : { state: 'complete' }
+);
+
+const monthlyCapacityForScope = (): NorwayMonthlyCapacityRead => (
+  overviewScope.kind === 'main' ? cachedMonthlyCapacity : { state: 'hidden' }
 );
 
 const doRender = () => {
@@ -269,6 +277,7 @@ const doRender = () => {
     smartTaskStatuses,
     onSmartTaskAction: activateSmartTaskStatus,
     phaseLoad: overviewScope.kind === 'main' ? cachedPhaseLoad : { state: 'none' },
+    monthlyCapacity: monthlyCapacityForScope(),
     // Same Main-only rule as the smart-task row above.
     evStateLines: overviewScope.kind === 'main' ? resolveEvCardStateLines(now) : new Map(),
     setupPath: setup,
@@ -422,6 +431,7 @@ export const refreshPlanPower = async (): Promise<void> => {
   if (!solarNowReads.commit(stamp)) return;
   cachedSolarNowInput = payload ? toSolarNowInput(payload.tracker) : null;
   cachedPhaseLoad = classifyPhaseLoad(payload?.phaseLoad);
+  cachedMonthlyCapacity = classifyNorwayMonthlyCapacity(payload?.norwayMonthlyCapacity);
   doRender();
 };
 

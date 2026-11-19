@@ -101,6 +101,24 @@ The month peak it follows includes a meter's own reported peak, which is held in
 (`lib/power/meterMonthlyPeak.ts`) and has no settings key.
 The settings UI's switch (Main form and meter-area editor) writes it, and a new install
 in Belgium has it written on once (`lib/power/capacityMarketDefault.ts`).
+`power_history_recovery_request` is the browser's explicit UUID-only command to
+the power-history recovery owner. The owner reads the selected Main meter's
+hourly Insights history, fills only missing hours of completed days through the
+tracker persistence owner, and publishes its outcome on `/ui_power`. Requests
+are consumed and never replayed at startup. Existing readings and unreliable
+periods remain in place; recovered aggregate meter totals have no device split.
+
+`norway_capacity_choice_request` is the browser's explicit apply/cancel request,
+with its type and parser in `packages/shared-domain/src/settings/norwayCapacityChoice.ts`.
+The power owner rechecks the current advice before accepting it.
+`norway_capacity_choice_state` is runtime-owned by `lib/power/norwayCapacityChoice.ts`;
+it holds the accepted monthly Hard cap, the safety margin it was accepted with,
+and the last request outcome. The margin reserves planning room below the Hard cap; it is never added to the
+remaining-month hourly cap. Editing the margin invalidates the choice. The browser reads
+resolved state through the power payload and never writes that key. The normal
+`capacity_limit_kw` stays unchanged, and month expiry is resolved at each operational
+or planned-period read.
+
 `price_optimization_settings` has one shared parser for device entries, legacy defaults,
 and provenance in `packages/shared-domain/src/settings/priceOptimization.ts`.
 The same owner defines the adjustment range and stored sign. The runtime and settings

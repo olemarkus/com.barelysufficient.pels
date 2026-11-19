@@ -309,7 +309,7 @@ function resolveTomorrowOutlook(
   if (!resolved) return null;
 
   const capacityDayHours = resolveLocalDayHours(tomorrowKey, input.timeZone);
-  const ceiling = planningPowerCeiling(input.powerLimitSettings);
+  const ceiling = planningPowerCeiling(input.powerLimitSettings, getDateKeyStartMs(tomorrowKey, input.timeZone));
   const capacityCapKwh = ceiling !== null && ceiling.kw > 0
     ? ceiling.kw * capacityDayHours
     : Number.POSITIVE_INFINITY;
@@ -366,7 +366,8 @@ function recomputeTomorrowSuggestion(
       fit,
       targetDateKey: tomorrowKey,
       forecastMeanTempC: meanTempC,
-      planningCeilingKw: planningPowerCeiling(input.powerLimitSettings)?.kw,
+      planningCeilingKw: planningPowerCeiling(input.powerLimitSettings,
+        getDateKeyStartMs(tomorrowKey, input.timeZone))?.kw,
       capacityDayHours: resolveLocalDayHours(tomorrowKey, input.timeZone),
       ...(input.state.budgetPressure !== undefined ? { budgetPressure: input.state.budgetPressure } : {}),
     }),

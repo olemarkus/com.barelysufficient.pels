@@ -1,7 +1,11 @@
+import type {
+  NorwayMonthlyCapacityRead, NorwayCapacityChoiceState, NorwayCapacityChoiceOutcome,
+} from '../norwayMonthlyCapacity.js';
 import type { CapacityScalarSettings } from '../capacitySettings.js';
 import type { DailyBudgetUiRead } from '../dailyBudgetTypes.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
 import type { SettingsUiPowerTracker } from '../powerTrackerTypes.js';
+import type { PowerHistoryRecoveryRead } from '../powerHistoryRecovery.js';
 
 /**
  * Which limit is holding a home's devices back (`lib/plan/pelsStatus.ts`).
@@ -172,6 +176,10 @@ export type SettingsUiHardCapShortfall = {
 };
 
 export type SettingsUiPowerPayload = {
+  powerHistoryRecovery?: PowerHistoryRecoveryRead;
+  norwayMonthlyCapacity?: NorwayMonthlyCapacityRead;
+  norwayMonthlyCapacityChoice?: NorwayCapacityChoiceState;
+  norwayMonthlyCapacityOutcome?: NorwayCapacityChoiceOutcome;
   /**
    * Usage HISTORY (buckets, daily totals, solar families) — always an object;
    * `{}` is the empty history. History and readings are different facts: a

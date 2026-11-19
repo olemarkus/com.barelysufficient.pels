@@ -10,6 +10,8 @@ export type CapacitySettings = {
 
 /** Independent live and settlement-period control settings, resolved by the power owner. */
 export type PowerLimitSettings = CapacitySettings & {
+  /** Explicit monthly choice on forward reads; limitKw remains the normal limit. */
+  monthlyCapacityChoice?: { readonly monthKey: string; readonly limitKw: number };
   capacityEnabled: boolean;
   /** Signed net grid import is constrained when this is non-null. */
   gridImportLimitKw: number | null;

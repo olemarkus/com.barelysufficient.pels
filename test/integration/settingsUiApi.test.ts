@@ -366,6 +366,10 @@ describe('settingsUiApi', () => {
       phasePeaks: [],
       hardCapShortfalls: [],
       capacityPeak: { state: 'no_completed_quarter' },
+      norwayMonthlyCapacity: { state: 'hidden' },
+      powerHistoryRecovery: { state: 'idle' },
+      norwayMonthlyCapacityChoice: { state: 'normal' },
+      norwayMonthlyCapacityOutcome: { state: 'idle' },
       capacityScalars: {
         state: 'resolved',
         scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false, followMonthPeak: false },
@@ -722,6 +726,10 @@ describe('settingsUiApi', () => {
       phasePeaks: [],
       hardCapShortfalls: [],
       capacityPeak: { state: 'no_completed_quarter' },
+      norwayMonthlyCapacity: { state: 'hidden' },
+      powerHistoryRecovery: { state: 'idle' },
+      norwayMonthlyCapacityChoice: { state: 'normal' },
+      norwayMonthlyCapacityOutcome: { state: 'idle' },
       capacityScalars: {
         state: 'resolved',
         scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false, followMonthPeak: false },

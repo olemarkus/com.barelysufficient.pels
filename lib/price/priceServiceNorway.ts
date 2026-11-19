@@ -1,3 +1,6 @@
+import { readSavedFriNettleieFile } from './friNettleieFetch';
+import type { NorwayCapacityTariffRead } from '../../packages/contracts/src/norwayCapacityTariff';
+import { readSavedNorwayCapacityTariff } from './norwayCapacityTariff';
 import { calculateElectricitySupport, getRegionalPricingRules } from './priceComponents';
 import {
   getDateKeyInTimeZone,
@@ -414,3 +417,29 @@ export const resolveNorwayHourlyPrices = (
     timeZone,
   });
 };
+
+// One immutable source/read pair per price store. No tariff YAML is parsed in the meter hot path.
+const capacityTariffReads = new WeakMap<PriceDataStore, {
+  key: string; text: string; read: NorwayCapacityTariffRead;
+}>();
+
+/** Capacity facts use the saved original tariff, independently of energy fees. */
+export function readSchemeCapacityTariff(
+  scheme: string, settings: NorwaySchemeSettings, store: PriceDataStore, monthKey: string,
+): NorwayCapacityTariffRead {
+  if (scheme !== 'norway') return { state: 'unsupported', reason: 'non_norway_scheme' };
+  if (!settings.organizationNumber) return { state: 'unavailable', reason: 'no_grid_company' };
+  try {
+    const raw = store.readFriNettleieFile();
+    const saved = readSavedFriNettleieFile(raw);
+    const key = JSON.stringify([scheme, settings.organizationNumber, settings.tariffGroup, monthKey,
+      saved?.organizationNumber, saved?.file]);
+    const cached = capacityTariffReads.get(store);
+    if (saved && cached?.key === key && cached.text === saved.text) return cached.read;
+    const read = readSavedNorwayCapacityTariff(raw, settings.organizationNumber, settings.tariffGroup, monthKey);
+    if (saved) capacityTariffReads.set(store, { key, text: saved.text, read });
+    return read;
+  } catch {
+    return { state: 'unavailable', reason: 'tariff_read_failed' };
+  }
+}

@@ -305,6 +305,8 @@
         <span hidden id="usage-today">-- kWh</span>
       </div>
 
+      <div id="monthly-capacity-mount" class="monthly-capacity-mount" hidden></div>
+
       <!-- Solar card mount (PR-5 solar visibility). Populated by
            `solarUsageSection.ts` on each stats render; stays structurally
            empty in homes without a solar signal (visibility gate). -->
@@ -632,6 +634,7 @@
            controller un-hides it only while a meter area is the selected home
            scope, and renders the Preact surface here + toggles the static
            Main-home form below. -->
+      <div id="monthly-capacity-limits-mount" hidden></div>
       <div id="home-limits-mount" hidden></div>
       <md-dialog id="limits-usage-confirm-dialog">
         <div slot="headline">Save a limit below your usage?</div>
@@ -920,11 +923,18 @@
       <details class="settings-collapse">
         <summary>
           <h3 class="section-title">Data management</h3>
-          <span class="section-hint">Reset stored history</span>
+          <span class="section-hint">Recover or reset stored history</span>
           <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
         </summary>
         <div class="collapse-content">
           <div class="form-grid">
+            <div id="power-history-recovery">
+              <p class="muted">Recover missing hourly history from recent Insights records for completed days. Existing recorded usage is kept.</p>
+              <div class="inline-actions">
+                <md-text-button type="button" id="recover-power-history-button">Recover hourly history from Insights</md-text-button>
+              </div>
+              <p class="muted" id="power-history-recovery-status" role="status" aria-live="polite"></p>
+            </div>
             <p class="muted" id="reset-stats-description">Reset all usage history: hourly samples, daily totals, and weekday/weekend averages. PELS will start collecting fresh history after the reset.</p>
             <div class="inline-actions">
               <md-text-button id="reset-stats-button">Reset usage history</md-text-button>

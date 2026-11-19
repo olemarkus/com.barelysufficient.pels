@@ -1,3 +1,5 @@
+import { MonthlyCapacityOverview } from './NorwayMonthlyCapacity.tsx';
+import type { NorwayMonthlyCapacityRead } from '../../../../contracts/src/norwayMonthlyCapacity.ts';
 import { PhaseLoadRow } from './PhaseLoadRow.tsx';
 import type { SettingsUiPhaseLoad } from '../../../../contracts/src/settingsUi/power.ts';
 import { render } from 'preact';
@@ -52,6 +54,7 @@ type OverviewProps = {
   smartTaskStatuses: readonly OverviewSmartTaskStatus[];
   onSmartTaskAction: (action: OverviewSmartTaskStatus['action']) => void;
   phaseLoad: SettingsUiPhaseLoad;
+  monthlyCapacity?: NorwayMonthlyCapacityRead;
   // Each charger's EV smart-task line, keyed by device id; the on/off card shows
   // it when its status carries no reason. Resolved in the orchestrator.
   evStateLines: ReadonlyMap<string, string>;
@@ -197,7 +200,7 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  devices, controlWarnings, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, evStateLines, setupPath,
+  devices, controlWarnings, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, monthlyCapacity, evStateLines, setupPath,
   context, nowMs, smartTaskStatuses, onSmartTaskAction,
 }: OverviewProps) => {
   if (scopeUnavailable) {
@@ -254,6 +257,7 @@ const PlanOverviewRoot = ({
           nowMs={nowMs}
         />
       )}
+      <MonthlyCapacityOverview read={monthlyCapacity} />
       {showHero && <PhaseLoadRow load={phaseLoad} />}
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}

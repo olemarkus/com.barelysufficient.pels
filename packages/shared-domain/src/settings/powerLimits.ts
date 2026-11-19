@@ -60,6 +60,17 @@ const lowerLimit = (capacityKw: number | null, gridKw: number | null): PowerLimi
     : { limit: 'grid', kw: gridKw };
 };
 
+/** Resolve an explicit monthly capacity choice for the instant being planned. */
+export function capacityLimitKwAt(settings: PowerLimitSettings, atMs: number): number {
+  const choice = settings.monthlyCapacityChoice;
+  if (!choice) return settings.limitKw;
+  const monthKey = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit',
+  }).format(atMs);
+  return monthKey === choice.monthKey ? choice.limitKw : settings.limitKw;
+}
+
+
 /**
  * The planning ceiling: the import rate planning forecasts against. It is the
  * hard cap minus its safety margin while Capacity limit is on, the grid import
@@ -78,9 +89,10 @@ const lowerLimit = (capacityKw: number | null, gridKw: number | null): PowerLimi
  * (`packages/settings-ui/src/ui/budgetRedesign.ts`), and the weather domain,
  * which may not import `lib/power`, suggests budgets under the same ceiling.
  */
-export function planningPowerCeiling(settings: PowerLimitSettings): PowerLimitCeiling | null {
+
+export function planningPowerCeiling(settings: PowerLimitSettings, atMs = Date.now()): PowerLimitCeiling | null {
   return lowerLimit(
-    settings.capacityEnabled ? usableCapacityKw(settings.limitKw, settings.marginKw) : null,
+    settings.capacityEnabled ? usableCapacityKw(capacityLimitKwAt(settings, atMs), settings.marginKw) : null,
     settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw),
   );
 }
@@ -93,6 +105,6 @@ export function planningPowerCeiling(settings: PowerLimitSettings): PowerLimitCe
  * doing so. Its consumer is the price domain (`resolveExpectedManagedDrawKwh`),
  * which may not import `lib/power`.
  */
-export function configuredPowerCeiling(settings: PowerLimitSettings): PowerLimitCeiling | null {
-  return lowerLimit(settings.capacityEnabled ? settings.limitKw : null, settings.gridImportLimitKw);
+export function configuredPowerCeiling(settings: PowerLimitSettings, atMs = Date.now()): PowerLimitCeiling | null {
+  return lowerLimit(settings.capacityEnabled ? capacityLimitKwAt(settings, atMs) : null, settings.gridImportLimitKw);
 }

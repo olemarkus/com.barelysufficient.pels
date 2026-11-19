@@ -1,3 +1,4 @@
+import { refreshMonthlyCapacityLimits } from './norwayMonthlyCapacityActions.ts';
 import { refreshActivityHistory } from './activityHistory.ts';
 import { refreshAdvancedDeviceLogger } from './advanced.ts';
 import { refreshSupportReport } from './supportReport.ts';
@@ -166,7 +167,10 @@ const runTabActivationSideEffects = (tabId: string) => {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
     // The per-home switcher + meter-area editor live on the Limits panel only.
     if (tabId === 'limits') {
-      runLoggedTask(refreshHomeLimitsOnLimitsPanel(), 'Failed to load per-home limits', 'showTab');
+      runLoggedTask(
+        refreshHomeLimitsOnLimitsPanel().then(refreshMonthlyCapacityLimits),
+        'Failed to load per-home limits', 'showTab',
+      );
     }
     return;
   }

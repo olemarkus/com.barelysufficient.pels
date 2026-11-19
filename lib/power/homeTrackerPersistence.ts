@@ -36,6 +36,8 @@ import type { HomeId } from '../utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import type { TrackerStore } from './trackerStore';
 import { withHeldReadingAfterRestart } from './heldReading';
+import { HOURLY_RETENTION_DAYS } from './tracker';
+import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../packages/shared-domain/src/utils/dateUtils';
 
 const TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -142,6 +144,11 @@ export type TrackerMeterBinding =
 
 export type HomeTrackerPersistence = {
   getState: () => PowerTrackerState;
+  getHistoryForRecovery: () => PowerTrackerState;
+  getHistoryRevision: () => number;
+  appendMissingHours: (
+    hours: Readonly<Record<string, number>>, expectedRevision: number, nowMs: number,
+  ) => HourHistoryAppendResult;
   /**
    * Take `next` as the current state without starting a persist: a pending
    * debounced persist, the prune, and the next save all read the state at
@@ -178,6 +185,10 @@ export type HomeTrackerPersistence = {
   /** Flush a pending debounced persist, then stop the tracker timers. */
   stopAndFlush: () => void;
 };
+
+export type HourHistoryAppendResult =
+  | { state: 'saved'; addedHours: number; firstHour?: string; lastHour?: string }
+  | { state: 'stale' | 'failed' };
 
 /**
  * The collaborators this controller needs, flat.
@@ -225,12 +236,60 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
   private state: PowerTrackerState;
   /** A boot read the store failed to answer; persistence stays closed until it does. */
   private hydrationOwed = false;
+  private hydrationAttempted = false;
+  private historyRevision = 0;
 
   constructor(private readonly params: HomeTrackerPersistenceParams) {
     this.state = this.stamp(params.initialState);
   }
 
   getState = (): PowerTrackerState => this.state;
+  getHistoryForRecovery = (): PowerTrackerState => {
+    if (!this.hydrationAttempted) throw new Error('Usage history is still starting. Try recovery again shortly.');
+    this.settleOwedHydration();
+    return this.state;
+  };
+  getHistoryRevision = (): number => this.historyRevision;
+
+  appendMissingHours = (
+    hours: Readonly<Record<string, number>>, expectedRevision: number, nowMs: number,
+  ): HourHistoryAppendResult => {
+    const { deps, homeId } = this.params;
+    if (deps.isTornDown() || expectedRevision !== this.historyRevision) return { state: 'stale' };
+    if (!this.hydrationAttempted) return { state: 'failed' };
+    try {
+      this.settleOwedHydration();
+      const lastTimestamp = this.state.lastTimestamp;
+      if (lastTimestamp === undefined) return { state: 'stale' };
+      const dayStart = getDateKeyStartMs(getDateKeyInTimeZone(new Date(nowMs), deps.getTimeZone()), deps.getTimeZone());
+      const before = Math.min(dayStart, Math.floor(lastTimestamp / 3_600_000) * 3_600_000);
+      const cutoff = nowMs - HOURLY_RETENTION_DAYS * 24 * 3_600_000;
+      const additions = Object.entries(hours).filter(([key]) => {
+        const hour = Date.parse(key);
+        return hour >= cutoff && hour < before && !Object.hasOwn(this.state.buckets ?? {}, key);
+      });
+      if (additions.length === 0) return { state: 'saved', addedHours: 0 };
+      const next = { ...this.state, buckets: { ...this.state.buckets, ...Object.fromEntries(additions) } };
+      // Commit before publishing: a failed transaction must not expose recovered
+      // hours in memory for a later ordinary sample to persist accidentally.
+      deps.getStore().save(homeId, next);
+      this.state = next;
+      const keys = additions.map(([key]) => key).sort();
+      try { deps.onPersisted(); } catch (error) {
+        deps.getLogger().error({
+          event: 'home_power_history_recovery_notification_failed', homeId, err: normalizeError(error),
+        });
+      }
+      return {
+        state: 'saved', addedHours: keys.length, firstHour: keys[0], lastHour: keys[keys.length - 1],
+      };
+    } catch (error) {
+      deps.getLogger().error({
+        event: 'home_power_history_recovery_persist_failed', homeId, err: normalizeError(error),
+      });
+      return { state: 'failed' };
+    }
+  };
 
   adopt = (next: PowerTrackerState): void => {
     this.state = this.stamp(next);
@@ -264,6 +323,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
 
   replace = (next: PowerTrackerState): boolean => {
     if (this.params.deps.isTornDown()) return false;
+    this.historyRevision += 1;
     this.params.deps.timers.clear(this.params.timerKey('powerTrackerSave'));
     this.state = this.stamp(next);
     // The owner is discarding whatever was there: the rows are cleared and
@@ -273,6 +333,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
   };
 
   hydrate = (): void => {
+    this.hydrationAttempted = true;
     const { deps, homeId } = this.params;
     let stored: PowerTrackerState | null;
     try {
@@ -293,6 +354,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
   };
 
   resetFreshness = (): boolean => {
+    this.historyRevision += 1;
     this.state = {
       ...this.state,
       lastTimestamp: undefined,

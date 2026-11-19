@@ -1,3 +1,5 @@
+import type { NorwayMonthlyCapacityRead } from '../../packages/contracts/src/norwayMonthlyCapacity';
+import type { NorwayCapacityChoice } from '../power/norwayCapacityChoice';
 import { API_STARTING_MESSAGE } from '../utils/apiRequestError';
 import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
 import type { BatteryEfficiencyMeasurement } from '../../packages/contracts/src/continuousBatteryPlan';
@@ -89,6 +91,9 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   readChargingCurrentForUi(): Promise<ChargingCurrentRead[]>;
   replacePowerTrackerForUi(nextState: AppContext['powerTracker']): void;
   readHardCapConfiguration(): SettingsUiHardCapConfigurationRead;
+  readNorwayMonthlyCapacity(): NorwayMonthlyCapacityRead;
+  readPowerHistoryRecovery(): import('../../packages/contracts/src/powerHistoryRecovery').PowerHistoryRecoveryRead;
+  readonly norwayCapacityChoice: NorwayCapacityChoice;
   readPriceOptimizationSetup(): PriceOptimizationSetupRead;
   readPriceSetup(): PriceSetupRead;
   suggestPriceSetup(): Promise<PriceSetupSuggestion>;

@@ -1,3 +1,5 @@
+import { NorwayCapacityChoice } from '../../lib/power/norwayCapacityChoice';
+import { NORWAY_CAPACITY_CHOICE_REQUEST } from '../../packages/shared-domain/src/settings/norwayCapacityChoice';
 import { describe, expect, it, type Mock } from 'vitest';
 import {
   CAPACITY_DRY_RUN,
@@ -86,6 +88,31 @@ describe('buildMainHomeScope', () => {
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_LIMIT_KW);
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_MARGIN_KW);
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_DRY_RUN);
+  });
+
+  it.each([4.8, 9.9])('expires the %s kW choice at Oslo midnight in live and restarted planners', (limitKw) => {
+    const ctx = createAppContextMock();
+    const decemberStart = Date.parse('2026-12-01T00:00:00+01:00');
+    let nowMs = decemberStart - 1;
+    const offer = { monthKey: '2026-11', tariffIdentity: 'operator', limitKw, revision: 'fresh' };
+    const normal = { ...ctx.getCapacityScalars(), limitKw: 5, periodMinutes: 60 as const, capacityEnabled: true };
+    ctx.homey.settings.set(CAPACITY_LIMIT_KW, normal.limitKw);
+    let choice = new NorwayCapacityChoice(ctx.homey.settings, () => ({ state: 'supported', tariff: {
+      identity: 'operator', boundariesKw: [0, 5, 10], thresholdIncluded: true,
+    } }));
+    ctx.homey.settings.set(NORWAY_CAPACITY_CHOICE_REQUEST, { id: 'apply', action: 'apply', offer });
+    expect(choice.processRequest(offer, normal, nowMs)).toBe(true);
+    ctx.getCapacityScalars = (purpose) => purpose === 'live' ? choice.applyTo(normal, nowMs) : normal;
+    const scope = buildMainHomeScopeForTest(ctx, () => false);
+    expect(scope.getCapacitySettings().limitKw).toBe(limitKw);
+    nowMs = decemberStart;
+    expect(scope.getCapacitySettings().limitKw).toBe(5);
+
+    choice = new NorwayCapacityChoice(ctx.homey.settings, () => ({ state: 'unavailable', reason: 'startup' }));
+    expect(choice.readOutcome()).toMatchObject({ state: 'accepted', requestId: 'apply' });
+    expect(choice.applyTo(normal, decemberStart - 1).limitKw).toBe(limitKw);
+    expect(scope.getCapacitySettings().limitKw).toBe(5);
+    expect(ctx.homey.settings.get(CAPACITY_LIMIT_KW)).toBe(5);
   });
 
   // R7b Cluster A+B: the policy stragglers and UI/side-effect singletons the

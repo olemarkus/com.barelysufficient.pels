@@ -203,6 +203,22 @@ describe('budget advice decision recording', () => {
 
 
 describe('recorded sustainable daily ceiling', () => {
+  it.each([['2026-11-30', 9.9], ['2026-12-01', 5]])(
+    'resolves the monthly choice for the target date %s', (targetDateKey, limitKw) => {
+      const recordBudgetDecision = vi.fn();
+      performBudgetAutoApply(baseState({
+        latestSuggestion: { ...baseState().latestSuggestion!, targetDateKey },
+      }), deps({
+        recordBudgetDecision, getNowMs: () => Date.parse('2026-12-01T00:00:00Z'),
+        getTimeZone: () => 'Europe/Oslo',
+        getPowerLimitSettings: () => ({
+          ...capacityOnlyPowerLimits(5), monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 9.9 },
+        }),
+      }));
+      expect(recordBudgetDecision.mock.calls[0][0].sustainableDailyCeilingKwh).toBeCloseTo(limitKw * 24);
+    },
+  );
+
   it.each([['2026-03-29', 23], ['2026-10-25', 25]])('uses the actual Oslo day length for %s', (dateKey, hours) => {
     const recordBudgetDecision = vi.fn();
     performBudgetAutoApply(baseState({

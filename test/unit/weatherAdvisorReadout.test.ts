@@ -388,6 +388,24 @@ describe('buildWeatherAdvisorReadout', () => {
       .toBe(50);
   });
 
+  it('judges tomorrow against the normal limit when a monthly choice expires tonight', () => {
+    const nowMs = Date.parse('2026-11-30T12:00:00Z');
+    const payload = payloadFor(withState({
+      records: recentDays(30), latestFit: fit({ fittedAtMs: nowMs }),
+      latestSuggestion: {
+        targetDateKey: '2026-12-01', forecastMeanTempC: -2, forecastSource: 'met_api',
+        predictedKwh: 50, predictedLowKwh: 44, predictedHighKwh: 58, suggestedBudgetKwh: 24,
+        beyondObservedCold: false, beyondObservedWarm: false, budgetMayBeLimiting: false,
+        budgetPressureKwh: 0, computedAtMs: nowMs,
+      },
+    }, {
+      nowMs, timeZone: 'Europe/Oslo', powerLimitSettings: {
+        ...capacityOnlyPowerLimits(1), monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 10 },
+      },
+    }));
+    expect(payload?.suggestion?.cappedByPowerLimit).toBe('capacity');
+  });
+
   it('marks the suggestion as capacity-capped when expected demand exceeds cap × 24h', () => {
     const payload = payloadFor(withState(
       { records: recentDays(30), latestFit: fit() },

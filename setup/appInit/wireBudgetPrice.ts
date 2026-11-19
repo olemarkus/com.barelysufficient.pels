@@ -28,7 +28,7 @@ export function wireBudgetPrice(
   if (!priceCoordinator || !dailyBudgetService) return;
   priceCoordinator.setBudgetPriceInputs({
     // Read per apply so a runtime power-limit change is reflected, not frozen at boot.
-    getPowerLimitSettings: () => ctx.capacitySettings,
+    getPowerLimitSettings: () => ctx.getCapacityScalars('planning'),
     getSurplusKwh: (hourStartMs) => {
       const pvKwh = getForecastKwh(hourStartMs);
       const hourOfDay = getZonedParts(new Date(hourStartMs), ctx.getTimeZone()).hour;

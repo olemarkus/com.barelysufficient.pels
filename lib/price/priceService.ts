@@ -41,7 +41,7 @@ import {
 } from './priceServiceCombined';
 import type { PowerTrackerReadout } from './priceServiceNorgespris';
 import {
-  NORWAY_SETTING_KEYS,
+  NORWAY_SETTING_KEYS, readSchemeCapacityTariff,
   readNorwaySchemeSettings,
   resolveNorwayHourlyPrices,
   type NorwaySchemeSettings,
@@ -136,8 +136,11 @@ export default class PriceService {
   // (e.g. the flow-only combined-prices catch-up) without re-deriving the
   // PRICE_SCHEME→scheme mapping. Single source of truth for the early-returns
   // in refreshSpotPrices/getCombinedHourlyPrices.
-  getPriceScheme(): PriceScheme {
-    return this.priceSchemeResolver.resolve().scheme;
+  getPriceScheme(): PriceScheme { return this.priceSchemeResolver.resolve().scheme; }
+
+  /** Capacity facts for the selected company's Oslo billing month. */
+  getNorwayCapacityTariff(monthKey: string) {
+    return readSchemeCapacityTariff(this.getPriceScheme(), this.norwaySchemeSettings, this.priceDataStore, monthKey);
   }
 
   /** The source in force and why: chosen by the owner, or assumed from the hub's country. */

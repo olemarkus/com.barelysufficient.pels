@@ -209,7 +209,7 @@ export type AppContext = {
   /** Persistently re-prime Main after a meter/source change; transient write failure retries internally. */
   resetMainPowerTrackerFreshness(): void;
   /** This home's capacity scalars as the running app holds them, already resolved. */
-  getCapacityScalars(): CapacityScalarSettings;
+  getCapacityScalars(purpose?: 'configuration' | 'planning' | 'live'): CapacityScalarSettings;
   /** Main's month peak (`resolveCurrentMonthCapacityPeak`). */
   getCurrentMonthCapacityPeak(nowMs?: number): CapacityMonthPeak;
   get capacitySettings(): PowerLimitSettings;
