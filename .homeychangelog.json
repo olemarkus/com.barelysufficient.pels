@@ -862,5 +862,8 @@
   },
   "3.42.1": {
     "en": "A car set to charge on solar surplus now says when “Control charging through this car” is still off. The device page, Choose what PELS does and Review setup show the missing step, and Finish charging setup opens that switch."
+  },
+  "3.43.0": {
+    "en": "With Follow this month’s peak on, Smart tasks and planned batteries now plan up to the month’s highest quarter when it is above your Capacity limit, and plan to your Capacity limit again from the first of the month. Setup and Choose what PELS does keep their suggestions current as you change settings, and a check that could not be read is retried with one Try again. Review setup waits for your Smart tasks before it says whether prices are needed. Norwegian setup is easier to follow, and the warning for a power meter that stopped reporting names the meter. Report power usage now explains that Power source must be set to Flow card when Power meter is selected. Smart task planning is faster with several tasks."
   }
 }
