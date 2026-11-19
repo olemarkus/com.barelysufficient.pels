@@ -15,6 +15,10 @@ const makeCtx = (params: {
   priceCoordinator: { setBudgetPriceInputs: params.capture },
   dailyBudgetService: { getGrossBackgroundKwh: (hour: number) => params.grossByHour?.[hour] },
   capacitySettings: capacityOnlyPowerLimits(params.limitKw ?? 5),
+  getCapacityScalars(this: AppContext, purpose: string) {
+    expect(purpose).toBe('planning');
+    return { ...this.capacitySettings, dryRun: false, followMonthPeak: false };
+  },
   getTimeZone: () => 'UTC',
 } as unknown as AppContext);
 
