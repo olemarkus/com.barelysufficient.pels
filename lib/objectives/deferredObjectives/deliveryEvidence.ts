@@ -4,7 +4,8 @@ import type {
 } from '../../../packages/contracts/src/taskDelivery';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import {
-  DELIVERY_EPSILON_KWH, isTaskDeviceStopped, isUsefulTaskDraw, MAX_CONTIGUOUS_DELIVERY_TICK_MS, observeTaskNonDelivery,
+  DELIVERY_EPSILON_KWH, isTaskDeviceStopped, isUsefulTaskDraw, MAX_CONTIGUOUS_DELIVERY_TICK_MS,
+  observeTaskNonDelivery, restoreTaskNonDelivery,
 } from './taskDeliveryState';
 import { isTaskSatisfied } from './taskCompletion';
 
@@ -199,8 +200,8 @@ export const observeTaskDelivery = (
   // Expiry freezes the last live blocker; it is an outcome, not a cause.
   if (facts.obligation === 'expired') return previous;
   // Require a new uninterrupted watch after a missed lifecycle observation.
-  const hasGap = facts.energyIdleEligible === true && elapsedMs > MAX_CONTIGUOUS_DELIVERY_TICK_MS;
-  const priorNonDelivery = hasGap ? { kind: 'none' as const } : previous.nonDelivery;
+  const hasGap = elapsedMs > MAX_CONTIGUOUS_DELIVERY_TICK_MS;
+  const priorNonDelivery = hasGap ? restoreTaskNonDelivery(previous.nonDelivery) : previous.nonDelivery;
   const priorEnergyIdle = hasGap ? restoreEnergyTaskIdle(previous.energyIdle) : previous.energyIdle;
   const nonDelivery = observeTaskNonDelivery(priorNonDelivery, {
     obligation: facts.obligation === 'unavailable' ? 'inactive' : facts.obligation,

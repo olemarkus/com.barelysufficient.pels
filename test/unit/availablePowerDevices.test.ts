@@ -64,6 +64,27 @@ describe('energized loads using available power', () => {
     expect(ledger.availableFor(relay)).toBe(1);
   });
 
+  it.each([
+    [2, 2, 'keep'],
+    [1, 1, 'shed'],
+    [2, 0, 'shed'],
+  ] as const)('reacts to possible new phase draw with %s kW drawn and %s kW covered', (draw, covered, state) => {
+    const relay = buildPlanDevice({
+      id: 'relay', currentState: 'on', currentDrawKw: draw, expectedPowerKw: 2, usesAvailablePower: true,
+      phaseFootprint: { kind: 'single', phase: 'L1' },
+    });
+    const devices = new Map([[relay.id, relay]]);
+    const ledger = buildRestoreHeadroomLedger({
+      capacity: { kind: 'on', kw: 4 },
+      grid: { kind: 'off' },
+      budget: { kind: 'off' },
+      phase: { kind: 'on', roomKw: { L1: 0.5, L2: 3, L3: 3 } },
+    });
+    accountForAvailablePowerDevices(devices, ledger, () => covered);
+    expect(devices.get(relay.id)?.plannedState).toBe(state);
+    expect(ledger.availableFor(relay)).toBe(-1.5);
+  });
+
   it('asks an idle relay to yield without giving its watts to a waiting load in the same cycle', () => {
     const relay = buildPlanDevice({
       id: 'relay', currentState: 'on', currentDrawKw: 0, expectedPowerKw: 2, usesAvailablePower: true,
