@@ -1,5 +1,5 @@
 import type {
-  TaskDeviceConstraint, TaskDeliveryBlocker, TaskDeliveryCause,
+  EnergyTaskIdleState, TaskDeviceConstraint, TaskDeliveryBlocker, TaskDeliveryCause,
   TaskDeliveryControl, TaskDeliveryEvidence, TaskDeliveryInterval,
 } from '../../../packages/contracts/src/taskDelivery';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
@@ -17,6 +17,11 @@ export const LEGACY_DELIVERY_EVIDENCE: TaskDeliveryEvidence = {
   explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' },
 };
 
+/** Boot cannot confirm that the device stayed idle while power was unobserved. */
+export const restoreEnergyTaskIdle = (saved: EnergyTaskIdleState | undefined): EnergyTaskIdleState | undefined => (
+  saved === undefined || saved.kind === 'reopened' ? saved : { kind: 'uncertain' }
+);
+
 export type TaskDeliveryFacts = {
   obligation: 'claimed' | 'unavailable' | 'deferred' | 'satisfied' | 'expired';
   control: TaskDeliveryControl;
@@ -24,6 +29,8 @@ export type TaskDeliveryFacts = {
   progress: { kind: 'known'; value: number } | { kind: 'unavailable' };
   deviceConstraint: TaskDeviceConstraint;
   schedule: 'fits' | 'rate_insufficient' | 'estimate_uncertain' | 'unavailable';
+  energyIdleEligible?: true;
+  energyIdleBookingRestored?: true;
 };
 
 const resolveObligation = (diagnostic: DeferredObjectiveDiagnostic, nowMs: number): TaskDeliveryFacts['obligation'] => {
@@ -59,6 +66,8 @@ export const resolveTaskDeliveryFacts = (
   schedule: resolveSchedule(diagnostic),
   control,
   deviceConstraint,
+  ...(diagnostic.energyIdleEligible ? { energyIdleEligible: true } : {}),
+  ...(diagnostic.energyIdleBookingRestored ? { energyIdleBookingRestored: true } : {}),
   observation: resolveDraw(diagnostic, measured),
   progress: diagnostic.evaluation.progress.kind === 'known'
     ? { kind: 'known', value: diagnostic.evaluation.progress.value } : { kind: 'unavailable' },
@@ -125,6 +134,43 @@ const appendInterval = (
     : [...intervals, { fromMs, toMs, cause }];
   return next.length > MAX_DELIVERY_INTERVALS ? next.slice(-MAX_DELIVERY_INTERVALS) : next;
 };
+
+const observeRenewedEnergyDraw = (
+  previous: EnergyTaskIdleState | undefined, deliveredKWh: number, nowMs: number,
+): EnergyTaskIdleState | undefined => {
+  if (previous === undefined || previous.kind === 'reopened') return previous;
+  // One draw reading cannot restore the booking. The metered tracker must
+  // also advance while draw is still observed, using its existing 1 Wh floor.
+  if (previous.kind === 'recovering') {
+    return deliveredKWh - previous.startedKWh >= DELIVERY_EPSILON_KWH
+      ? { kind: 'reopened', sinceMs: nowMs } : previous;
+  }
+  return { kind: 'recovering', startedKWh: deliveredKWh, previouslyAccepted: previous.kind === 'accepted' };
+};
+
+const observePermittedIdle = (
+  previous: EnergyTaskIdleState | undefined, confirmed: boolean,
+): EnergyTaskIdleState | undefined => {
+  if (confirmed || previous?.kind === 'accepted'
+    || (previous?.kind === 'recovering' && previous.previouslyAccepted)) return { kind: 'accepted' };
+  return previous?.kind === 'recovering' ? { kind: 'uncertain' } : previous;
+};
+
+const observeEnergyIdle = (
+  previous: EnergyTaskIdleState | undefined, facts: TaskDeliveryFacts, confirmed: boolean, nowMs: number,
+): EnergyTaskIdleState | undefined => {
+  if (facts.obligation === 'satisfied' || facts.deviceConstraint.kind !== 'none') return undefined;
+  if (facts.obligation === 'unavailable') return previous && { kind: 'uncertain' };
+  if (!facts.energyIdleEligible || (previous?.kind === 'reopened' && facts.energyIdleBookingRestored)) return undefined;
+  if (facts.progress.kind !== 'known' || facts.observation.kind === 'unavailable') {
+    return previous && { kind: 'uncertain' };
+  }
+  if (facts.observation.kind === 'drawing') return observeRenewedEnergyDraw(previous, facts.progress.value, nowMs);
+  // A trusted zero during a hold supplies no new device-side evidence.
+  return facts.obligation === 'claimed' && facts.control.kind === 'permitted'
+    ? observePermittedIdle(previous, confirmed) : previous;
+};
+
 /** One transition per lifecycle tick; a cleared cause survives only as a contributor. */
 export const observeTaskDelivery = (
   previous: TaskDeliveryEvidence,
@@ -140,7 +186,9 @@ export const observeTaskDelivery = (
     control: facts.control.kind === 'no_decision' ? 'pending' : facts.control.kind,
     draw: facts.observation.kind === 'unavailable' ? 'unobserved' : facts.observation.kind,
   }, nowMs);
-  const primary = resolveBlocker(facts, nonDelivery.kind === 'confirmed');
+  const confirmed = nonDelivery.kind === 'confirmed';
+  const energyIdle = observeEnergyIdle(previous.energyIdle, facts, confirmed, nowMs);
+  const primary = resolveBlocker(facts, confirmed || energyIdle?.kind === 'accepted');
   let { contributors, intervals } = prior;
   if (previous.explanation.kind === 'legacy_unrecorded') contributors = ['legacy_unrecorded'];
   if (prior.primary.kind === 'blocked' && elapsedMs > 0) {
@@ -148,7 +196,11 @@ export const observeTaskDelivery = (
     contributors = contributors.includes(cause) ? contributors : [...contributors, cause];
     intervals = appendInterval(intervals, cause, nowMs - elapsedMs, nowMs);
   }
-  return { explanation: { kind: 'recorded', primary, contributors, intervals }, nonDelivery };
+  return {
+    explanation: { kind: 'recorded', primary, contributors, intervals },
+    nonDelivery,
+    ...(energyIdle ? { energyIdle } : {}),
+  };
 };
 
 export const activeDeliveryCause = (evidence: TaskDeliveryEvidence): TaskDeliveryCause | 'clear' => (
@@ -220,7 +272,18 @@ export const reportTaskDeliveryStatus = (
 ): DeferredObjectiveDiagnostic => {
   if (diagnostic.deadlineAtMs === null || diagnostic.trajectory.kind !== 'resolved') return diagnostic;
   if (diagnostic.trajectory.status === 'satisfied' || diagnostic.trajectory.status === 'invalid') return diagnostic;
-  const cause = resolveDeliveryRiskCause(read(diagnostic.deviceId, diagnostic.deadlineAtMs));
+  const evidence = read(diagnostic.deviceId, diagnostic.deadlineAtMs);
+  const cause = resolveDeliveryRiskCause(evidence);
+  if (evidence.energyIdle?.kind === 'accepted' && cause !== 'device_limit' && cause !== 'device_schedule'
+    && diagnostic.energyIdleEligible && diagnostic.evaluation.completion.kind === 'unmet') {
+    const completion = { kind: 'device_idle' } as const;
+    return {
+      ...diagnostic,
+      completion,
+      evaluation: { ...diagnostic.evaluation, completion },
+      reasonCode: 'objective_not_accepting_energy',
+    };
+  }
   if (!isDeliveryRiskCause(cause)) return diagnostic;
   return {
     ...diagnostic,

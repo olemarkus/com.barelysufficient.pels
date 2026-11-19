@@ -66,6 +66,7 @@ const CAR_SIDE_MISS_HINT: Partial<Record<TaskDeliveryCause, string>> = {
 export const resolveMissedHistoryRecourse = (
   entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'outcome' | 'deliveryExplanation' | 'deviceId'>,
 ): DeadlineCannotMeetRecourse | null => {
+  if (entry.outcome === 'device_idle') return { ...MISSED_HISTORY_RECOURSE_SHORTFALL, deviceId: entry.deviceId };
   if (entry.outcome !== 'missed') return null;
   const cause = missedFinalCause(entry);
   if (cause === 'budget_limited') return MISSED_HISTORY_RECOURSE_LOWER_BUDGET;

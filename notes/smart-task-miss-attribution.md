@@ -1,12 +1,11 @@
 # Smart-task delivery evidence and attribution
 
-Smart tasks preserve the requested target. A car stopping at a lower charge
-limit, or a relay heater's mechanical thermostat cutting out, leaves its task
-unmet. Energy tasks require the requested metered kWh; temperature tasks may
-accept the observer's existing near-target tolerance when the classified
-setpoint covers the task target. Broad internal-cap classifications are not
-completion evidence. A trusted exit from accepted thermal completion reopens
-the task.
+Smart tasks preserve the requested target. An energy task reaches its target
+when the metered kWh reach the requested amount. A metered binary energy task
+with a known expected draw can be tentatively met while the device is idle
+during permitted delivery. Temperature tasks accept the observer's near-target
+tolerance when the classified setpoint covers the task target. A trusted
+change in the evidence reopens an accepted task.
 
 ## Ownership
 
@@ -28,30 +27,35 @@ between meter plans without sampling another idle hold or rewriting a schedule.
 
 A claimed task with permitted, settled control and less than 0.001 kWh of
 sustained useful draw per 15-minute window confirms device non-delivery after
-15 minutes. Its live status reports risk, while its requested target and
-schedule remain intact. Only this confirmed device-side non-delivery suppresses
-its priority reservation. Capacity restrictions and pending restoration retain
-reservations. Resumed draw clears the blocker and suppression; lower tasks
-receive the released allocation at the ordinary settle. A released hour
-cannot start this timer. A claimed hour can, also one booked at 0 kWh:
-permitted and not drawing is a device-side stop either way, and a hour the
-planner holds back reads as restricted, not permitted.
+15 minutes. For thermal and EV tasks the confirmed stop reports risk and
+suppresses the priority reservation. A claimed hour can start this timer
+even when it promises 0 kWh. A released hour adds no idle evidence.
 
-Once confirmed, the stop is latched for the status (`stopped`, then
-`rechecking`, in `taskDeliveryState.ts`) until the device draws again, the
-task is met, or its plan goes inactive (an unplugged car names itself). A
-tick PELS holds the device back, or an hour the plan does not book, keeps the
-latch but not the suppression: the next claimed, permitted window re-tests
-the device for 15 minutes with its reservation held before freeing it again,
-so a device the plan cannot run is never starved of the window that would
-show it drawing. Consecutive permitted hours stay one window, as before the
-latch. A restart restores a stop as `stopped` (no observation spans the
-downtime), and the persisted form writes the latched kinds as `confirmed`,
-which builds before the latch can still read. While latched, the reported
-cause is the last device-side one recorded, so a car waiting on its own
-schedule keeps that copy through PELS's holds. Without the latch those ticks
-reset the cause, and the status flipped back to on track and fired the status
-Flow on each re-confirmation.
+For an eligible binary energy task, confirmed idle also removes task rescue
+claims from live admission. During the planned run windows the device can
+still take available power. Admission accounts for the expected draw of an
+energized relay and lets it yield to committed demand. The task's normal
+planning turn clears future positive bookings. The recorder retains the
+elapsed intervals. Other tasks can use the released room at their own turns.
+
+An intentional hold with trusted zero draw preserves earlier evidence.
+When the draw becomes unobserved, idle acceptance becomes uncertain and the
+device continues on available power while it is rechecked. Resumed draw
+reopens the task once another drawing tick shows at least 0.001 kWh of new
+metered energy. The next normal planning turn can make fresh commitments
+around the bookings already held by other tasks. If the meter reaches the
+target, the ordinary success path takes precedence. After a restart a
+tentative task resumes in the uncertain state until fresh evidence arrives.
+
+For tasks outside available-power operation, a confirmed stop stays in the
+generic risk status through holds (`stopped` and `rechecking` in
+`taskDeliveryState.ts`). The next claimed, permitted window re-tests the
+device for 15 minutes with its reservation held. Consecutive permitted hours
+form one window. A restart restores a stop as `stopped`, so the downtime
+adds no evidence. The persisted form writes the latched kinds as
+`confirmed`, which builds before the latch can still read. The latest
+device-side cause stays visible while held, so a car waiting for its own
+schedule keeps that explanation.
 
 ## Live status overlay
 
@@ -73,7 +77,8 @@ cannot see these. Everything else is recorded as evidence only:
   "Leave off until turned on again" outside a booked hour. A booked hour ends
   that hold, so it is never a risk to the task.
 
-The surfaces read the codes from the active plan through
+For an eligible energy task, the live completion verdict presents confirmed
+device idle as **Tentatively met**. The surfaces read the active plan through
 `resolveEffectivePlanStatus` and explain them through `resolveSmartTaskLiveCause`
 (`notes/ui-terminology.md`, "Live causes on an at-risk or cannot-finish task").
 The same status rule also reads a known car charge limit below the target, reached
@@ -88,6 +93,12 @@ the hold. The active-plan loader drops both (`activePlanSettings.ts`), and the
 resolvers ignore them if a browser reads a stored plan first.
 
 ## Recorded explanations
+
+At expiry, the recorder can conclude **Device idle** when the last trusted
+evidence still supports idle and measured opportunities account for the
+energy shortfall. This keeps the delivered kWh, target and evidence
+available to the owner. A material competing blocker or insufficient
+evidence uses the ordinary terminal classification.
 
 The recorder stores the final active blocker, earlier contributing causes and
 coalesced time intervals. The interval list keeps the newest

@@ -62,6 +62,51 @@ describe('device-neutral delivery evidence', () => {
   });
 });
 
+describe('provisional relay energy delivery', () => {
+  const eligible = { ...permitted, energyIdleEligible: true } as const;
+
+  it('keeps a price hold neutral and requires fresh evidence after an unobserved permitted interval', () => {
+    const accepted = tick(eligible);
+    expect(accepted.energyIdle).toEqual({ kind: 'accepted' });
+    const priceHeld = observeTaskDelivery(accepted, { ...eligible, obligation: 'deferred' }, 16 * MINUTE, MINUTE);
+    expect(priceHeld.energyIdle).toEqual({ kind: 'accepted' });
+    expect(activeDeliveryCause(priceHeld)).toBe('clear');
+
+    const noReading = observeTaskDelivery(priceHeld, {
+      ...eligible, observation: { kind: 'unavailable' },
+    }, 17 * MINUTE, MINUTE);
+    expect(noReading.energyIdle).toEqual({ kind: 'uncertain' });
+    const rechecking = observeTaskDelivery(noReading, eligible, 18 * MINUTE, MINUTE);
+    expect(rechecking.energyIdle).toEqual({ kind: 'uncertain' });
+    expect(observeTaskDelivery(rechecking, eligible, 33 * MINUTE, 15 * MINUTE).energyIdle)
+      .toEqual({ kind: 'accepted' });
+  });
+
+  it('requires a trusted reading to retain idle through a pending control decision', () => {
+    const accepted = tick(eligible);
+    const noReading = { ...eligible, observation: { kind: 'unavailable' } } as const;
+    expect(observeTaskDelivery(accepted, {
+      ...noReading, control: { kind: 'pending' },
+    }, 16 * MINUTE, MINUTE).energyIdle).toEqual({ kind: 'uncertain' });
+    expect(observeTaskDelivery(accepted, {
+      ...eligible, obligation: 'deferred', control: { kind: 'uncontrolled' },
+    }, 16 * MINUTE, MINUTE).energyIdle).toEqual({ kind: 'accepted' });
+  });
+
+  it('keeps a task on available power until the draw is confirmed by metered delivery', () => {
+    const drawing = { ...eligible, observation: { kind: 'drawing', kw: 2 } } as const;
+    const recovering = observeTaskDelivery(tick(eligible), drawing, 16 * MINUTE, MINUTE);
+    expect(recovering.energyIdle?.kind).toBe('recovering');
+    const idleAgain = observeTaskDelivery(recovering, eligible, 17 * MINUTE, MINUTE);
+    expect(idleAgain.energyIdle).toEqual({ kind: 'accepted' });
+
+    expect(observeTaskDelivery(recovering, {
+      ...drawing, progress: { kind: 'known', value: 0.03 },
+    }, 17 * MINUTE, MINUTE).energyIdle).toEqual({ kind: 'reopened', sinceMs: 17 * MINUTE });
+    expect(tick(permitted).energyIdle).toBeUndefined();
+  });
+});
+
 
 it.each(['planned_with_margin', 'target_cannot_be_met', 'estimate_uncertain'] as const)(
   'keeps delivery facts independent of reporting reasons and cross-unit values (%s)',

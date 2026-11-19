@@ -6,7 +6,7 @@
     "en": "Smart task status changed for [[device]]"
   },
   "hint": {
-    "en": "Fires when PELS saves a new smart task status for the chosen device. Short mid-hour recalculations do not fire it. Filter on the [[status]] tag downstream; values are stable lowercase ids: waiting / on_track / at_risk / unachievable / satisfied."
+    "en": "Fires when PELS saves a new smart task status for the chosen device. Short mid-hour recalculations do not fire it. Filter on the [[status]] tag downstream; values are stable lowercase ids: waiting / on_track / at_risk / unachievable / device_idle / satisfied. The device_idle status is tentative and can change if the device draws power again."
   },
   "args": [
     {

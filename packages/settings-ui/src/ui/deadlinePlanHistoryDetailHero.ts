@@ -22,6 +22,7 @@ import {
   formatPlanHistoryObservedCoverage,
   formatPlanHistoryOvershootLine,
   formatPlanHistoryPostmortem,
+  formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
   type DeferredPlanHistoryPostmortem,
@@ -258,6 +259,27 @@ export const buildHistoryDetailHero = (
       reachedAtLine,
       overshootLine,
       coverageLine,
+    };
+  }
+  if (entry.outcome === 'device_idle') {
+    return {
+      tone: 'muted',
+      chip: { text: chipLabel, tone: 'muted' },
+      heading,
+      lead,
+      secondary: null,
+      whyLine: null,
+      recourse: resolveMissedHistoryRecourse(entry),
+      chartCollapsedByDefault: true,
+      quietAbandoned: false,
+      receiptTimeline: null,
+      shortfallChip: null,
+      costNarrative,
+      abandonedDetails: null,
+      progressLine: formatPlanHistoryProgressLine(entry),
+      reachedAtLine: null,
+      overshootLine: null,
+      coverageLine: null,
     };
   }
   // Abandoned / replaced → quiet log shape (v2.7.3). The page

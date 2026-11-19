@@ -888,3 +888,32 @@ describe('history v7 interval migration', () => {
     }).state).toBe('unavailable');
   });
 });
+
+describe('archived device idle outcome', () => {
+  it('round-trips incomplete metered energy and rejects a device-idle temperature entry', () => {
+    const entry = {
+      ...toPlanHistoryRecord({ ...baseEntry, id: 'idle-run', originalPlan: null, finalPlan: null }),
+      objectiveKind: 'energy',
+      outcome: 'device_idle',
+      metAtMs: null,
+      targetValue: 8,
+      startProgressValue: 0,
+      finalProgressValue: 3,
+      deliveredKWh: 3,
+      deliveryExplanation: {
+        kind: 'recorded',
+        primary: { kind: 'blocked', cause: 'device_not_accepting' },
+        contributors: ['device_not_accepting'],
+        intervals: [{ fromMs: 0, toMs: HOUR_MS, cause: 'device_not_accepting' }],
+      },
+    };
+    const version = DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION;
+    expect(parseDeferredObjectivePlanHistory({ version, entries: [entry] })).toMatchObject({
+      state: 'resolved',
+      snapshot: { entries: [entry] },
+    });
+    expect(parseDeferredObjectivePlanHistory({
+      version, entries: [{ ...entry, objectiveKind: 'temperature' }],
+    })).toEqual({ state: 'unavailable' });
+  });
+});

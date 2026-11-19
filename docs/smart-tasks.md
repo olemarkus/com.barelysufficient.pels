@@ -214,6 +214,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled period is still in the future. |
 | **At risk** | PELS has a plan, but there is limited time or room left, or the device itself is holding delivery back: it stopped taking power while PELS let it run, or (EV) the car's own charge limit is below the target, or the car is delaying charging on its own schedule. PELS limiting the device for a house power limit, the daily budget or a higher-priority device does not change the status on its own: the plan already accounts for it. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
+| **Tentatively met** | A metered on/off device stopped taking power while PELS allowed it to run. The task keeps tracking the kWh delivered and can book time again if the device starts drawing. |
 | **Satisfied** | The observed target is already met. For a heating or charging task, if a later reading drops below the target before the ready-by time, PELS returns to tracking it; delivered energy only ever goes up. |
 
 An EV task keeps the target you set even when the car's own charge limit is lower. As soon as PELS knows the car's limit is below the target, the task reads **At risk** (or **Cannot finish**) with the limit as the reason, because the car will stop short. Raise the limit in the car, or set the task's target to the car's limit. While the car is still charging toward its limit, today's daily budget is named instead when it is what holds the task back, since a higher car limit would not finish the task. A car unplugged before it reaches its limit shows **Paused — unplugged**.
@@ -229,10 +230,11 @@ The **Smart task ended** trigger fires once when a task run concludes, with an *
 | Outcome | What it means |
 | --- | --- |
 | **succeeded** | The task reached its target by the ready-by time. |
-| **missed** | The target was not reached by the ready-by time. The cause can be on PELS's side (not enough time, power or budget) or on the device's side (it stopped taking power, or the car stopped at its own charge limit). The history entry names it. |
+| **device_idle** | The device stopped taking power while PELS allowed it to run, and the recorded idle time explains why the energy target was left open. History shows how many kWh it delivered. |
+| **missed** | The task ended below target. The history entry names what held it back, such as too little time or available power, the daily budget, or the car's own charge limit. |
 | **abandoned** | The task was finalized before it could complete — either because **Clear smart task** ran (manually or from another Flow), or because the device stopped reporting for about an hour while the deadline was still in the future. |
 
-Filter on the tag when only some outcomes should notify, for example `Outcome = missed` for a "did not reach target" alert. An **abandoned** outcome is usually not a planning failure — it means the situation changed before the task could complete.
+Filter on the tag when only some outcomes should notify. Use `Outcome = missed` for misses and include `Outcome = device_idle` if you also want an alert when a device stops taking power below its energy target. An **abandoned** outcome is usually not a planning failure — it means the situation changed before the task could complete.
 
 Three things that look like an abandonment but aren't:
 

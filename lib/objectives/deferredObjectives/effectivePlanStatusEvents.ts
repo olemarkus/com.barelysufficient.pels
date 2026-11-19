@@ -12,7 +12,7 @@ import {
   isSmartTaskPricePaused, isWaitingForSmartTaskPlan,
 } from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import type {
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ActivePlanPersistDeps } from './activePlanRevisionBuild';
@@ -20,7 +20,7 @@ import type { ActivePlanPersistDeps } from './activePlanRevisionBuild';
 /** Public status; price-paused tasks and tasks awaiting allocation have none. */
 export const effectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
-): DeferredObjectiveActivePlanStatusV1 | null => {
+): DeferredObjectiveReportedStatus | null => {
   if (plan.latest === null || isSmartTaskPricePaused(plan) || isWaitingForSmartTaskPlan(plan)) return null;
   return resolveEffectivePlanStatus(plan.latest.planStatus, plan);
 };
@@ -41,7 +41,7 @@ export const effectivePlanStatusOf = (
 export const publishOverlayOnlyStatusChange = (
   deps: ActivePlanPersistDeps,
   plan: DeferredObjectiveActivePlanV1,
-  previousEffective: DeferredObjectiveActivePlanStatusV1 | null,
+  previousEffective: DeferredObjectiveReportedStatus | null,
 ): void => {
   const latest = plan.latest;
   if (latest === null || isSmartTaskPricePaused(plan)) return;

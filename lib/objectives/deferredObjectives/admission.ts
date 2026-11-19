@@ -7,7 +7,7 @@ import type { TaskEvaluation } from './taskEvaluation';
 
 export type { DeferredReleaseIntent };
 
-export type DeferredAdmissionDecision =
+export type DeferredAdmissionDecision = (
   | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: never }
   | {
       kind: 'planned';
@@ -26,7 +26,8 @@ export type DeferredAdmissionDecision =
       holdCause: DeferredHoldCause;
       deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_release' | 'shed_release';
-    };
+    }
+) & { usesAvailablePower?: true };
 
 export const buildDeferredDemandDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
@@ -170,6 +171,13 @@ const resolveDecision = (
   };
 };
 
+const resolveDecisionWithAvailablePower = (
+  evaluation: TaskEvaluation, device: PlanInputDevice | undefined,
+): DeferredAdmissionDecision => {
+  const decision = resolveDecision(evaluation, device);
+  return evaluation.usesAvailablePower === true ? { ...decision, usesAvailablePower: true } : decision;
+};
+
 /** Admission consumes live evaluations; the objective controller excludes expired tasks before this seam. */
 export const applyDeferredObjectiveAdmission = (
   evaluations: readonly TaskEvaluation[],
@@ -178,7 +186,8 @@ export const applyDeferredObjectiveAdmission = (
   const deviceById = new Map(devices.map((device) => [device.id, device]));
   const decisions = new Map<string, DeferredAdmissionDecision>();
   for (const evaluation of evaluations) {
-    decisions.set(evaluation.deviceId, resolveDecision(evaluation, deviceById.get(evaluation.deviceId)));
+    const device = deviceById.get(evaluation.deviceId);
+    decisions.set(evaluation.deviceId, resolveDecisionWithAvailablePower(evaluation, device));
   }
   return decisions;
 };
@@ -306,6 +315,7 @@ const buildAdmissionDecoration = (
   ...(claims.budgetExempt ? { budgetExempt: true } : {}),
   ...resolveBoostFields(claims.engageBoost),
   ...(claims.reservesStartupPower ? { reservesStartupPower: true } : {}),
+  ...(claims.usesAvailablePower ? { usesAvailablePower: true } : {}),
   ...(claims.liftsStartPolicyHold ? { startPolicyHoldLifted: true } : {}),
   ...(claims.liftsChargeTargetHold ? { chargeTargetHoldLifted: true } : {}),
   ...(typeof deadlineFloorTargetC === 'number' ? { deadlineFloorTargetC } : {}),
@@ -319,6 +329,7 @@ type DeferredHourClaims = {
   budgetExempt: boolean;
   engageBoost: boolean;
   reservesStartupPower: boolean;
+  usesAvailablePower: boolean;
   liftsStartPolicyHold: boolean;
   liftsChargeTargetHold: boolean;
 };
@@ -343,6 +354,7 @@ const resolveHourClaims = (
     // back from lower-priority admission until it starts. Only during planned hours (same gate
     // as engageBoost); it never sets forceBoostActive and never sheds anyone.
     reservesStartupPower: planned && decision.reservesStartupPower,
+    usesAvailablePower: decision.usesAvailablePower === true,
     // "Only PELS starts this device" means a smart task and nothing else, so a
     // task that books this hour is the one thing that lifts the baseline of off,
     // also when it booked it at 0 kWh (wanted on price, but the forecast left no
@@ -372,7 +384,7 @@ const resolveHourClaims = (
 
 const claimsAnything = (claims: DeferredHourClaims): boolean => (
   claims.budgetExempt || claims.engageBoost || claims.reservesStartupPower || claims.liftsStartPolicyHold
-  || claims.liftsChargeTargetHold
+  || claims.liftsChargeTargetHold || claims.usesAvailablePower
 );
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the

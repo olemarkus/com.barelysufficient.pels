@@ -1,5 +1,7 @@
 import type { DeferredObjectiveSettingsKind } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type {
+  DeviceControlModel,
+  ExpectedPowerSource,
   ObservedStateOfCharge,
   SteppedLoadProfile,
   ThermalDirection,
@@ -85,6 +87,9 @@ export type ObjectiveDeviceInput = {
   // missing from planner input and nothing noticed.
   isEvCharger: boolean;
   deviceType: 'temperature' | 'onoff';
+  /** Physical control and sizing facts retained from the planner input. */
+  controlModel?: DeviceControlModel;
+  expectedPowerSource?: ExpectedPowerSource;
   steppedLoadProfile?: SteppedLoadProfile;
   /**
    * Producer-resolved "there is no creditable session to make progress in",

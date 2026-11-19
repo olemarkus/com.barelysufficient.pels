@@ -1550,14 +1550,14 @@ Planner behavior:
 Four trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
 
 - **`deadline_status_changed`** — fires when the active-plan recorder publishes a saved status
-  transition between `waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`. Replacing
+  transition between `waiting` / `on_track` / `at_risk` / `unachievable` / `device_idle` / `satisfied`. Replacing
   a settled task with a pending record emits saved status → `waiting`, and the first saved
   revision after a pending record emits `waiting` → saved status; a first discovered revision with
   no prior public status and same-status re-fires are suppressed. Tokens: `device_name`, `status`
   (stable lowercase id). The immediate status bus remains internal; the missed transition is
   surfaced via `deadline_ended` instead.
 - **`deadline_ended`** — fires once per run conclusion with `outcome` = `succeeded` /
-  `missed` / `abandoned` (stable lowercase id). Tokens: `device_name`, `outcome`, `shortfall`
+  `device_idle` / `missed` / `abandoned` (stable lowercase id). Tokens: `device_name`, `outcome`, `shortfall`
   (number, 0 when succeeded; flow UI label "Gap to target"), `shortfall_known` (false when the
   device-side delta was not observable and `shortfall` fell back to 0). `replaced` and `unknown`
   outcomes are intentionally suppressed.

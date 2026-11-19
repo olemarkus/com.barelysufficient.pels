@@ -35,6 +35,7 @@ import {
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import { randomUUID } from 'node:crypto';
 import { isTaskSatisfied } from './taskCompletion';
+import { isDeviceIdleOutcome, type DeviceIdleEvidence } from './deviceIdleOutcome';
 
 type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
 
@@ -88,6 +89,7 @@ export type InProgressRecord = Omit<
   objectiveKind: DeferredObjectiveSettingsKind;
   targetValue: number;
   deliveryEvidence: TaskDeliveryEvidence;
+  deviceIdleEvidence?: DeviceIdleEvidence;
   commitment: InProgressCommitment;
   // Direction paired with `finalProgressValue`; persisted as the finalized
   // row's `progressDirection`.
@@ -591,7 +593,7 @@ const classifyOutcome = (
   if (reason === 'abandoned') return 'abandoned';
   if (reason === 'replaced') return 'replaced';
   if (record.finalProgressValue === null) return 'abandoned';
-  return 'missed';
+  return isDeviceIdleOutcome(record) ? 'device_idle' : 'missed';
 };
 
 // The finalized run, resolved like the API resolves a stored row: the device

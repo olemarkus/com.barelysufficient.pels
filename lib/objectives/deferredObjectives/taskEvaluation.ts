@@ -9,6 +9,8 @@ export type TaskEvaluation = {
   requestedTarget: number;
   progress: { kind: 'unobserved' } | { kind: 'known'; value: number; direction: ObjectiveProgressDirection };
   completion: TaskCompletion | { kind: 'inactive' };
+  /** This interval can use available power without making a task promise. */
+  usesAvailablePower?: true;
   /**
    * `learning`: a temperature task whose device has no learned energy per degree
    * yet. Nothing can be allocated, so the task heats toward its target on free

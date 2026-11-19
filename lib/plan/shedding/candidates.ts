@@ -305,15 +305,21 @@ function addCandidatePower(
  */
 
 function rankCandidates(candidates: readonly ShedCandidate[]): ShedCandidate[] {
-  const byPriority = [...candidates].sort(comparePriority);
+  const availablePower = candidates.filter(usesAvailablePower).sort(comparePriority);
+  const byPriority = candidates.filter((candidate) => !usesAvailablePower(candidate)).sort(comparePriority);
   const batteryIndexes = byPriority.flatMap((candidate, index) => (candidate.kind === 'storage' ? [index] : []));
   const bounds = [-1, ...batteryIndexes, byPriority.length];
-  return bounds.slice(1).flatMap((end, part) => {
+  const ranked = bounds.slice(1).flatMap((end, part) => {
     const loads = byPriority.slice((bounds[part] ?? -1) + 1, end).sort(comparePreemptiveFirst);
     const battery = byPriority[end];
     return battery === undefined ? loads : loads.concat([battery]);
   });
+  return availablePower.concat(ranked);
 }
+
+const usesAvailablePower = (candidate: ShedCandidate): boolean => (
+  candidate.kind === 'binary' && candidate.usesAvailablePower === true
+);
 
 
 const isPreemptive = (candidate: ShedCandidate): boolean => (

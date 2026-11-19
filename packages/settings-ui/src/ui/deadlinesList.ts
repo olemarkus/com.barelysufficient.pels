@@ -21,7 +21,6 @@ import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contrac
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   resolveSmartTaskRowFacts,
-  smartTaskScheduleNoLongerGoverns,
 } from '../../../shared-domain/src/smartTaskRowFacts.ts';
 import { flattenPlanHistoryEntries } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
@@ -54,6 +53,7 @@ import {
   formatSmartTaskExtraPermissionsValue,
 } from '../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import {
+  DEVICE_IDLE_LIST_LINE,
   resolveSmartTaskBudgetRole,
   resolveSmartTaskLiveCause,
   type SmartTaskCarChargeLimit,
@@ -80,6 +80,7 @@ const resolveListCauseLine = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
   carChargeLimit: SmartTaskCarChargeLimit | null,
 ): string | null => {
+  if (statusId === 'device_idle') return DEVICE_IDLE_LIST_LINE;
   if (statusId !== 'at_risk' && statusId !== 'cannot_meet') return null;
   const budgetRole = plan.latest === null ? 'none' : resolveSmartTaskBudgetRole(plan.latest);
   return resolveSmartTaskLiveCause(plan.diagnosticReasonCode, carChargeLimit, budgetRole)?.listLine ?? null;
@@ -103,10 +104,7 @@ const buildCard = (
     kind: plan.objectiveKind,
     progressDirection: plan.progressDirection,
     targetValue: plan.targetValue,
-    // A committed revision can outlive a meter reassignment or an un-manage.
-    // Its cached first hour no longer governs the device, so those cards expose
-    // only the user-set deadline and never advertise the stale schedule.
-    firstActionAtMs: smartTaskScheduleNoLongerGoverns(statusId) ? null : firstActionAtMs,
+    firstActionAtMs,
     deadlineAtMs: plan.deadlineAtMs,
     href: buildDeadlineHref(deviceId),
     statusId,

@@ -26,6 +26,7 @@ import { phaseExportRoomKw } from '../phase/phasePower';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import { resolveAcknowledgedStepUpReservationKw } from '../planSteppedRestorePending';
 import { resolveCapacityAdmissionHeadroom } from '../planBudget';
+import { accountForAvailablePowerDevices, drawIncludedInMeter, yieldAvailablePower } from './availablePowerDevices';
 import {
   markOffDevicesStayOff,
   markRestoreCandidatesHeld,
@@ -92,6 +93,7 @@ export function applyRestorePlan(
   const ledger = buildCycleHeadroomLedger(power, context);
   reservePendingChargingPhases(ledger, state, deviceMap);
   reserveAcknowledgedStepUps(ledger, planDevices);
+  const availablePowerDevices = accountForAvailablePowerDevices(deviceMap, ledger, drawIncludedInMeter(deps, power));
   let restoredOneThisCycle = false;
   const batchState = context.grid.kind === 'on' ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
@@ -138,6 +140,7 @@ export function applyRestorePlan(
     applyRestorePlanInCooldown(cycle);
   }
 
+  yieldAvailablePower(deviceMap, availablePowerDevices, ledger);
   return {
     planDevices: Array.from(deviceMap.values()),
     restoredThisCycle,

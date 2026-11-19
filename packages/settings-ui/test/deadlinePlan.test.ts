@@ -1601,6 +1601,38 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse).toBeNull();
   });
 
+  it('shows a tentatively met energy task with measured progress and no future forecast', () => {
+    const now = new Date(2026, 0, 1, 13);
+    const deadline = atLocalHour(now, 4);
+    const plan: DeferredObjectiveActivePlanV1 = {
+      ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [1, 2], plannedKWhPerHour: 2 }),
+      objectiveKind: 'energy',
+      targetValue: 6,
+      liveCompletion: { kind: 'device_idle' },
+      diagnosticReasonCode: 'objective_not_accepting_energy',
+    };
+    const bootstrap = buildBootstrap({
+      objectivesByDeviceId: {
+        heater: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs: deadline.getTime() },
+      },
+    }, plan);
+    bootstrap.deferredObjectiveActivePlans!.plansByDeviceId.heater = toResolvedActivePlan(plan, () => 2, null);
+    const payload = expectReady(resolveRenderInput({
+      bootstrap,
+      deviceId: 'heater',
+      devices: [{ available: true, id: 'heater', name: 'Relay', targets: [], binaryControl: { on: true } }],
+      prices: pricesPayload(hourlyPrices(now, [100, 90, 90, 100])),
+      nowMs: now.getTime(),
+    }));
+    expect(payload.hero.chips).toContainEqual({ text: 'Tentatively met', tone: 'info' });
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 2.0 of 6.0 kWh');
+    expect(payload.hero.metaLine).toContain('For example, a water heater stops heating when it reaches its set temperature.');
+    expect(payload.timeline.hours.some((hour) => hour.planned)).toBe(false);
+    expect(payload.trajectory.plannedPoints).toEqual([]);
+    expect(payload.trajectory.deadlineDanger).toBe(false);
+    expect(payload.trajectory.stateline).toMatchObject({ verdict: null });
+  });
+
   it('reports a confirmed stop as at risk with the device-side reason, matching the list and widget', () => {
     // The car's limit (90 %) is above the target, so only the device-side cause explains the risk.
     const payload = expectReady(resolveRenderInput(carCapPlanInput(
@@ -1608,7 +1640,8 @@ describe('deadline plan page payload', () => {
     )));
     expect(payload.hero.chips).toContainEqual({ text: 'At risk', tone: 'warn' });
     expect(payload.hero.metaLine).toBe(
-      'The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.',
+      'The device stopped taking power while PELS allowed it to run. Check the device. '
+        + 'For example, a water heater stops heating when it reaches its set temperature.',
     );
     expect(payload.hero.recourse).toBeNull();
   });

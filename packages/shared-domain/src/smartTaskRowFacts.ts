@@ -63,19 +63,19 @@ export const resolveSmartTaskRowFacts = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
   device: (ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe) | undefined,
   nowMs: number,
-): SmartTaskRowFacts => ({
-  statusId: resolveSmartTaskListStatus(plan, nowMs),
-  firstActionAtMs: isSmartTaskPricePaused(plan) ? null : resolveFirstPlannedHourMs(plan.latest),
-  carChargeLimit: resolveReportedCarChargeLimit(plan),
-  currentValue: resolveCurrentValue(device, plan),
-});
+): SmartTaskRowFacts => {
+  const statusId = resolveSmartTaskListStatus(plan, nowMs);
+  const hidesBooking = isSmartTaskPricePaused(plan) || smartTaskScheduleNoLongerGoverns(statusId);
+  return {
+    statusId,
+    firstActionAtMs: hidesBooking ? null : resolveFirstPlannedHourMs(plan.latest),
+    carChargeLimit: resolveReportedCarChargeLimit(plan),
+    currentValue: resolveCurrentValue(device, plan),
+  };
+};
 
-// A cached revision outlives the device leaving the planned set, whether by
-// meter reassignment (`unavailable`) or by the owner turning "Managed by PELS"
-// off. Those hours govern nothing, so no row may advertise a schedule, an
-// estimate or a trajectory underneath a chip that says otherwise.
-// `paused_unplugged` is deliberately absent: that plan resumes on its own when
-// the car is plugged back in.
+// A cached revision can outlive the plan's command authority or the device's
+// willingness to draw. Its bookings no longer describe when delivery is due.
 export const smartTaskScheduleNoLongerGoverns = (statusId: SmartTaskListStatusId): boolean => (
-  statusId === 'unavailable' || statusId === 'paused_unmanaged'
+  statusId === 'unavailable' || statusId === 'paused_unmanaged' || statusId === 'device_idle'
 );
