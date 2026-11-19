@@ -7,6 +7,7 @@ import type {
   DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryDiscoveredFrom,
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourStartBooking,
@@ -235,13 +236,8 @@ const hasValidHourStartBookings = (v: Record<string, unknown>): boolean => (
     || (Array.isArray(v.hourStartBookings) && v.hourStartBookings.every(isHourStartBooking))
 );
 
-// Price-display provenance persisted alongside `totalCost`. A tampered or
-// downgraded payload could smuggle a non-string unit or a non-finite / zero /
-// negative divisor that would mislabel or 100×-misscale the archived figure (a
-// zero divisor would divide-by-zero at scale time). Reject those at the
-// persistence boundary so the archive can trust the recorded display; a dropped
-// `costDisplay` simply falls back to the recording-era øre/kr default on read.
-const isCostDisplay = (value: unknown): boolean => {
+// Both history stores accept an empty unit for a price source without a currency label.
+export const isCostDisplay = (value: unknown): value is DeferredObjectivePlanHistoryCostDisplay => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return typeof v.unit === 'string' && isFiniteNumber(v.divisor) && v.divisor > 0;

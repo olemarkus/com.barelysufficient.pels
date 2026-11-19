@@ -8,7 +8,7 @@ import type {
   DeferredObjectivePlanHistoryHourlyContribution,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
-import { isHourStartBooking } from './planHistorySettings';
+import { isCostDisplay, isHourStartBooking } from './planHistorySettings';
 
 /**
  * What the run set out to need, as saved with its in-progress delivery.
@@ -80,15 +80,6 @@ export const migrateMeteredDeliveryState = (raw: unknown): unknown => {
     ...('hourlyContributions' in raw
       ? { hourlyContributions: migrateLegacyHistoryIntervals(raw.hourlyContributions) } : {}),
   };
-};
-
-const isCostDisplay = (value: unknown): value is DeferredObjectivePlanHistoryCostDisplay => {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Record<string, unknown>;
-  return typeof candidate.unit === 'string'
-    && candidate.unit.length > 0
-    && isFiniteNumber(candidate.divisor)
-    && candidate.divisor > 0;
 };
 
 const isTone = (value: unknown): boolean => (
