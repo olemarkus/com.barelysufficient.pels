@@ -1,8 +1,6 @@
 import { getVatMultiplier, VAT_MULTIPLIER_EXEMPT } from '../../packages/shared-domain/src/price/norwayPrice';
 
-export {
-  getVatMultiplier, VAT_MULTIPLIER_EXEMPT, VAT_MULTIPLIER_STANDARD,
-} from '../../packages/shared-domain/src/price/norwayPrice';
+export { VAT_MULTIPLIER_STANDARD } from '../../packages/shared-domain/src/price/norwayPrice';
 
 export type RegionalPricingRules = {
   vatMultiplier: number;
