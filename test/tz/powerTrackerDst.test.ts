@@ -1,4 +1,4 @@
-import { aggregateAndPruneHistory } from '../../lib/power/tracker';
+import { aggregateAndPruneHistory, HOURLY_RETENTION_DAYS } from '../../lib/power/tracker';
 
 // Regression suite for the timezone keying fix: dailyTotals must be keyed by the
 // Homey-local calendar day. Without the timezone option, samples that fall on the wrong
@@ -13,7 +13,7 @@ import { aggregateAndPruneHistory } from '../../lib/power/tracker';
 
 const OSLO = 'Europe/Oslo';
 
-const HOURLY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const HOURLY_RETENTION_MS = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 const isoHour = (utcDateMs: number): string => new Date(utcDateMs).toISOString();
 

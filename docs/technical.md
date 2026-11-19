@@ -333,8 +333,8 @@ When enabled, it logs:
 
 PELS tracks power consumption over time using a tiered retention system:
 
-### Hourly Data (30 days)
-Full-resolution hourly buckets are kept for the last 30 days. Each bucket contains total energy consumed and the number of samples.
+### Hourly Data (32 days)
+Full-resolution hourly buckets are kept for the last 32 days, which always covers the current calendar month. Each bucket contains total energy consumed and the number of samples.
 
 ### Daily Summaries (365 days)
 Older hourly data is automatically aggregated into daily summaries showing average consumption per hour.

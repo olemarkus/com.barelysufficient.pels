@@ -7,9 +7,9 @@ import { ExpandMoreIcon } from './icons.tsx';
 
 const TIME_ZONE = 'Europe/Oslo';
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
-const kw = (value: number): string => `${number.format(value)} kW`;
+export const kw = (value: number): string => `${number.format(value)} kW`;
 export const capacityTierText = (tier: { lowerKw: number; upperKw: number | null }): string => (
-  tier.upperKw === null ? `${kw(tier.lowerKw)} and above` : `${tier.lowerKw}–${tier.upperKw} kW tier`
+  tier.upperKw === null ? `${kw(tier.lowerKw)} and above` : `${number.format(tier.lowerKw)}–${kw(tier.upperKw)} tier`
 );
 type ReadyRead = Extract<NorwayMonthlyCapacityRead, { state: 'ready' }>;
 const resetDate = (monthKey: string): string => {
@@ -165,6 +165,8 @@ export const MonthlyCapacityCard = ({ read, nowMs, ...actions }:
       {read.hardCapRecommendation.state !== 'none' && <p class="pels-card-supporting">
         PELS reserves {kw(read.hardCapRecommendation.marginKw)} below the Hard cap for unmanaged usage late in the hour.
       </p>}
+      {read.coverage === 'partial' && <MdTextButton class="monthly-capacity-nav" type="button"
+        data-settings-target="advanced" data-settings-anchor="#power-history-recovery">Recover missing hours</MdTextButton>}
     </details>
   </section>;
 };

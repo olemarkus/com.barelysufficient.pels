@@ -2,6 +2,7 @@ import { resolveNorwayMonthlyCapacity, norwayMonthStartMs } from '../../lib/powe
 import { projectNorwayMonthHistory, type NorwayMonthHistory } from '../../lib/power/norwayMonthlyCapacityHistory';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
+import { HOURLY_RETENTION_DAYS } from '../../lib/power/tracker';
 
 const tariff = { identity: 'grid:2026', boundariesKw: [0, 2, 5, 10, 15, 20], thresholdIncluded: true };
 const settings: CapacityScalarSettings = {
@@ -25,7 +26,7 @@ const completeBuckets = (atMs: number): Record<string, number> => Object.fromEnt
 
 describe('Norway monthly capacity', () => {
   it.each([
-    [5, 4.9, 4.9, 'set'],
+    [5, 5, 5, 'keep'],
     [4.5, 4.9, 4.5, 'keep'],
   ] as const)('keeps the saved %s nominal cap stable after an actual monthly hard-cap choice',
     (normalCap, target, recommended, state) => {
@@ -140,11 +141,14 @@ describe('Norway monthly capacity', () => {
     expect(projectNorwayMonthHistory({ buckets: missing }, now).coverage).toBe('partial');
     expect(projectNorwayMonthHistory({}, now).coverage).toBe('partial');
   });
-  it('does not manufacture the first day after the 30-day retention window moves past it', () => {
-    const end = Date.parse('2026-12-31T12:00:00+01:00');
-    const retained = Object.fromEntries(Object.entries(completeBuckets(end))
-      .filter(([key]) => Date.parse(key) >= end - 30 * 24 * 3_600_000));
-    expect(projectNorwayMonthHistory({ buckets: retained }, end).coverage).toBe('partial');
+  it('keeps the first day of a 31-day month counted on its last hour', () => {
+    const end = Date.parse('2026-10-31T23:30:00+01:00');
+    const buckets = Object.fromEntries(Object.entries(completeBuckets(end))
+      .filter(([key]) => Date.parse(key) >= end - HOURLY_RETENTION_DAYS * 24 * 3_600_000));
+    buckets[new Date(norwayMonthStartMs(end)).toISOString()] = 7;
+    const history = projectNorwayMonthHistory({ buckets }, end);
+    expect(history.coverage).toBe('complete');
+    expect(history.peaks.find((peak) => peak.dateKey === '2026-10-01')?.kw).toBe(7);
   });
   it('skips invalid keys and values without treating them as zero or complete coverage', () => {
     const buckets = { ...completeBuckets(now),
@@ -163,11 +167,18 @@ describe('Norway monthly capacity', () => {
     const history = projectNorwayMonthHistory({ buckets: { [new Date(now).toISOString()]: 6 } }, atMs);
     expect(history.peaks[0]).toEqual({ dateKey: '2026-11-04', hourStartMs: now, kw: 6, lowerBound: true });
   });
-  it('keeps one 5.01 kW day recoverable and proposes 4.9 for future hours', () => {
+  it('keeps a Hard cap at the tier step while one 5.01 kW day leaves the tier recoverable', () => {
     expect(resolve([5.01])).toMatchObject({ state: 'ready', targetLost: false,
-      remainingMonthCap: { state: 'bounded', limitKw: 4.9 },
-      hardCapRecommendation: { state: 'set', limitKw: 4.9, marginKw: 0.2 },
-      advice: { state: 'suggestion', limitKw: 4.9, actionable: true, direction: 'lower' } });
+      remainingMonthCap: { state: 'bounded', limitKw: 5 },
+      hardCapRecommendation: { state: 'keep', limitKw: 5, marginKw: 0.2 },
+      advice: { state: 'none' } });
+  });
+  it('asks for nothing at the start of a month when the Hard cap is the tier step', () => {
+    expect(resolveNorwayMonthlyCapacity({ monthKey: '2026-12', coverage: 'complete', peaks: [] },
+      tariff, settings, 5, Date.parse('2026-12-01T00:30:00+01:00'))).toMatchObject({
+      remainingMonthCap: { state: 'bounded', limitKw: 5 },
+      hardCapRecommendation: { state: 'keep', limitKw: 5 }, advice: { state: 'none' },
+    });
   });
   it('offers the next tier only after irreversible loss with a buffer', () => {
     expect(resolve([5.5, 5.3, 5.1])).toMatchObject({ state: 'ready', targetLost: true,
@@ -188,8 +199,8 @@ describe('Norway monthly capacity', () => {
       .toMatchObject({ advice: { state: 'suggestion', limitKw: 9.6, direction: 'lower', actionable: true } });
   });
   it('publishes the cap even when no change or tightening is needed', () => {
-    expect(resolve([4.7, 4.6, 4.5])).toMatchObject({ hardCapRecommendation: { state: 'set', limitKw: 4.9 },
-      remainingMonthCap: { state: 'bounded', limitKw: 4.9 } });
+    expect(resolve([4.7, 4.6, 4.5])).toMatchObject({ hardCapRecommendation: { state: 'keep', limitKw: 5 },
+      remainingMonthCap: { state: 'bounded', limitKw: 5 }, advice: { state: 'none' } });
     expect(resolveNorwayMonthlyCapacity(monthWith([4.7, 4.6, 4.5]), tariff, settings, 4.9, now))
       .toMatchObject({ hardCapRecommendation: { state: 'keep', limitKw: 4.9, marginKw: 0.2 }, advice: { state: 'none' }, remainingMonthCap: { state: 'bounded', limitKw: 4.9 } });
   });

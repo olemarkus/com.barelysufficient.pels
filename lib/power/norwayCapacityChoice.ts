@@ -1,4 +1,4 @@
-import { norwayMonthKey } from './norwayMonthlyCapacityHistory';
+import { norwayMonthKey, norwayMonthWindowMs } from './norwayMonthlyCapacityHistory';
 import type { NorwayCapacityTariffRead } from '../../packages/contracts/src/norwayCapacityTariff';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
@@ -27,6 +27,30 @@ const CONFIGURATION_KEYS = [
   'capacity_limit_kw', 'capacity_margin_kw', 'capacity_period_minutes', 'capacity_enabled', 'price_scheme',
   'nettleie_orgnr', 'nettleie_tariffgruppe',
 ];
+const readSavedConfiguration = (raw: object): Readonly<Record<string, string>> | null => {
+  const configuration: unknown = (raw as SavedChoice).configuration;
+  return typeof configuration === 'object' && configuration !== null
+    && CONFIGURATION_KEYS.every((key) => typeof (configuration as Record<string, unknown>)[key] === 'string')
+    ? configuration as Readonly<Record<string, string>> : null;
+};
+const readSavedActive = (raw: object, choice: Extract<NorwayCapacityChoiceState, { state: 'active' }>,
+  outcome: NorwayCapacityChoiceOutcome): SavedChoice | null => {
+  if (!Number.isFinite(choice.normalLimitKw) || choice.normalLimitKw <= 0) return null;
+  const request = readNorwayCapacityChoiceRequest({ id: 'restore', action: 'apply', offer: choice.offer });
+  const configuration = readSavedConfiguration(raw);
+  // Without the snapshot taken at apply time, an edit made while the app was down cannot be detected.
+  if (request?.action !== 'apply' || !configuration) return null;
+  const { marginKw } = raw as SavedChoice;
+  return { choice: { ...choice, offer: request.offer }, outcome, configuration,
+    ...(typeof marginKw === 'number' && Number.isFinite(marginKw) ? { marginKw } : {}) };
+};
+const readSavedChoice = (raw: unknown): SavedChoice | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { choice, outcome } = raw as SavedChoice;
+  if (!choice || !outcome || !isOutcome(outcome)) return null;
+  if (choice.state === 'normal') return { choice, outcome };
+  return choice.state === 'active' ? readSavedActive(raw, choice, outcome) : null;
+};
 const EMPTY: SavedChoice = { choice: { state: 'normal' }, outcome: { state: 'idle' } };
 /** Durable explicit owner choice. The normal capacity setting is never overwritten. */
 export class NorwayCapacityChoice {
@@ -40,32 +64,10 @@ export class NorwayCapacityChoice {
   ) {
     let raw: unknown;
     try { raw = settings.get(STATE_KEY); } catch { return; }
-    if (typeof raw !== 'object' || raw === null) return;
-    const { choice, outcome } = raw as SavedChoice;
-    if (!choice || !outcome) return;
-    const validOutcome = isOutcome(outcome);
-    if (!validOutcome) return;
-    if (choice.state === 'normal') this.saved = { choice, outcome };
-    else if (choice.state === 'active' && Number.isFinite(choice.normalLimitKw) && choice.normalLimitKw > 0) {
-      const request = readNorwayCapacityChoiceRequest({ id: 'restore', action: 'apply', offer: choice.offer });
-      if (request?.action === 'apply') {
-        this.saved = { choice: { ...choice, offer: request.offer }, outcome,
-          configuration: this.readSavedConfiguration(raw),
-          ...(typeof (raw as SavedChoice).marginKw === 'number' && Number.isFinite((raw as SavedChoice).marginKw)
-            ? { marginKw: (raw as SavedChoice).marginKw } : {}),
-        };
-        this.acceptedTariffIdentity = request.offer.tariffIdentity;
-      }
-    }
-  }
-
-  private readSavedConfiguration(raw: object): Readonly<Record<string, string>> {
-    const configuration: unknown = (raw as SavedChoice).configuration;
-    if (typeof configuration === 'object' && configuration !== null
-      && Object.values(configuration).every((value) => typeof value === 'string')) {
-      return configuration as Readonly<Record<string, string>>;
-    }
-    try { return this.captureConfiguration(); } catch { return {}; }
+    const restored = readSavedChoice(raw);
+    if (!restored) return;
+    this.saved = restored;
+    if (restored.choice.state === 'active') this.acceptedTariffIdentity = restored.choice.offer.tariffIdentity;
   }
 
   private captureConfiguration(): Readonly<Record<string, string>> {
@@ -128,7 +130,8 @@ export class NorwayCapacityChoice {
   forPlanning(scalars: CapacityScalarSettings, nowMs: number): CapacityScalarSettings {
     const choice = this.readChoice(scalars);
     return choice.state === 'active' && choice.offer.monthKey <= norwayMonthKey(nowMs) ? {
-      ...scalars, monthlyCapacityChoice: { monthKey: choice.offer.monthKey, limitKw: choice.offer.limitKw },
+      ...scalars,
+      monthlyCapacityChoice: { ...norwayMonthWindowMs(choice.offer.monthKey), limitKw: choice.offer.limitKw },
     } : scalars;
   }
 

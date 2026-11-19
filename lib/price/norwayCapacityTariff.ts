@@ -51,8 +51,8 @@ export function readNorwayCapacityTariff(
   return {
     state: 'supported',
     tariff: {
-      identity: JSON.stringify([organizationNumber, tariffGroup, period.gyldig_fra,
-        period.gyldig_til ?? '', boundariesKw, fixed.terskel_inkludert]),
+      // No validity dates: an operator publishing next period's start date leaves this month's tiers unchanged.
+      identity: JSON.stringify([organizationNumber, tariffGroup, boundariesKw, fixed.terskel_inkludert]),
       boundariesKw,
       thresholdIncluded: fixed.terskel_inkludert,
     },

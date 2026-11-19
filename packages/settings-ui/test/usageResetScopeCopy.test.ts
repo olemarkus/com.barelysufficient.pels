@@ -5,7 +5,7 @@ import { resolveUsageFooterText } from '../src/ui/homeScopeCopy.ts';
 describe('resolveUsageFooterText', () => {
   it('points at the reset unqualified while the house has no meter areas', () => {
     expect(resolveUsageFooterText('main', false)).toBe(
-      'Hourly data kept for 30 days, daily totals for 1 year. '
+      'Hourly data kept for 32 days, daily totals for 1 year. '
       + 'Reset usage history lives under Settings → Advanced → Data management.',
     );
   });

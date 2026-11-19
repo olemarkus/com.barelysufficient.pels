@@ -89,7 +89,7 @@ export const HOME_SCOPE_BUDGET_MAIN_ONLY_LINE = 'Your daily budget covers the Ma
  * both name the Main home, and an area's Usage page says the reset is not its
  * own instead of pointing at a reset that would erase another home's history.
  */
-export const USAGE_RETENTION_LINE = 'Hourly data kept for 30 days, daily totals for 1 year.';
+export const USAGE_RETENTION_LINE = 'Hourly data kept for 32 days, daily totals for 1 year.';
 export const USAGE_RESET_POINTER = 'Reset usage history lives under Settings → Advanced → Data management.';
 export const USAGE_RESET_POINTER_MAIN_HOME = 'Reset the Main home’s usage history under '
   + 'Settings → Advanced → Data management.';

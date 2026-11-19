@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aggregateAndPruneHistory, recordPowerSample, type PowerTrackerState } from '../../lib/power/tracker';
+import {
+  aggregateAndPruneHistory, HOURLY_RETENTION_DAYS, recordPowerSample, type PowerTrackerState,
+} from '../../lib/power/tracker';
 import type { RecordPowerSampleParams } from '../../lib/power/trackerTypes';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -114,7 +116,7 @@ describe('power tracker background exemption', () => {
     const first = await sample({}, START);
     const state = await sample(first, START + 3600000);
     vi.useFakeTimers();
-    vi.setSystemTime(START + 32 * 24 * 3600000);
+    vi.setSystemTime(START + (HOURLY_RETENTION_DAYS + 2) * 24 * 3600000);
     const pruned = aggregateAndPruneHistory(state, 'UTC');
     expect(pruned.uncontrolledExemptBuckets).toEqual({});
     expect(pruned.uncontrolledExemptDailyTotals?.['2026-11-02']).toBeCloseTo(3.06);

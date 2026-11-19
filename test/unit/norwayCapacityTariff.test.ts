@@ -81,6 +81,13 @@ describe('Norway capacity tariff facts', () => {
     expect(a.tariff.identity).not.toBe(c.tariff.identity);
   });
 
+  it('keeps identity when the operator publishes an end date for the current period', () => {
+    const open = read([period()]);
+    const ended = read([period({ gyldig_til: '2027-01-01' }), period({ gyldig_fra: '2027-01-01' })]);
+    if (open.state !== 'supported' || ended.state !== 'supported') throw new Error('Expected supported tariffs');
+    expect(ended.tariff.identity).toBe(open.tariff.identity);
+  });
+
   it('never reuses a saved file from a different operator or filename', () => {
     const saved = { organizationNumber: '123', file: 'other.yml', text: '', fetchedAt: '2026-11-01' };
     expect(readSavedNorwayCapacityTariff(saved, '456', 'Husholdning', '2026-11').state).toBe('unavailable');

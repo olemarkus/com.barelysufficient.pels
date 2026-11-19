@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import type { NorwayMonthlyCapacityRead, NorwayCapacityChoiceState } from '../../../../contracts/src/norwayMonthlyCapacity.ts';
 import { MdElevation, MdTextButton } from './materialWebJSX.tsx';
-import { MonthlyCapacityActions } from './NorwayMonthlyCapacity.tsx';
+import { MonthlyCapacityActions, kw } from './NorwayMonthlyCapacity.tsx';
 
 type Props = {
   read: NorwayMonthlyCapacityRead;
@@ -17,9 +17,9 @@ export const MonthlyCapacityLimits = ({ read, choice, busy, message, onApply, on
     <MdElevation aria-hidden="true" />
     <h3 class="plan-card__title" id="monthly-capacity-limits-title">This month’s Hard cap</h3>
     {read.state === 'ready' && <>
-      {read.hardCapRecommendation.state !== 'none' && <p class="monthly-capacity-copy">
-        {choice.state === 'normal' && (read.advice.state !== 'suggestion' || read.advice.actionable) && <>Recommended Hard cap: <strong>{read.hardCapRecommendation.limitKw} kW</strong>. </>}
-        PELS reserves {read.hardCapRecommendation.marginKw} kW below the cap for unmanaged usage late in the hour.
+      {read.hardCapRecommendation.state !== 'none' && choice.state === 'normal' && <p class="monthly-capacity-copy">
+        {(read.advice.state !== 'suggestion' || read.advice.actionable) && <>Recommended Hard cap: <strong>{kw(read.hardCapRecommendation.limitKw)}</strong>. </>}
+        PELS reserves {kw(read.hardCapRecommendation.marginKw)} below the cap for unmanaged usage late in the hour.
       </p>}
       {read.coverage === 'partial' && <p class="pels-card-supporting">{read.advice.state === 'suggestion' && !read.advice.actionable
         ? 'Some hours are missing. A higher monthly cap cannot be applied from these estimates.'

@@ -23,7 +23,8 @@ import { accrueCapacityQuarter, startCapacityQuarterTracking } from './capacityQ
 import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
 import { addToHourlyBuckets, updateHourlyBuckets } from './trackerBucketChanges';
 import { resolveNextHeldReading, withEndedSuspectStretch, withSuspectStretchBeforeReset } from './heldReading';
-export const HOURLY_RETENTION_DAYS = 30;
+// 32 days keep every hour of the current calendar month, including a 31-day month with a 25-hour day.
+export const HOURLY_RETENTION_DAYS = 32;
 export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 const MIN_VALID_TIMESTAMP_MS = 100000000000;
