@@ -28,7 +28,6 @@ import { EOH_DRAIN_WINDOW_MIN } from './planConstants';
 import { resolveCapacityTimedRun, type CapacityTimedRun } from './capacityTimedRun';
 import type { PowerCycleReading } from '../power/powerCycleReading';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
-import type { PlanEngineState } from './planState';
 import type { CapacityPlanLimit } from './planContext';
 import type { DrainStart } from './capacityDrainStart';
 import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
@@ -156,9 +155,9 @@ export function computeDynamicSoftLimit(
 /**
  * The build's capacity axis with this cycle's timed run applied
  * (`capacityTimedRun.ts`): the pace rises to what the hour's marginal on/off
- * device needs while the hour still covers stopping it in time. Read from the
- * tracker as the pace itself is, and logged when the run starts, moves or
- * ends. Unchanged with Capacity limit off or without a measurement.
+ * device needs while the hour still covers stopping it in time. The candidate
+ * travels with the limit so the builder can assess it against its final plan.
+ * A disabled capacity limit or missing measurement yields no candidate.
  */
 export function applyCapacityTimedRun(
   capacity: CapacityPlanLimit,
@@ -166,29 +165,26 @@ export function applyCapacityTimedRun(
   powerTracker: PowerTrackerState,
   reading: PowerCycleReading,
   decoration: DeferredDecorationBundle,
-  state: PlanEngineState,
+  heldOffIds: ReadonlySet<string>,
   nowMs: number,
-): CapacityPlanLimit {
-  let run: CapacityTimedRun = { kind: 'none' };
-  if (capacity.kind === 'on' && reading.isMeasured) {
-    const period = getCurrentCapacityPeriodContext(powerTracker, settings.periodMinutes, nowMs);
-    run = resolveCapacityTimedRun({
-      settings,
-      paceKw: capacity.paceKw,
-      shortfallThresholdKw: capacity.shortfallThresholdKw,
-      usedKWh: period.usedKWh,
-      budgetKWh: resolveUsableCapacityKWh(settings),
-      minutesRemaining: period.minutesRemaining,
-      coverageComplete: period.coverageComplete,
-      drawKw: reading.totalKw,
-      devices: decoration.admittedDevices,
-      heldOffIds: state.shedDecisions.lastPlannedShedIds,
-      forceShedIds: decoration.forceShedSet,
-      nowMs,
-    });
-  }
-  state.capacityTimedRunLog.record(run);
-  return run.kind === 'none' || capacity.kind === 'off' ? capacity : { ...capacity, paceKw: run.allowedKw };
+): { limit: CapacityPlanLimit; run: CapacityTimedRun } {
+  if (capacity.kind === 'off' || !reading.isMeasured) return { limit: capacity, run: { kind: 'none' } };
+  const period = getCurrentCapacityPeriodContext(powerTracker, settings.periodMinutes, nowMs);
+  const run = resolveCapacityTimedRun({
+    settings,
+    paceKw: capacity.paceKw,
+    shortfallThresholdKw: capacity.shortfallThresholdKw,
+    usedKWh: period.usedKWh,
+    budgetKWh: resolveUsableCapacityKWh(settings),
+    minutesRemaining: period.minutesRemaining,
+    coverageComplete: period.coverageComplete,
+    drawKw: reading.totalKw,
+    devices: decoration.admittedDevices,
+    heldOffIds,
+    forceShedIds: decoration.forceShedSet,
+    nowMs,
+  });
+  return { limit: run.kind === 'none' ? capacity : { ...capacity, paceKw: run.allowedKw }, run };
 }
 
 /**
