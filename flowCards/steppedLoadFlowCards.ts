@@ -1,3 +1,4 @@
+import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
 import { isBuiltInSteppedLoadControlEnabled } from '../lib/device/deviceActionProjection';
@@ -10,7 +11,7 @@ import {
 import {
   createSteppedLoadReportError,
   emitSteppedLoadClampDeviationLog,
-  emitSteppedLoadReportNativeIgnoredLog,
+  emitSteppedLoadReportIgnoredLog,
   emitSteppedLoadReportReceivedLog,
   emitSteppedLoadReportRejectedLog,
   emitSteppedLoadReportResolvedLog,
@@ -22,6 +23,7 @@ import type { FlowCardDeps } from './registerFlowCards';
 
 export function registerSteppedLoadCards(deps: FlowCardDeps): void {
   const desiredChangedTrigger = deps.homey.flow.getTriggerCard('desired_stepped_load_changed');
+  desiredChangedTrigger.on?.('update', deps.onSteppedLoadFlowCardUpdate);
   desiredChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
     const chosenDeviceId = readFlowDeviceArg(args);
     const stateDeviceId = readFlowStringArg(state, 'deviceId');
@@ -38,6 +40,7 @@ export function registerSteppedLoadCards(deps: FlowCardDeps): void {
 
 function registerReportActualStepCard(deps: FlowCardDeps): void {
   const reportActualStepCard = deps.homey.flow.getActionCard('report_stepped_load_actual_step');
+  reportActualStepCard.on?.('update', deps.onSteppedLoadFlowCardUpdate);
   reportActualStepCard.registerRunListener(async (args: unknown) => {
     const deviceId = readFlowDeviceArg(args);
     const stepId = readFlowStringArg(args, 'step');
@@ -47,9 +50,11 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       if (!deviceId) {
         throw createSteppedLoadReportError('device_missing', 'Device must be provided.');
       }
-      const nativeIgnored = await resolveNativeSteppedLoadFlowReportIgnore(deps, deviceId);
-      if (nativeIgnored) {
-        emitSteppedLoadReportNativeIgnoredLog(deps, sourceCardId, deviceId, nativeIgnored.deviceName, stepId || null);
+      const ignored = await resolveSteppedLoadFlowReportIgnore(deps, deviceId);
+      if (ignored) {
+        emitSteppedLoadReportIgnoredLog(
+          deps, sourceCardId, deviceId, ignored.deviceName, ignored.reason, stepId || null,
+        );
         return true;
       }
       if (!stepId) {
@@ -76,7 +81,7 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       // about the device's current step.
       const descriptors = await deps.getDeviceDescriptors();
       const device = descriptors.find((entry) => entry.id === deviceId);
-      const steps = device && isSteppedLoadSnapshot(device) ? device.steppedLoadProfile.steps : [];
+      const steps = device ? readFlowSetupProfile(device)?.steps ?? [] : [];
       const q = (query || '').toLowerCase();
       return steps
         .filter((step) => !q || step.id.toLowerCase().includes(q))
@@ -87,6 +92,7 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
 
 function registerReportActualPowerCard(deps: FlowCardDeps): void {
   const reportActualPowerCard = deps.homey.flow.getActionCard('report_stepped_load_power');
+  reportActualPowerCard.on?.('update', deps.onSteppedLoadFlowCardUpdate);
   reportActualPowerCard.registerRunListener(async (args: unknown) => {
     const deviceId = readFlowDeviceArg(args);
     const rawPower = readFlowRawArg(args, 'power_w');
@@ -96,9 +102,9 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
       if (!deviceId) {
         throw createSteppedLoadReportError('device_missing', 'Device must be provided.');
       }
-      const nativeIgnored = await resolveNativeSteppedLoadFlowReportIgnore(deps, deviceId);
-      if (nativeIgnored) {
-        emitSteppedLoadReportNativeIgnoredLog(deps, sourceCardId, deviceId, nativeIgnored.deviceName, null);
+      const ignored = await resolveSteppedLoadFlowReportIgnore(deps, deviceId);
+      if (ignored) {
+        emitSteppedLoadReportIgnoredLog(deps, sourceCardId, deviceId, ignored.deviceName, ignored.reason, null);
         return true;
       }
       const { stepId, deviceName, parsedPowerW, admittedPowerW } = await resolveSteppedLoadStepIdFromPowerInput(
@@ -140,15 +146,17 @@ async function handleSteppedLoadReportResult(
   );
 }
 
-async function resolveNativeSteppedLoadFlowReportIgnore(
+async function resolveSteppedLoadFlowReportIgnore(
   deps: FlowCardDeps,
   deviceId: string,
-): Promise<{ deviceName: string } | null> {
+): Promise<{ deviceName: string; reason: 'native_wiring_enabled' | 'flow_cards_pending' } | null> {
   try {
     const descriptors = await deps.getDeviceDescriptors();
     const device = descriptors.find((entry) => entry.id === deviceId);
-    if (!device || !isBuiltInSteppedLoadControlEnabled(device)) return null;
-    return { deviceName: device.name.trim() || deviceId };
+    if (!device) return null;
+    const deviceName = device.name.trim() || deviceId;
+    if (device.pendingSteppedLoad) return { deviceName, reason: 'flow_cards_pending' };
+    return isBuiltInSteppedLoadControlEnabled(device) ? { deviceName, reason: 'native_wiring_enabled' } : null;
   } catch {
     return null;
   }
@@ -160,7 +168,11 @@ async function getSteppedLoadDeviceOptions(
 ): Promise<Array<{ id: string; name: string }>> {
   const descriptors = await deps.getDeviceDescriptors();
   return buildDeviceAutocompleteOptions(
-    descriptors.filter((device) => isSteppedLoadSnapshot(device)),
+    descriptors.filter((device) => readFlowSetupProfile(device)),
     query,
   );
+}
+
+function readFlowSetupProfile(device: DeviceDescriptorRead) {
+  return isSteppedLoadSnapshot(device) ? device.steppedLoadProfile : device.pendingSteppedLoad?.profile;
 }

@@ -99,6 +99,7 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
   nativeWiring: {
     resolveNativeWiringEnabled: () => false,
     getFlowConflict: () => undefined,
+    steppedLoadFlowSetup: () => 'ready' as const,
     ...inputs.nativeWiring,
   },
   flowBacked: {

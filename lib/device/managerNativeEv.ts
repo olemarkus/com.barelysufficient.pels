@@ -1,4 +1,4 @@
-import { resolveSteppedLoadProfilePrecedence } from './steppedLoadProfilePolicy';
+import { resolveSteppedLoadProfilePrecedence, type SteppedLoadProfileResolution } from './steppedLoadProfilePolicy';
 import type {
   AcknowledgedStepObservation,
   AutomaticPowerControl,
@@ -65,7 +65,7 @@ export function resolveFlowCapabilityOverlay(
   rawCapabilityObj: DeviceCapabilityMap,
   sources: DeviceParseSources,
   logger: Logger,
-): {
+): SteppedLoadProfileResolution & {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   controlAdapter?: DeviceControlAdapterSnapshot;
@@ -81,7 +81,6 @@ export function resolveFlowCapabilityOverlay(
   acknowledgedStep?: AcknowledgedStepObservation;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
   controlModel?: 'stepped_load';
-  steppedLoadProfile?: SteppedLoadProfile;
   nativeWriteCapabilities?: string[];
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   automaticPowerControl?: AutomaticPowerControl;
@@ -125,10 +124,11 @@ export function resolveFlowCapabilityOverlay(
   );
   const controlAdapter = resolveOverlayControlAdapter(nativeEvOverlay, nativeSteppedOverlay.controlAdapter);
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
-  const savedFlowProfile = sources.settings.getDeviceControlProfile(deviceId);
+  const savedFlowProfile = steppedLoad ? sources.settings.getDeviceControlProfile(deviceId) : undefined;
   const chargingPhaseProfile = steppedLoad ? sources.chargingPhases.profile(device) : undefined;
-  const steppedLoadProfile = resolveSteppedLoadProfilePrecedence(
-    chargingPhaseProfile, activeNativeSteppedProfile, targetPowerOverlay.steppedLoadProfile, savedFlowProfile,
+  const profile = resolveSteppedLoadProfilePrecedence(
+    chargingPhaseProfile, activeNativeSteppedProfile, targetPowerOverlay.steppedLoadProfile,
+    savedFlowProfile, sources.nativeWiring.steppedLoadFlowSetup(deviceId),
   );
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
     ? resolveCandidateNativeWriteCapabilities(device, rawCapabilities, rawCapabilityObj)
@@ -157,8 +157,8 @@ export function resolveFlowCapabilityOverlay(
       ? targetPowerOverlay.reportedStepObservedAtMs : nativeSteppedOverlay.reportedStepObservedAtMs,
     acknowledgedStep: targetPowerOverlay.acknowledgedStep,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
-    controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
-    steppedLoadProfile,
+    ...profile,
+    controlModel: profile.steppedLoadProfile ? 'stepped_load' : undefined,
     nativeWriteCapabilities,
     // Saved nominal phase presets cannot rescale producer-resolved physical geometry.
     targetPowerConfig: chargingPhaseProfile ? undefined : targetPowerOverlay.targetPowerConfig,
@@ -530,11 +530,11 @@ export function resolveCandidateCapabilities(
   identity: Pick<ParsedDeviceIdentity, 'deviceClassKey' | 'deviceId' | 'deviceLabel'>,
   overlay: Pick<
     ReturnType<typeof resolveFlowCapabilityOverlay>,
-    'capabilities' | 'controlAdapter' | 'steppedLoadProfile'
+    'capabilities' | 'controlAdapter' | 'steppedLoadProfile' | 'pendingSteppedLoad'
   >,
 ): { targetCaps: string[]; hasPower: boolean } | null {
   const { deviceClassKey, deviceId, deviceLabel } = identity;
-  const { capabilities, controlAdapter, steppedLoadProfile } = overlay;
+  const { capabilities, controlAdapter, steppedLoadProfile, pendingSteppedLoad } = overlay;
   // Plug state is an independent observation, not a prerequisite for the
   // charger's valid power/control facets. Session and start owners require
   // an accepted plug observation separately.
@@ -555,7 +555,7 @@ export function resolveCandidateCapabilities(
   // A stepped-load profile is an independent control facet. Missing or invalid
   // temperature capabilities must not evict a device whose usable ladder was
   // already admitted by the stepped producer.
-  if (steppedLoadProfile !== undefined) {
+  if (steppedLoadProfile || pendingSteppedLoad) {
     return {
       targetCaps: [],
       hasPower: hasAnyPowerCapability(capabilities),

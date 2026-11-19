@@ -94,6 +94,7 @@ export type FlowCardDeps = SmartTaskCommandPort & {
    * "which devices can take this setting" cannot reach an observation.
    */
   getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
+  onSteppedLoadFlowCardUpdate: () => void;
   /**
    * The runtime-held Power-limit control map (`controllable_devices`), the one
    * the planner reads: already resolved, so a malformed stored value never

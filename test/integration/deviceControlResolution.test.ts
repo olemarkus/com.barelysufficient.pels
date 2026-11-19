@@ -15,7 +15,7 @@ import { projectDeviceDescriptor } from '../../lib/device/deviceDescriptorProjec
 import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { PendingSteppedLoad, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
@@ -80,6 +80,42 @@ const configurableHeaterTransport = (initial: { savedProfile?: SteppedLoadProfil
 };
 
 describe('device owner control resolution', () => {
+  it('holds a saved ladder at Default until both Flow cards are detected and drops it when one is removed', async () => {
+    let setup: PendingSteppedLoad['reason'] | 'ready' = 'missing_report';
+    const trigger = vi.fn().mockResolvedValue(undefined);
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
+      settings: { getDeviceControlProfile: () => savedProfile },
+      nativeWiring: { steppedLoadFlowSetup: () => setup },
+    }, undefined, { getFlowTriggerCard: () => ({ trigger }) });
+    const device = heater();
+    const [pending] = await seedTransportDevices(transport, [device]);
+
+    expect(pending.pendingSteppedLoad).toEqual({ profile: savedProfile, reason: 'missing_report' });
+    expect(pending.steppedLoadProfile).toBeUndefined();
+    expect(pending.binaryControl?.on).toBe(true);
+    expect(transport.reportSteppedLoadActualStep(device.id, 'Low')).toEqual({ kind: 'flow_cards_pending' });
+
+    setup = 'ready';
+    const [active] = await seedTransportDevices(transport, [device]);
+    expect(active.pendingSteppedLoad).toBeUndefined();
+    expect(active.steppedLoadProfile).toEqual(savedProfile);
+    expect(transport.reportSteppedLoadActualStep(device.id, 'Low').kind).toBe('accepted');
+
+    const command = {
+      deviceId: device.id, profile: savedProfile, desiredStepId: 'Medium', planningPowerW: 1750, planningCurrentA: 0,
+    };
+    await expect(transport.requestSteppedLoadStep(command)).resolves.toMatchObject({ requested: true, transport: 'flow' });
+    expect(trigger).toHaveBeenCalledTimes(1);
+
+    setup = 'missing_trigger';
+    // The Flow scan can revoke the route before transport re-parses its snapshot.
+    await expect(transport.requestSteppedLoadStep(command)).resolves.toEqual({ requested: false });
+    expect(trigger).toHaveBeenCalledTimes(1);
+    const [unwired] = await seedTransportDevices(transport, [device]);
+    expect(unwired.steppedLoadProfile).toBeUndefined();
+    expect(unwired.pendingSteppedLoad?.reason).toBe('missing_trigger');
+  });
+
   it('uses the current descriptor ladder for Flow reads while an older observed profile remains', async () => {
     const { transport, owner } = configurableHeaterTransport({ savedProfile, nativeEnabled: false });
     const [previous] = await seedTransportDevices(transport, [heater()]);

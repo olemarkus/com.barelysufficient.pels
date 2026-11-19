@@ -663,6 +663,89 @@ test.describe('Device detail panel', () => {
     await expect(page.locator('#device-detail-stepped-save')).toBeEnabled();
   });
 
+  test('keeps the selected step profile editable while its Flow setup is pending', async ({ page }) => {
+    await page.addInitScript(() => {
+      const thermostat = {
+        id: 'dev_flow_thermostat',
+        name: 'Bathroom thermostat',
+        available: true,
+        deviceClass: 'heater',
+        capabilities: ['onoff', 'target_temperature', 'measure_power'],
+        binaryControllable: true,
+        targets: [{ name: 'target_temperature', value: 24 }],
+        measuredPowerKw: 0.85,
+        expectedPowerKw: 0.92,
+        expectedPowerSource: 'measured-peak',
+      };
+      const stubWindow = window as unknown as StubWindow & {
+        Homey: { __stub: { getSetting: (key: string) => unknown } };
+      };
+      stubWindow.__PELS_HOMEY_STUB__ = {
+        settings: {
+          target_devices_snapshot: [thermostat],
+          managed_devices: { dev_flow_thermostat: true },
+          controllable_devices: { dev_flow_thermostat: true },
+          device_control_profiles: {},
+        },
+        apiHandlers: {
+          'POST /ui_refresh_flow_conflicts': () => {
+            const { __stub: stub } = stubWindow.Homey;
+            const profiles = stub.getSetting('device_control_profiles') as Record<string, unknown>;
+            const profile = profiles[thermostat.id];
+            if (profile) {
+              const device = stub.getSetting('stepped_flow_feedback_ready')
+                ? { ...thermostat, controlModel: 'stepped_load', steppedLoadProfile: profile }
+                : { ...thermostat, pendingSteppedLoad: { profile, reason: 'missing_report' } };
+              stub.setSetting('target_devices_snapshot', [device]);
+            }
+            return {
+              devices: [{ id: thermostat.id }],
+              evSocReporters: [],
+              ignoredPowerUsageFlows: { state: 'none' },
+            };
+          },
+        },
+      };
+    });
+
+    await openDeviceDetail(page, 'dev_flow_thermostat');
+    await page.locator('#device-detail-setup-section summary').click();
+    const model = '#device-detail-control-model';
+    await expect.poll(() => readMdValue(page, model)).toBe('default');
+    await setMdValue(page, model, 'stepped_load');
+
+    const flowSetup = page.locator('#device-detail-stepped-flow-setup');
+    const checkFlows = flowSetup.getByRole('button', { name: 'Check Flows' });
+    const powerWhenRunning = page.locator('#device-detail-expected-power-row');
+    await expect(flowSetup).toContainText('PELS uses Default control until both cards are in place.');
+    await expect.poll(() => readMdValue(page, model)).toBe('stepped_load');
+    await expect(page.locator('#device-detail-stepped-steps > *').first()).toBeVisible();
+    await expect(page.locator('#device-detail-stepped-add-step')).toBeEnabled();
+    await expect(powerWhenRunning).toBeVisible();
+
+    await checkFlows.click();
+    await expect(flowSetup).toContainText('PELS could not find “Report stepped load” for this device.');
+    await expect(flowSetup).not.toContainText('Stepped device target changed');
+
+    await page.locator('#device-detail-close').click();
+    await expect(page.locator('#device-detail-overlay')).toBeHidden();
+    const toast = page.locator('#toast.show[data-tone="warn"]');
+    await expect(toast).toContainText('Default control is still active.');
+
+    await clickDeviceDetailButton(page, 'dev_flow_thermostat');
+    await expect(flowSetup).toBeVisible();
+    await page.evaluate(() => {
+      const { Homey } = window as unknown as StubWindow;
+      Homey.__stub.setSetting('stepped_flow_feedback_ready', true);
+    });
+    await checkFlows.click();
+
+    await expect(flowSetup).toBeHidden();
+    await expect(page.locator('#device-detail-stepped-steps > *').first()).toBeVisible();
+    await expect.poll(() => readMdValue(page, model)).toBe('stepped_load');
+    await expect(powerWhenRunning).toHaveJSProperty('hidden', true);
+  });
+
   test('Setup section toggles persist managed / controllable / price / budget exempt + control model', async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await openDeviceDetail(page, 'dev_heatpump');

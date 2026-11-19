@@ -77,8 +77,7 @@ import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import { createHomeRebuildRuntime } from './lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { BuiltInControlFlowConflicts } from './lib/device/builtInControlFlowConflicts';
 import {
-  createChargingFlowWritesStore, createNativeFlowConflictStore, whileDatabaseOpen,
-  type AcceptedFlowConflictSlice, type NativeFlowConflicts,
+  createAcceptedFlowStores, whileDatabaseOpen, type AcceptedFlowConflictSlice,
 } from './lib/flowApi/acceptedFlowConflictStore';
 import type { FlowCapabilityWrites } from './lib/flowApi/userFlows';
 import type { LastControlledStore } from './lib/plan/lastControlledStore';
@@ -423,8 +422,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   private powerCalibrationStore?: PowerCalibrationStore;
   private learnedPowerPeakStore?: LearnedPowerPeakStore;
   private lastControlledStore?: LastControlledStore;
-  private nativeFlowConflictStore?: AcceptedFlowConflictSlice<NativeFlowConflicts>;
-  private chargingFlowWritesStore?: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
+  private acceptedFlowStores?: ReturnType<typeof createAcceptedFlowStores>;
   private openUserdata(): void {
     // The database first: the repositories are built on the one this holds.
     this.userdataDatabase = this.openUserdataDatabase();
@@ -432,8 +430,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     this.powerCalibrationStore = createPowerCalibrationStoreForApp(this.ctx);
     this.learnedPowerPeakStore = createLearnedPowerPeakStoreForApp(this.ctx);
     this.lastControlledStore = createLastControlledStoreForApp(this.ctx);
-    this.nativeFlowConflictStore = createNativeFlowConflictStore(this.userdataDatabase);
-    this.chargingFlowWritesStore = createChargingFlowWritesStore(this.userdataDatabase);
+    this.acceptedFlowStores = createAcceptedFlowStores(this.userdataDatabase);
     // Before the transport's first parse, so a known conflict holds built-in control back from boot.
     this.builtInControlFlowConflicts.restoreSaved();
   }
@@ -454,7 +451,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     return this.opened(this.lastControlledStore);
   }
   public getChargingFlowWritesStore(): AcceptedFlowConflictSlice<FlowCapabilityWrites> {
-    return whileDatabaseOpen(() => this.chargingFlowWritesStore);
+    return whileDatabaseOpen(() => this.acceptedFlowStores?.chargingWrites);
   }
   public getUserdataDatabase(): UserdataDatabase {
     return this.opened(this.userdataDatabase);
@@ -465,8 +462,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     this.trackerStore = undefined;
     this.learnedPowerPeakStore = undefined;
     this.lastControlledStore = undefined;
-    this.nativeFlowConflictStore = undefined;
-    this.chargingFlowWritesStore = undefined;
+    this.acceptedFlowStores = undefined;
   }
   /**
    * The Main home's power tracker: the same classified persistence component
@@ -559,7 +555,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   });
   public readonly builtInControlFlowConflicts = new BuiltInControlFlowConflicts(
     this.shutdown,
-    whileDatabaseOpen(() => this.nativeFlowConflictStore),
+    whileDatabaseOpen(() => this.acceptedFlowStores?.nativeConflicts),
     this.deviceControlSettings,
     () => this.getDeviceDescriptors(),
     () => this.deviceManager.chargingCurrentControl,
@@ -568,6 +564,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       refreshSnapshot: () => this.refreshTargetDevicesSnapshot(),
       rebuildPlan: () => this.planService.rebuildPlanFromCache('native_wiring_auto_decision'),
     },
+    whileDatabaseOpen(() => this.acceptedFlowStores?.steppedLoadCards),
   );
   protected readonly powerTrackerHelpers = new AppPowerTracker({
     homey: this.homey,

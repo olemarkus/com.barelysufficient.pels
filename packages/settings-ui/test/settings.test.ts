@@ -1,5 +1,5 @@
 import { taskPricePeriodsFixture } from './helpers/taskPricePeriodsFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { installHomeyMock } from './helpers/homeyApiMock';
 import {
   DEFAULT_SETTINGS_DEVICES,
@@ -19,6 +19,19 @@ vi.mock('../src/ui/toast.ts', () => ({
 }));
 
 const releasePageResources = releasePageResourcesAfterEachTest();
+
+// These cases exercise live stepped control after the backend verified its Flow cards.
+const installActiveSteppedSettings = (settings: {
+  target_devices_snapshot: Array<{ id: string } & Record<string, unknown>>;
+  device_control_profiles: Record<string, SteppedLoadProfile>;
+  overshoot_behaviors: Record<string, unknown>;
+}) => installSettingsHomeyMock({
+  ...settings,
+  target_devices_snapshot: settings.target_devices_snapshot.map((device) => {
+    const profile = settings.device_control_profiles[device.id];
+    return profile ? { ...device, controlModel: 'stepped_load', steppedLoadProfile: profile } : device;
+  }),
+});
 
 describe('settings script', () => {
   beforeEach(() => {
@@ -314,7 +327,7 @@ describe('settings script', () => {
   });
 
   it('keeps the step row hidden for stepped-load set_step shed mode', async () => {
-    installSettingsHomeyMock({
+    installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -358,7 +371,7 @@ describe('settings script', () => {
   });
 
   it('shows the min temperature setting for stepped loads when temperature shed mode is selected', async () => {
-    installSettingsHomeyMock({
+    installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -404,7 +417,7 @@ describe('settings script', () => {
   });
 
   it('switches between shed modes with only the relevant shed field visible', async () => {
-    installSettingsHomeyMock({
+    installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -465,7 +478,7 @@ describe('settings script', () => {
   });
 
   it('updates the set-step label when the draft lowest active step changes', async () => {
-    installSettingsHomeyMock({
+    installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -511,7 +524,7 @@ describe('settings script', () => {
   });
 
   it('does not persist the stepped-load profile when the shed-behavior write fails', async () => {
-    const homey = installSettingsHomeyMock({
+    const homey = installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -579,7 +592,7 @@ describe('settings script', () => {
   });
 
   it('uses the current shed-action selection when saving the stepped-load profile', async () => {
-    const homey = installSettingsHomeyMock({
+    const homey = installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -640,7 +653,7 @@ describe('settings script', () => {
   });
 
   it('refuses to save a stepped profile with no step the device can run at', async () => {
-    const homey = installSettingsHomeyMock({
+    const homey = installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -704,7 +717,7 @@ describe('settings script', () => {
   });
 
   it('serializes shed-behavior writes across auto-save and stepped-load saves', async () => {
-    const homey = installSettingsHomeyMock({
+    const homey = installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',
@@ -855,7 +868,7 @@ describe('settings script', () => {
   });
 
   it('hides both shed temperature and shed step rows when shed mode is turn off', async () => {
-    installSettingsHomeyMock({
+    installActiveSteppedSettings({
       target_devices_snapshot: [
         {
           id: 'dev-1',

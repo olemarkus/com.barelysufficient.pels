@@ -28,7 +28,9 @@ import {
 import { logSettingsError } from '../logging.ts';
 import { findLatestDevice, state } from '../state.ts';
 import { showToastError } from '../toast.ts';
-import { hasEvTargetPowerPreset, isSteppedLoadControlModel, resolveDeviceDetailKind } from '../deviceKind.ts';
+import {
+  hasEvTargetPowerPreset, isSteppedLoadControlModel, resolveDeviceDetailKind, resolveSelectedDeviceDetailControlMode,
+} from '../deviceKind.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 import { resolveShedBehavior } from '../../../../shared-domain/src/settings/shedBehaviors.ts';
 
@@ -211,7 +213,7 @@ const buildSteppedLoadStepRow = (params: {
 export const resolveSavedSteppedLoadProfile = (device: SettingsUiDeviceDetailItem): SteppedLoadProfile | null => {
   const stored = getStoredDeviceControlProfile(device.id);
   if (stored) return stored;
-  return device.steppedLoadProfile ?? null;
+  return device.pendingSteppedLoad?.profile ?? device.steppedLoadProfile ?? null;
 };
 
 export const updateSetStepOptionLabel = (
@@ -310,7 +312,7 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
 
   // The step editor edits the ladder, not the setpoint, so "Disable temperature
   // control" has no say here.
-  const showStepEditor = isSteppedLoadControlModel(device);
+  const showStepEditor = resolveSelectedDeviceDetailControlMode(device) === 'stepped_load';
   const setEditorVisibility = (hidden: boolean) => {
     deviceDetailSteppedSteps.hidden = hidden;
     if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.hidden = hidden;

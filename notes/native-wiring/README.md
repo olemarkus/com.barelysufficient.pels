@@ -538,7 +538,14 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
      being projected (`observeDevices`, pruned on a full inventory), so the
      first refresh after a boot, whose committed list is still empty, already
      holds a saved conflict back.
-   - Both stores are bound to the open database (`whileDatabaseOpen`); a save
+   - Manual stepped loads: the scan keeps the last verified trigger and report
+     cards by device in `stepped_load_flow_cards`. A saved Flow profile keeps
+     Default control while either card is missing. A successful inventory read
+     can revoke command authority immediately, even when snapshot refresh or
+     plan rebuild needs a retry. Built-in and target-power profiles keep their
+     own control paths. After activation, repeated unanswered requests still
+     raise the level-confirmation warning.
+   - The stores are bound to the open database (`whileDatabaseOpen`); a save
      after it closes (teardown) is dropped. A save failure is logged and costs only that
      restart window.
 

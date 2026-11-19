@@ -25,6 +25,7 @@ export function admitFlowSteppedLoadReport(
     const snapshot = snapshotStore.getSnapshotByDeviceId(deviceId);
     if (!snapshot) return { kind: 'invalid' };
     if (isBuiltInSteppedLoadControlEnabled(snapshot)) return { kind: 'native_control' };
+    if (snapshot.pendingSteppedLoad) return { kind: 'flow_cards_pending' };
     if (!snapshot.steppedLoadProfile || isInvalidFlowFeedback(stepId, planningPowerW, observedAtMs)) {
         return { kind: 'invalid' };
     }

@@ -2,6 +2,7 @@ import { NativeFlowConflictState } from '../../lib/device/nativeFlowConflictStat
 import {
   createChargingFlowWritesStore,
   createNativeFlowConflictStore,
+  createSteppedLoadFlowCardsStore,
   whileDatabaseOpen,
   type AcceptedFlowConflictSlice,
   type NativeFlowConflicts,
@@ -26,6 +27,17 @@ describe('accepted Flow conflict stores', () => {
     // A scan that cleared a conflict drops that device's row.
     restarted.accept({ hoiax: { conflictingCapabilities: ['max_power_3000'] } });
     expect(createNativeFlowConflictStore(db).read()).toEqual({ hoiax: { conflictingCapabilities: ['max_power_3000'] } });
+  });
+
+  it('keeps both previously verified and successfully empty stepped-load inventories across a reopen', () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    const store = createSteppedLoadFlowCardsStore(db);
+    expect(store.read()).toBeUndefined();
+    store.write({ heater: 'both', thermostat: 'target' });
+    expect(createSteppedLoadFlowCardsStore(db).read()).toEqual({ heater: 'both', thermostat: 'target' });
+    store.write({});
+    expect(createSteppedLoadFlowCardsStore(db).read()).toEqual({});
+    db.close();
   });
 
   it('keeps charging-current Flow writes across a reopen', () => {

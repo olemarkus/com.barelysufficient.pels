@@ -1,6 +1,7 @@
 import {
   getEffectiveControlModel,
   getEffectiveTargetPowerConfig,
+  getStoredDeviceControlProfile,
   isAutomaticPowerControlActive,
 } from './deviceControlProfiles.ts';
 import {
@@ -62,6 +63,12 @@ export function resolveDeviceDetailControlMode(device: SettingsUiDeviceDetailIte
   }
   if (getEffectiveControlModel(device) === 'stepped_load') return 'stepped_load';
   return 'default';
+}
+
+export function resolveSelectedDeviceDetailControlMode(device: SettingsUiDeviceDetailItem): DeviceDetailControlMode {
+  const effective = resolveDeviceDetailControlMode(device);
+  if (effective !== 'default') return effective;
+  return device.pendingSteppedLoad || getStoredDeviceControlProfile(device.id) ? 'stepped_load' : 'default';
 }
 
 export const isSteppedLoadControlModel = (device: SettingsUiDeviceDetailItem | null): boolean => (

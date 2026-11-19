@@ -309,8 +309,10 @@ carries it, where the userdata store would need an API route of its own
   sessions (`lib/device/evCarLinkStore.ts`, one row per family), and the Flow
   conflicts the built-in controls last accepted
   (`lib/flowApi/acceptedFlowConflictStore.ts`: `native_flow_conflicts` and
-  `charging_current_flow_writes`, one row per device, diffed), each written
-  through as it changes, and the learned power peaks
+  `charging_current_flow_writes`, one row per device, diffed) and the verified
+  stepped-load Flow card inventory (`stepped_load_flow_cards`, one accepted
+  snapshot, including an empty result), each written through as it changes,
+  and the learned power peaks
   (`lib/device/learnedPowerPeakStore.ts`, one row per device, diffed, so a
   peak that moves writes its own row), and the home meter's falls at each
   device's lone switch-offs (`lib/device/homeMeterFallStore.ts`, table

@@ -8,7 +8,7 @@ const refresh = (
 ) => refreshSettingsUiFlowConflictPayload({
   requestRefresh: async () => ({
     state: 'resolved',
-    flowFacts: { writes: new Map(), evSocReporters: [], powerUsageReporters },
+    flowFacts: { writes: new Map(), evSocReporters: [], powerUsageReporters, steppedLoadCards: {} },
   }),
   readDevices: () => [],
   readPowerSource: () => powerSource,

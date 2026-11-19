@@ -57,6 +57,7 @@ import {
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { setMockSteppedLoadFlow } from '../helpers/mockSteppedLoadFlow';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -514,10 +515,11 @@ describe('MyApp initialization', () => {
     });
 
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await initApp(app);
-    await waitForSnapshot();
+    await app.refreshFlowConflictsForUi();
 
     const capture = captureLogger();
     try {
@@ -544,10 +546,11 @@ describe('MyApp initialization', () => {
     });
 
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await initApp(app);
-    await waitForSnapshot();
+    await app.refreshFlowConflictsForUi();
 
     const capture = captureLogger();
     try {
@@ -582,10 +585,11 @@ describe('MyApp initialization', () => {
     });
 
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await initApp(app);
-    await waitForSnapshot();
+    await app.refreshFlowConflictsForUi();
 
     const capture = captureLogger();
     try {
@@ -629,10 +633,11 @@ describe('MyApp initialization', () => {
     heater.setCapabilityValue('onoff', true);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await initApp(app);
-    await waitForSnapshot();
+    await app.refreshFlowConflictsForUi();
 
     // The Flow that should report the level back never does: each command for
     // `max` expires unanswered, and the next one carries the count on.
@@ -656,10 +661,11 @@ describe('MyApp initialization', () => {
     heater.setCapabilityValue('onoff', true);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await initApp(app);
-    await waitForSnapshot();
+    await app.refreshFlowConflictsForUi();
 
     // Asked for `max`, the device clamps at `low`, and the report-back Flow
     // says so. The command still expires, but the Flow answered it.
@@ -688,10 +694,11 @@ describe('MyApp initialization', () => {
     });
 
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+    setMockSteppedLoadFlow('dev-1');
 
     const app = createApp();
     await initApp(app);
-    await waitForSnapshot();
+    await app.refreshFlowConflictsForUi();
 
     expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 

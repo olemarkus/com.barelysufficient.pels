@@ -5,7 +5,7 @@ import type { ChargingPhaseTransport } from '../chargingPhaseTransport';
 import type { FlowBackedDeviceState } from '../flowBackedDeviceState';
 import type { DeviceManagement } from '../deviceRoleReads';
 import type {
-  TargetDeviceSnapshot,
+  PendingSteppedLoad, TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
 import type { MeasuredPowerSource, MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
@@ -71,6 +71,7 @@ export type NativeWiringRead = {
     /** The user's explicit choice, else the conflict-gated automatic decision. */
     resolveNativeWiringEnabled(deviceId: string): boolean;
     getFlowConflict(deviceId: string): TargetDeviceSnapshot['flowConflict'];
+    steppedLoadFlowSetup(deviceId: string): PendingSteppedLoad['reason'] | 'ready';
 };
 
 /**

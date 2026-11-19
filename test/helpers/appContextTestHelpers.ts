@@ -359,6 +359,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     builtInControlFlowConflicts: partialDouble<BuiltInControlFlowConflicts>({
       resolveNativeWiringEnabled: () => false,
       getFlowConflict: () => undefined,
+      steppedLoadFlowSetup: () => 'ready',
       runBackgroundScan: vi.fn(),
     }),
     emitPowerTrackerPersisted: vi.fn(),

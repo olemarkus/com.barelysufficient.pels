@@ -264,16 +264,17 @@ export function emitSteppedLoadReportResolvedLog(
   ));
 }
 
-/** A report left unchanged because the device's native wiring reports its own step. */
-export function emitSteppedLoadReportNativeIgnoredLog(
+type IgnoredReportReason = 'native_wiring_enabled' | 'flow_cards_pending';
+export function emitSteppedLoadReportIgnoredLog(
   deps: FlowCardDeps,
   sourceCardId: string,
   deviceId: string,
   deviceName: string,
+  reason: IgnoredReportReason,
   reportedStepId: string | null,
 ): void {
   deps.getStructuredLogger('devices').info(buildReportResolvedPayload(
-    sourceCardId, deviceId, deviceName, reportedStepId, null, 'unchanged', 'native_wiring_enabled',
+    sourceCardId, deviceId, deviceName, reportedStepId, null, 'unchanged', reason,
   ));
 }
 
@@ -284,7 +285,7 @@ function buildReportResolvedPayload(
   resolvedStepId: string | null,
   parsedPowerW: number | null,
   outcome: 'accepted' | 'unchanged',
-  reasonCode: 'native_wiring_enabled' | null,
+  reasonCode: IgnoredReportReason | null,
 ): Record<string, unknown> {
   return {
     event: 'stepped_load_report_resolved',

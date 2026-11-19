@@ -492,16 +492,15 @@ export class DeviceWriteService {
     params: SteppedLoadWrite,
   ): Promise<SteppedLoadStepRequestResult> {
     this.currentLimitPolicy.assertStepAllowed(params);
-    const {
-      deviceId,
-      profile,
-      desiredStepId,
-      planningCurrentA,
-    } = params;
+    const { deviceId, profile, desiredStepId, planningCurrentA } = params;
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    if (snapshot?.pendingSteppedLoad) return { requested: false };
+    if (snapshot?.manualFlowSteppedLoad && this.nativeWiring.steppedLoadFlowSetup(deviceId) !== 'ready') {
+      return { requested: false };
+    }
     if (isSteppedLoadOffStep(profile, desiredStepId)) {
       this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
     }
-    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const rawDevice = this.assertControlAllowed(deviceId);
     if (rawDevice && resolveChargingCurrentAdapter(rawDevice)) {
       if (isSteppedLoadOffStep(profile, desiredStepId)) {

@@ -125,6 +125,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getHeadroom: vi.fn((): ObservedHeadroom => ({ kind: 'unmeasured' })),
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),
+    onSteppedLoadFlowCardUpdate: vi.fn(),
     getControllableDevices: () => ({}),
     confirmCarAssociation: vi.fn(),
     isWaitingForCarAssociation: vi.fn(() => false),
@@ -660,6 +661,28 @@ describe('registerFlowCards', () => {
     ).resolves.toEqual([
       { id: 'ev-1', name: 'My Easee Charger' },
     ]);
+  });
+
+  it('offers a pending ladder in the Flow pickers without accepting level feedback', async () => {
+    const { deps, actionListeners, triggerAutocompleteListeners, actionAutocompleteListeners } = buildDeps({
+      getDeviceDescriptors: vi.fn().mockResolvedValue([{
+        id: 'heater',
+        name: 'Heater',
+        pendingSteppedLoad: {
+          reason: 'missing_trigger',
+          profile: { steps: [{ id: 'low', planningPowerW: 200 }] },
+        },
+      }]),
+    });
+    registerFlowCards(deps);
+
+    await expect(triggerAutocompleteListeners.desired_stepped_load_changed.device(''))
+      .resolves.toEqual([{ id: 'heater', name: 'Heater' }]);
+    await expect(actionAutocompleteListeners.report_stepped_load_actual_step.step('', { device: 'heater' }))
+      .resolves.toEqual([{ id: 'low', name: 'low (200 W)' }]);
+    await expect(actionListeners.report_stepped_load_actual_step({ device: 'heater', step: 'low' })).resolves.toBe(true);
+    await expect(actionListeners.report_stepped_load_power({ device: 'heater', power_w: 200 })).resolves.toBe(true);
+    expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
   });
 
   it('reports stepped-load actual step and requests a snapshot refresh', async () => {

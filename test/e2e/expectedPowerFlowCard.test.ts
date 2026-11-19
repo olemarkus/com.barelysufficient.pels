@@ -1,5 +1,6 @@
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { setMockSteppedLoadFlow } from '../helpers/mockSteppedLoadFlow';
 
 describe('Expected power flow card', () => {
   beforeEach(() => {
@@ -186,9 +187,11 @@ describe('Expected power flow card', () => {
     });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-step': true, 'dev-plain': true });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-step': true, 'dev-plain': true });
+    setMockSteppedLoadFlow('dev-step');
 
     const app = createApp();
     await app.onInit();
+    await app.refreshFlowConflictsForUi();
 
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ power_w: 1000 })).rejects.toThrow('Device must be provided');
