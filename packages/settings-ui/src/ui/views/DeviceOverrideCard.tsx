@@ -1,5 +1,5 @@
 import {
-  OVERRIDE_COPY, OVERRIDE_MORNING_AT, type OverrideDraft, type OverrideEndChoice, type OverrideTemperatureRange,
+  OVERRIDE_COPY, OVERRIDE_END_OPTIONS, type OverrideDraft, type OverrideTemperatureRange,
 } from '../deviceOverrideDraft.ts';
 import { MdDecimalField, MdFilledButton, MdTextButton } from './materialWebJSX.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';
@@ -33,12 +33,6 @@ export type DeviceOverrideCardActions = {
   onCancel: () => void;
 };
 
-const END_OPTIONS: { value: OverrideEndChoice; label: string }[] = [
-  { value: 'two_hours', label: 'In 2 hours' },
-  { value: 'morning', label: `At ${OVERRIDE_MORNING_AT}` },
-  { value: 'custom', label: 'Pick a time' },
-];
-
 const inputValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
 
 type EditingState = Extract<DeviceOverrideCardState, { kind: 'editing' }>;
@@ -54,7 +48,7 @@ export const OverrideForm = ({ state, actions }: { state: EditingState; actions:
         onInput={(event: Event) => actions.onDraftChange({ temperature: inputValue(event) })} />
       <div class="field">
         <span class="field__label pels-text-settings-label">{OVERRIDE_COPY.endLabel}</span>
-        <SegmentedControl options={END_OPTIONS} value={draft.end} ariaLabel={OVERRIDE_COPY.endLabel}
+        <SegmentedControl options={OVERRIDE_END_OPTIONS} value={draft.end} ariaLabel={OVERRIDE_COPY.endLabel}
           onChange={(end) => actions.onDraftChange({ end })} />
         {endLine !== null && draft.end !== 'custom' && <small class="field__hint" data-override-end-line>{endLine}</small>}
       </div>

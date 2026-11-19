@@ -88,6 +88,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     getPowerhourSourceUiStatus: () => ({ kind: 'unknown' }),
     getModePrioritiesForUi: createFixturePriorityQuery(),
     readDeviceDiagnosticConfiguration: notWired('readDeviceDiagnosticConfiguration'),
+    readGoverningModeTargetC: () => null,
     getSettingsUiManagedDevices: () => [],
     refreshFlowConflictsForUi: notWired('refreshFlowConflictsForUi'),
     readChargingCurrentForUi: notWired('readChargingCurrentForUi'),

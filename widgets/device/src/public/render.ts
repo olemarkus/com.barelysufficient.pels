@@ -1,3 +1,5 @@
+import { resolveOverrideSmartTaskNote } from '../../../../packages/shared-domain/src/settings/deviceOverrideDraft';
+import { isDeviceOverrideInForce } from '../../../../packages/shared-domain/src/settings/deviceOverrides';
 import { formatSmartTaskGoalValue } from '../../../../packages/shared-domain/src/smartTaskCopy/valueFormat';
 import {
   DEVICE_WIDGET_COPY,
@@ -12,7 +14,7 @@ import {
   type DetailTargets,
 } from '../../../_shared/smartTaskDetail/detailRender';
 import type { DeviceStatus } from '../../../../packages/contracts/src/deviceStatus';
-import type { DeviceWidgetPayload, DeviceWidgetTask } from '../deviceWidgetTypes';
+import type { DeviceWidgetOverride, DeviceWidgetPayload, DeviceWidgetTask } from '../deviceWidgetTypes';
 
 const C = DEVICE_WIDGET_COPY;
 
@@ -105,7 +107,17 @@ const renderHero = (
   setVisible(tileHero, status.powerText !== null);
 };
 
-const renderTask = (targets: RenderTargets, task: DeviceWidgetTask): void => {
+const readTaskOverrideNote = (override: DeviceWidgetOverride | null): string | null => {
+  if (!override?.active || override.taskDeadlineAtMs === null
+    || !isDeviceOverrideInForce(override.active, Date.now())) return null;
+  return resolveOverrideSmartTaskNote(override.active.untilMs, override.taskDeadlineAtMs);
+};
+
+const renderTask = (
+  targets: RenderTargets,
+  task: DeviceWidgetTask,
+  override: DeviceWidgetOverride | null,
+): void => {
   const { tileTask, tileTaskGoal, tileTaskChip, tileTaskDeadline, tileTaskWhy, tileTaskNext } = targets;
   setVisible(tileTask, task.kind !== 'none');
   if (task.kind === 'none') return;
@@ -116,8 +128,9 @@ const renderTask = (targets: RenderTargets, task: DeviceWidgetTask): void => {
     tileTaskChip.textContent = row.statusLabel;
     setChipTone(tileTaskChip, row.tone);
     setLine(tileTaskDeadline, `${row.etaVerb} ${row.finishLabel}`);
-    setLine(tileTaskWhy, row.whyLabel);
-    setLine(tileTaskNext, task.nextRunLabel);
+    const overrideNote = readTaskOverrideNote(override);
+    setLine(tileTaskWhy, overrideNote ?? row.whyLabel);
+    setLine(tileTaskNext, overrideNote === null ? task.nextRunLabel : null);
     return;
   }
   const { row } = task;
@@ -163,7 +176,7 @@ const renderDevice = (targets: RenderTargets, payload: Extract<DeviceWidgetPaylo
   // ("54.0 °C · target 65 °C", "Charging · 58 % · level 16 A"); the chip carries
   // the state. Without one it is the tile's only fact ("Unplugged").
   setLine(tileFact, status.reading === null ? status.factText : null);
-  renderTask(targets, task);
+  renderTask(targets, task, payload.override);
 };
 
 const hideDevice = (targets: RenderTargets): void => {
@@ -180,7 +193,7 @@ const resolveMessage = (state: Exclude<TileState, { kind: 'loading' }>): string 
 
 // Which of the widget's views is up: the tile, the open task's detail panel,
 // or the creation flow (which renders itself).
-export type DeviceView = 'tile' | 'detail' | 'flow';
+export type DeviceView = 'tile' | 'detail' | 'flow' | 'override';
 
 /** The tile and the detail panel; each is shown only while it is the view. */
 export const renderDeviceView = (
@@ -197,7 +210,7 @@ export const renderDeviceView = (
     }
     return;
   }
-  if (view === 'flow') return;
+  if (view !== 'tile') return;
   renderTileAction(targets, resolveTileAction(state));
   if (state.kind === 'payload' && state.payload.state === 'ready') {
     hide(targets.tileMessage);

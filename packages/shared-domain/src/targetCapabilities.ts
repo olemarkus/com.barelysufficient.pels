@@ -16,6 +16,11 @@ export const getPrimaryTargetCapability = (
   Array.isArray(targets) ? targets[0] ?? null : null
 );
 
+/** The target the transport commands for a device's temperature. */
+export const getTemperatureTargetCapability = (
+  targets: readonly TargetCapabilitySnapshot[],
+): TargetCapabilitySnapshot | undefined => targets.find((target) => target.id.startsWith('target_temperature'));
+
 const clampTargetCapabilityValue = (
   target: Partial<Pick<TargetCapabilitySnapshot, 'min' | 'max'>> | null | undefined,
   value: number,
