@@ -28,8 +28,8 @@
  * ## Who writes
  *
  * The settings UI writes a device's key through the settings bridge; Flow cards
- * start and end one through this module. A device has at most one override, and
- * a new one replaces it.
+ * and the Device insight widget start and end one through this module. A device
+ * has at most one override, and a new one replaces it.
  *
  * ## Read policy
  *
@@ -77,11 +77,42 @@ export function readActiveDeviceOverride(
   nowMs: number,
 ): DeviceOverride | null {
   try {
-    const override = parseDeviceOverride(settings.get(deviceOverrideKey(deviceId)))
-      ?? readLegacyTemperature(settings, deviceId);
-    return override !== null && isDeviceOverrideInForce(override, nowMs) ? override : null;
+    const stored = parseDeviceOverride(settings.get(deviceOverrideKey(deviceId)));
+    return resolveActiveOverride(settings, deviceId, stored, nowMs);
   } catch {
     return null;
+  }
+}
+
+function resolveActiveOverride(
+  settings: Pick<SettingsPort, 'get'>,
+  deviceId: string,
+  stored: DeviceOverride | null,
+  nowMs: number,
+): DeviceOverride | null {
+  const override = stored ?? readLegacyTemperature(settings, deviceId);
+  return override !== null && isDeviceOverrideInForce(override, nowMs) ? override : null;
+}
+
+/** A guarded write may compare with absence only when the settings read succeeded. */
+export function readDeviceOverrideForWrite(
+  settings: Pick<SettingsPort, 'get' | 'getKeys'>,
+  deviceId: string,
+  nowMs: number,
+): { state: 'ready'; active: DeviceOverride | null } | { state: 'unavailable' } {
+  try {
+    const key = deviceOverrideKey(deviceId);
+    const raw = settings.get(key);
+    const stored = parseDeviceOverride(raw);
+    if (raw === null || raw === undefined) {
+      const keyList = readSettingsKeyList(settings);
+      if (keyList.status === 'unavailable' || keyList.keys.includes(key)) return { state: 'unavailable' };
+    } else if (stored === null) {
+      return { state: 'unavailable' };
+    }
+    return { state: 'ready', active: resolveActiveOverride(settings, deviceId, stored, nowMs) };
+  } catch {
+    return { state: 'unavailable' };
   }
 }
 
@@ -144,12 +175,32 @@ export function startDeviceOverride(
   request: { setting: DeviceOverrideSetting; minutes: number },
   nowMs: number,
 ): DeviceOverrideWrite {
+  const override = { untilMs: nowMs + request.minutes * 60_000, setting: request.setting };
+  return writeDeviceOverride(settings, deviceId, override, nowMs);
+}
+
+/** Start an override at a resolved absolute end time, as requested by the Device insight widget. */
+export function startDeviceOverrideUntil(
+  settings: SettingsPort,
+  deviceId: string,
+  override: DeviceOverride,
+  nowMs: number,
+): DeviceOverrideWrite | 'invalid_end' {
+  if (!isDeviceOverrideInForce(override, nowMs)) return 'invalid_end';
+  return writeDeviceOverride(settings, deviceId, override, nowMs);
+}
+
+function writeDeviceOverride(
+  settings: SettingsPort,
+  deviceId: string,
+  override: DeviceOverride,
+  nowMs: number,
+): DeviceOverrideWrite {
   const allowed = temperatureControlAllows(settings, deviceId);
   if (allowed === null) return 'unavailable';
   if (!allowed) return 'temperature_control_off';
   try {
     dropEndedOverrides(settings, nowMs);
-    const override: DeviceOverride = { untilMs: nowMs + request.minutes * 60_000, setting: request.setting };
     settings.set(deviceOverrideKey(deviceId), override);
     return 'written';
   } catch {

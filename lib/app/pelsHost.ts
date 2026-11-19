@@ -87,6 +87,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   /** Which devices keep reporting another value after PELS sets them (`lib/executor/controlContest.ts`). */
   readonly controlContests: ControlContestReading;
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
+  readGoverningModeTargetC(deviceId: string): number | null;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];
   refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult>;
   readChargingCurrentForUi(): Promise<ChargingCurrentRead[]>;
