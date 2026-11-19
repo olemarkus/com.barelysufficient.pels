@@ -2017,6 +2017,17 @@
     },
     'GET /ui_charging_current': () => [],
     'GET /ui_charging_access': () => ({ configured: false, state: 'not_configured' }),
+    'POST /ui_recommendation_acknowledge': ({ id, version, expectedVersion }) => {
+      const key = 'setup_recommendation_dismissals';
+      const next = { ...settings[key] };
+      if ((next[id] ?? null) === expectedVersion) {
+        if (version === null) delete next[id];
+        else next[id] = version;
+        settings[key] = next;
+        emit('settings.set', key);
+      }
+      return next;
+    },
     // A spec seeds car candidates, with their match history, through
     // `window.__PELS_HOMEY_STUB__.recommendationCars`.
     'GET /ui_recommendation_cars': () => ({

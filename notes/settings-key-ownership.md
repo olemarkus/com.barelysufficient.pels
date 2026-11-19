@@ -496,3 +496,5 @@ running from the occurrence, through `lib/overrides/deviceOverrides.ts`) or invo
 a mode change; it never holds a mode, cancels an existing task, or
 replaces an open task or an override already in force. Task definitions snapshot their Extra permissions and each
 created task carries its source schedule ID/name independently of later edits.
+
+Recommendation acknowledgements use `setup_recommendation_dismissals`. The settings UI reads the map through bootstrap. Dismiss and Show again send one card’s change to `/ui_recommendation_acknowledge`, where the runtime merges it with the saved map.
