@@ -26,6 +26,21 @@ export function resolveMeterImportCounter(device: HomeyDeviceLike): MeterImportC
 }
 
 /**
+ * The requested meters' import counters, from devices already fetched; a
+ * meter not among them, or without one, is not a key.
+ */
+export function resolveMeterImportCounters(
+    devices: readonly HomeyDeviceLike[],
+    meterDeviceIds: readonly string[],
+): Record<string, MeterImportCounter> {
+    return Object.fromEntries(devices.flatMap((device) => {
+        if (!meterDeviceIds.includes(device.id)) return [];
+        const counter = resolveMeterImportCounter(device);
+        return counter === null ? [] : [[counter.meterDeviceId, counter] as const];
+    }));
+}
+
+/**
  * The counter rides the whole-home power sample, so its read never holds one
  * back for long: a meter device that has not answered by then gives no counter
  * for this sample.
@@ -58,7 +73,8 @@ async function readMeterImportCounter(meterDeviceId: string): Promise<MeterImpor
 
 /**
  * The requested meters' import counters, by meter device id, read beside the
- * live energy report (which carries power only). A meter whose read failed or
+ * live energy report (which carries power only) for the poll, which fetches
+ * no devices of its own. A meter whose read failed or
  * that reports no usable counter is simply not a key.
  */
 export async function readMeterImportCounters(

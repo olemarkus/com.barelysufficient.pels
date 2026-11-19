@@ -23,7 +23,7 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 export { SnapshotRefreshState } from './snapshotRefreshState';
 import { resolveLiveMeterReadings } from './liveMeterReadings';
-import { readMeterImportCounters } from './meterImportCounterRead';
+import { readMeterImportCounters, resolveMeterImportCounters } from './meterImportCounterRead';
 import type { Logger } from '../../utils/types';
 import type { LiveMeterReadings } from '../../ports/homeMeterReadings';
 import {
@@ -435,12 +435,12 @@ async function resolveLivePowerForRefresh(
     refresh: SnapshotRefreshService,
     includeLivePower: boolean,
     meterDeviceIds: readonly string[],
+    /** The devices this refresh just fetched; the meters' counters are read from them, not fetched again. */
+    fetchedDevices: readonly HomeyDeviceLike[],
 ): Promise<RefreshLivePower> {
     if (!includeLivePower) return { byDeviceId: {}, meterReadings: null };
-    const [report, importCounters] = await Promise.all([
-        fetchLivePowerReport({ logger: refresh.reader.logger, meterDeviceIds }),
-        readMeterImportCounters(meterDeviceIds),
-    ]);
+    const report = await fetchLivePowerReport({ logger: refresh.reader.logger, meterDeviceIds });
+    const importCounters = resolveMeterImportCounters(fetchedDevices, meterDeviceIds);
     return {
         byDeviceId: report.state === 'measured' ? report.byDeviceId : {},
         meterReadings: resolveLiveMeterReadings(
@@ -575,6 +575,7 @@ export class SnapshotRefreshService {
         this,
         options.includeLivePower !== false,
         options.meterDeviceIds,
+        list,
     );
     // Accept the inventory before changing any session membership. A transient
     // empty full read must leave both accepted observations and sessions intact.
