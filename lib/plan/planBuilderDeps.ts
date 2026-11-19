@@ -34,8 +34,8 @@ export type PlanBuilderDeps = {
   /**
    * The limits live control holds (`lib/power/heldCapacityLimit.ts`): the
    * configured settings, with the hard cap raised to this month's peak once it
-   * is higher and the owner follows it. Forward planning reads the configured
-   * hard cap from its own owners, never from here.
+   * is higher and the owner follows it. Smart-task and battery forecasts
+   * resolve the month-end change from their own inputs.
    */
   getCapacitySettings: () => HeldPowerLimitSettings;
   /** The owner's main fuse; off for a meter area. */

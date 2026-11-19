@@ -130,6 +130,25 @@ describe('objective-owned battery task reservations', () => {
     expect(read.admission[0].endMs).toBe(present ? START + 0.56 / 3 * HOUR_MS : END);
   });
 
+  it('uses the held ceiling for a legacy booking that crosses its expiry', () => {
+    const task = plan({ reservationSegments: undefined, hours: [{ ...booking, plannedAdmissionPowerKw: undefined }] });
+    const devices: ObjectiveDeviceInput[] = [];
+    const getCapacitySettings = vi.fn(() => ({
+      ...limits, periodMinutes: 15 as const,
+      monthPeak: { limitKw: 7.5, endsAtMs: START + HOUR_MS / 2 },
+    }));
+    const reader = new ObjectiveTaskReservationSource({
+      ...reservationReaders(active(task), devices), getCapacitySettings,
+    }, () => roster(), () => devices, (input) => input);
+
+    const read = reader.read(NOW, ids);
+    expect(getCapacitySettings).toHaveBeenCalledWith(NOW);
+    expect(read).toMatchObject({
+      kind: 'ready',
+      admission: [{ startMs: START, endMs: END, admissionPowerKw: 7.5 }],
+    });
+  });
+
   it.each(['pending', 'signature', 'commitment', 'kind', 'deadline'] as const)('waits for an incoherent %s commitment', (reason) => {
     const overrides = {
       pending: { pending: true }, signature: { objectiveSignature: 'old' }, commitment: { commitment: undefined },
@@ -232,7 +251,7 @@ describe('objective-owned battery task reservations', () => {
         chargeCeiling: { everyLevelW: 5000, taper: [], planningTaper: [] }, deliveryCeilingW: 5000,
         claimEngaged: false, claimHeld: false, handBackDeferred: false, verdict: 'responding', keepAliveFor: () => ({ kind: 'none' }), pacing: { kind: 'unpaced' }, response: { kind: 'delivers_setpoint' }, gridCharge: { kind: 'any' }, ownModeGridCharge: { kind: 'observed' },
       }) }),
-      getControllableDevices: () => ({}), getPowerLimitSettings: () => limits,
+      getControllableDevices: () => ({}), getPlanningCeiling: () => ({ changesAtMs: null, at: () => limits.limitKw }),
       getPrioritiesForDevices: () => ({ getPriority: () => 1 }),
       taskReservations: source(), solarScope: { mainDevices: () => [], allDevices: () => [] },
       getBackgroundKWh: () => 0.5, getSolarForecast: () => ({ forecast: () => [] }),

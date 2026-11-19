@@ -1,12 +1,10 @@
 import type { BatteryEnergyPeriod } from '../../packages/contracts/src/batteryPlan';
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { TaskReservationSource } from '../ports/taskReservations';
 import type { PriceTimeline, PriceTimelinePeriod, PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
-import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import { resolveBatterySolarScope, type BatterySolarScopeSource } from './batterySolarScope';
 import type {
@@ -27,7 +25,7 @@ export type ContinuousBatteryHorizonSources = {
   /** The home's planned devices in the owner's order (`HomeModeCatalog.getPrioritiesForDevices`). */
   getPrioritiesForDevices(deviceIds: readonly string[]): { getPriority(deviceId: string): number };
   getPriceTimeline(): PriceTimelineRead;
-  getPowerLimitSettings(): PowerLimitSettings;
+  getPlanningCeiling(nowMs: number): { changesAtMs: number | null; at: (atMs: number) => number | null };
   taskReservations: TaskReservationSource;
   solarScope: BatterySolarScopeSource;
   /** The selected solar forecast source's hourly generation. */
@@ -170,8 +168,12 @@ function priceCuts(
   startMs: number,
   endMs: number,
   reservations: readonly { startMs: number; endMs: number }[],
+  ceilingChangeAtMs: number | null,
 ): number[] {
   const boundaries = new Set([startMs, endMs]);
+  if (ceilingChangeAtMs !== null && ceilingChangeAtMs > startMs && ceilingChangeAtMs < endMs) {
+    boundaries.add(ceilingChangeAtMs);
+  }
   for (let hour = (Math.floor(startMs / HOUR_MS) + 1) * HOUR_MS; hour < endMs; hour += HOUR_MS) {
     boundaries.add(hour);
   }
@@ -186,6 +188,7 @@ function* priceSpans(
   prices: readonly PriceTimelinePeriod[],
   nowMs: number,
   reservations: readonly { startMs: number; endMs: number }[],
+  ceilingChangeAtMs: number | null,
 ): Generator<PriceSpan> {
   let cursor = nowMs;
   let count = 0;
@@ -196,7 +199,7 @@ function* priceSpans(
     const startMs = Math.max(nowMs, publishedStart);
     if (startMs > cursor || count >= 192) return;
     let fromMs = startMs;
-    for (const toMs of priceCuts(startMs, endMs, reservations).slice(1)) {
+    for (const toMs of priceCuts(startMs, endMs, reservations, ceilingChangeAtMs).slice(1)) {
       if (count >= 192) return;
       yield { price, startsAtMs: fromMs, endsAtMs: toMs };
       count += 1;
@@ -237,12 +240,12 @@ function buildEnergyPeriods(
   if (tasks.kind === 'waiting') return { kind: 'waiting', reason: 'smart_tasks_planning' };
   const standingKW = standingManagedKW(devices, tasks.taskDeviceIds);
   const reservationBounds = [...tasks.energy, ...tasks.admission];
-  // The power owner's shared arithmetic (`resolvePlanningCeilingKw`): the lower enabled limit, null when none is.
-  const planningCeiling = planningPowerCeiling(sources.getPowerLimitSettings())?.kw ?? null;
+  const ceiling = sources.getPlanningCeiling(nowMs);
   const solarByHour = new Map<number, number | undefined>();
   let periods: BatteryEnergyPeriod[] = [];
   let exportPricing: ContinuousBatteryExportPricing = 'complete';
-  for (const span of priceSpans(prices.periods, nowMs, reservationBounds)) {
+  for (const span of priceSpans(prices.periods, nowMs, reservationBounds, ceiling.changesAtMs)) {
+    const planningCeiling = ceiling.at(span.startsAtMs);
     const hourStartMs = Math.floor(span.startsAtMs / HOUR_MS) * HOUR_MS;
     const hour = readHour(sources, hourStartMs, solarByHour, solarScope === 'main');
     if (hour.kind === 'waiting') return hour;

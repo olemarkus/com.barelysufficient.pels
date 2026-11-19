@@ -2,7 +2,9 @@ import { expect, it } from 'vitest';
 import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives/horizonPlanner';
 import { buildHoursFromHorizonPlan, buildReservationSegmentsFromHorizonPlan, mergeHoursPreservingCommitment, sameHourSchedule, shouldFireNotification, stampUnitMilestones } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
-import { buildDeferredObjectivePolicyHorizon } from '../../lib/objectives/deferredObjectives/policyHorizon';
+import {
+  buildDeferredObjectivePolicyHorizon, countDeferredObjectivePolicyHorizonBuckets,
+} from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { plannedDurationHours } from '../../lib/objectives/deferredObjectives/plannedDuration';
 import { normalizeDeferredObjectiveActivePlansShape } from '../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
@@ -145,6 +147,50 @@ it('prorates one hourly budget across four quarters and subtracts only overlappi
   expect(plan.plannedBuckets.map((bucket) => bucket.plannedUsefulEnergyKWh)).toEqual([0, 1, 1, 1]);
 });
 
+
+it.each([
+  { gridImportLimitKw: null, headroom: [6.5, 3.5] },
+  { gridImportLimitKw: 6, headroom: [5.2, 3.5] },
+  { gridImportLimitKw: 4, headroom: [3.3] },
+])('uses the effective cap in each price interval with a $gridImportLimitKw kW grid limit', (
+  { gridImportLimitKw, headroom },
+) => {
+  const startMs = Date.parse('2026-09-30T21:45:00Z');
+  const monthEndMs = startMs + QUARTER;
+  const endMs = monthEndMs + QUARTER;
+  const inputs = {
+    nowMs: monthEndMs - 2 * 60_000, deadlineAtMs: endMs, priceOptimizationEnabled: true,
+    priceHorizon: [{ startMs, endMs, price: 10, moneyPrice: 10 }],
+    dailyBudgetSnapshot: partialDouble<DailyBudgetUiPayload>({
+      todayKey: '2026-09-30', tomorrowKey: null,
+      days: { '2026-09-30': partialDouble<DailyBudgetDayPayload>({
+        budget: { enabled: true, dailyBudgetKWh: 10, priceShapingEnabled: true },
+        buckets: partialDouble<DailyBudgetDayPayload['buckets']>({
+          startUtc: [new Date(startMs).toISOString()], plannedControlledKWh: [4],
+          plannedUncontrolledKWh: [0.5], plannedGrossUncontrolledKWh: [0.5],
+        }),
+      }) },
+    }),
+    exemptFromBudget: false,
+    powerLimits: {
+      ...capacityOnlyPowerLimits(4), periodMinutes: 15 as const, gridImportLimitKw,
+      monthPeak: { limitKw: 7, endsAtMs: monthEndMs },
+    },
+    hasSolarProduction: false, higherPriorityReservations: [], higherPriorityUnbookedPowerKw: 0,
+  };
+  const horizon = buildDeferredObjectivePolicyHorizon(inputs);
+  const split = headroom.length === 2;
+  expect(horizon.horizonBucketCount).toBe(headroom.length);
+  expect(countDeferredObjectivePolicyHorizonBuckets(inputs)).toBe(headroom.length);
+  expect(horizon.buckets.map((bucket) => bucket.startMs)).toEqual(split ? [startMs, monthEndMs] : [startMs]);
+  expect(horizon.buckets.map((bucket) => bucket.sourceBucketId)).toEqual(
+    headroom.map(() => new Date(startMs).toISOString()),
+  );
+  expect(horizon.buckets.map((bucket) => bucket.maxUsefulEnergyKWh)).toEqual(split ? [1, 1] : [2]);
+  expect(horizon.buckets.map((bucket) => bucket.reservedHeadroomKw)).toEqual(
+    headroom.map((kw) => expect.closeTo(kw, 5)),
+  );
+});
 
 it('preserves a committed quarter when a new hourly source crosses its edge', () => {
   const plan = planDeferredObjectiveHorizon({

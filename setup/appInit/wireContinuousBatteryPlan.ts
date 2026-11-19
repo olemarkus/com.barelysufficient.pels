@@ -6,6 +6,7 @@ import {
 } from '../../lib/battery/continuousBatteryHorizon';
 import type { TaskReservationSource } from '../../lib/ports/taskReservations';
 import { requireBatteryControl, requireHomeMembership } from './contextGuards';
+import { readPlanningCeilingSchedule } from './scheduledPowerLimits';
 
 /** The selector is ready here; setup only connects the source and owner. */
 export function wireContinuousBatteryPlan(
@@ -24,7 +25,7 @@ export function wireContinuousBatteryPlan(
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
     getPrioritiesForDevices,
     getPriceTimeline: () => ctx.priceCoordinator.getPriceTimeline(),
-    getPowerLimitSettings: () => ctx.capacitySettings,
+    getPlanningCeiling: (nowMs) => readPlanningCeilingSchedule(ctx, nowMs),
     taskReservations,
     solarScope: ctx.batterySolarScope,
     getSolarForecast,

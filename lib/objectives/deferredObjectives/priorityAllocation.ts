@@ -26,7 +26,7 @@ import {
 } from './stepSelection';
 import type { DeferredObjectiveStep } from './types';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
-import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
+import { powerLimitsAt, type ScheduledPowerLimits } from '../../power/heldCapacityLimit';
 import { resolvePlanningCeilingKw } from '../../power/capacityModel';
 import { isTaskSatisfied } from './taskCompletion';
 
@@ -271,7 +271,7 @@ const reservationsFromHours = (
   deviceId: string,
   hours: readonly ReservationHour[],
   device: ObjectiveDeviceInput | undefined,
-  planningCeilingKw: number | null,
+  powerLimits: ScheduledPowerLimits,
   exemptFromBudget: boolean,
   deadlineAtMs: number,
 ): DeferredObjectivePriorityReservation[] => hours.flatMap((hour) => {
@@ -286,7 +286,9 @@ const reservationsFromHours = (
     admissionPowerKw: resolveLegacyAdmissionPowerKw(
       hour,
       device,
-      planningCeilingKw,
+      // A legacy booking may occupy any part of its span. The higher cap
+      // can only expire within it, so its start supplies the conservative cap.
+      resolvePlanningCeilingKw(powerLimitsAt(powerLimits, hour.coversFromMs ?? hour.startsAtMs)),
       deadlineAtMs,
     ),
     exemptFromBudget,
@@ -371,7 +373,7 @@ export const committedPriorityReservations = (
   deviceId: string,
   latest: DeferredObjectiveActivePlanRevisionV1,
   device: ObjectiveDeviceInput | undefined,
-  powerLimits: PowerLimitSettings,
+  powerLimits: ScheduledPowerLimits,
   deadlineAtMs: number,
   exemptFromBudget: boolean,
 ): DeferredObjectivePriorityReservation[] => {
@@ -385,7 +387,7 @@ export const committedPriorityReservations = (
     return [{ ...hour, energySegments: [{ startMs, endMs, plannedKWh: hour.plannedKWh }] }];
   });
   return reservationsFromHours(
-    deviceId, persistedHours, device, resolvePlanningCeilingKw(powerLimits), exemptFromBudget, deadlineAtMs,
+    deviceId, persistedHours, device, powerLimits, exemptFromBudget, deadlineAtMs,
   );
 };
 
@@ -394,7 +396,7 @@ export const buildPriorityReservations = (
   objective: DeferredObjectiveSettingsEntry,
   device: ObjectiveDeviceInput | undefined,
   activePlans: DeferredObjectiveActivePlansV2,
-  powerLimits: PowerLimitSettings,
+  powerLimits: ScheduledPowerLimits,
   nowMs: number,
 ): DeferredObjectivePriorityReservation[] => {
   if (isTaskSatisfied(evaluation.completion)) return [];

@@ -6,6 +6,7 @@ import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/c
 import type { ContinuousBatteryHorizonRead } from '../../lib/ports/continuousBatteryPlan';
 import type { DeferredObjectiveActivePlansV2, DeferredObjectiveActivePlanV1, DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { planningCeilingSchedule, resolveScheduledPowerLimits } from '../../lib/power/heldCapacityLimit';
 import { ObjectiveTaskReservationSource } from '../../lib/objectives/deferredObjectives/taskReservationSource';
 import { buildObjectiveSignatureForEntry } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import type { ObjectiveDeviceSource } from '../../lib/objectives/types';
@@ -47,7 +48,7 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> & {
     lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
     periods: [{ startsAt: new Date(NOW).toISOString(), durationMinutes: 60, importPrice: 0.2, level: 'normal' }],
   }),
-  getPowerLimitSettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
+  getPlanningCeiling: () => ({ changesAtMs: null, at: () => 5 }),
   taskReservations: new ObjectiveTaskReservationSource({
     getChargingPhaseEnvelopes: () => new Map(),
     getDeferredObjectiveActivePlans: () => overrides.getActiveTasks?.() ?? { version: 2, plansByDeviceId: {} },
@@ -117,6 +118,30 @@ describe('continuous battery horizon projection', () => {
     expect(result.horizon.periods[0].solarKWh).toBe(0);
     expect(result.horizon.periods[0].householdDemandKWh).toBe(0.5);
     expect(result.exportPricing).toBe('incomplete');
+  });
+
+  it('fits a Smart Task booking under the held peak and returns to the configured cap at month-end', () => {
+    const nowMs = Date.parse('2026-09-30T21:45:00Z');
+    const monthEndMs = Date.parse('2026-09-30T22:00:00Z');
+    const base = sources();
+    const result = horizonSource(sources({
+      getNowMs: () => nowMs,
+      getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: task(1.5, nowMs, monthEndMs) } }),
+      getPriceTimeline: () => {
+        const timeline = base.getPriceTimeline();
+        if (timeline.state !== 'ready') throw new Error('Expected fixture prices');
+        return { ...timeline, periods: [{ ...timeline.periods[0], startsAt: new Date(nowMs).toISOString() }] };
+      },
+      getPlanningCeiling: (atMs) => planningCeilingSchedule(resolveScheduledPowerLimits({
+        limitKw: 5, marginKw: 0.5, periodMinutes: 15, capacityEnabled: true, gridImportLimitKw: null,
+        dryRun: false, followMonthPeak: true,
+      }, () => ({ state: 'recorded', peakKw: 8, source: 'meter' }), 'Europe/Brussels', atMs)),
+    })).readHorizon('battery', config);
+    if (result.kind !== 'ready') throw new Error('Expected horizon');
+    expect(result.horizon.periods).toEqual([
+      expect.objectContaining({ startsAtMs: nowMs, gridImportLimitKW: 7.5, otherManagedDemandKWh: 1.5 }),
+      expect.objectContaining({ startsAtMs: monthEndMs, gridImportLimitKW: 4.5, otherManagedDemandKWh: 0 }),
+    ]);
   });
 
   it('carries the planning taper as stored-energy steps, not the live one', () => {

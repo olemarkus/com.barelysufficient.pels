@@ -27,6 +27,7 @@ import { buildDeferredObjectivePolicyWindowPrices } from '../../lib/objectives/d
 import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { ScheduledPowerLimits } from '../../lib/power/heldCapacityLimit';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
@@ -312,6 +313,7 @@ const buildSettings = (params: {
 
 type PreviewContext = {
   nowMs?: number;
+  buildPriceHorizon?: TaskEvaluationSource['buildPriceHorizon'];
   allocationRoster?: TaskAllocationRoster;
   device: MeteredPlanInputDevice | undefined;
   devices?: MeteredPlanInputDevice[];
@@ -327,7 +329,7 @@ type PreviewContext = {
   // cases use a zero margin, which makes the two equal. Capacity limit on and
   // grid import limit off unless a case says otherwise.
   capacitySettings: Pick<PowerLimitSettings, 'limitKw' | 'marginKw'>
-    & Partial<Pick<PowerLimitSettings, 'capacityEnabled' | 'gridImportLimitKw'>>;
+    & Partial<Pick<ScheduledPowerLimits, 'capacityEnabled' | 'gridImportLimitKw' | 'periodMinutes' | 'monthPeak'>>;
   // No solar production unless a case says otherwise.
   hasSolarProduction?: boolean;
   // Optional override for the price-RATE label fed into the preview. Defaults
@@ -340,7 +342,7 @@ type PreviewContext = {
 };
 
 // Capacity limit on and grid import limit off unless the case says otherwise.
-const previewPowerLimits = (capacitySettings: PreviewContext['capacitySettings']): PowerLimitSettings => ({
+const previewPowerLimits = (capacitySettings: PreviewContext['capacitySettings']): ScheduledPowerLimits => ({
   capacityEnabled: true, gridImportLimitKw: null, periodMinutes: 60, ...capacitySettings,
 });
 
@@ -363,7 +365,8 @@ const runPreview = (params: {
     getPriceOptimizationEnabled: () => params.ctx.priceOptimizationEnabled,
     getDeferredObjectiveActivePlans: () => params.ctx.activePlans ?? createEmptyActivePlans(),
     getCapacitySettings: () => previewPowerLimits(params.ctx.capacitySettings),
-    buildPriceHorizon: priceHorizonBuilderFor(params.ctx.dailyBudgetSnapshot, params.ctx.planningPriceScale),
+    buildPriceHorizon: params.ctx.buildPriceHorizon
+      ?? priceHorizonBuilderFor(params.ctx.dailyBudgetSnapshot, params.ctx.planningPriceScale),
     getPrioritiesForDevices: params.ctx.getPrioritiesForDevices ?? createFixturePriorityQuery(devices),
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
@@ -412,6 +415,37 @@ const temperatureCandidate = (
 } as DeferredObjectivePlanPreviewCandidate);
 
 describe('previewDeferredObjectivePlan', () => {
+  it.each([null, 1] as const)('uses the held cap only before month-end with grid limit %s', (gridImportLimitKw) => {
+    const monthEndMs = Date.parse('2026-09-30T22:00:00Z');
+    const nowMs = monthEndMs - 2 * 60_000;
+    const deadlineAtMs = monthEndMs + HOUR_MS;
+    const estimate = runPreview({
+      deviceId: 'ev-1',
+      candidate: evCandidate({ deadlineAtMs }),
+      ctx: {
+        nowMs,
+        buildPriceHorizon: () => [{ startMs: nowMs, endMs: deadlineAtMs, price: 1, moneyPrice: 1 }],
+        device: buildEvDevice({ stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: nowMs }) }),
+        powerTracker: buildEvPowerTracker(),
+        dailyBudgetSnapshot: null,
+        priceOptimizationEnabled: true,
+        capacitySettings: {
+          limitKw: 0.5, marginKw: 0, periodMinutes: 15, gridImportLimitKw,
+          monthPeak: { limitKw: 3, endsAtMs: monthEndMs },
+        },
+      },
+    });
+    if (gridImportLimitKw !== null) {
+      expect(estimate.scheduledHours).toEqual([]);
+      return;
+    }
+    // The 1 kW rung can run for the two minutes left this month. After
+    // midnight, the 0.5 kW average cap gives it another 0.5 kWh over one hour.
+    expect(estimate.scheduledHours).toEqual([expect.objectContaining({
+      startsAtMs: nowMs, endsAtMs: deadlineAtMs, plannedKWh: expect.closeTo(0.5 + 1 / 30, 3),
+    })]);
+  });
+
   it.each([
     [true, 'waiting_for_car'],
     [false, 'progress_stale'],
@@ -883,6 +917,17 @@ describe('previewDeferredObjectivePlan', () => {
       capacitySettings,
     },
   }).atPowerLimitNow;
+
+  it('compares current draw to the held cap for the at-limit warning', () => {
+    const limits = { limitKw: 5, marginKw: 0.25, periodMinutes: 15 as const };
+    expect(atLimitFor(5_500, limits)).toBe('capacity');
+    expect(atLimitFor(5_500, {
+      ...limits, monthPeak: { limitKw: 7, endsAtMs: NOW_MS + HOUR_MS },
+    })).toBeUndefined();
+    expect(atLimitFor(7_000, {
+      ...limits, monthPeak: { limitKw: 7, endsAtMs: NOW_MS + HOUR_MS },
+    })).toBe('capacity');
+  });
 
   it('flags no limit at a switched-off hard cap when no power limit is enabled', () => {
     expect(atLimitFor(10_000, {
