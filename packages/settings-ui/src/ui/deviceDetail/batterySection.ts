@@ -3,6 +3,7 @@ import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSo
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
+import { renderBatteryRecovery } from './batteryRecovery.tsx';
 import { getHomeIdForUiDevice } from '../homeScopeMembership.ts';
 import { readSetupLimitsInForce } from '../setupPathFacts.ts';
 import {
@@ -64,6 +65,7 @@ export const renderDeviceDetailBattery = (device: SettingsUiDeviceDetailItem | n
   syncDrivableRows(drivable);
   // Its own gate: only a battery PELS drives through its app's actions offers the key.
   setBatteryApiKeyDevice(device);
+  renderBatteryRecovery(device);
   if (!device || !isHomeBattery) return;
   const managed = resolveManagedState(device.id);
   const notice = document.getElementById('device-detail-battery-takeover-notice');

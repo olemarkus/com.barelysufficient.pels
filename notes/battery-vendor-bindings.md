@@ -70,14 +70,17 @@ hand-back. Transport checks command identity again before each action POST.
 Retries and restart recovery always use that stored target. Records contain
 identity, never executable card IDs or arguments. Legacy self-target claims
 can be released by their adapter. Legacy Sigenergy claims lack the old plant
-identity, so their upgrade recovery uses the sole current plant, including
-a replacement, when the inventory has only one Sigenergy battery. Missing or
-multiple plants and multiple batteries keep recovery pending. This is the
-compatibility policy for old records only; a record with a target always
-returns that exact plant to its own EMS. Legacy hand-back is resolved without
-requiring rated powers, so remote EMS can be turned off before a failed
-limit-cleanup action is retried. The legacy record stays until all hand-back
-actions succeed.
+identity. The battery’s device page asks the owner to turn off Managed by PELS
+and identify the original plant or confirm that they already restored it in
+the battery’s app. PELS checks the claim timestamp and current Managed setting,
+then runs any requested hand-back through the actuator. It keeps the claim
+until recovery has succeeded and the durable record is removed. Rated powers
+are unnecessary to start a hand-back, so PELS can turn off remote EMS even if
+removing a limit later fails. A claim with a recorded target continues to use
+that exact plant. A missing plant leaves the recovery obligation in place. A
+plant with a shared Homey name needs a distinct name before it can be selected.
+The normal battery-removal policy still applies when the battery device itself
+is absent from two complete snapshots.
 
 The transport resolves the control surface from the binding at parse
 (`lib/device/transport/homeBatteryObservation.ts`) and the storage writes at

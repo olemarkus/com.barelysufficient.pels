@@ -7,7 +7,7 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type {
-  BatteryCommandPacing, BatteryUnobservedCause, HomeBatteryControlMode,
+  BatteryCommandPacing, BatteryUnobservedCause, HomeBatteryControlMode, LegacyBatteryTargetRead,
 } from '../ports/batteryControlOwner';
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
@@ -221,7 +221,7 @@ export type HomeBatteryActionBinding = {
   resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
   readControlMode?(target: AppActionControlTarget, devices: readonly HomeyDeviceLike[]): HomeBatteryControlMode;
   /** The adapter's upgrade policy for claims written before target identities were persisted. */
-  resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
+  resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): LegacyBatteryTargetRead;
   /**
    * The cards that return the recorded `target` to its own mode. `devices` is
    * the same inventory as `resolve`'s, for an app whose card depends on which

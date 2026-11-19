@@ -287,7 +287,7 @@ const buildSettingsUiDeviceList = (
       powerFigureCheck: host.flowBacked.powerFigureChecks.read(device, Date.now()),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...zoneNameField(zoneTree, device.zoneId),
-      ...readSettingsUiBatteryState(host, device),
+      ...readUiBatteryState(host, device),
       phaseFootprintRead: readSettingsUiPhaseFootprint(host, device, observed?.chargerPhaseCurrentsA),
       priority: priorities.getPriority(device.id),
     };
@@ -300,18 +300,17 @@ const buildSettingsUiDeviceList = (
  * listed only after the owner is built, so a missing owner is a not-ready read,
  * never a guess.
  */
-const readSettingsUiBatteryState = (
-  host: PelsHost,
-  device: Pick<DecoratedDeviceSnapshot, 'id'>,
-): SettingsUiBatteryState => {
+function readUiBatteryState(host: PelsHost, device: Pick<DecoratedDeviceSnapshot, 'id'>): SettingsUiBatteryState {
   const owner = host.batteryControl;
   if (!owner) throw appNotReadyError('Battery control');
+  const batteryRecovery = owner.readLegacyRecovery(device.id);
   return {
     batteryControl: owner.readControlCapability(device.id),
     batteryTakenOver: owner.wasTakenOver(device.id),
     batteryUsesHomeyApiKey: owner.usesHomeyApiKey(device.id),
+    ...(batteryRecovery ? { batteryRecovery } : {}),
   };
-};
+}
 
 const getRawSettingsUiDeviceCandidates = (host: PelsHost): SettingsUiDeviceSnapshot[] => (
   buildSettingsUiDeviceList(host, [...host.getSettingsUiManagedDevices(), ...host.getUiPickerDevices()])
