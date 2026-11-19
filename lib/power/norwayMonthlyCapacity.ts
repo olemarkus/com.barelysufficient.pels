@@ -75,7 +75,8 @@ const remainingCap = (
 const hardCapRecommendation = (
   remaining: NorwayRemainingMonthCap, scalars: CapacityScalarSettings, appliedLimitKw: number, targetLost: boolean,
 ): NorwayHardCapRecommendation => {
-  if (remaining.state !== 'bounded') return { state: 'none' };
+  // A cap at or below the safety margin leaves PELS no planning room; the calculated cap stays as evidence.
+  if (remaining.state !== 'bounded' || remaining.limitKw <= scalars.marginKw) return { state: 'none' };
   const unchanged = Math.abs(remaining.limitKw - appliedLimitKw) < 1e-9;
   const keepLower = !targetLost && appliedLimitKw <= remaining.limitKw;
   return unchanged || keepLower
