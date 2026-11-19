@@ -103,7 +103,7 @@ export const resolveSmartTaskWidgetEtaVerb = (isFailing: boolean): string => (
 // All other list statuses retain the established `Ready by` wording.
 export const resolveSmartTaskListDeadlineVerb = (
   status: SmartTaskListStatusId,
-): string => resolveSmartTaskWidgetEtaVerb(status === 'unavailable');
+): string => resolveSmartTaskWidgetEtaVerb(status === 'unavailable' || status === 'device_idle');
 
 // Kind-aware target action verb ("Heat to 65 °C" / "Charge to 80 %"). Kept
 // beside the other kind-aware smart-task vocabulary so the heat/charge split

@@ -1515,6 +1515,24 @@ missed, with the car's limit as its cause and no recourse button; `met-at-car-li
 for runs archived before this rule. The words come from `smartTaskCopy/shortfallCauses.ts` /
 `deferredPlanHistoryPostmortem.ts`.
 
+### Tentatively met energy tasks
+
+The live list, detail, widget and Flow status condition use **Tentatively met** for a
+metered energy task with confirmed permitted idle. The measured kWh and the target
+remain visible. While the device is idle, the detail shows energy delivered and
+omits the projected trajectory and upcoming energy bookings.
+
+| Surface | Copy |
+|---|---|
+| Settings live detail | `The device stopped taking power while PELS allowed it to run. For example, a water heater stops heating when it reaches its set temperature. It can draw again when power is available.` |
+| List card line | `Device stopped taking power` |
+| Widget why-line | `The device can draw again when power is available.` |
+| List and widget time prefix | `Due` |
+
+The status can reopen before the deadline. The active Flow status tag `device_idle`
+refers to this reversible state. The same value on **Smart task ended** reports the
+terminal archive outcome.
+
 ### Live causes on an at-risk or cannot-finish task
 
 A task whose plan is healthy can still be held back by something outside the plan. Only these
@@ -1529,7 +1547,7 @@ the device or in the car.
 | Car's known charge limit below the target | see the section above | see above | see above | `Raise the car’s charge limit to reach the target.` |
 | Car stopped at its own limit, value unknown (`objective_device_limit`) | `Your car stopped at its own charge limit.` | `Car stopped at its own limit` | `Your car stopped at its own charge limit, below this smart task’s target. Raise the car’s charge limit to let it continue.` | `Raise the car’s charge limit to reach the target.` |
 | Car delaying charging (`objective_device_schedule`) | `Your car is delaying charging on its own schedule.` | `Car is delaying charging` | `Your car is delaying charging, for example on its own charging schedule or smart charging. Turn that off in the car so PELS can charge it before the deadline.` | `Turn off the car’s own charging schedule or smart charging.` |
-| Device took no power through 15 minutes of permitted delivery (`objective_not_accepting_energy`) | `Device stopped taking power.` | `Device stopped taking power` | `The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.` | none |
+| Device took no power through 15 minutes of permitted delivery (`objective_not_accepting_energy`) | `Device stopped taking power.` | `Device stopped taking power` | `The device stopped taking power while PELS allowed it to run. Check the device. For example, a water heater stops heating when it reaches its set temperature.` | none |
 
 Precedence: the off action first, then the car stopped at its limit, then the confirmed device-side
 stops, then a car limit the car has not reached yet. That last one yields to a daily-budget cause:
@@ -1686,9 +1704,17 @@ closed adjective set to label how a finished run ended. Source: `OUTCOME_LABELS`
 |---|---|---|
 | `met` | `Succeeded` | ok |
 | `missed` | `Missed` | warn |
+| `device_idle` | `Device idle` | muted |
 | `abandoned` | `Abandoned` | muted |
 | `replaced` | `Replaced` | muted |
 | `unknown` | `Unknown` | muted |
+
+`Device idle` describes an ended energy task whose recorded permitted idle accounts
+for the delivery gap. Show the measured energy and target with `The device stopped
+taking power while PELS allowed it to run.` The weekly archive and 7-day strip
+count these as `N ended with the device idle`. The success rate uses only succeeded
+and missed runs. Settings detail offers `Review device`. The widget uses
+`Check the device and its settings.` for its device guidance.
 
 `Abandoned` describes an unfinished run that was cleared or stopped being
 observed before the deadline. `Replaced` describes an unfinished run whose

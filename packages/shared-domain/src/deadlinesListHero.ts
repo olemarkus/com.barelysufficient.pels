@@ -173,7 +173,7 @@ export const DEADLINES_LIST_BETWEEN_RUNS_BODY
 // with the per-card chip (`SMART_TASK_LIST_STATUS_CHIP_VARIANT` paints
 // `paused_unplugged` warn) and the ready-by line tone
 // (`resolveSmartTaskListReadyByTone` returns `warn` for the same state).
-type StatusBucket = 'on_track' | 'pending' | 'unavailable' | 'paused' | 'at_risk' | 'satisfied';
+type StatusBucket = 'on_track' | 'pending' | 'unavailable' | 'paused' | 'at_risk' | 'device_idle' | 'satisfied';
 
 const STATUS_BUCKET = {
   on_track: 'on_track',
@@ -189,6 +189,7 @@ const STATUS_BUCKET = {
   paused_prices_off: 'paused',
   at_risk: 'at_risk',
   cannot_meet: 'at_risk',
+  device_idle: 'device_idle',
   satisfied: 'satisfied',
 } as const satisfies Record<SmartTaskListStatusId, StatusBucket>;
 
@@ -327,6 +328,38 @@ const buildNonAtRiskHeadline = (counts: {
   return `${counts.satisfied} ${deadlinesNoun(counts.satisfied)} complete`;
 };
 
+const buildNonWarningHero = (
+  cards: readonly DeadlinesListHeroCard[],
+  soonest: DeadlinesListHeroCard,
+  formatTime: (ms: number) => string,
+): DeadlinesListHeroCopy => {
+  const idleCards = cards.filter(isBucket('device_idle'));
+  const firstDeviceIdle = idleCards[0];
+  if (firstDeviceIdle !== undefined) {
+    const count = idleCards.length;
+    const deviceName = firstDeviceIdle.deviceName.trim() || KIND_NAME_FALLBACK[firstDeviceIdle.kind];
+    return {
+      eyebrow: 'Smart tasks',
+      headline: `${count} ${deadlinesNoun(count)} tentatively met`,
+      subline: `${deviceName} due ${formatTime(firstDeviceIdle.deadlineAtMs)}.`,
+      tone: 'good',
+      sublineTarget: { deviceId: firstDeviceIdle.deviceId },
+    };
+  }
+
+  return {
+    eyebrow: 'Smart tasks',
+    headline: buildNonAtRiskHeadline({
+      onTrack: cards.filter(isBucket('on_track')).length,
+      pending: cards.filter(isBucket('pending')).length,
+      satisfied: cards.filter(isBucket('satisfied')).length,
+    }),
+    subline: buildSoonestSubline(soonest, formatTime),
+    tone: 'good',
+    sublineTarget: { deviceId: soonest.deviceId },
+  };
+};
+
 // Caller passes the sorted-by-deadline cards (the list already sorts ascending
 // by `deadlineAtMs`); this resolver does not re-sort to keep things cheap and
 // to honour whatever ordering the producer chose. Empty input returns null.
@@ -341,9 +374,6 @@ export const resolveDeadlinesListHero = (params: {
   const atRiskCards = cards.filter(isAtRiskCard);
   const unavailableCards = cards.filter(isBucket('unavailable'));
   const pausedCards = cards.filter(isBucket('paused'));
-  const onTrackCards = cards.filter(isBucket('on_track'));
-  const pendingCards = cards.filter(isBucket('pending'));
-  const satisfiedCards = cards.filter(isBucket('satisfied'));
 
   const firstAtRiskCard = atRiskCards[0];
   if (firstAtRiskCard !== undefined) {
@@ -423,21 +453,5 @@ export const resolveDeadlinesListHero = (params: {
     };
   }
 
-  // No at-risk or paused cards — compose the headline from bucket counts
-  // (pure single bucket vs split-clause) and name the soonest deadline
-  // overall on the subline. Cards arrive sorted ascending by `deadlineAtMs`,
-  // so the first card is always the right named subject across pure / mixed
-  // branches.
-
-  return {
-    eyebrow: 'Smart tasks',
-    headline: buildNonAtRiskHeadline({
-      onTrack: onTrackCards.length,
-      pending: pendingCards.length,
-      satisfied: satisfiedCards.length,
-    }),
-    subline: buildSoonestSubline(soonest, formatTime),
-    tone: 'good',
-    sublineTarget: { deviceId: soonest.deviceId },
-  };
+  return buildNonWarningHero(cards, soonest, formatTime);
 };

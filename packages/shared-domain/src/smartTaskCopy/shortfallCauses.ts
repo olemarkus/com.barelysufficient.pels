@@ -33,7 +33,7 @@ export const WHY_AT_RISK_BUDGET_PARTIAL = 'Today’s daily budget may be holding
 // "raise the cap"). Which one applies is resolved per missed entry in the
 // widget payload builder from the plan snapshot's daily-budget-exhausted count.
 export const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future days need power reserved earlier.';
-export const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
+export const RECOURSE_CANNOT_MEET_DEVICE = 'Check the device and its settings.';
 export const RECOURSE_BUDGET_PARTIAL = 'Edit the task and open Extra permissions to let it go over budget.';
 
 /**
@@ -104,14 +104,22 @@ export type SmartTaskLiveCause = {
   reason: string;
 };
 
+export const DEVICE_IDLE_LIST_LINE = 'Device stopped taking power';
+export const DEVICE_IDLE_WIDGET_REASON = 'The device can draw again when power is available.';
+export const DEVICE_IDLE_HISTORY_REASON = 'The device stopped taking power while PELS allowed it to run.';
+export const DEVICE_IDLE_LIVE_REASON = DEVICE_IDLE_HISTORY_REASON + ' '
+  + 'For example, a water heater stops heating when it reaches its set temperature. '
+  + 'It can draw again when power is available.';
+
 // Device-neutral: the 15-minute non-delivery confirmation covers any metered
 // device (a water heater at its own thermostat, a relay cut-off, a car that
 // stopped charging). Never says "charge": temperature devices read it too.
 const LIVE_CAUSE_NOT_ACCEPTING: SmartTaskLiveCause = {
   why: 'Device stopped taking power.',
   recourseHint: null,
-  listLine: 'Device stopped taking power',
-  reason: 'The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.',
+  listLine: DEVICE_IDLE_LIST_LINE,
+  reason: 'The device stopped taking power while PELS allowed it to run. Check the device. '
+    + 'For example, a water heater stops heating when it reaches its set temperature.',
 };
 // `objective_device_limit` and `objective_device_schedule` have one producer,
 // the EV car link (`lib/device/evCarLinkSelfStop.ts`), which reads them from the

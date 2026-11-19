@@ -49,6 +49,7 @@ export const toPersistedMeteredDeliveryState = (record: InProgressRecord): Persi
   deliveryEvidence: {
     ...record.deliveryEvidence, nonDelivery: persistTaskNonDelivery(record.deliveryEvidence.nonDelivery),
   },
+  ...(record.deviceIdleEvidence === undefined ? {} : { deviceIdleEvidence: record.deviceIdleEvidence }),
   commitment: toPersistedCommitment(record),
   startProgressValue: record.startProgressValue,
   deliveredKWh: record.deliveredKWh,
@@ -81,6 +82,7 @@ export const mergeSavedRun = (
     deliveryEvidence: {
       ...state.deliveryEvidence, nonDelivery: restoreTaskNonDelivery(state.deliveryEvidence.nonDelivery),
     },
+    ...(state.deviceIdleEvidence === undefined ? {} : { deviceIdleEvidence: state.deviceIdleEvidence }),
     commitment: resumeSavedCommitment(state),
     deliveredKWh: state.deliveredKWh + record.deliveredKWh,
     totalCost: state.totalCost + record.totalCost,

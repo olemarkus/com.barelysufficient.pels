@@ -30,6 +30,7 @@
         { "id": "on_track", "label": { "en": "On track" } },
         { "id": "at_risk", "label": { "en": "At risk" } },
         { "id": "unachievable", "label": { "en": "Cannot finish" } },
+        { "id": "device_idle", "label": { "en": "Tentatively met" } },
         { "id": "satisfied", "label": { "en": "Satisfied" } }
       ]
     }

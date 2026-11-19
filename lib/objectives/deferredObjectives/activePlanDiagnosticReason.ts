@@ -83,9 +83,11 @@ export const resolveLiveCompletion = (diagnostic: DeferredObjectiveDiagnostic): 
   if (isTaskSatisfied(completion)) {
     return { kind: 'satisfied' };
   }
+  if (completion.kind === 'device_idle') return { kind: 'device_idle' };
   if (completion.kind === 'inactive' || planning.kind !== 'allocated' || planning.plan.status === 'invalid') {
     return { kind: 'unavailable' };
   }
+  if (diagnostic.evaluation.usesAvailablePower === true) return { kind: 'unmet', status: 'at_risk' };
   return { kind: 'unmet', status: planning.plan.status === 'satisfied' ? 'on_track' : planning.plan.status };
 };
 

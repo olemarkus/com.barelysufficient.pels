@@ -48,6 +48,24 @@ describe('isPersistedMeteredDeliveryState hour-start bookings', () => {
   });
 });
 
+describe('persisted device idle evidence', () => {
+  it('loads finite observed coverage and the original planning rate', () => {
+    expect(isPersistedMeteredDeliveryState(state({
+      deviceIdleEvidence: {
+        firstConfirmedAtMs: HOUR_MS, lastAcceptedAtMs: 2 * HOUR_MS, permittedIdleMs: HOUR_MS, planningSpeedKw: 2,
+      },
+    }))).toBe(true);
+  });
+
+  it('rejects negative observed coverage', () => {
+    expect(isPersistedMeteredDeliveryState(state({
+      deviceIdleEvidence: {
+        firstConfirmedAtMs: HOUR_MS, lastAcceptedAtMs: 2 * HOUR_MS, permittedIdleMs: -1, planningSpeedKw: 2,
+      },
+    }))).toBe(false);
+  });
+});
+
 describe('migrateMeteredDeliveryState hour-start bookings', () => {
   it('resolves a row saved before hour-start bookings existed to none captured', () => {
     const { version: _version, hourStartBookings: _bookings, ...legacy } = state();

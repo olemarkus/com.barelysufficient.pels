@@ -1,13 +1,16 @@
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import { formatConfidenceChipLabel } from '../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
-import { resolveReportedCarChargeLimit } from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import {
+  resolveReportedCarChargeLimit, SMART_TASK_LIST_STATUS_LABELS,
+} from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
 import {
   formatDeadlineDeliveredSoFarLine,
+  formatDeliveredEnergyOfTarget,
   formatEnergyEstimateKWh,
   formatEstimatedCostStatValue,
   SMART_TASK_HERO_STAT_LABELS,
@@ -15,6 +18,7 @@ import {
 import type { DeadlineCannotMeetRecourse } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
 import { DEVICE_WIDGET_RUNNING_NOW } from '../../../shared-domain/src/smartTaskCopy/widgetCopy.ts';
 import {
+  DEVICE_IDLE_LIVE_REASON,
   formatSmartTaskCarLimitReason,
   resolveSmartTaskAtRiskWhy,
   resolveSmartTaskBudgetRole,
@@ -37,12 +41,15 @@ import {
 } from './deadlinePlanFormatters.ts';
 import type { DeadlineHeroStat, DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
-export type DeadlineHeroStatusChip = { text: string; tone: 'alert' | 'warn' };
+export type DeadlineHeroStatusChip = { text: string; tone: 'alert' | 'warn' | 'info' };
 
 export const resolveHeroStatusChip = (params: {
   labels: DeadlineLabels;
-  planStatus: DeferredObjectiveActivePlanStatusV1;
+  planStatus: DeferredObjectiveReportedStatus;
 }): DeadlineHeroStatusChip | null => {
+  if (params.planStatus === 'device_idle') {
+    return { text: SMART_TASK_LIST_STATUS_LABELS.device_idle, tone: 'info' };
+  }
   if (params.planStatus === 'cannot_meet') {
     return { text: params.labels.cannotMeetChipLabel, tone: 'alert' };
   }
@@ -86,10 +93,10 @@ export const resolveConfidenceChipText = (
 // gate in `formatSmartTaskListConfidenceChipLabel`.
 export const resolveLiveHeroConfidenceChipText = (
   confidence: ObjectiveProfileConfidence | null,
-  planStatus: DeferredObjectiveActivePlanStatusV1,
+  planStatus: DeferredObjectiveReportedStatus,
   learning: boolean,
 ): string | null => {
-  if (planStatus === 'cannot_meet' || planStatus === 'on_track') return null;
+  if (planStatus === 'cannot_meet' || planStatus === 'on_track' || planStatus === 'device_idle') return null;
   if (!learning) return null;
   return resolveConfidenceChipText(confidence);
 };
@@ -107,11 +114,11 @@ export const resolveLiveHeroConfidenceChipText = (
 // kept under a separate symbol so a global rename or IDE auto-import can't
 // pick the wrong helper.
 export const resolveDeadlineHeroTone = (
-  planStatus: DeferredObjectiveActivePlanStatusV1,
+  planStatus: DeferredObjectiveReportedStatus,
 ): DeadlinePlanHeroTone => {
   if (planStatus === 'cannot_meet') return 'alert';
   if (planStatus === 'at_risk') return 'warn';
-  if (planStatus === 'invalid') return 'info';
+  if (planStatus === 'invalid' || planStatus === 'device_idle') return 'info';
   return 'good';
 };
 
@@ -210,7 +217,7 @@ export const resolveQueuedHeadlineReason = (
 // dead-end on plans the planner had already classified as cannot-meet.
 export const resolveCannotMeetMeta = (
   labels: DeadlineLabels,
-  planStatus: DeferredObjectiveActivePlanStatusV1,
+  planStatus: DeferredObjectiveReportedStatus,
   budgetRole: DeadlineBudgetRole,
   liveCause: SmartTaskLiveCause | null,
   // The producer's verdict on what bound the floor, so an at-risk task that
@@ -242,7 +249,7 @@ const resolveCarLimitMeta = (carChargeLimit: SmartTaskCarChargeLimit | null): st
 
 // Whether the hero reports a task that may not finish: the reason line, the
 // recourse and the queued subline all key off this.
-const isCannotMeetStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): boolean => (
+const isCannotMeetStatus = (planStatus: DeferredObjectiveReportedStatus): boolean => (
   planStatus === 'cannot_meet' || planStatus === 'at_risk'
 );
 
@@ -265,7 +272,7 @@ const isCannotMeetStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): bo
 // where users can lower the daily cap.
 export const resolveCannotMeetRecourse = (
   labels: DeadlineLabels,
-  planStatus: DeferredObjectiveActivePlanStatusV1,
+  planStatus: DeferredObjectiveReportedStatus,
   budgetRole: DeadlineBudgetRole,
   liveCause: SmartTaskLiveCause | null,
   deviceId: string,
@@ -359,7 +366,7 @@ const resolveFiniteNumber = (value: number | null | undefined): number | null =>
 // announce the verdict.
 const resolveDeliveredSoFarLine = (
   input: ObjectivePayloadReady,
-  planStatus: DeferredObjectiveActivePlanStatusV1,
+  planStatus: DeferredObjectiveReportedStatus,
   deliveredKWh: number,
 ): string | null => {
   const { progress, energy } = input;
@@ -381,6 +388,20 @@ export const buildHero = (
   const { ctx, energy } = input;
   const { activePlan, nowMs } = ctx;
   const { labels, planStatus, currentChargeByStartMs } = schedule;
+  if (planStatus === 'device_idle') {
+    const { currentValue, targetValue } = input.progress;
+    return {
+      chips: buildHeroChips(labels, resolveHeroStatusChip({ labels, planStatus }), null),
+      tone: 'info',
+      headline: null,
+      headlineReason: null,
+      subline: `${formatDisplayDeviceName(ctx.device.name)} • Due ${formatDeadlineFull(ctx.deadlineAtMs)}`,
+      stats: [],
+      metaLine: DEVICE_IDLE_LIVE_REASON,
+      deliveredSoFarLine: formatDeliveredEnergyOfTarget(currentValue, targetValue),
+      recourse: null,
+    };
+  }
   // The cannot-meet body copy + recourse fire on a budget-bound verdict. The
   // producer-resolved `latest.floorShortfallCause === 'budget'` is the only
   // signal — it covers the per-bucket background-squeeze case (prod Connected

@@ -5,6 +5,7 @@ import type {
   DeferredObjectiveLiveCompletion,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
   DeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans';
 import { resolveFirstPlannedHourMs } from '../deferredPlanBookedHours';
@@ -37,6 +38,7 @@ export type SmartTaskListStatusId =
   | 'on_track'
   | 'at_risk'
   | 'cannot_meet'
+  | 'device_idle'
   | 'satisfied';
 
 // Stable chip label strings for list card status — kind-agnostic.
@@ -57,6 +59,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   on_track: 'On track',
   at_risk: 'At risk',
   cannot_meet: 'Cannot finish',
+  device_idle: 'Tentatively met',
   satisfied: 'Satisfied',
 };
 
@@ -124,6 +127,7 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   on_track: 'ok',
   at_risk: 'warn',
   cannot_meet: 'alert',
+  device_idle: 'info',
   satisfied: 'ok',
 };
 
@@ -164,6 +168,7 @@ const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskList
   on_track: 'neutral',
   at_risk: 'warn',
   cannot_meet: 'warn',
+  device_idle: 'neutral',
   satisfied: 'neutral',
 };
 
@@ -205,6 +210,7 @@ const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
   cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
+  device_idle: null,
   satisfied: null,
 };
 
@@ -237,7 +243,7 @@ type SmartTaskLiveStatusFacts = Pick<
 // task is not on track. "On track" promises the target. A verdict that already
 // says it cannot finish, or a target already met, keeps its word.
 const resolveCarLimitStatus = (
-  currentStatus: DeferredObjectiveActivePlanStatusV1,
+  currentStatus: DeferredObjectiveReportedStatus,
 ): 'at_risk' | 'cannot_meet' | 'satisfied' => (
   currentStatus === 'cannot_meet' || currentStatus === 'satisfied' ? currentStatus : 'at_risk'
 );
@@ -245,7 +251,7 @@ const resolveCarLimitStatus = (
 const resolveCurrentStatus = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
   liveCompletion: DeferredObjectiveLiveCompletion,
-): DeferredObjectiveActivePlanStatusV1 => (
+): DeferredObjectiveReportedStatus => (
   liveCompletion.kind === 'unavailable' ? planStatus : resolveCompletionStatus(liveCompletion)
 );
 
@@ -254,9 +260,11 @@ const resolveReportedStatus = (
   diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
   liveCompletion: DeferredObjectiveLiveCompletion,
   carChargeLimit: SmartTaskCarChargeLimit | null,
-): DeferredObjectiveActivePlanStatusV1 => {
+): DeferredObjectiveReportedStatus => {
   const currentStatus = resolveCurrentStatus(planStatus, liveCompletion);
   if (carChargeLimit !== null) return resolveCarLimitStatus(currentStatus);
+  if (currentStatus === 'device_idle' && (diagnosticReasonCode === 'objective_device_limit'
+    || diagnosticReasonCode === 'objective_device_schedule')) return resolveCarLimitStatus(planStatus);
   return diagnosticReasonCode !== undefined && LIVE_RISK_REASON_CODES.has(diagnosticReasonCode)
     && currentStatus === 'on_track'
     ? 'at_risk' : currentStatus;
@@ -297,7 +305,7 @@ const resolveReportedStatus = (
 export const resolveEffectivePlanStatus = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
   plan: SmartTaskLiveStatusFacts,
-): DeferredObjectiveActivePlanStatusV1 => resolveReportedStatus(
+): DeferredObjectiveReportedStatus => resolveReportedStatus(
   planStatus, plan.diagnosticReasonCode, plan.liveCompletion, resolveReportedCarChargeLimit(plan),
 );
 
@@ -325,7 +333,7 @@ export const resolveReportedCarChargeLimit = (
 
 const resolveCompletionStatus = (
   completion: Exclude<DeferredObjectiveLiveCompletion, { kind: 'unavailable' }>,
-): DeferredObjectiveActivePlanStatusV1 => completion.kind === 'satisfied' ? 'satisfied' : completion.status;
+): DeferredObjectiveReportedStatus => completion.kind === 'unmet' ? completion.status : completion.kind;
 
 // `nowMs` is used to distinguish the `queued` id (plan ready, first action in
 // future — labelled "On track" in the UI, same as `on_track`) from other
@@ -415,7 +423,7 @@ export const resolveSmartTaskListStatus = (
   // because its first hour hasn't started yet. (Pre-sweep this ordering only
   // mislabelled those as a muted "Scheduled"; with the shared `On track`
   // label it would actively assert health.)
-  if (reported === 'satisfied') return 'satisfied';
+  if (reported === 'satisfied' || reported === 'device_idle') return reported;
   if (reported === 'cannot_meet') return 'cannot_meet';
   if (reported === 'at_risk') return 'at_risk';
 
@@ -439,7 +447,7 @@ export const resolveSmartTaskListStatus = (
 // Intentionally distinct from `SmartTaskListStatusId` above — that one is the
 // richer UI list-card status (with `building_plan`, `queued`,
 // `paused_unplugged`, `cannot_meet`) which is allowed to evolve as the UI
-// grows. This one collapses those finer states to the five values flow
+// grows. This one collapses those finer states to the values Flow
 // authors filter against (`waiting` absorbs the three pending sub-states;
 // `unachievable` is the trigger-side name for `cannot_meet`). Do not merge
 // the two enums.
@@ -448,4 +456,5 @@ export type SmartTaskStatusNotificationId =
   | 'on_track'
   | 'at_risk'
   | 'unachievable'
+  | 'device_idle'
   | 'satisfied';

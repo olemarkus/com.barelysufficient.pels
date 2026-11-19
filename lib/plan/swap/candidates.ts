@@ -80,7 +80,7 @@ function isViableSwapCandidate(
   if (!canReleaseDrawForSwap(onDev, dev, ledger, deviceMap, restoredThisCycle)) return false;
   const onDevPriority = onDev.priority;
   const devPriority = dev.priority;
-  if (onDevPriority <= devPriority) return false;
+  if (onDevPriority <= devPriority && onDev.usesAvailablePower !== true) return false;
   // A NON-exempt target must not count freed draw from a budget-exempt source:
   // its budget axis is `budgetPaceKw + measuredExemptKw − total`, and turning
   // the exempt source off drops `measuredExemptKw` and `total` together — the

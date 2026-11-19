@@ -785,6 +785,40 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
   });
 
+  it('reports device idle as the provisional Flow status and fires again when the task reopens', async () => {
+    const idlePlan: DeferredObjectiveActivePlanV1 = {
+      ...buildActivePlan({ planStatus: 'cannot_meet' }),
+      objectiveKind: 'energy',
+      targetValue: 6,
+      liveCompletion: { kind: 'device_idle' },
+    };
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([idlePlan]),
+      planRevisionBus,
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true, kind: 'energy', enforcement: 'soft',
+        targetEnergyKWh: 6, deadlineAtMs: idlePlan.deadlineAtMs,
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'device_idle' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'satisfied' })).toBe(false);
+
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'cannot_meet', planStatus: 'cannot_meet', effectivePlanStatus: 'device_idle',
+    }));
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'device_idle', planStatus: 'on_track',
+    }));
+    expect(trigger.trigger.mock.calls.map(([tokens]) => tokens.status)).toEqual(['device_idle', 'on_track']);
+  });
+
   it('deadline_status_is reports waiting while a retained schedule needs a new plan', async () => {
     const retained = buildActivePlan({
       planStatus: 'on_track', diagnosticReasonCode: 'objective_waiting_for_plan',

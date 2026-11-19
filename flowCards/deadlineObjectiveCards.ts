@@ -1,6 +1,6 @@
 import type { DeferredObjectivePlanRevisionEvent } from '../lib/objectives/deferredObjectives';
 import type {
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
   DeferredObjectiveActivePlanV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -83,6 +83,8 @@ const normalizeSmartTaskStatusArg = (raw: DropdownArg | undefined): SmartTaskAct
     case 'cannot_meet':
     case 'cannot_finish':
       return 'unachievable';
+    case 'device_idle':
+      return 'device_idle';
     case 'satisfied':
     case 'done':
       return 'satisfied';
@@ -92,7 +94,7 @@ const normalizeSmartTaskStatusArg = (raw: DropdownArg | undefined): SmartTaskAct
 };
 
 const mapPlanStatusToFlowStatus = (
-  status: DeferredObjectiveActivePlanStatusV1,
+  status: DeferredObjectiveReportedStatus,
 ): SmartTaskActiveFlowStatus => {
   switch (status) {
     case 'on_track':
@@ -102,10 +104,12 @@ const mapPlanStatusToFlowStatus = (
     case 'cannot_meet':
     case 'invalid':
       return 'unachievable';
+    case 'device_idle':
+      return 'device_idle';
     case 'satisfied':
       return 'satisfied';
     default: {
-      // Exhaustiveness guard: a new DeferredObjectiveActivePlanStatusV1 member
+      // Exhaustiveness guard: a new DeferredObjectiveReportedStatus member
       // must be mapped to a Flow status explicitly above rather than silently
       // collapsing to 'unachievable'. Keeps the defensive fallback at runtime.
       const exhaustive: never = status;
@@ -442,8 +446,8 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
 //   2. Persisted plan is past deadline → no active status matches; the ended
 //      trigger owns that event.
 //   3. Device moved to a separate meter → no public status matches. The task
-//      still exists (`has_active_deadline` remains true), but none of the frozen
-//      five status ids honestly describes an out-of-scope task.
+//      still exists (`has_active_deadline` remains true), but none of the public
+//      active status ids honestly describes an out-of-scope task.
 //   4. No settled revision yet → waiting.
 //   5. Settled revision exists → its `planStatus`, with the live per-cycle
 //      overlay applied. A device left off outside PELS keeps a settled

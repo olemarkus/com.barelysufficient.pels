@@ -154,6 +154,32 @@ describe('buildSmartTasksWidgetPayload', () => {
     });
   });
 
+  test('shows permitted idle energy with measured progress and no cached schedule', () => {
+    const relay = buildPlan({
+      objectiveKind: 'energy',
+      targetValue: 6,
+      liveCompletion: { kind: 'device_idle' },
+      diagnosticReasonCode: 'objective_not_accepting_energy',
+    });
+    const input = { ...buildInput({ dev: relay }), activePlans: resolveActivePlanFixtures({ dev: relay }, () => 2) };
+    const active = buildSmartTaskDeviceView(input, 'dev').active;
+    expect(active?.statusId).toBe('device_idle');
+    expect(active?.run).toEqual({ kind: 'none_ahead' });
+    expect(active?.row).toMatchObject({
+      statusLabel: 'Tentatively met',
+      currentValue: 2,
+      targetValue: 6,
+      etaVerb: 'Due',
+      planMetaLabel: 'Delivered 2.0 of 6.0 kWh',
+      whyLabel: 'The device can draw again when power is available.',
+      chart: null,
+    });
+
+    const atDeadline = { ...input, nowMs: relay.deadlineAtMs };
+    expect(buildSmartTaskDeviceView(atDeadline, 'dev').active).toBeNull();
+    expect(buildSmartTasksWidgetPayload(atDeadline).state).toBe('empty');
+  });
+
   test('sorts cannot_meet → at_risk → pending → on_track', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput({
       onTrack: buildPlan({ deviceId: 'onTrack', deviceName: 'On track' }),
@@ -449,7 +475,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].whyLabel).toBe('Not enough delivery before the deadline.');
     expect(payload.rows[0].recourseHint).toBe(
-      'Device settings show what’s holding it back.',
+      'Check the device and its settings.',
     );
   });
 
@@ -469,7 +495,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].whyLabel).toBe('Not enough delivery before the deadline.');
     expect(payload.rows[0].recourseHint).toBe(
-      'Device settings show what’s holding it back.',
+      'Check the device and its settings.',
     );
   });
 
@@ -946,8 +972,34 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
     if (payload.state !== 'ready') return;
     const row = payload.endedRows[0];
     expect(row.whyLabel).toBe('Delivery blockers were not recorded for this earlier task.');
-    expect(row.recourseHint).toContain('Device settings');
+    expect(row.recourseHint).toBe('Check the device and its settings.');
     expect(row.reachedAtLabel).toBeNull();
+  });
+
+  test('reports a device idle outcome with its measured energy and target', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({
+        dev: [{
+          ...buildHistoryEntry({ outcome: 'device_idle', metAtMs: null }),
+          objectiveKind: 'energy',
+          targetValue: 6,
+          finalProgressValue: 2,
+          progressDirection: 'increasing',
+        }],
+      }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    if (payload.state !== 'ready') throw new Error('Expected an ended task');
+    expect(payload.endedRows[0]).toMatchObject({
+      outcomeLabel: 'Device idle',
+      outcomeTone: 'muted',
+      whyLabel: 'The device stopped taking power while PELS allowed it to run.',
+      recourseHint: 'Check the device and its settings.',
+    });
+    expect(payload.endedRows[0].progressLabel).toMatch(/2(?:\.0)? kWh delivered.*target 6(?:\.0)? kWh/);
   });
 
   test('includes all outcomes (met / missed / abandoned), newest finalized first', () => {

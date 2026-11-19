@@ -8,11 +8,12 @@ import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/
 // outcome set (`planHistory.ts`):
 //   met       → succeeded
 //   missed    → missed
+//   device_idle → device_idle
 //   abandoned → abandoned
 //   replaced  → suppressed (the task continues under a new deadline; firing
 //               an "ended" trigger here would surprise users)
 //   unknown   → suppressed (no actionable signal)
-export type DeferredObjectivePublicOutcome = 'succeeded' | 'missed' | 'abandoned';
+export type DeferredObjectivePublicOutcome = 'succeeded' | 'missed' | 'device_idle' | 'abandoned';
 
 export type DeferredObjectiveEndedEvent = {
   deviceId: string;
@@ -61,6 +62,7 @@ export const toPublicOutcome = (
   switch (outcome) {
     case 'met': return 'succeeded';
     case 'missed': return 'missed';
+    case 'device_idle': return 'device_idle';
     case 'abandoned': return 'abandoned';
     case 'replaced':
     case 'unknown':

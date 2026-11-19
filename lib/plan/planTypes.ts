@@ -559,7 +559,7 @@ type CarriedInputKey =
   | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'
   | 'priority' | 'expectedPowerSource' | 'control' | 'budgetExempt' | 'available'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'targetPowerClaimNeeded' | 'residualKw'
-  | 'phaseFootprint' | 'binarySwitchGeneration' | 'lastResort';
+  | 'phaseFootprint' | 'binarySwitchGeneration' | 'lastResort' | 'usesAvailablePower';
 
 type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   lastResortCommand?: 'off' | 'on';

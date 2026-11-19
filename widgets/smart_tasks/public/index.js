@@ -4,6 +4,10 @@
   // packages/shared-domain/src/smartTaskCopy/pendingReasons.ts
   var RESPOND_TO_PRICES_SETTINGS_PATH = "Settings \u2192 Price-aware devices";
 
+  // packages/shared-domain/src/smartTaskCopy/shortfallCauses.ts
+  var DEVICE_IDLE_HISTORY_REASON = "The device stopped taking power while PELS allowed it to run.";
+  var DEVICE_IDLE_LIVE_REASON = DEVICE_IDLE_HISTORY_REASON + " For example, a water heater stops heating when it reaches its set temperature. It can draw again when power is available.";
+
   // packages/shared-domain/src/smartTaskCopy/widgetCopy.ts
   var RECOURSE_PRICES_OFF = `Turn on Respond to prices in ${RESPOND_TO_PRICES_SETTINGS_PATH}.`;
   var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";

@@ -234,7 +234,7 @@ function handleInsufficientBinaryRestoreHeadroom(
   const rejectDirectly = (): RestoreLoopState => (
     rejectBinaryRestoreForInsufficientHeadroom(cycle, dev, loop, restoreNeed, reserved)
   );
-  if (batchContinuation) return rejectDirectly();
+  if (batchContinuation || dev.usesAvailablePower === true) return rejectDirectly();
 
   // No rejection is announced before the swap runs. It used to be: this branch
   // emitted `restore_rejected` and then attempted the swap, so a device that the

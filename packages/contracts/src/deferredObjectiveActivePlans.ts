@@ -227,6 +227,8 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // immediate coordinated replan; ordinary higher-task energy/rate drift on an
   // unchanged set of claimed intervals still obeys the hourly settle gate.
   allocationContextSignature?: string;
+  /** Identity still valid for lower tasks when this revision frees or takes only unused room. */
+  lowerPriorityContext?: { revision: number; revisedAtMs: number };
   /** One-based rank used to allocate this revision. Older revisions omit it. */
   allocationRank?: number;
 };
@@ -321,10 +323,14 @@ export type DeferredObjectiveActivePlanCarChargeLimitV1 = {
   reached: boolean;
 };
 
+/** Reported status may include a provisional device-idle state independent of scheduling. */
+export type DeferredObjectiveReportedStatus = DeferredObjectiveActivePlanStatusV1 | 'device_idle';
+
 /** Current completion is independent of the immutable allocation revision. */
 export type DeferredObjectiveLiveCompletion =
   | { kind: 'unavailable' }
   | { kind: 'satisfied' }
+  | { kind: 'device_idle' }
   | { kind: 'unmet'; status: 'on_track' | 'at_risk' | 'cannot_meet' };
 
 export type DeferredObjectiveActivePlanV1 = {
@@ -358,7 +364,7 @@ export type DeferredObjectiveActivePlanV1 = {
   // pause (null when awaiting allocation). Held across paused cycles/restarts,
   // then cleared on recovery. UI and current-status consumers must not read
   // this historical value.
-  pricePausePreviousStatus?: DeferredObjectiveActivePlanStatusV1 | null;
+  pricePausePreviousStatus?: DeferredObjectiveReportedStatus | null;
   // Present only while the car's own charge limit sits below an EV task's
   // target: the car's limit, and whether the car has reached it. The requested
   // target stays the task's target; the limit only explains why delivery stops

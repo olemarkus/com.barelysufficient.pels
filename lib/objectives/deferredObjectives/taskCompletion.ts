@@ -4,6 +4,7 @@ import { stallEvidenceCoversTarget } from '../stallEvidence';
 
 export type TaskCompletion =
   | { kind: 'unmet' }
+  | { kind: 'device_idle' }
   | { kind: 'target_reached' }
   | { kind: 'accepted_near_target' };
 

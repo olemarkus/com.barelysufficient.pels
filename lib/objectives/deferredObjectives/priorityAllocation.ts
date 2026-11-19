@@ -205,8 +205,9 @@ export const withTaskAllocationContexts = (
       planningContextSignature: `[${quotedRoster}]",${higherClaims}]]`,
     };
     const plan = activePlans.plansByDeviceId[task.deviceId];
+    const identity = plan?.latest?.lowerPriorityContext ?? plan?.latest;
     higherClaims += separator + JSON.stringify([
-      task.deviceId, plan?.objectiveSignature, plan?.latest?.revision, plan?.latest?.revisedAtMs,
+      task.deviceId, plan?.objectiveSignature, identity?.revision, identity?.revisedAtMs,
     ]);
     return contextual;
   });

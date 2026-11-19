@@ -206,7 +206,7 @@ describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
     expect([...payload.endedRows.map((r) => r.outcomeLabel)].sort()).toEqual(['Missed', 'Succeeded']);
     const missed = payload.endedRows.find((r) => r.outcomeLabel === 'Missed')!;
     expect(missed.whyLabel).toContain('Delivery blockers were not recorded');
-    expect(missed.recourseHint).toContain('Device settings');
+    expect(missed.recourseHint).toBe('Check the device and its settings.');
     expect(missed.chart?.mode).toBe('trajectory');
   });
 

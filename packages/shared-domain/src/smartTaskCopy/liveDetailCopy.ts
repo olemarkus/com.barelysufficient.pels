@@ -203,6 +203,18 @@ export type SmartTaskTrajectoryStateline = {
   verdict: SmartTaskTrajectoryVerdict | null;
 };
 
+export const SMART_TASK_ENERGY_DELIVERED_TITLE = 'Energy delivered';
+
+export const formatSmartTaskIdleTrajectoryStateline = (
+  currentValueLabel: string,
+  targetValueLabel: string,
+): SmartTaskTrajectoryStateline => ({
+  emphasis: `Delivered ${currentValueLabel}`,
+  rest: `target ${targetValueLabel}`,
+  tone: 'ok',
+  verdict: null,
+});
+
 // Mid-sentence status words for the ready stateline. Lowercase variants of the
 // canonical chip labels (`On track` / `At risk`) — same vocabulary, sentence
 // position.
@@ -391,6 +403,10 @@ export type DeadlineDeliveredSoFarStatus =
   | 'cannot_meet'
   | 'on_track_or_queued';
 
+export const formatDeliveredEnergyOfTarget = (deliveredKWh: number, targetKWh: number): string => (
+  `Delivered ${deliveredKWh.toFixed(1)} of ${targetKWh.toFixed(1)} kWh`
+);
+
 export const formatDeadlineDeliveredSoFarLine = (
   status: DeadlineDeliveredSoFarStatus,
   deliveredKWh: number,
@@ -405,7 +421,7 @@ export const formatDeadlineDeliveredSoFarLine = (
   // An energy task's progress IS the energy delivered, counted by the task
   // itself: one figure, stated once, against the task's own target.
   if (targetUnit === 'kWh') {
-    return `Delivered ${currentProgress.toFixed(1)} of ${targetValue.toFixed(1)} kWh`;
+    return formatDeliveredEnergyOfTarget(currentProgress, targetValue);
   }
   const deliveredKWhSafe = Number.isFinite(deliveredKWh) && deliveredKWh > 0
     ? deliveredKWh : 0;

@@ -19,6 +19,7 @@ import {
   RECOURSE_BUDGET_PARTIAL,
   RECOURSE_CANNOT_MEET_BUDGET,
   RECOURSE_CANNOT_MEET_DEVICE,
+  DEVICE_IDLE_WIDGET_REASON,
   resolveSmartTaskAtRiskWhy,
   resolveSmartTaskBudgetRole,
   resolveSmartTaskLiveCause,
@@ -51,6 +52,7 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
   at_risk: null, // disambiguated by budget vs time below
   cannot_meet: null, // resolved by floor cause / budget bucket count
   satisfied: null,
+  device_idle: DEVICE_IDLE_WIDGET_REASON,
 };
 
 const SMART_TASK_WIDGET_WHY_BY_PENDING_REASON:
