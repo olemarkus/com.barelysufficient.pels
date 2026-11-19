@@ -25,12 +25,13 @@
  */
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveCapacityMarginKWh } from '../power/capacityModel';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger, isDebugTopicEnabled } from '../logging/logger';
+import { buildPlannedBinaryCommand } from './planExecutionProjection';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { computeRestoreBufferKw } from './restore/accounting';
 import { EOH_DRAIN_WINDOW_MIN, SHED_GRACE_MARGIN_FRACTION } from './planConstants';
-import type { PlanInputDevice } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 
 /** The shortest run worth starting a device for. */
 export const TIMED_RUN_MIN_START_MIN = 10;
@@ -197,23 +198,42 @@ function pickHighestPriority<T extends PlanInputDevice>(devices: readonly T[]): 
   return best;
 }
 
-/**
- * One info line when a timed run starts, moves to another device or ends;
- * silent while it holds. Held by the planner state across builds.
- */
+const emitTimedRunDebug = getDebugEmitter('plan', 'plan');
+
+/** Tracks timed-run decisions supported by final controlled ON intent across builds. */
 export class CapacityTimedRunLog {
   private readonly logger = getLogger('plan/capacity-timed-run');
 
   private deviceId: string | null = null;
 
-  record(run: CapacityTimedRun): void {
-    const change = describeTimedRunChange(this.deviceId, run);
+  private eligibleStartSignature: string | null = null;
+
+  record(run: CapacityTimedRun, devices: readonly DevicePlanDevice[]): void {
+    const device = run.kind === 'none' ? undefined : devices.find((item) => item.id === run.deviceId);
+    const command = device ? buildPlannedBinaryCommand(device) : undefined;
+    const plannedOn = command?.source === 'controlled' && command.desiredOn;
+    this.recordEligibility(run, plannedOn, device);
+
+    const activeRun = plannedOn ? run : { kind: 'none' } as const;
+    const change = describeTimedRunChange(this.deviceId, activeRun);
     if (change !== null) this.logger.info(change);
-    this.deviceId = run.kind === 'none' ? null : run.deviceId;
+    this.deviceId = activeRun.kind === 'none' ? null : activeRun.deviceId;
+  }
+
+  private recordEligibility(run: CapacityTimedRun, plannedOn: boolean, device: DevicePlanDevice | undefined): void {
+    if (run.kind !== 'start' || !isDebugTopicEnabled('plan')) {
+      this.eligibleStartSignature = null;
+      return;
+    }
+    const reasonCode = device?.reason?.code;
+    const signature = `${run.deviceId}|${plannedOn}|${reasonCode ?? ''}`;
+    if (signature === this.eligibleStartSignature) return;
+    this.eligibleStartSignature = signature;
+    emitTimedRunDebug({ event: 'capacity_timed_run_start_eligible', ...run, plannedOn, reasonCode });
   }
 }
 
-/** The info line for a timed run that started, moved device or ended; `null` while it holds. */
+/** The info line for a transition in the final timed-run decision. */
 export function describeTimedRunChange(
   previousDeviceId: string | null,
   run: CapacityTimedRun,

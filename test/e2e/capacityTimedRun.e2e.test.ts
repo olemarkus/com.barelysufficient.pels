@@ -17,9 +17,10 @@
 // `onoff` is on, so a command PELS writes shows on the next poll. Time moves one
 // poll at a time with the detached poll, plan and executor chain flushed after
 // each, as in `capacityEndOfHourDrain.e2e.test.ts`.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -56,6 +57,7 @@ async function simulateLabHour(backgroundW: (poll: number) => number): Promise<{
   switches: { minute: number; on: boolean }[];
   hourKWh: number;
   putSpy: ReturnType<typeof vi.spyOn>;
+  log: LoggerCapture;
 }> {
   const hourStartMs = Date.UTC(2026, 0, 15, 12, 0, 0);
   // Boot in the previous hour so the measured hour is sampled from :00.
@@ -91,6 +93,7 @@ async function simulateLabHour(backgroundW: (poll: number) => number): Promise<{
 
   // The heater mocks report their nameplate while on and nothing while off.
   const isOn = async (id: string): Promise<boolean> => (await devices.get(id)!.getCapabilityValue('onoff')) === true;
+  let poll = 0;
   const houseW = async (): Promise<number> => {
     let total = backgroundW(poll);
     for (const { id, watts } of HEATERS) if (await isOn(id)) total += watts;
@@ -113,12 +116,13 @@ async function simulateLabHour(backgroundW: (poll: number) => number): Promise<{
 
   const app = createApp();
   await app.onInit();
+  const log = captureLogger('info', []);
+  onTestFinished(log.restore);
 
   // The 0.8 kW heater's switches inside the measured hour, by minute.
   const switches: { minute: number; on: boolean }[] = [];
   let hourKWh = 0;
   let previousOn = await isOn('h080');
-  let poll = 0;
   while (nowMs < hourStartMs + 60 * MIN_MS) {
     if (nowMs >= hourStartMs) hourKWh += (await houseW()) / 1000 * (POLL_MS / 3_600_000);
     await vi.advanceTimersByTimeAsync(POLL_MS);
@@ -130,7 +134,7 @@ async function simulateLabHour(backgroundW: (poll: number) => number): Promise<{
     previousOn = on;
     poll += 1;
   }
-  return { switches, hourKWh, putSpy };
+  return { switches, hourKWh, putSpy, log };
 }
 
 describe('Capacity timed run of an on/off heater (SDK-boundary e2e)', () => {
@@ -148,7 +152,7 @@ describe('Capacity timed run of an on/off heater (SDK-boundary e2e)', () => {
   });
 
   it('runs the marginal heater for part of the hour, stops it before the drain, and keeps the hard cap', async () => {
-    const { switches, hourKWh, putSpy } = await simulateLabHour(() => BACKGROUND_W);
+    const { switches, hourKWh, putSpy, log } = await simulateLabHour(() => BACKGROUND_W);
 
     // The heater runs once: it starts once the hour's unused energy lets its draw,
     // with its restore buffer, pass the hard-cap rule (about :26, against :35
@@ -162,6 +166,10 @@ describe('Capacity timed run of an on/off heater (SDK-boundary e2e)', () => {
     // target and so under the 5 kWh hard cap.
     expect(hourKWh).toBeGreaterThan(4.6);
     expect(hourKWh).toBeLessThanOrEqual(4.7);
+    const starts = log.findEvents('capacity_timed_run_started').filter((event) => event.kind === 'start');
+    const turnOn = log.findEvents('binary_command_succeeded').find((event) => event.deviceId === 'h080' && event.desired === true);
+    expect(turnOn?.rebuildId).toBeDefined();
+    expect(starts).toEqual([expect.objectContaining({ deviceId: 'h080', rebuildId: turnOn?.rebuildId })]);
     // The big heaters never came on: the timed run never reached past the margin.
     expect(putSpy.mock.calls.some(([path, body]: unknown[]) => (
       (path === onoffPath('h110') || path === onoffPath('h140')) && (body as { value?: unknown }).value === true

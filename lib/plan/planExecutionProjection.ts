@@ -152,7 +152,8 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
   Boolean(planDevice.reason && isRestoreAdmissionHoldReason(planDevice.reason))
 );
 
-const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
+/** The binary intent projected from a finalized device decision. */
+export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
   // A device can remain visible before power setup, or after losing its power

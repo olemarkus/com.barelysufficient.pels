@@ -33,6 +33,7 @@ import type { PlanBuilderDeps } from './planBuilderDeps';
 import { resolvePowerCycleReading } from '../power/powerCycleReading';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
+import type { CapacityTimedRun } from './capacityTimedRun';
 import {
   computeDailyUsageSoftLimit,
   applyCapacityTimedRun,
@@ -286,10 +287,16 @@ export class PlanBuilder {
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
-    return trackPlanStageAsync('plan_build_ms', () => this.buildPlanSnapshotWithTimings(devices));
+    return trackPlanStageAsync('plan_build_ms', async () => {
+      const { plan, run } = await this.buildPlanSnapshotWithTimings(devices);
+      this.state.capacityTimedRunLog.record(run, plan.devices);
+      return plan;
+    });
   }
 
-  private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
+  private async buildPlanSnapshotWithTimings(
+    devices: PlanInputDevice[],
+  ): Promise<{ plan: DevicePlan; run: CapacityTimedRun }> {
     const nowTs = Date.now();
     // Read ONCE. The limits, the shortfall threshold, the silent-meter pass, the
     // overshoot log and the meta all answer to this one object, so a settings
@@ -322,29 +329,30 @@ export class PlanBuilder {
       nowMs: nowTs,
       phaseReading: this.capacityGuard.phaseReadings.current(),
     });
-    const context = trackPlanStage('plan_context_ms', () => buildPlanContext(
-      admittedDevices,
-      settings,
-      this.pacingTracker,
-      // The limits this cycle is decided against — one resolution, held by the
-      // frame both passes build.
-      buildPlanLimits(
+    const { context, run } = trackPlanStage('plan_context_ms', () => {
+      const timedRun = applyCapacityTimedRun(
+        capacity, settings, this.powerTracker, reading, decoration, this.state.shedDecisions.lastPlannedShedIds, nowTs,
+      );
+      const cycleContext = buildPlanContext(
+        admittedDevices,
         settings,
-        // The hour's marginal on/off device may run for part of it: every stage
-        // below reads the capacity axis with that allowance.
-        applyCapacityTimedRun(capacity, settings, this.powerTracker, reading, decoration, this.state, nowTs),
-        this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
-      ),
-      // After the decoration, which is what stamps a smart task's deadline floor.
-      this.deps.resolveTemperatureSetpoints(admittedDevices),
-      nowTs,
-    ));
+        this.pacingTracker,
+        // Every stage reads the capacity axis with the timed-run allowance.
+        buildPlanLimits(
+          settings, timedRun.limit, this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
+        ),
+        // After the decoration, which is what stamps a smart task's deadline floor.
+        this.deps.resolveTemperatureSetpoints(admittedDevices),
+        nowTs,
+      );
+      return { context: cycleContext, run: timedRun.run };
+    });
     // THE seam. The ordinary pipeline below is entered only with a measurement,
     // so nothing inside it asks whether power was measured; the one unmeasured
     // build — the silent-meter fail-closed pass — takes its directive here and
     // never constructs a `MeasuredPower` (owner ruling 2026-09-02).
     if (!reading.isMeasured) {
-      return this.silentMeter.build(context, reading, decoration, settings, nowTs);
+      return { plan: this.silentMeter.build(context, reading, decoration, settings, nowTs), run };
     }
     // The first measured build inside this hour's drain keeps what the house
     // drew as the level the drain falls from (`CapacityDrainStart`). Before
@@ -436,11 +444,16 @@ export class PlanBuilder {
       reasoned.budgetHeldDeviceIds,
     );
     return {
-      meta,
-      devices: decidedDevices,
-      inverterDecisions: this.decideInverters(power, sheddingPlan, decidedDevices, restoreResult, storageRelief, nowTs),
-      chargingPhaseDecisions: this.state.chargingPhaseCycle.finish(decidedDevices, sheddingPlan.shedSet),
-      storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
+      plan: {
+        meta,
+        devices: decidedDevices,
+        inverterDecisions: this.decideInverters(
+          power, sheddingPlan, decidedDevices, restoreResult, storageRelief, nowTs,
+        ),
+        chargingPhaseDecisions: this.state.chargingPhaseCycle.finish(decidedDevices, sheddingPlan.shedSet),
+        storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
+      },
+      run,
     };
   }
 
