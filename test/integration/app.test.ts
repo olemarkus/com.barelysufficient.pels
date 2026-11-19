@@ -939,6 +939,25 @@ describe('MyApp initialization', () => {
     recordSpy.mockRestore();
   });
 
+  it('report_power_usage asks for Flow card as the power source before accepting a sample', async () => {
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    const app = createApp();
+    await initApp(app);
+    const recordSpy = vi.spyOn(app as unknown as {
+      recordPowerSample: (powerW: number, nowMs?: number) => Promise<void>;
+    }, 'recordPowerSample');
+    const reportPower = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
+
+    await expect(reportPower({ power: 4321 }))
+      .rejects.toThrow('Power source is set to Power meter. In Limits & safety, set Power source to Flow card.');
+    expect(recordSpy).not.toHaveBeenCalled();
+
+    mockHomeyInstance.settings.set('power_source', 'flow');
+    await expect(reportPower({ power: 4321 })).resolves.toBe(true);
+    expect(recordSpy).toHaveBeenCalledOnce();
+    expect(recordSpy).toHaveBeenCalledWith(4321, expect.any(Number));
+  });
+
   it('stops command authority before awaiting scheduled actions and keeps receipts open until drained', async () => {
     const app = createApp();
     await app.onInit();
