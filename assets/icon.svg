@@ -3,10 +3,10 @@
     <mask id="leaf-mask">
       <rect x="0" y="0" width="1000" height="1000" fill="white" />
 
-      <g transform="rotate(5 510 545)"
+      <g transform="translate(0 45) rotate(5 510 545)"
          fill="none"
          stroke="black"
-         stroke-width="40"
+         stroke-width="52"
          stroke-linecap="round"
          stroke-linejoin="round">
         <path d="M 373.8,594.2
@@ -24,12 +24,12 @@
 
   <path fill="currentColor"
         stroke="currentColor"
-        stroke-width="116"
+        stroke-width="56"
         stroke-linejoin="round"
         mask="url(#leaf-mask)"
-        d="M 140,828
-           L 140,360
-           L 580,150
-           L 860,360
-           L 860,828 Z" />
+        d="M 135,886
+           L 135,401
+           L 500,131
+           L 865,401
+           L 865,886 Z" />
 </svg>
