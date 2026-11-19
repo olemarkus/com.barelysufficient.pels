@@ -939,7 +939,7 @@ describe('MyApp initialization', () => {
     recordSpy.mockRestore();
   });
 
-  it('report_power_usage asks for Flow card as the power source before accepting a sample', async () => {
+  it('report_power_usage succeeds but ignores the sample until Flow card is the power source', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
     const app = createApp();
     await initApp(app);
@@ -948,8 +948,7 @@ describe('MyApp initialization', () => {
     }, 'recordPowerSample');
     const reportPower = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
 
-    await expect(reportPower({ power: 4321 }))
-      .rejects.toThrow('Power source is set to Power meter. In Limits & safety, set Power source to Flow card.');
+    await expect(reportPower({ power: 4321 })).resolves.toBe(true);
     expect(recordSpy).not.toHaveBeenCalled();
 
     mockHomeyInstance.settings.set('power_source', 'flow');

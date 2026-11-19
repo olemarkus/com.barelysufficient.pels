@@ -2,6 +2,7 @@ import { readPelsHost } from '../lib/app/pelsHost';
 import { refreshSettingsUiFlowConflictPayload } from '../lib/flowApi/settingsUiFlowConflictRefresh';
 import { getSettingsUiDevicesPayload } from './settingsUiApi';
 import { appNotReadyError } from './settingsUiAppRuntime';
+import { readConfiguredPowerSource } from './powerSourceSettings';
 
 type ApiContext = {
   homey: Parameters<typeof getSettingsUiDevicesPayload>[0]['homey'];
@@ -17,4 +18,5 @@ export const refreshSettingsUiFlowConflicts = (
     return host.refreshFlowConflictsForUi();
   },
   readDevices: () => getSettingsUiDevicesPayload({ homey }).devices,
+  readPowerSource: () => readConfiguredPowerSource(homey.settings),
 });

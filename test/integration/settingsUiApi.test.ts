@@ -127,7 +127,7 @@ describe('settingsUiApi', () => {
     });
     const refreshFlowConflictsForUi = vi.fn().mockResolvedValue({
       state: 'resolved',
-      flowFacts: { writes: new Map(), evSocReporters: [] },
+      flowFacts: { writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 } },
     });
     const refreshSpotPrices = vi.fn().mockResolvedValue(undefined);
     const refreshGridTariffData = vi.fn().mockResolvedValue(undefined);
@@ -553,6 +553,7 @@ describe('settingsUiApi', () => {
         },
       }],
       evSocReporters: [],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
   });
 

@@ -17,6 +17,8 @@ Start with the meter reading on **Overview**. If it is missing, check **Settings
 
 If your meter is unavailable in the picker or you calculate net import yourself, set **Power source** to **Flow card**. Whenever the meter updates, use **Report power usage** to send current whole-home power in **watts**. For a home with solar, send net grid import, with negative values while exporting. Check **Overview** for the new reading.
 
+While **Power source** is **Power meter**, PELS reads the meter itself and ignores **Report power usage**. The Flow still runs without errors, and **Setup & recommendations** names it so you can remove the action or disable the Flow.
+
 ## Triggers
 
 | Card | What it does |

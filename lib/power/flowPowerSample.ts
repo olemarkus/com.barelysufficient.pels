@@ -24,9 +24,9 @@ export const createFlowPowerSampleReceiver = (source: FlowPowerSampleSource) => 
     });
     throw configured.error;
   }
-  if (configured.value === 'homey_energy') {
-    throw new Error('Power source is set to Power meter. In Limits & safety, set Power source to Flow card.');
-  }
+  // A Flow left running after the owner chose Power meter must not fail on every
+  // meter change. The sample is ignored; Recommendations names that Flow.
+  if (configured.value === 'homey_energy') return;
   const nowMs = source.nowMs();
   source.observePhases(powerW, nowMs);
   const admission = await source.recordPowerSample(powerW, nowMs);

@@ -2,7 +2,9 @@ import type { DeviceDetailFocus } from './cardActivation.ts';
 import type { RecommendationTarget } from './recommendationsModel.ts';
 import type { SetupJourneyStep } from './setupJourneyState.ts';
 import { turnOnDailyDiagnosticsReport } from './diagnosticsReportSwitches.ts';
-import { checkFlowConflictNow, hasEvSocFlowReporter, refreshFlowConflictFactsExplicit } from './flowConflictRefresh.ts';
+import {
+  checkFlowConflictNow, hasEvSocFlowReporter, readIgnoredPowerUsageFlows, refreshFlowConflictFactsExplicit,
+} from './flowConflictRefresh.ts';
 import { state } from './state.ts';
 import { showToast } from './toast.ts';
 
@@ -45,6 +47,19 @@ export const resolveRecommendationTask = (
         await showToast(
           conflict ? 'PELS still finds battery reporting for this charger.' : 'No unused battery reporting found.',
           conflict ? 'warn' : 'ok',
+        );
+      },
+      failureMessage: 'Could not check Homey Flows. Try again.',
+    };
+  }
+  if (target.kind === 'power-usage-flow-check') {
+    return {
+      run: async () => {
+        await refreshFlowConflictFactsExplicit();
+        const ignored = readIgnoredPowerUsageFlows().state === 'present';
+        await showToast(
+          ignored ? 'PELS still finds power reporting it ignores.' : 'No unused power reporting found.',
+          ignored ? 'warn' : 'ok',
         );
       },
       failureMessage: 'Could not check Homey Flows. Try again.',

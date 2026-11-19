@@ -214,7 +214,7 @@ test('says a selected built-in route is paused while a Flow sets the same curren
 test('Check again also runs the Flow scan that resumes a paused route', async () => {
   callApi.mockImplementation(async (_method: string, path: string) => {
     if (path === '/ui_charging_current') return [{ ...charger, setup: { method: 'built_in', confirmation: 'single_charger' }, flowCheck: 'conflict', currentRoute: 'flow' }];
-    if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [] };
+    if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } };
     return { configured: true, state: 'ready' };
   });
   await act(async () => setChargingCurrentDevice('charger', true));
@@ -278,7 +278,7 @@ test.each(['built_in', 'flow'] as const)('clears the prerequisite only after sav
 
 async function openVehicleControl() {
   callApi.mockImplementation(async (_method: string, path: string) => {
-    if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [] };
+    if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } };
     return path === '/ui_charging_current'
       ? [{ ...charger, scope: 'vehicle', setup: { method: 'built_in', confirmation: 'none' } }]
       : { configured: true, state: 'ready' };

@@ -160,7 +160,7 @@ beforeEach(() => {
   historyApi.mockReset();
   historyApi.mockResolvedValue({ version: 1, entriesByDeviceId: {} });
   refreshFlowConflictsApi.mockReset();
-  refreshFlowConflictsApi.mockResolvedValue({ devices: [], evSocReporters: [] });
+  refreshFlowConflictsApi.mockResolvedValue({ devices: [], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } });
   getSettingFresh.mockResolvedValue(undefined);
   setSetting.mockResolvedValue(undefined);
   afterSetupRead = {
@@ -546,6 +546,7 @@ describe('recommendation loading', () => {
     refreshFlowConflictsApi.mockResolvedValue({
       devices: [{ id: 'charger-1' }],
       evSocReporters: [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
 
     await flowRefresh.refreshFlowConflictFacts();
@@ -842,6 +843,7 @@ describe('recommendation loading', () => {
         controlAdapter: { ...conflictedDevice.controlAdapter!, activationEnabled: true },
       }],
       evSocReporters: [],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
 
     await recommendations.loadRecommendationData();
@@ -879,6 +881,7 @@ describe('recommendation loading', () => {
     refreshFlowConflictsApi.mockResolvedValue({
       devices: [{ id: charger.id }],
       evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
     await recommendations.loadRecommendationData();
     expect(refreshFlowConflictsApi).not.toHaveBeenCalled();
@@ -915,6 +918,7 @@ describe('recommendation loading', () => {
     refreshFlowConflictsApi.mockResolvedValue({
       devices: [{ id: charger.id }],
       evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
 
     await recommendations.loadRecommendationData();
@@ -941,6 +945,39 @@ describe('recommendation loading', () => {
     }
   });
 
+  it('names a Flow whose Report power usage readings PELS ignores, and withdraws it once the Flow is gone', async () => {
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    refreshFlowConflictsApi.mockResolvedValue({
+      devices: [],
+      evSocReporters: [],
+      ignoredPowerUsageFlows: { state: 'present', flowCount: 1, flowName: 'Strømforbruk' },
+    });
+    await recommendations.loadRecommendationData();
+
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn() });
+    try {
+      const surface = document.getElementById('setup-recommendations-root');
+      document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+      await vi.waitFor(() => {
+        expect(surface?.textContent).toContain('Remove unused power reporting');
+      });
+      expect(surface?.textContent).toContain('the “Report power usage” action in the Flow “Strømforbruk”');
+
+      refreshFlowConflictsApi.mockResolvedValue({ devices: [], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } });
+      document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+      await vi.waitFor(() => {
+        expect(surface?.textContent).not.toContain('Remove unused power reporting');
+      });
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
   it('withdraws the unmatched-car warning when the car list fails to refresh', async () => {
     const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
@@ -954,6 +991,7 @@ describe('recommendation loading', () => {
     refreshFlowConflictsApi.mockResolvedValue({
       devices: [{ id: charger.id }],
       evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
 
     await recommendations.loadRecommendationData();
@@ -977,7 +1015,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi
       .mockRejectedValueOnce(new Error('Flow API unavailable'))
-      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
+      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } });
 
     await recommendations.loadRecommendationData();
 
@@ -1005,7 +1043,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi
       .mockRejectedValueOnce(new Error('Flow API unavailable'))
-      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
+      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } });
 
     const listeners = vi.spyOn(document, 'addEventListener');
     try {
@@ -1041,16 +1079,17 @@ describe('recommendation loading', () => {
     let releaseAdvisory: () => void = () => {};
     const advisoryGate = new Promise<void>((resolve) => { releaseAdvisory = resolve; });
     refreshFlowConflictsApi
-      .mockResolvedValueOnce({ devices: [{ id: charger.id }], evSocReporters: [] })
+      .mockResolvedValueOnce({ devices: [{ id: charger.id }], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } })
       .mockRejectedValueOnce(new Error('Flow API unavailable'))
       .mockImplementationOnce(async () => {
         await advisoryGate;
         return {
           devices: [{ id: charger.id }],
           evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Outdated Flow scan' }],
+          ignoredPowerUsageFlows: { state: 'none' },
         };
       })
-      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
+      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } });
 
     await recommendations.loadRecommendationData();
     const listeners = vi.spyOn(document, 'addEventListener');
@@ -1091,10 +1130,11 @@ describe('recommendation loading', () => {
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi
-      .mockResolvedValueOnce({ devices: [{ id: charger.id }], evSocReporters: [] })
+      .mockResolvedValueOnce({ devices: [{ id: charger.id }], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } })
       .mockResolvedValue({
         devices: [{ id: charger.id }],
         evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'New battery Flow' }],
+        ignoredPowerUsageFlows: { state: 'none' },
       });
 
     await recommendations.loadRecommendationData();
@@ -1128,6 +1168,7 @@ describe('recommendation loading', () => {
     refreshFlowConflictsApi.mockResolvedValueOnce({
       devices: [{ id: charger.id }],
       evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+      ignoredPowerUsageFlows: { state: 'none' },
     });
 
     await recommendations.loadRecommendationData();
@@ -1139,9 +1180,10 @@ describe('recommendation loading', () => {
         return {
           devices: [{ id: charger.id }],
           evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+          ignoredPowerUsageFlows: { state: 'none' },
         };
       })
-      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
+      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } });
 
     const listeners = vi.spyOn(document, 'addEventListener');
     recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
@@ -1220,6 +1262,7 @@ describe('recommendation loading', () => {
         controlAdapter: entry.controlAdapter,
       })),
       evSocReporters: [{ chargerDeviceId: evSocCharger.id, flowName: 'Report car battery' }],
+      ignoredPowerUsageFlows: { state: 'none' },
     }).mockImplementation(async () => {
       refreshAttempts += 1;
       await refreshGate;
@@ -1230,6 +1273,7 @@ describe('recommendation loading', () => {
           controlAdapter: entry.controlAdapter,
         })),
         evSocReporters: [{ chargerDeviceId: evSocCharger.id, flowName: 'Report car battery' }],
+        ignoredPowerUsageFlows: { state: 'none' },
       };
     });
 
@@ -1298,6 +1342,7 @@ describe('recommendation loading', () => {
                 : conflictedDevice.controlAdapter,
           }],
         evSocReporters: [],
+        ignoredPowerUsageFlows: { state: 'none' },
       };
     });
 

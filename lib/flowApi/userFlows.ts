@@ -55,14 +55,26 @@ export type EvSocFlowReporter = {
   flowName?: string;
 };
 
+/**
+ * Flow-inventory fact owned and normalized by `lib/flowApi`: the enabled Flows
+ * whose actions run PELS's "Report power usage" card. `flowName` is present only
+ * when exactly one named Flow runs it.
+ */
+export type PowerUsageFlowReporters = {
+  flowCount: number;
+  flowName?: string;
+};
+
 /** Clean result of normalizing both Homey Flow inventories. */
 export type UserFlowFacts = {
   writes: FlowCapabilityWrites;
   evSocReporters: EvSocFlowReporter[];
+  powerUsageReporters: PowerUsageFlowReporters;
 };
 
 const DEVICE_CARD_ID_PREFIX = 'homey:device:';
 export const EV_SOC_REPORT_CARD_ID = 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level';
+export const POWER_USAGE_REPORT_CARD_ID = 'homey:app:com.barelysufficient.pels:report_power_usage';
 
 /**
  * Parse a flow card's `id` into a device-capability write, or null when the
@@ -132,14 +144,23 @@ function parseAppDeviceWrite(card: Record<string, unknown>): { deviceId: string;
   return capabilityId ? { deviceId, capabilityId } : null;
 }
 
+/** What one scan of both inventories accumulates before it is projected to facts. */
+type FlowScan = {
+  writes: FlowCapabilityWrites;
+  evSocReports: Map<string, Map<string, string>>;
+  /** flowId → flowName for each enabled Flow that runs "Report power usage". */
+  powerUsageReports: Map<string, string>;
+};
+
 function collectFromCard(
-  writes: FlowCapabilityWrites,
-  evSocReports: Map<string, Map<string, string>>,
+  scan: FlowScan,
   card: unknown,
   flowId: string,
   flowName: string,
 ): void {
   if (!isUnknownRecord(card)) return;
+  const { writes, evSocReports } = scan;
+  if (card.id === POWER_USAGE_REPORT_CARD_ID) scan.powerUsageReports.set(flowId, flowName);
   const write = parseDeviceCapabilityWrite(card.id) ?? parseAppDeviceWrite(card);
   if (write) recordWrite(writes, write.deviceId, write.capabilityId, flowId, flowName);
   const chargerDeviceId = parseEvSocReportTarget(card);
@@ -168,8 +189,7 @@ function isDisabledFlow(flow: Record<string, unknown>): boolean {
 }
 
 function collectFromFlatFlows(
-  writes: FlowCapabilityWrites,
-  evSocReports: Map<string, Map<string, string>>,
+  scan: FlowScan,
   flatFlows: Record<string, unknown>,
 ): void {
   for (const [flowId, flow] of Object.entries(flatFlows)) {
@@ -178,14 +198,13 @@ function collectFromFlatFlows(
     if (!Array.isArray(actions)) continue;
     const flowName = flowDisplayName(flow);
     for (const action of actions) {
-      collectFromCard(writes, evSocReports, action, flowId, flowName);
+      collectFromCard(scan, action, flowId, flowName);
     }
   }
 }
 
 function collectFromAdvancedFlows(
-  writes: FlowCapabilityWrites,
-  evSocReports: Map<string, Map<string, string>>,
+  scan: FlowScan,
   advancedFlows: Record<string, unknown>,
 ): void {
   for (const [flowId, flow] of Object.entries(advancedFlows)) {
@@ -195,13 +214,14 @@ function collectFromAdvancedFlows(
     const flowName = flowDisplayName(flow);
     for (const card of Object.values(cards)) {
       if (!isUnknownRecord(card) || card.type !== 'action') continue;
-      collectFromCard(writes, evSocReports, card, flowId, flowName);
+      collectFromCard(scan, card, flowId, flowName);
     }
   }
 }
 
 /**
- * Merge both endpoint responses into device-capability writes and EV SoC reporters.
+ * Merge both endpoint responses into device-capability writes and the Flows
+ * that run PELS report actions (battery level per charger, power usage).
  * Defensive against unexpected shapes: anything that is not a flow map / not
  * an action card / not a device-capability id is skipped rather than thrown.
  * An empty or fully-unrecognised input yields empty facts (the caller, not
@@ -211,14 +231,23 @@ export function normalizeUserFlowFacts(
   flatFlows: Record<string, unknown>,
   advancedFlows: Record<string, unknown>,
 ): UserFlowFacts {
-  const writes: FlowCapabilityWrites = new Map();
-  const evSocReports = new Map<string, Map<string, string>>();
-  collectFromFlatFlows(writes, evSocReports, flatFlows);
-  collectFromAdvancedFlows(writes, evSocReports, advancedFlows);
-  const evSocReporters = [...evSocReports.entries()].map(([chargerDeviceId, byFlow]) => {
-    const names = [...byFlow.values()];
-    const flowName = byFlow.size === 1 && names[0] ? names[0] : undefined;
+  const scan: FlowScan = { writes: new Map(), evSocReports: new Map(), powerUsageReports: new Map() };
+  collectFromFlatFlows(scan, flatFlows);
+  collectFromAdvancedFlows(scan, advancedFlows);
+  const evSocReporters = [...scan.evSocReports.entries()].map(([chargerDeviceId, byFlow]) => {
+    const flowName = singleFlowName(byFlow);
     return flowName === undefined ? { chargerDeviceId } : { chargerDeviceId, flowName };
   });
-  return { writes, evSocReporters };
+  const powerUsageFlowName = singleFlowName(scan.powerUsageReports);
+  const powerUsageReporters = {
+    flowCount: scan.powerUsageReports.size,
+    ...(powerUsageFlowName === undefined ? {} : { flowName: powerUsageFlowName }),
+  };
+  return { writes: scan.writes, evSocReporters, powerUsageReporters };
+}
+
+/** The Flow's name when exactly one named Flow is responsible, else none. */
+function singleFlowName(byFlow: ReadonlyMap<string, string>): string | undefined {
+  const [name] = [...byFlow.values()];
+  return byFlow.size === 1 && name ? name : undefined;
 }

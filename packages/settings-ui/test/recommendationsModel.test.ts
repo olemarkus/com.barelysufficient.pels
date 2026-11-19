@@ -5,6 +5,7 @@ import {
   normalizeRecommendationDismissals,
   resolveAutomaticChargingControlRecommendations,
   resolveBatteryApiKeyRecommendations,
+  resolveIgnoredPowerUsageFlowRecommendations,
   resolveSetpointShedLimitRecommendations,
   resolveSetupRecommendations,
   resolveSmartTaskStartPolicyRecommendations,
@@ -751,6 +752,25 @@ describe('resolveBatteryApiKeyRecommendations', () => {
         + 'Add the key in the Battery section of its device page.',
       actionLabel: 'Review device',
       target: { kind: 'device', deviceId: 'needs-key' },
+    }]);
+  });
+});
+
+describe('resolveIgnoredPowerUsageFlowRecommendations', () => {
+  it('offers nothing while no ignored Flow is known', () => {
+    expect(resolveIgnoredPowerUsageFlowRecommendations({ state: 'none' })).toEqual([]);
+  });
+
+  it('names several Flows without naming one, with a recheck action', () => {
+    expect(resolveIgnoredPowerUsageFlowRecommendations({ state: 'present', flowCount: 2 })).toEqual([{
+      id: 'power-usage-flow-ignored:main',
+      version: 1,
+      category: 'recommendation',
+      title: 'Remove unused power reporting',
+      body: 'Power source is set to Power meter, so PELS ignores “Report power usage” actions in enabled Homey Flows. '
+        + 'Remove those actions or disable those Flows if you no longer need them.',
+      actionLabel: 'Check again',
+      target: { kind: 'power-usage-flow-check' },
     }]);
   });
 });

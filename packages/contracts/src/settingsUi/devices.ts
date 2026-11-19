@@ -175,9 +175,24 @@ export type SettingsUiEvSocFlowReporter = {
   flowName?: string;
 };
 
+/**
+ * Enabled Flows that run "Report power usage" while Power meter is the power
+ * source, so PELS ignores what they send. `none` also covers a Flow source, a
+ * home with no such Flow, and a power source the runtime could not read.
+ */
+export type SettingsUiIgnoredPowerUsageFlows =
+  | { state: 'none' }
+  | {
+    state: 'present';
+    flowCount: number;
+    /** Present only when exactly one named enabled Flow runs the card. */
+    flowName?: string;
+  };
+
 export type SettingsUiFlowConflictRefreshPayload = {
   devices: SettingsUiFlowConflictRefreshDevice[];
   evSocReporters: SettingsUiEvSocFlowReporter[];
+  ignoredPowerUsageFlows: SettingsUiIgnoredPowerUsageFlows;
 };
 
 // One recorded device-overview transition. The message fields are built from

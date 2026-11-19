@@ -2,6 +2,7 @@ import {
   type SettingsUiEvSocFlowReporter,
   type SettingsUiFlowConflictRefreshDevice,
   type SettingsUiFlowConflictRefreshPayload,
+  type SettingsUiIgnoredPowerUsageFlows,
 } from '../../../contracts/src/settingsUi/devices.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
@@ -23,6 +24,8 @@ export type EvSocFlowReportersRead =
 
 let refreshInFlight: Promise<SettingsUiFlowConflictRefreshPayload> | undefined;
 let evSocFlowReportersRead: EvSocFlowReportersRead = { state: 'loading' };
+// Only a successful scan answers; a failed one keeps the last answer or none.
+let ignoredPowerUsageFlows: SettingsUiIgnoredPowerUsageFlows = { state: 'none' };
 const REFRESH_ERROR_MESSAGE = 'Could not check Homey Flows. Try again.';
 
 const hasValidFlowConflict = (
@@ -91,6 +94,21 @@ const parseEvSocFlowReporters = (value: unknown): SettingsUiEvSocFlowReporter[] 
   return value;
 };
 
+const isNonEmptyTrimmed = (value: unknown): value is string => (
+  typeof value === 'string' && value.length > 0 && value === value.trim()
+);
+
+const parseIgnoredPowerUsageFlows = (value: unknown): SettingsUiIgnoredPowerUsageFlows => {
+  if (!isUnknownRecord(value)) throw new TypeError(REFRESH_ERROR_MESSAGE);
+  if (value.state === 'none') return { state: 'none' };
+  const { flowCount, flowName } = value;
+  if (value.state !== 'present' || typeof flowCount !== 'number' || !Number.isSafeInteger(flowCount) || flowCount < 1
+    || (flowName !== undefined && (!isNonEmptyTrimmed(flowName) || flowCount !== 1))) {
+    throw new TypeError(REFRESH_ERROR_MESSAGE);
+  }
+  return flowName === undefined ? { state: 'present', flowCount } : { state: 'present', flowCount, flowName };
+};
+
 const withRefreshedNativeControlFacts = (
   device: SettingsUiDeviceView,
   refreshed: SettingsUiFlowConflictRefreshDevice,
@@ -112,6 +130,7 @@ const refreshFlowConflictDevices = async (): Promise<SettingsUiFlowConflictRefre
   const payload = response;
   const refreshedDevices = parseRefreshedDevices(payload.devices);
   const evSocReporters = parseEvSocFlowReporters(payload.evSocReporters);
+  const ignoredPowerUsage = parseIgnoredPowerUsageFlows(payload.ignoredPowerUsageFlows);
   const refreshedById = new Map(refreshedDevices.map((device) => [device.id, device]));
   // The command response contains only the facts it refreshed. Drop the full
   // read-model cache rather than putting a partial device into that trusted
@@ -126,16 +145,20 @@ const refreshFlowConflictDevices = async (): Promise<SettingsUiFlowConflictRefre
     state.latestDevices = devices;
     document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
   }
-  return { devices: refreshedDevices, evSocReporters };
+  return { devices: refreshedDevices, evSocReporters, ignoredPowerUsageFlows: ignoredPowerUsage };
 };
 
 export const readEvSocFlowReporters = (): EvSocFlowReportersRead => evSocFlowReportersRead;
+
+/** The Flows whose "Report power usage" readings PELS ignores, as of the last successful scan. */
+export const readIgnoredPowerUsageFlows = (): SettingsUiIgnoredPowerUsageFlows => ignoredPowerUsageFlows;
 
 const runFlowConflictRefresh = async (): Promise<SettingsUiFlowConflictRefreshPayload> => {
   refreshInFlight ??= refreshFlowConflictDevices().finally(() => { refreshInFlight = undefined; });
   try {
     const payload = await refreshInFlight;
     evSocFlowReportersRead = { state: 'resolved', reporters: payload.evSocReporters };
+    ignoredPowerUsageFlows = payload.ignoredPowerUsageFlows;
     return payload;
   } catch (error) {
     evSocFlowReportersRead = evSocFlowReportersRead.state === 'resolved'
