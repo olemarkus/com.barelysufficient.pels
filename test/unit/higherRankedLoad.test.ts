@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { HigherRankedLoad } from '../../lib/objectives/deferredObjectives/priorityAllocation';
+import { HigherRankedLoad, orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { resolveHighestObjectiveAdmissionPowerKw } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import type { OrderedDeferredObjective } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 
 const device = (id: string, powerKw: number, commandAuthority = true): ObjectiveDeviceInput => ({
   id, name: id, deviceType: 'onoff', isEvCharger: false,
@@ -60,6 +61,39 @@ const randomGenerator = (seed: number) => {
 };
 
 describe('incremental higher-ranked load', () => {
+  it.each([
+    { roster: ['low', 'pending', 'middle', 'high'] },
+    { roster: ['middle', 'low', 'high', 'pending'] },
+  ])('matches a full scan with roster order $roster', ({ roster }) => {
+    const devices = [
+      device('low', 4), device('background', 5, false), device('middle', 1.25),
+      unknownSteps('unknown'), device('ordinary', 0.75), device('high', 3),
+    ];
+    const deviceById = new Map(devices.map((entry) => [entry.id, entry]));
+    const catalog = new ModePriorityCatalog({ Home: {
+      high: 1, ordinary: 2, unknown: 3, middle: 4, background: 5, low: 6,
+    } });
+    const objectivesByDeviceId = Object.fromEntries(roster.map((id) => [id, task(id, [], deviceById).objective]));
+    const ordered = orderDeferredObjectives(
+      { objectivesByDeviceId }, deviceById, () => false, { shouldReserveMissingDevice: () => false },
+      { version: 2, plansByDeviceId: {} }, (ids) => catalog.getOrder('Home', ids, () => false),
+    );
+    expect(ordered.map(({ deviceId, reservationEligible }) => [deviceId, reservationEligible]))
+      .toEqual([['high', true], ['middle', true], ['low', true], ['pending', false]]);
+
+    const load = new HigherRankedLoad(deviceById);
+    const known = new Set<string>();
+    const results = ordered.map((entry) => {
+      const incremental = load.advance(entry, known);
+      expect(incremental).toEqual(previousHigherLoad(entry, known, deviceById));
+      if (entry.deviceId === 'high' || entry.deviceId === 'low') known.add(entry.deviceId);
+      return incremental;
+    });
+    expect(results.map(({ higherPriorityUnbookedPowerKw, higherRankedLoadAccountedFor }) => (
+      [higherPriorityUnbookedPowerKw, higherRankedLoadAccountedFor]
+    ))).toEqual([[0, true], [0.75, false], [2, false], [2, false]]);
+  });
+
   it('keeps exact decimal addition order and the last duplicate device observation', () => {
     const devices = [device('a', 9), device('a', 0.1), device('b', 0.2), device('c', 0.3)];
     const deviceById = new Map(devices.map((entry) => [entry.id, entry]));

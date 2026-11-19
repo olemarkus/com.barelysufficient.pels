@@ -11,6 +11,7 @@ import type {
   PersistedMeteredDeliveryState,
 } from '../../lib/objectives/deferredObjectives/planHistoryMeteredState';
 import { MockSettings } from '../mocks/homey';
+import { resolvePlanPriceCostDisplay } from '../../packages/shared-domain/src/planPriceWidgetCopy';
 
 const open = () => {
   const db = openUserdataDatabase(IN_MEMORY_DATABASE);
@@ -98,6 +99,25 @@ describe('planHistoryStore', () => {
       startProgressValue: null,
       hourStartBookings: [],
     }]);
+  });
+
+  it('restores delivered energy and cost when the price source has no currency label', () => {
+    const { db, store } = open();
+    const { costUnit, costDivisor } = resolvePlanPriceCostDisplay({ priceScheme: 'flow', priceUnit: 'price units' });
+    expect(costUnit).toBe('');
+    const state: PersistedMeteredDeliveryState = {
+      version: 1,
+      deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+      commitment: { kind: 'known', kwh: 4 },
+      deviceId: 'dev', deadlineAtMs: 7_200_000, startedAtMs: 0, startProgressValue: 0,
+      deliveredKWh: 2, totalCost: 0.5,
+      costDisplay: { unit: costUnit, divisor: costDivisor }, deliveryPriceComplete: true,
+      hourlyContributions: [{ atMs: 0, endsAtMs: 3_600_000, deliveredKWh: 2, priceValue: 0.25, tone: 'cheap' }],
+      hourStartBookings: [],
+    };
+
+    store.writeMeteredDelivery([state]);
+    expect(createPlanHistoryStore(db).readMeteredDelivery()).toEqual([state]);
   });
 
   it('quarantines an in-progress row whose hour-start bookings are malformed', () => {
