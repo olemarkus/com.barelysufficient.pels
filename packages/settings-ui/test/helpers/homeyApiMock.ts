@@ -34,6 +34,7 @@ import {
   SETTINGS_UI_HUB_MARKET_PATH,
   SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH,
   SETTINGS_UI_VERSION_PATH,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
@@ -52,6 +53,7 @@ import {
   SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH,
   SETTINGS_UI_SMART_TASK_DEVICES_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
+import { acknowledgeRecommendation } from '../../../../lib/app/recommendationAcknowledgement.ts';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../../lib/utils/settingsUiBootstrapKeys.ts';
 import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV2 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
@@ -477,6 +479,14 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   },
   [buildRouteKey('GET', SETTINGS_UI_VERSION_PATH)]: () => async () => ({ version: '0.0.0-test', timeZone: 'Europe/Oslo', homeyId: 'aaaaaaaaaaaaaaaaaaaaaaaa' }),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
+  [buildRouteKey('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH)]: (homey) => ({ body }) => (
+    acknowledgeRecommendation({
+      get: (key) => homey.__settingsStore[key],
+      getKeys: () => Object.keys(homey.__settingsStore),
+      set: (key, value) => { homey.__settingsStore[key] = value; },
+      unset: (key) => { delete homey.__settingsStore[key]; },
+    }, body)
+  ),
   [buildRouteKey('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH)]: (homey) => async () => ({
     state: 'resolved',
     cars: getUiOverride(homey, 'recommendationCars') ?? [],

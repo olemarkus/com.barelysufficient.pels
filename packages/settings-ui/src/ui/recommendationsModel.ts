@@ -37,9 +37,11 @@ import {
   carConfirmationAction, hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL,
 } from './carAssociationCandidates.ts';
 import { flowConflictHandoffStep } from './deviceDetail/nativeWiringCopy.ts';
-import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import type { RecommendationDismissals } from '../../../shared-domain/src/settings/recommendationDismissals.ts';
 
-export type RecommendationDismissals = Record<string, number>;
+export {
+  normalizeRecommendationDismissals, type RecommendationDismissals,
+} from '../../../shared-domain/src/settings/recommendationDismissals.ts';
 
 export type RecommendationTarget =
   // The device page; `focus` names the row or notice it lands on, the top without one.
@@ -111,13 +113,6 @@ const nativeControlRecommendationAction = (
     };
   }
   return { actionLabel: 'Review device', target: { kind: 'device', deviceId } };
-};
-
-export const normalizeRecommendationDismissals = (value: unknown): RecommendationDismissals => {
-  if (!isUnknownRecord(value)) return {};
-  return Object.fromEntries(Object.entries(value).flatMap(([id, version]) => (
-    Number.isInteger(version) && (version as number) > 0 ? [[id, version as number]] : []
-  )));
 };
 
 /** An existing manual setup stays in use until the owner reviews Automatic. */

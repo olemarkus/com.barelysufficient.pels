@@ -611,6 +611,10 @@
       "method": "POST",
       "path": "/ui_car_association_confirm"
     },
+    "ui_recommendation_acknowledge": {
+      "method": "POST",
+      "path": "/ui_recommendation_acknowledge"
+    },
     "ui_recommendation_cars": {
       "method": "GET",
       "path": "/ui_recommendation_cars"
