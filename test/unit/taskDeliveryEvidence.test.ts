@@ -65,7 +65,7 @@ describe('device-neutral delivery evidence', () => {
   it('keeps mixed causes in chronological intervals and final expiry retains the last blocker', () => {
     const limited = tick({ ...permitted, control: { kind: 'restricted', cause: 'budget_limited' } });
     const stopped = observeTaskDelivery(limited, permitted, 16 * MINUTE, MINUTE);
-    const confirmed = observeTaskDelivery(stopped, permitted, 31 * MINUTE, 15 * MINUTE);
+    const confirmed = observeMinutes(stopped, permitted, 16, 31);
     expect(activeDeliveryCause(confirmed)).toBe('device_not_accepting');
     expect(confirmed.explanation).toMatchObject({ contributors: ['budget_limited'] });
     expect(observeTaskDelivery(confirmed, { ...permitted, obligation: 'expired' }, 32 * MINUTE, MINUTE)).toEqual(confirmed);
@@ -81,6 +81,14 @@ describe('provisional relay energy delivery', () => {
     expect(afterGap.nonDelivery).toEqual({ kind: 'watching', sinceMs: 20 * MINUTE });
     expect(afterGap.energyIdle).toBeUndefined();
     expect(observeMinutes(afterGap, eligible, 20, 35).energyIdle).toEqual({ kind: 'accepted' });
+  });
+
+  it('does not credit a watch that spanned a gap before provisional idle became eligible', () => {
+    const first = observeTaskDelivery(EMPTY_DELIVERY_EVIDENCE, permitted, 0, 0);
+    const afterGap = observeTaskDelivery(first, permitted, 14 * MINUTE, 14 * MINUTE);
+    const firstEligible = observeTaskDelivery(afterGap, eligible, 15 * MINUTE, MINUTE);
+    expect(firstEligible.nonDelivery).toEqual({ kind: 'watching', sinceMs: 14 * MINUTE });
+    expect(firstEligible.energyIdle).toBeUndefined();
   });
 
   it('keeps a price hold neutral and requires fresh evidence after an unobserved permitted interval', () => {

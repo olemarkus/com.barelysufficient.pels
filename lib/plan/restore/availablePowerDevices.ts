@@ -3,7 +3,7 @@ import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReaso
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { spendLimitHeadroom } from '../planContext';
-import { PHASE_ROOM_OFF, phaseRoomFor, spendPhaseRoom } from '../phase/phaseRoom';
+import { spendPhaseRoom } from '../phase/phaseRoom';
 import type { DevicePlanDevice } from '../planTypes';
 import { buildInsufficientHeadroomUpdate } from './accounting';
 import { restoreHeadroomFor, type RestoreHeadroomAxes, type RestoreHeadroomLedger } from './headroomLedger';
@@ -41,11 +41,13 @@ export function accountForAvailablePowerDevices(
     const possibleDrawKw = Math.max(device.expectedPowerKw, device.currentDrawKw);
     const measuredInRoomKw = Math.min(device.currentDrawKw, drawAtMeter(device.id) ?? 0);
     const unseenKw = possibleDrawKw - measuredInRoomKw;
-    const shortage = resolveAdmissionShortage(ledger.axes(), device, unseenKw, possibleDrawKw);
-    if (canYield(device) && shortage) {
-      const { need, room } = shortage;
+    // The measured overload pass handles running draw. This relay stays on
+    // only if the possible increase fits. Further starts must still cover its
+    // full phase exposure because the phase reading is independent of the total.
+    const room = ledger.availableFor(device);
+    if (canYield(device) && room !== null && unseenKw > Math.max(0, room)) {
       setRestorePlanDevice(
-        devices, device.id, buildInsufficientHeadroomUpdate(need, room, room - need, null, null, null),
+        devices, device.id, buildInsufficientHeadroomUpdate(unseenKw, room, room - unseenKw, null, null, null),
       );
     }
     ledger.commit(device, unseenKw, possibleDrawKw);
@@ -111,19 +113,6 @@ function afterRemoving(axes: RestoreHeadroomAxes, donor: EnergizedDevice): Resto
     budget: device.budgetExempt ? axes.budget : spendLimitHeadroom(axes.budget, -possibleDrawKw),
     phase: spendPhaseRoom(axes.phase, device.phaseFootprint, -possibleDrawKw),
   };
-}
-
-function resolveAdmissionShortage(
-  axes: RestoreHeadroomAxes, device: DevicePlanDevice, unseenKw: number, possibleDrawKw: number,
-): { need: number; room: number } | null {
-  // Accepting a phase poll does not prove when its per-phase values changed.
-  // Account for the entire draw there until the relay is observed off.
-  const phaseRoom = phaseRoomFor(axes.phase, device.phaseFootprint);
-  if (phaseRoom.kind === 'on' && possibleDrawKw > Math.max(0, phaseRoom.kw)) {
-    return { need: possibleDrawKw, room: phaseRoom.kw };
-  }
-  const room = restoreHeadroomFor({ ...axes, phase: PHASE_ROOM_OFF }, device);
-  return room !== null && unseenKw > Math.max(0, room) ? { need: unseenKw, room } : null;
 }
 
 const canYield = (device: DevicePlanDevice): boolean => (

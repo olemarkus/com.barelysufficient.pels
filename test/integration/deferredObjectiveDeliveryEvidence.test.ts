@@ -276,7 +276,7 @@ describe('task delivery evidence at the device boundary', () => {
     const beforeCount = scenario.delivered();
     expect(beforeCount).toBeGreaterThan(0);
     expect(beforeCount).toBeLessThan(6);
-    for (let minutes = 25; minutes < 35; minutes += 5) {
+    for (let minutes = 21; minutes < 35; minutes += 1) {
       scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
     }
     expect(scenario.evidence().nonDelivery.kind).toBe('watching');
@@ -303,7 +303,9 @@ describe('task delivery evidence at the device boundary', () => {
 
     // Lower tasks acquire the freed physical room at the ordinary :58 settle.
     const settleAt = START_MS + 58 * MIN_MS;
-    scenario.tick(settleAt, observed(settleAt, 0));
+    for (let atMs = confirmedAt + MIN_MS; atMs <= settleAt; atMs += MIN_MS) {
+      scenario.tick(atMs, observed(atMs, 0));
+    }
     const freed = plannedKWh(task(scenario.build(settleAt), LOW_ID));
     expect(freed).toBeGreaterThan(before);
 
@@ -409,7 +411,7 @@ describe('task delivery evidence at the device boundary', () => {
     scenario.tick(START_MS, observed(START_MS, 2));
     const eventsBefore = scenario.revisionEvents().length;
     scenario.setPlanDecision({ kind: 'permitted' });
-    for (let minutes = 2; minutes <= 18; minutes += 2) {
+    for (let minutes = 2; minutes <= 18; minutes += 1) {
       scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
     }
     expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
@@ -442,7 +444,7 @@ describe('task delivery evidence at the device boundary', () => {
     // A full permitted window re-confirms the stop and frees the room again,
     // with no second status event.
     scenario.setPlanDecision({ kind: 'permitted' });
-    for (let minutes = 44; minutes <= 60; minutes += 2) {
+    for (let minutes = 43; minutes <= 60; minutes += 1) {
       const atMs = START_MS + minutes * MIN_MS;
       scenario.tick(atMs, observed(atMs, 0));
     }
@@ -465,7 +467,7 @@ describe('task delivery evidence at the device boundary', () => {
     const scenario = createScenario(claimedEnergySettings());
     const observed = (atMs: number, kw: number) => [relay(HIGH_ID, kw, atMs)];
     scenario.tick(START_MS, observed(START_MS, 2));
-    for (let minutes = 2; minutes <= 18; minutes += 2) {
+    for (let minutes = 2; minutes <= 18; minutes += 1) {
       scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
     }
     scenario.setPlanDecision({ kind: 'restricted', cause: 'capacity_limited' });
@@ -485,7 +487,7 @@ describe('task delivery evidence at the device boundary', () => {
 
   it('persists a relay cutoff cause across restart and misses without inventing capacity pressure', () => {
     const scenario = createScenario(energySettings());
-    for (let minutes = 0; minutes <= 20; minutes += 5) {
+    for (let minutes = 0; minutes <= 20; minutes += 1) {
       const atMs = START_MS + minutes * MIN_MS;
       scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
     }
@@ -500,7 +502,7 @@ describe('task delivery evidence at the device boundary', () => {
     // Restart resumes fresh observation instead of billing or counting its gap.
     expect(scenario.delivered()).toBe(0);
     expect(scenario.evidence().nonDelivery.kind).toBe('rechecking');
-    for (let atMs = restoredAt + 5 * MIN_MS; atMs < DEADLINE_MS; atMs += 5 * MIN_MS) {
+    for (let atMs = restoredAt + MIN_MS; atMs < DEADLINE_MS; atMs += MIN_MS) {
       scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
     }
     scenario.tick(DEADLINE_MS, [relay(HIGH_ID, 0, DEADLINE_MS), relay(LOW_ID, 0, DEADLINE_MS)]);
