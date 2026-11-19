@@ -149,13 +149,15 @@ describe('phase current Flow cards', () => {
     const { sample } = setup([immediate], []);
     await waitForRefresh();
     sample(0, [18, 0, 0]);
-    const olderRead = Promise.withResolvers<unknown>();
-    flow._triggerCardArgumentValues[ABOVE] = olderRead.promise;
+    let finishOlderRead = () => {};
+    flow._triggerCardArgumentValues[ABOVE] = new Promise<unknown[]>((resolve) => {
+      finishOlderRead = () => resolve([]);
+    });
     flow._triggerCardUpdateListeners[ABOVE]();
     flow._triggerCardArgumentValues[ABOVE] = [immediate, { ...WATCH, phase: 'L4' }];
     flow._triggerCardUpdateListeners[ABOVE]();
     await waitForRefresh();
-    olderRead.resolve([]);
+    finishOlderRead();
     await waitForRefresh();
 
     sample(10_000, [19, 0, 0]);
