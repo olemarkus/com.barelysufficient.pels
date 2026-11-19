@@ -493,7 +493,11 @@ export const resolveLevelReportRecommendations = (
       body: 'PELS changes its level through your Flow, but no level has come back, so PELS does not know '
         + 'what the device is doing and keeps asking. '
         + 'PELS can control this device directly and read its level without a Flow. '
-        + `To use built-in device control, ${flowConflictHandoffStep(conflict.flowName)}.`,
+        + `To use built-in device control, ${flowConflictHandoffStep(conflict.flowName)}`
+        // It stands in for the built-in control advice, so it keeps that card's last step
+        // for an owner who has not chosen built-in control: clearing the Flow alone does not.
+        + `${isBuiltInControlChosen(device, nativeWiringEnabledByDeviceId)
+          ? '' : ', and turn on built-in device control on the device page'}.`,
       actionLabel: 'Check again',
       target: { kind: 'flow-conflict-check', deviceId: device.id },
     }];

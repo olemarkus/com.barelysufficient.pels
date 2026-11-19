@@ -784,6 +784,17 @@ describe('level report recommendations', () => {
     expect(groups.active.map(({ id }) => id)).toEqual(['level-report:charger']);
   });
 
+  it('asks an owner who has not chosen built-in control to turn it on as well', () => {
+    const charger = device({
+      id: 'charger', name: 'Carport charger', levelUnconfirmed: true,
+      flowConflict: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Charge current' },
+    } as Partial<SettingsUiDeviceSnapshot>);
+    const [warning] = resolveSetupRecommendations([charger], [], {}, { charger: false })
+      .filter(({ id }) => id.startsWith('level-report:'));
+    expect(warning?.body).toContain('disable the Flow “Charge current”');
+    expect(warning?.body).toContain('and turn on built-in device control on the device page.');
+  });
+
   it('points a device whose built-in control a Flow holds back at built-in control', () => {
     const charger = device({
       id: 'charger', name: 'Carport charger', levelUnconfirmed: true,
@@ -800,6 +811,8 @@ describe('level report recommendations', () => {
       target: { kind: 'flow-conflict-check', deviceId: 'charger' },
     }));
     expect(recommendation?.body).toContain('disable the Flow “Charge current”');
+    // The owner chose built-in control, so clearing the Flow is the only step.
+    expect(recommendation?.body).not.toContain('turn on built-in device control');
     expect(recommendation?.body).not.toContain('Report stepped load');
     expect(recommendation?.body).not.toContain('PELS sets its level directly');
   });
