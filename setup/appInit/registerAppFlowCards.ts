@@ -7,8 +7,8 @@ import {
 } from './contextGuards';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
+import { createFlowPowerSampleReceiver } from '../../lib/power/flowPowerSample';
 import { resolveObservedHeadroom } from '../../lib/power/lastTotalPower';
-import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   hasMainHomeSmartTaskAuthority,
   isSmartTaskDeviceInMainHome,
@@ -41,33 +41,14 @@ export function registerAppFlowCards(
     getCurrentPriceLevel: () => requirePriceCoordinator(ctx).getCurrentHourPriceLevel(),
     getPriceLevelChangesWithin: (window) => requirePriceCoordinator(ctx).getPriceLevelChangesWithin(window),
     areFlowBackedCardsAvailable: () => ctx.flowBacked.areFlowBackedCardsAvailable(),
-    recordPowerSample: async (powerW) => {
-      const source = readConfiguredPowerSource(ctx.homey.settings);
-      if (source.state === 'suspect') {
-        ctx.getStructuredLogger('power').error({
-          event: 'flow_power_sample_source_read_failed',
-          reason: source.reason,
-          err: normalizeError(source.error),
-        });
-        throw source.error;
-      }
-      if (source.value === 'homey_energy') return;
-      const nowMs = ctx.getNow().getTime();
-      observeFlowSamplePhases(ctx, powerW, nowMs);
-      const admission = await ctx.recordPowerSample(powerW, nowMs);
-      // The pipeline coalesces concurrent samples behind one loop. Waiting for
-      // that loop is not evidence this request won: a newer Homey-Energy
-      // sample may now be the tracker value. Only the final recorded request
-      // may replace sampled-meter authority and advance Flow freshness.
-      if (admission.state !== 'admitted') return;
-      // Re-read after the awaited ingest. A Flow request can overlap a switch
-      // back to Homey Energy; only a sample that is still authoritative may
-      // settle the old sampled-meter fence. Until then the episode remains
-      // closed and the next Homey poll replaces these watts.
-      const admittedSource = readConfiguredPowerSource(ctx.homey.settings);
-      if (admittedSource.state !== 'resolved' || admittedSource.value !== 'flow') return;
-      ctx.homeMembership?.noteAdmittedFlowHomeSample();
-    },
+    recordPowerSample: createFlowPowerSampleReceiver({
+      readPowerSource: () => readConfiguredPowerSource(ctx.homey.settings),
+      nowMs: () => ctx.getNow().getTime(),
+      observePhases: (powerW, nowMs) => observeFlowSamplePhases(ctx, powerW, nowMs),
+      recordPowerSample: (powerW, nowMs) => ctx.recordPowerSample(powerW, nowMs),
+      noteAdmittedSample: () => ctx.homeMembership?.noteAdmittedFlowHomeSample(),
+      log: ctx.getStructuredLogger('power'),
+    }),
     // The power owner projects the accepted meter sample against the planner's
     // enabled capacity/grid ceiling, keeping the Flow condition on that limit.
     getHeadroom: () => resolveObservedHeadroom(ctx.powerTracker, ctx.computePhysicalPowerLimit()),

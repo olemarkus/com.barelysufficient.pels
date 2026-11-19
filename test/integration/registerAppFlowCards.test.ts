@@ -335,7 +335,7 @@ describe('registerAppFlowCards', () => {
     }));
   });
 
-  it('ignores Flow-reported power when Homey Energy is the active power source', async () => {
+  it('rejects Flow-reported power when Power meter is the active power source', async () => {
     const recordPowerSample = vi.fn(async () => admitted());
     const ctx = buildContext({
       powerSource: 'homey_energy',
@@ -353,7 +353,7 @@ describe('registerAppFlowCards', () => {
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       recordPowerSample: (powerW: number) => Promise<void>;
     };
-    await deps.recordPowerSample(1234);
+    await expect(deps.recordPowerSample(1234)).rejects.toThrow('set Power source to Flow card');
 
     expect(recordPowerSample).not.toHaveBeenCalled();
   });
