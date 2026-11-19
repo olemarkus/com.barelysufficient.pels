@@ -7,6 +7,7 @@ import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH,
   SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
 } from '../../contracts/src/settingsUi/paths.ts';
 
@@ -14,6 +15,7 @@ const OTHER_MODULES_API_PATH = '/ui_hub_market';
 const callApi = vi.fn();
 const historyApi = vi.fn();
 const chargingApi = vi.fn();
+const acknowledgeApi = vi.fn();
 const refreshFlowConflictsApi = vi.fn();
 const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
@@ -32,6 +34,7 @@ vi.mock('../src/ui/homey.ts', async () => {
     // Routed by path for the same reason as the settings below: this spec counts
     // the CAR inventory calls, and the hub-market read shares the seam.
     callApi: (...args: unknown[]) => {
+      if (args[1] === SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH) return acknowledgeApi(...args);
       if (args[1] === '/ui_charging_current') return chargingApi(...args);
       if (args[1] === '/ui_charging_access') return Promise.resolve({ configured: false, state: 'not_configured' });
       if (args[1] === OTHER_MODULES_API_PATH) return Promise.resolve({ state: 'unavailable' });
@@ -155,6 +158,7 @@ beforeEach(() => {
   vi.resetModules();
   installSurfaces();
   sleep.mockResolvedValue(undefined);
+  acknowledgeApi.mockReset();
   chargingApi.mockReset();
   chargingApi.mockResolvedValue([]);
   historyApi.mockReset();
@@ -202,13 +206,14 @@ describe('recommendation loading', () => {
       getSetting.mockResolvedValue({});
       await recommendations.loadRecommendationDismissals();
       const warning = warningsFor([heater]).get(heater.id)!;
-      getSettingFresh.mockResolvedValue({ 'another-recommendation': 1 });
-      setSetting.mockRejectedValueOnce(new Error('write unavailable'));
+      acknowledgeApi.mockRejectedValueOnce(new Error('write unavailable')).mockResolvedValueOnce({
+        'after-setup:goals': 1, 'control-contest:device-1': 1000,
+      });
       await warning.onDismiss!();
       expect(warningsFor([heater]).has(heater.id)).toBe(true);
       await warning.onDismiss!();
-      expect(setSetting).toHaveBeenLastCalledWith('setup_recommendation_dismissals', {
-        'another-recommendation': 1, 'control-contest:device-1': 1000,
+      expect(acknowledgeApi).toHaveBeenLastCalledWith('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+        id: 'control-contest:device-1', expectedVersion: null, version: 1000,
       });
       expect(warningsFor([heater]).size).toBe(0);
       // The next read, including one from another WebView, uses the saved episode.
@@ -223,6 +228,25 @@ describe('recommendation loading', () => {
         document.removeEventListener(type, listener, options);
       }
     }
+  });
+
+  it('keeps a warning visible when another session has acknowledged a different episode', async () => {
+    const recommendations = await loadSubject([device({
+      controlContest: { setting: 'temperature', commanded: 22, observed: 28, count: 4, sinceMs: 2000 },
+    })]);
+    const id = 'control-contest:device-1';
+    getSetting.mockResolvedValue({ [id]: 1000 });
+    await recommendations.loadRecommendationDismissals();
+    const active = recommendations.readActiveRecommendation(id)!;
+    expect(active.version).toBe(2000);
+    acknowledgeApi.mockResolvedValueOnce({ [id]: 3000 });
+    await recommendations.dismissSetupRecommendation(active);
+    expect(acknowledgeApi).toHaveBeenCalledWith('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+      id, expectedVersion: 1000, version: 2000,
+    });
+    expect(recommendations.readActiveRecommendation(id)).toEqual(active);
+    expect(logSettingsError).toHaveBeenCalledWith('Failed to update recommendation acknowledgement',
+      expect.objectContaining({ message: 'This recommendation changed. Review it again.' }), 'setup recommendations');
   });
 
   it('reviews and dismisses Automatic without changing the existing charger control', async () => {
@@ -269,10 +293,11 @@ describe('recommendation loading', () => {
         .find((entry) => entry.textContent?.includes('Automatic charging control is available for Garage'));
       const dismiss = [...card!.querySelectorAll('md-text-button')]
         .find((button) => button.textContent?.trim() === 'Dismiss');
+      acknowledgeApi.mockResolvedValueOnce({ 'automatic-charging-control:charger-1': 1 });
       dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await vi.waitFor(() => {
-        expect(setSetting).toHaveBeenCalledWith('setup_recommendation_dismissals', {
-          'automatic-charging-control:charger-1': 1,
+        expect(acknowledgeApi).toHaveBeenCalledWith('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+          id: 'automatic-charging-control:charger-1', expectedVersion: null, version: 1,
         });
         const dismissedCard = [...surface!.querySelectorAll('article')]
           .find((entry) => entry.textContent?.includes('Automatic charging control is available for Garage'));
@@ -502,10 +527,11 @@ describe('recommendation loading', () => {
       expect(openDevice).toHaveBeenCalledWith('device-1', 'start-policy');
       const dismiss = [...document.querySelectorAll('md-text-button')]
         .find((button) => button.textContent?.trim() === 'Dismiss');
+      acknowledgeApi.mockResolvedValueOnce({ 'smart-task-start-policy:device-1': 1 });
       dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await vi.waitFor(() => {
-        expect(setSetting).toHaveBeenCalledWith('setup_recommendation_dismissals', {
-          'smart-task-start-policy:device-1': 1,
+        expect(acknowledgeApi).toHaveBeenCalledWith('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+          id: 'smart-task-start-policy:device-1', expectedVersion: null, version: 1,
         });
       });
       expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
@@ -520,12 +546,14 @@ describe('recommendation loading', () => {
       historyApi.mockRejectedValue(new Error('History unavailable'));
       await recommendations.loadRecommendationData();
       expect(document.getElementById('setup-recommendations-root')?.textContent).toContain('Dismissed');
-      getSettingFresh.mockResolvedValue({ 'smart-task-start-policy:device-1': 1 });
+      acknowledgeApi.mockResolvedValueOnce({});
       const restore = [...document.querySelectorAll('md-text-button')]
         .find((button) => button.textContent?.trim() === 'Show again');
       restore?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await vi.waitFor(() => {
-        expect(setSetting).toHaveBeenLastCalledWith('setup_recommendation_dismissals', {});
+        expect(acknowledgeApi).toHaveBeenLastCalledWith('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+          id: 'smart-task-start-policy:device-1', expectedVersion: 1, version: null,
+        });
       });
       expect(document.getElementById('setup-recommendations-root')?.textContent).not.toContain('Dismissed');
     } finally {
@@ -1473,7 +1501,7 @@ describe('recommendation loading', () => {
       .toBe(false);
     expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
     expect(document.getElementById('settings-nav-chip-recommendations')?.hidden).toBe(true);
-    expect(setSetting).not.toHaveBeenCalled();
+    expect(acknowledgeApi).not.toHaveBeenCalled();
 
     getSetting.mockResolvedValueOnce({});
     const retry = [...surface!.querySelectorAll('md-text-button')]
@@ -1624,17 +1652,16 @@ describe('recommendation loading', () => {
 
     let resolveSetting!: (value: unknown) => void;
     getSetting.mockReturnValueOnce(new Promise((resolve) => { resolveSetting = resolve; }));
-    getSettingFresh.mockResolvedValueOnce({});
+    acknowledgeApi.mockResolvedValueOnce({ 'built-in-control:device-1': 1 });
 
     const loading = recommendations.loadRecommendationData();
     const dismiss = [...document.querySelectorAll('md-text-button')]
       .find((button) => button.textContent?.trim() === 'Dismiss');
     dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await vi.waitFor(() => {
-      expect(setSetting).toHaveBeenCalledWith(
-        'setup_recommendation_dismissals',
-        { 'built-in-control:device-1': 1 },
-      );
+      expect(acknowledgeApi).toHaveBeenCalledWith('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+        id: 'built-in-control:device-1', expectedVersion: null, version: 1,
+      });
     });
 
     resolveSetting({});
