@@ -8,13 +8,25 @@ import { state } from './state.ts';
 // like a home with no Smart tasks. A consumer that must not mistake "not loaded
 // yet" (or a failed load) for "none configured" asks this first.
 let loaded = false;
+let loadGeneration = 0;
 export const hasLoadedDeferredObjectiveSettings = (): boolean => loaded;
 
 export const loadDeferredObjectiveSettings = async (): Promise<void> => {
   // The runtime assembles the roster from its per-device keys. The bootstrap
   // primes this read model, so the boot load is a cache hit; a per-device key
   // change invalidates it (`settingsChangeRouter.ts`) and the next load fetches.
-  const raw = await getApiReadModel<unknown>(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
+  const generation = ++loadGeneration;
+  let raw: unknown;
+  try {
+    raw = await getApiReadModel<unknown>(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
+  } catch (error) {
+    if (generation === loadGeneration && loaded) {
+      loaded = false;
+      document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
+    }
+    throw error;
+  }
+  if (generation !== loadGeneration) return;
   state.deferredObjectiveSettings = normalizeDeferredObjectiveRoster(raw);
   loaded = true;
   document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));

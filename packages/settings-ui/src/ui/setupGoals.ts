@@ -1,5 +1,6 @@
+import { supportsTemperatureAdjustments } from './deviceDetail/temperaturePolicy.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
+import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { namePriceSource } from './afterSetupRecommendations.ts';
 import { readAfterSetupFacts } from './afterSetupFacts.ts';
 import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
@@ -70,7 +71,7 @@ export const resolveSetupGoalChoices = (): SetupGoalChoices => {
     state: 'ready',
     priceSource: priced ? namePriceSource(priced.scheme) : null,
     devices: managed.devices.flatMap((device) => {
-      const price = respondsToPrices && supportsTemperatureControlDevice(device)
+      const price = respondsToPrices && supportsTemperatureAdjustments(device)
         ? { enabled: state.priceOptimizationSettings[device.id]?.enabled === true }
         : null;
       const smartTask = resolveSmartTask(device);

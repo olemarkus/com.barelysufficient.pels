@@ -1,8 +1,15 @@
+import { getPowerReadModel } from '../src/ui/power.ts';
+import type { SettingsUiPowerPayload } from '../../contracts/src/settingsUi/power.ts';
 import {
   classifyHardCapShortfalls,
+  loadHardCapReachFacts,
+  readHardCapReachFacts,
+  readHardCapReachStatus,
   resolveHardCapReachRecommendations,
   type HardCapReachFacts,
 } from '../src/ui/hardCapReachRecommendation.ts';
+
+vi.mock('../src/ui/power.ts', () => ({ getPowerReadModel: vi.fn() }));
 
 const TZ = 'Europe/Oslo';
 // 2026-11-15 18:00 in Oslo.
@@ -62,6 +69,14 @@ describe('resolveHardCapReachRecommendations', () => {
     expect(resolveHardCapReachRecommendations(facts(onDays([0, 3, 7])), NOW, TZ)).toEqual([]);
   });
 
+  it('excludes the eighth calendar day across the spring clock change', () => {
+    const now = Date.parse('2026-03-30T00:30:00+02:00');
+    const incidents = ['2026-03-23', '2026-03-25', '2026-03-27'].map((day) => ({
+      atMs: Date.parse(day + 'T12:00:00+01:00'), hardCapKw: 5, uncontrolledW: 1000,
+    }));
+    expect(resolveHardCapReachRecommendations(facts(incidents), now, TZ)).toEqual([]);
+  });
+
   it('starts a new record when the owner changes the hard cap', () => {
     const shortfalls = [...onDays([3, 4, 5], { hardCapKw: 4 }), ...onDays([0])];
     expect(resolveHardCapReachRecommendations(facts(shortfalls), NOW, TZ)).toEqual([]);
@@ -80,6 +95,26 @@ describe('resolveHardCapReachRecommendations', () => {
     );
     expect(recommendation?.body).not.toContain('does not control drew');
   });
+});
+
+it('keeps the most recent cap when an older request finishes, then retries an unavailable read', async () => {
+  const read = vi.mocked(getPowerReadModel);
+  let finishEarlier!: (payload: SettingsUiPowerPayload) => void;
+  read.mockReturnValueOnce(new Promise((resolve) => { finishEarlier = resolve; }));
+  const earlier = loadHardCapReachFacts();
+  const power = { capacityScalars: { state: 'resolved', scalars }, hardCapShortfalls: [] } as unknown as SettingsUiPowerPayload;
+  read.mockResolvedValueOnce(power);
+  await loadHardCapReachFacts();
+  finishEarlier({ ...power, capacityScalars: { state: 'resolved', scalars: { ...scalars, limitKw: 9 } } });
+  await earlier;
+  expect(readHardCapReachFacts()?.scalars.limitKw).toBe(5);
+  read.mockResolvedValueOnce({ ...power, capacityScalars: { state: 'unavailable' } });
+  await loadHardCapReachFacts();
+  expect(readHardCapReachStatus()).toBe('unavailable');
+  expect(readHardCapReachFacts()?.scalars.limitKw).toBe(5);
+  read.mockResolvedValueOnce(power);
+  await loadHardCapReachFacts();
+  expect(readHardCapReachStatus()).toBe('resolved');
 });
 
 describe('classifyHardCapShortfalls', () => {

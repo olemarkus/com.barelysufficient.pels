@@ -10,10 +10,19 @@ test('recommends a key while preserving the Flow alternative', () => {
   expect(recommendation?.body).toContain('API key');
   expect(recommendation?.body).toContain('Flow');
 });
-test('nudges removal when both a key and a current-setting Flow exist', () => {
-  const [recommendation] = chargingRecommendations([{ ...device, flowCheck: 'conflict' }], { configured: true, state: 'ready' });
-  expect(recommendation?.id).toContain('charging-remove-flow');
-  expect(recommendation?.body).toContain('explicitly choose built-in control');
+test.each([false, true])('keeps a working Flow after the owner chooses Use a Flow (writable: %s)', (writable) => {
+  const flow = { ...device, capabilityWritable: writable, flowCheck: 'conflict' as const };
+  const access = { configured: !writable, state: writable ? 'not_configured' as const : 'ready' as const };
+  const [paused] = chargingRecommendations([{
+    ...flow, setup: { method: 'built_in', confirmation: 'single_charger' },
+  }], access);
+  expect(paused?.body).toContain('To keep the Flow instead, choose Use a Flow');
+  expect(chargingRecommendations([flow], access)).toEqual([]);
+});
+test('keeps vehicle consent visible beside an existing current-setting Flow', () => {
+  const car: ChargingCurrentRead = { ...device, scope: 'vehicle', flowCheck: 'conflict' };
+  expect(chargingRecommendations([car], { configured: true, state: 'ready' }).map(({ id }) => id))
+    .toEqual(['charging-owner:charger']);
 });
 test('a selected built-in route held back by a Flow says it is paused without asking to switch again', () => {
   const [recommendation] = chargingRecommendations([{ ...device, flowCheck: 'conflict', currentRoute: 'flow',

@@ -47,17 +47,14 @@ function setupRecommendations(
       body = 'A Flow sets the same charging current, and PELS cannot stop a Flow, so PELS leaves the current '
         + 'to the Flow for now. Remove the current-setting action from the Flow, then select Check again. '
         + 'To keep the Flow instead, choose Use a Flow on the device page.';
-    } else if (device.flowCheck === 'conflict'
-      && (access.configured || device.capabilityWritable)) {
-      kind = 'charging-remove-flow';
-      title = `Remove duplicate current control for ${name}`;
-      body = 'A current-setting Flow is configured alongside built-in access. Remove that action, check again, '
-        + 'then explicitly choose built-in control. Adding a key does not switch your existing Flow.';
     } else if (needsVehicleChargingConsent(device)) {
       kind = 'charging-owner';
       title = `Choose how PELS controls ${name}`;
       body = 'Control either the car or its physical charger. '
         + 'Confirm your choice on the device page before enabling car control.';
+    } else if (device.setup.method === 'flow' && device.flowCheck === 'conflict') {
+      // The Flow route also defaults to 'flow'; only the scan proves a current-setting Flow exists.
+      return [];
     } else if (device.setup.method === 'built_in' && (device.capabilityWritable || access.state === 'ready')) return [];
     else {
       kind = 'charging-setup';

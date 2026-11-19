@@ -1,3 +1,4 @@
+import { supportsTemperatureAdjustments } from './deviceDetail/temperaturePolicy.ts';
 import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import { readDailyDiagnosticsReportEnabled } from '../../../shared-domain/src/settings/dailyDiagnosticsReport.ts';
 import { DAILY_DIAGNOSTICS_REPORT } from '../../../shared-domain/src/settings/settingsKeys.ts';
@@ -6,14 +7,15 @@ import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
-import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
+import { supportsPowerDevice } from './deviceUtils.ts';
 import { getSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
+import { readExportPriced } from './priceTimelineRead.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
-  isBelgianHomeOnHourlyPeriod, isSetupDeviceLimitable, readSetupMarket, readSetupPath,
+  isBelgianHomeOnHourlyPeriod, isSetupDeviceLimitable, readSetupMarket, readSetupPath, readSetupRespondsToPrices,
 } from './setupPathFacts.ts';
 import { resolveHomeExhibitsSolar, resolveSurplusControlAvailable, state } from './state.ts';
 
@@ -21,7 +23,7 @@ type PriceSetupState =
   | { state: 'loading' }
   | { state: 'unavailable' }
   | {
-    state: 'ready'; setup: PriceOptimizationSetup; priceSource: AfterSetupPriceSource;
+    state: 'ready'; setup: PriceOptimizationSetup;
     /** Whether the published prices hold an export price; `null` while they are not ready. */
     exportPriced: boolean | null;
   };
@@ -58,37 +60,32 @@ export const offerPowerhour = async (source: AfterSetupPriceSource): Promise<Aft
   return suggestion.powerhour.kind === 'has_price_device' ? { kind: 'powerhour_offered' } : source;
 };
 
-/**
- * Whether the published prices hold an export price for any period: the
- * runtime's own answer, so an export price switched on whose source publishes
- * none still counts as missing. `null` while prices are not ready.
- */
-export const readExportPriced = (payload: Pick<SettingsUiPricesPayload, 'priceTimeline'>): boolean | null => (
-  payload.priceTimeline.state === 'ready' ? payload.priceTimeline.hasExportPrice : null
-);
-
 export type AfterSetupFactsRead =
   | { state: 'loading' }
   | { state: 'unavailable' }
-  | { state: 'resolved'; facts: AfterSetupFacts };
+  | { state: 'resolved'; facts: AfterSetupFacts; checksIncomplete?: boolean; checksPending?: boolean };
 
 let priceSetupState: PriceSetupState = { state: 'loading' };
+// The goals page names the last accepted source. Its Keep action checks that
+// this source is still in force before saving it, even after a failed refresh.
+let acceptedPriceSource: AfterSetupPriceSource = { kind: 'needs_setup' };
 let priceSetupLoadGeneration = 0;
-/** `null` until the setting has been read; a failed read keeps the last value. */
-let dailyDiagnosticsReportEnabled: boolean | null = null;
+let dailyReportReadGeneration = 0;
+/** Only a successful read may invite the owner to turn on reporting. */
+let dailyDiagnosticsReportEnabled: boolean | 'loading' | 'unavailable' = 'loading';
 
 export const loadDailyDiagnosticsReport = async (): Promise<void> => {
+  const generation = ++dailyReportReadGeneration;
   try {
-    dailyDiagnosticsReportEnabled = readDailyDiagnosticsReportEnabled(await getSetting(DAILY_DIAGNOSTICS_REPORT));
+    const enabled = readDailyDiagnosticsReportEnabled(await getSetting(DAILY_DIAGNOSTICS_REPORT));
+    if (generation === dailyReportReadGeneration) dailyDiagnosticsReportEnabled = enabled;
   } catch (error) {
+    if (generation !== dailyReportReadGeneration) return;
+    dailyDiagnosticsReportEnabled = 'unavailable';
     await logSettingsError('Failed to read the daily report setting for suggestions', error, 'setup recommendations');
   }
 };
 
-/**
- * Load producer-classified price facts. An unavailable response is a no-op:
- * keep the last good value, or keep waiting if none has ever arrived.
- */
 export const loadAfterSetupFacts = async (): Promise<void> => {
   await Promise.all([loadPriceSetupFacts(), loadDailyDiagnosticsReport()]);
 };
@@ -100,30 +97,29 @@ const loadPriceSetupFacts = async (): Promise<void> => {
     const payload = await getPricesReadModel();
     const read = payload.priceOptimizationSetup;
     if (generation !== priceSetupLoadGeneration) return;
-    if (read.state === 'resolved') {
-      const priceSource = await offerPowerhour(resolvePriceSource(payload));
+    if (payload.priceSetup.state === 'resolved') {
+      const source = await offerPowerhour(resolvePriceSource(payload));
       if (generation !== priceSetupLoadGeneration) return;
-      priceSetupState = {
-        state: 'ready', setup: read.setup, priceSource, exportPriced: readExportPriced(payload),
-      };
+      acceptedPriceSource = source;
     }
-    else if (priceSetupState.state !== 'ready') priceSetupState = { state: 'unavailable' };
+    priceSetupState = read.state === 'resolved'
+      ? { state: 'ready', setup: read.setup, exportPriced: readExportPriced(payload) }
+      : { state: 'unavailable' };
   } catch (error) {
+    if (generation !== priceSetupLoadGeneration) return;
+    priceSetupState = { state: 'unavailable' };
     await logSettingsError('Failed to read price settings for suggestions', error, 'setup recommendations');
-    if (generation === priceSetupLoadGeneration && priceSetupState.state !== 'ready') {
-      priceSetupState = { state: 'unavailable' };
-    }
   }
 };
 
 const resolveDevices = (
-  setup: PriceOptimizationSetup,
+  setup: PriceOptimizationSetup | undefined,
   managed: readonly SettingsUiDeviceListItem[],
 ): AfterSetupDevice[] => {
-  const configuredDeviceIds = new Set(setup.configuredDeviceIds);
-  const solarSurplusDeviceIds = new Set(setup.solarSurplusDeviceIds);
+  const configuredDeviceIds = new Set(setup?.configuredDeviceIds);
+  const solarSurplusDeviceIds = new Set(setup?.solarSurplusDeviceIds);
   return managed.map((device) => ({
-    temperature: supportsTemperatureControlDevice(device),
+    temperature: supportsTemperatureAdjustments(device),
     limitable: supportsPowerDevice(device) && isSetupDeviceLimitable(device.id),
     taskCapable: isSmartTaskCapable(device),
     heatsWaterOnTask: device.deviceClass === 'waterheater' || supportsSmartTaskKind(device, 'energy'),
@@ -132,25 +128,36 @@ const resolveDevices = (
   }));
 };
 
+const hasIncompleteChecks = (setupComplete: boolean, tasksKnown: boolean): boolean => (
+  priceSetupState.state !== 'ready' || readSetupRespondsToPrices() === null
+  || (setupComplete && (!tasksKnown || dailyDiagnosticsReportEnabled === 'unavailable'))
+);
+
 export const readAfterSetupFacts = (): AfterSetupFactsRead => {
   const setupPath = readSetupPath();
   const managed = readMainHomeManagedDevices();
-  if (setupPath.state === 'loading' || managed.state === 'loading' || priceSetupState.state === 'loading'
-    || !hasLoadedDeferredObjectiveSettings()) return { state: 'loading' };
-  if (setupPath.state === 'unavailable' || priceSetupState.state === 'unavailable'
-    || managed.state !== 'ready') return { state: 'unavailable' };
+  if (setupPath.state === 'loading' || managed.state === 'loading' || priceSetupState.state === 'loading') {
+    return { state: 'loading' };
+  }
+  if (setupPath.state === 'unavailable' || managed.state !== 'ready') return { state: 'unavailable' };
+  const price = priceSetupState.state === 'ready' ? priceSetupState : undefined;
+  const setupComplete = setupPath.state === 'complete';
+  const tasksKnown = hasLoadedDeferredObjectiveSettings();
   return {
     state: 'resolved',
+    checksIncomplete: hasIncompleteChecks(setupComplete, tasksKnown),
+    checksPending: setupComplete && dailyDiagnosticsReportEnabled === 'loading',
     facts: {
-      setupComplete: setupPath.state === 'complete',
-      devices: resolveDevices(priceSetupState.setup, managed.devices),
-      priceOptimizationEnabled: priceSetupState.setup.enabled,
-      priceSource: priceSetupState.priceSource,
-      solarSurplusAvailable: resolveSurplusControlAvailable(),
+      setupComplete,
+      devices: resolveDevices(price?.setup, managed.devices),
+      priceOptimizationEnabled: price?.setup.enabled === true,
+      priceSource: acceptedPriceSource,
+      solarSurplusAvailable: price !== undefined && resolveSurplusControlAvailable(),
       market: readSetupMarket(),
       belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
-      solarExportUnpriced: resolveHomeExhibitsSolar() && priceSetupState.exportPriced === false,
-      smartTaskConfigured: Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId).length > 0,
+      solarExportUnpriced: resolveHomeExhibitsSolar() && price?.exportPriced === false,
+      smartTaskConfigured: tasksKnown
+        ? Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId).length > 0 : null,
       dailyDiagnosticsReportOff: dailyDiagnosticsReportEnabled === false,
     },
   };

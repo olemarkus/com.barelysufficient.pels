@@ -1,7 +1,7 @@
 import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { DeviceDetailFocus } from './cardActivation.ts';
-import { readHomeMembership } from './homeScope.ts';
+import { readHomeMembership, refreshHomeScopeAndNotify } from './homeScope.ts';
 import { setupSavePending } from './setupJourneyState.ts';
 import { resolveDeviceManageability } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
@@ -120,8 +120,14 @@ const setupDeviceHint = (
     ? 'PELS may adjust its temperature.' : 'PELS needs a power reading to limit this device.';
 };
 
+export const retrySetupDeviceReads = (): void => {
+  if (state.devicesReadState === 'unavailable') document.dispatchEvent(new Event('request-load-devices'));
+  if (readHomeMembership().state === 'unavailable') void refreshHomeScopeAndNotify();
+};
+
 export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): SetupDeviceChoices => {
   const membership = readHomeMembership();
+  if (state.devicesReadState === 'unavailable') return { state: 'unavailable' };
   if (!state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
   if (membership.state === 'unavailable') return { state: 'unavailable' };
   return { state: 'ready', devices: devices

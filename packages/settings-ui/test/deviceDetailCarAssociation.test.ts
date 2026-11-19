@@ -1,3 +1,4 @@
+import { createHomeyMock } from './helpers/homeyApiMock.ts';
 import type { EvObservedFields } from '../../contracts/src/types.ts';
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 
@@ -10,6 +11,7 @@ import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 const callApi = vi.fn();
 const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
+const invalidateSettingCache = vi.fn();
 const setSetting = vi.fn();
 const sleep = vi.fn().mockResolvedValue(undefined);
 const coldStartReadRetryDelays = vi.fn();
@@ -22,6 +24,7 @@ vi.mock('../src/ui/homey.ts', () => ({
   sleep: (...args: unknown[]) => sleep(...args),
   setSetting: (...args: unknown[]) => setSetting(...args),
   invalidateApiCache: vi.fn(),
+  invalidateSettingCache: (key: string) => invalidateSettingCache(key),
   invalidateApiCacheForAllHomes: vi.fn(),
   getHomeyTimezone: () => 'Europe/Oslo',
 }));
@@ -82,6 +85,7 @@ beforeEach(() => {
   callApi.mockResolvedValue({ state: 'resolved', cars: CARS });
   getSetting.mockResolvedValue({});
   getSettingFresh.mockResolvedValue(undefined);
+  invalidateSettingCache.mockReset();
   setSetting.mockResolvedValue(undefined);
   coldStartReadRetryDelays.mockImplementation((_key: string, delaysMs: readonly number[]) => delaysMs);
 });
@@ -259,6 +263,35 @@ describe('charger car picker', () => {
     // persisting every charger's cars away on the strength of one failed read.
     expect(state.evCarAssociations).toEqual({ 'charger-1': { carIds: ['car-1'] } });
     expect(state.evCarAssociationsLoaded).toBe(true);
+    expect(invalidateSettingCache).not.toHaveBeenCalled();
+  });
+
+  it('recovers from a cached malformed association without losing the previous selection', async () => {
+    const key = 'ev_car_associations';
+    const previous = { 'charger-1': { carIds: ['car-1'] } };
+    const recovered = { 'charger-1': { carIds: ['car-2'] } };
+    const sdk = createHomeyMock({ settings: { [key]: [] } });
+    const homey = await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts');
+    homey.setHomeyClient(sdk);
+    getSetting.mockImplementation(homey.getSetting);
+    invalidateSettingCache.mockImplementation(homey.invalidateSettingCache);
+    const { loadEvCarAssociations, readCarAssociationStatus } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    homey.applyBootstrapSettings({ [key]: previous });
+    await loadEvCarAssociations();
+    homey.invalidateSettingCache(key);
+    await loadEvCarAssociations();
+    expect(readCarAssociationStatus()).toBe('unavailable');
+    expect(state.evCarAssociations).toEqual(previous);
+
+    sdk.__settingsStore[key] = recovered;
+    await loadEvCarAssociations();
+    expect(readCarAssociationStatus()).toBe('resolved');
+    expect(state.evCarAssociations).toEqual(recovered);
+    await loadEvCarAssociations();
+    expect(sdk.get).toHaveBeenCalledTimes(2);
+    homey.setHomeyClient(null);
   });
 
   it('keeps the last-known selections when a live reload remains absent after retries', async () => {
@@ -300,22 +333,25 @@ describe('charger car picker', () => {
     expect(state.evCarAssociationsLoaded).toBe(true);
   });
 
-  it('does not let a pending reload restore associations after an authoritative unset', async () => {
-    const { clearEvCarAssociations, loadEvCarAssociations } = await import(
-      '../src/ui/deviceDetail/carAssociation.ts'
-    );
-    const { state } = await import('../src/ui/state.ts');
-    let resolveRead: (value: unknown) => void = () => {};
-    getSetting.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+  it.each([{ 'charger-1': { carIds: ['car-1'] } }, 'malformed'])(
+    'ignores a superseded association response after an authoritative unset (%j)', async (value) => {
+      const { clearEvCarAssociations, loadEvCarAssociations } = await import(
+        '../src/ui/deviceDetail/carAssociation.ts'
+      );
+      const { state } = await import('../src/ui/state.ts');
+      let resolveRead: (value: unknown) => void = () => {};
+      getSetting.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
 
-    const pendingLoad = loadEvCarAssociations();
-    clearEvCarAssociations();
-    resolveRead({ 'charger-1': { carIds: ['car-1'] } });
-    await pendingLoad;
+      const pendingLoad = loadEvCarAssociations();
+      clearEvCarAssociations();
+      resolveRead(value);
+      await pendingLoad;
 
-    expect(state.evCarAssociations).toEqual({});
-    expect(state.evCarAssociationsLoaded).toBe(true);
-  });
+      expect(state.evCarAssociations).toEqual({});
+      expect(state.evCarAssociationsLoaded).toBe(true);
+      expect(invalidateSettingCache).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps associations unresolved after a failed first read and resolves absence after retries', async () => {
     const { loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
@@ -344,6 +380,7 @@ describe('charger car picker', () => {
 
     expect(coldStartReadRetryDelays).toHaveBeenCalledWith('ev_car_associations', expect.any(Array));
     expect(getSettingFresh).not.toHaveBeenCalled();
+    expect(invalidateSettingCache).not.toHaveBeenCalled();
     expect(state.evCarAssociations).toEqual({});
     expect(state.evCarAssociationsLoaded).toBe(true);
   });
@@ -675,10 +712,12 @@ describe('confirming the connected car', () => {
     const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
     getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
     await loadEvCarAssociations();
-    renderCarAssociation(charger());
+    renderCarAssociation(charger({ carIdentificationState: 'timed_out' }));
     await flush();
 
     expect(document.querySelector('.detail-car-confirm')).toBeNull();
+    expect(flowNote().textContent).not.toContain('Confirm which selected car is connected');
+    expect(status()).toBe('Could not identify the connected car.');
     expect(document.querySelector('#device-detail-car-list')?.textContent)
       .toContain('Polestar 3 is not available in Homey right now, so PELS cannot confirm it.');
   });

@@ -10,9 +10,10 @@ export type SetupRecommendationsViewProps = {
   dismissed: readonly SetupRecommendation[];
   // The first-run setup state: loading, complete, or the open path to render.
   setupPath: SetupPathRead;
-  readiness: 'loading' | 'partial' | 'resolved';
+  readiness: 'loading' | 'checking' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
   retryAvailable: boolean;
+  devicesUnavailable?: boolean;
   busyRecommendationId: string | null;
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
@@ -93,9 +94,10 @@ const RecommendationCard = (props: RecommendationCardProps) => {
 
 const RecommendationsList = (props: SetupRecommendationsViewProps) => (
   <>
+    {props.readiness === 'checking' && <p class="muted setup-recommendations-loading">Checking for more suggestions…</p>}
     {props.readiness === 'partial' && (
       <>
-        <p class="muted setup-recommendations-loading">Some recommendation checks couldn’t be refreshed right now.</p>
+        <p class="muted setup-recommendations-loading">{props.devicesUnavailable ? 'The device list couldn’t be loaded.' : 'Some recommendation checks couldn’t be refreshed right now.'}</p>
         {props.retryAvailable && props.dismissalStatus === 'available' && (
           <MdTextButton type="button" onClick={props.onRetry}>Try again</MdTextButton>
         )}
@@ -103,7 +105,7 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
     )}
     {/* While the setup path is open it IS the page's content; "no suggestions"
         beside an unfinished setup would read as "nothing to do". */}
-    {props.active.length === 0 && props.setupPath.state === 'complete' && (
+    {props.active.length === 0 && props.readiness !== 'checking' && props.setupPath.state === 'complete' && (
       <section class="pels-surface-card setup-recommendations-empty">
         <strong>{props.readiness === 'partial' ? 'No suggestions from the checks that finished' : 'No setup suggestions right now'}</strong>
         <p class="pels-card-supporting">
@@ -181,7 +183,7 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
         )}
       </section>
     )}
-    {(props.readiness === 'partial' || props.readiness === 'resolved') && (
+    {props.readiness !== 'loading' && (
       <RecommendationsList {...props} />
     )}
   </>

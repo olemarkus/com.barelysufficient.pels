@@ -153,6 +153,17 @@ describe('setup path facts', () => {
       expect(facts.readSetupPath()).toEqual({ state: 'complete' });
     });
 
+    it.each(['external', 'update_mode'] as const)('does not require prices for a saved offset while temperature policy is %s', async (policy) => {
+      const { facts, state } = await configuredHome();
+      state.priceOptimizationSettings = { heater: { ...defaultPriceOptimizationConfig, enabled: true } };
+      facts.publishSetupPrices({ respondToPrices: true, budgetShapesByPrice: false, status: OPEN_NORWAY });
+      expect(pricesStep(facts)?.status).toBe('next');
+
+      state.temperatureControlModes = { heater: policy };
+      state.temperatureControlDisabledMap = { heater: policy === 'external' };
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
+
     it('asks for nothing while Respond to prices is off', async () => {
       // Every price behaviour waits on it, so with it off nothing uses prices.
       const { facts, state } = await configuredHome();
@@ -200,7 +211,7 @@ describe('setup path facts', () => {
       loaded.facts.publishSetupBatteryPlans({});
       loaded.facts.publishSetupPricesUnavailable();
       const step = loaded.facts.readSetupReview()?.steps.find((candidate) => candidate.id === 'prices');
-      expect(step).toMatchObject({ status: 'done', detail: 'Price settings could not be read. Check Electricity prices.' });
+      expect(step).toMatchObject({ status: 'unchecked', detail: 'Price settings could not be read. Check Electricity prices.' });
     });
 
     it('is done once the owner has set prices up', async () => {
@@ -349,7 +360,7 @@ describe('setup path facts', () => {
       id: 'charger', deviceClass: 'evcharger', deviceType: 'onoff', powerCapable: true, isEvCharger: true,
     };
 
-    it('keeps the Devices step open while a charger beside it waits unchosen', async () => {
+    it('offers the unchosen charger while letting the owner finish on the battery alone', async () => {
       const { facts, state } = await load();
       state.devicesLoaded = true;
       state.dryRun = true;
@@ -360,9 +371,10 @@ describe('setup path facts', () => {
       facts.publishSetupPower(RECEIVED);
       facts.publishSetupHardCapRead(false, { ...running, capacityEnabled: false });
       expect(devicesStep(facts)).toMatchObject({
-        status: 'next',
-        detail: 'Your home battery is managed. Choose the other devices PELS should run',
+        status: 'done',
+        detail: 'Your home battery is managed. You can also choose an EV charger.',
       });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
       state.managedMap = { charger: true };
       expect(devicesStep(facts)).toMatchObject({ status: 'done' });
     });

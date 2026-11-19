@@ -219,7 +219,7 @@ export const readSimulationBannerAreaId = (): string | null => (
 // refresh may commit.
 let postureRefreshGeneration = 0;
 
-const refreshDryRunBannerHomeScope = async (): Promise<void> => {
+export const refreshDryRunBannerHomeScope = async (): Promise<void> => {
   postureRefreshGeneration += 1;
   const generation = postureRefreshGeneration;
   const scopeRead = await readHomesConfigScope();
@@ -381,6 +381,7 @@ onSetupPathChange(() => {
 
 export const loadStaleDataStatus = async () => {
   const read = await readCapacityPowerModel();
+  if (state.activePanel === 'limits') publishLimitUsagePower(read.state === 'resolved' ? read.payload : null);
   if (read.state === 'unavailable') {
     publishSetupPowerUnavailable();
     publishSetupHardCapUnavailable();

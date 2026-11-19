@@ -15,6 +15,7 @@ import { resolveSolarMoneyToday } from '../../../shared-domain/src/solar/solarMo
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import { normalizeCombinedPrices } from './combinedPrices.ts';
 import { formatCost } from './dailyBudgetCost.ts';
+import { readExportPriced } from './priceTimelineRead.ts';
 import { getPricesReadModel } from './prices.ts';
 import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 import {
@@ -51,6 +52,7 @@ const formatMoneyValue = (minor: number, combined: unknown, someHoursUnpriced: b
 
 const resolveMoneyBlock = (params: {
   combined: unknown;
+  exportPriced: boolean | null;
   layout: 'full' | 'export-only';
   generationBuckets?: Record<string, number>;
   exportBuckets?: Record<string, number>;
@@ -71,32 +73,21 @@ const resolveMoneyBlock = (params: {
   // Each line carries its own coverage suffix: import-price coverage flags the
   // avoided line, export-price coverage flags the earned line (they are
   // independent axes — see resolveSolarMoneyToday).
-  if (layout === 'export-only') {
-    // Without measured production, "grid cost avoided" is always zero — noise.
-    // Show earnings when an export price exists, otherwise just the nudge to
-    // configure one (import prices prove the scheme carries money).
-    if (money.earnedMinor !== null) {
-      return {
-        avoidedValueText: null,
-        earnedValueText: formatMoneyValue(money.earnedMinor, combined, money.unpricedExportHours > 0),
-        showExportPriceHint: false,
-      };
-    }
-    return money.avoidedMinor !== null
-      ? {
-        avoidedValueText: null,
-        earnedValueText: null,
-        showExportPriceHint: true,
-      }
-      : null;
-  }
   if (money.avoidedMinor === null) return null;
+  let exportHint: SolarMoneyBlock['exportHint'] = null;
+  if (money.earnedMinor === null) {
+    if (params.exportPriced === false) exportHint = 'check_price';
+    else if (money.unpricedExportHours > 0) exportHint = 'unpriced_hours';
+  }
+  if (layout === 'export-only' && money.earnedMinor === null && exportHint === null) return null;
   return {
-    avoidedValueText: formatMoneyValue(money.avoidedMinor, combined, money.unpricedSolarHours > 0),
+    avoidedValueText: layout === 'export-only'
+      ? null
+      : formatMoneyValue(money.avoidedMinor, combined, money.unpricedSolarHours > 0),
     earnedValueText: money.earnedMinor !== null
       ? formatMoneyValue(money.earnedMinor, combined, money.unpricedExportHours > 0)
       : null,
-    showExportPriceHint: money.earnedMinor === null,
+    exportHint,
   };
 };
 
@@ -117,24 +108,26 @@ const hasGenerationEvidence = (
   || Object.values(generationBuckets ?? {}).some((value) => typeof value === 'number' && value > 0)
 );
 
-const readCombinedPrices = async (): Promise<unknown> => {
+const readSolarPrices = async () => {
   // Prices are a bonus tier — a failed fetch degrades the card to kWh-only
   // rather than blocking it.
   try {
-    return (await getPricesReadModel()).combinedPrices ?? null;
+    const prices = await getPricesReadModel();
+    return { combined: prices.combinedPrices, exportPriced: readExportPriced(prices) };
   } catch {
-    return null;
+    return { combined: null, exportPriced: null };
   }
 };
 
 export const resolveSolarUsageCardProps = (params: {
   tracker: SettingsUiPowerTracker | null;
   combined: unknown;
+  exportPriced: boolean | null;
   timeZone: string;
   todayKey: string;
   hasManagedSolarDevice: boolean;
 }): SolarUsageCardProps | null => {
-  const { tracker, combined, timeZone, todayKey, hasManagedSolarDevice } = params;
+  const { tracker, combined, exportPriced, timeZone, todayKey, hasManagedSolarDevice } = params;
   const generationBuckets = asBuckets(tracker?.generationBuckets);
   const exportBuckets = asBuckets(tracker?.exportBuckets);
   const rows = buildSolarDayRows({ generationBuckets, exportBuckets, timeZone, todayKey });
@@ -161,7 +154,7 @@ export const resolveSolarUsageCardProps = (params: {
     layout,
     today,
     history,
-    money: resolveMoneyBlock({ combined, layout, generationBuckets, exportBuckets, timeZone, todayKey }),
+    money: resolveMoneyBlock({ combined, exportPriced, layout, generationBuckets, exportBuckets, timeZone, todayKey }),
     // Only meaningful when production IS measured (full layout): in a battery
     // home an odd hour/day can honestly export more than the panels produced —
     // including a pure-battery-export day where production is zero.
@@ -213,13 +206,13 @@ export const renderSolarUsageSection = async (params: {
   if (!mount) return { todaySelfUsedKWh: null };
   const { tracker, timeZone, hasManagedSolarDevice, isCurrentRun } = params;
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
-  const combined = await readCombinedPrices();
+  const prices = await readSolarPrices();
   // Fence BEFORE the mutation, not after: this is the last statement that can
   // still drop a superseded run without having touched the DOM.
   if (!isCurrentRun()) return { todaySelfUsedKWh: null };
   const props = resolveSolarUsageCardProps({
     tracker,
-    combined,
+    ...prices,
     timeZone,
     todayKey,
     hasManagedSolarDevice,

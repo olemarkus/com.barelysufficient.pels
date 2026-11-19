@@ -1,9 +1,8 @@
 import { render } from 'preact';
 import { SetupDevicePicker } from './views/SetupJourney.tsx';
 import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
-import { readSetupDeviceChoices } from './setupDevices.ts';
+import { readSetupDeviceChoices, retrySetupDeviceReads } from './setupDevices.ts';
 import { renderSetupGoals } from './setupGoalsRender.ts';
-import { refreshHomeScopeAndNotify } from './homeScope.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
@@ -461,7 +460,7 @@ const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLEle
         .finally(() => { renderDevices(state.latestDevices); notifySetupPathChange(); });
     },
     onOpen: dispatchOpenDeviceDetail,
-    onRetry: () => { void refreshHomeScopeAndNotify(); },
+    onRetry: retrySetupDeviceReads,
   }), target);
 };
 

@@ -82,7 +82,6 @@ const DEFAULT_MARGIN_KW = 0.2;
 const DEFAULT_DRY_RUN = true;
 
 const STATIC_LIMITS_FORM_ID = 'settings-limits-form';
-const HOME_LIMITS_MOUNT_ID = 'home-limits-mount';
 const GLOBAL_LIMITS_SETTINGS_ID = 'settings-limits-global';
 const MAIN_HARD_CAP_HINT_ID = 'settings-capacity-limit-hint';
 
@@ -193,7 +192,7 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
 };
 
 const renderSection = (): void => {
-  const mount = document.getElementById(HOME_LIMITS_MOUNT_ID);
+  const mount = document.getElementById('home-limits-mount');
   if (!mount) return;
   const { selectedHomeId, areas } = getHomeScope();
   const onMeterArea = selectedHomeId !== MAIN_HOME_ID;
@@ -209,6 +208,7 @@ const renderSection = (): void => {
   // to a single-meter install (no stray gap between the app bar and the Main
   // form). Only a rendered meter-area editor un-hides it.
   mount.hidden = editor === null;
+  mount.dataset.homeId = areaEditor?.homeId ?? '';
   renderHomeLimitsSection(mount, { editor });
 };
 

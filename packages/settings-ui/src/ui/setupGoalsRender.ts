@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import { buildDeadlineHref, followDeadlineHref } from './deadlineUrls.ts';
-import { refreshHomeScopeAndNotify } from './homeScope.ts';
+import { retrySetupDeviceReads } from './setupDevices.ts';
 import { saveDevicePriceEnabled } from './priceOptimization.ts';
 import { keepAssumedPriceSource, resolveSetupGoalChoices } from './setupGoals.ts';
 import { saveSetupBatteryPlan } from './setupBatteryPlan.ts';
@@ -54,6 +54,6 @@ export const renderSetupGoals = (target: HTMLElement, rerender: () => void): voi
     onNewSmartTask: dispatchOpenSmartTaskCreateFromSetup,
     onOpenSmartTask: (id) => followDeadlineHref(buildDeadlineHref(id)),
     onOpen: dispatchOpenDeviceDetail,
-    onRetry: () => { void refreshHomeScopeAndNotify(); },
+    onRetry: retrySetupDeviceReads,
   }), target);
 };

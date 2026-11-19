@@ -5,7 +5,8 @@ import type {
   PriceSchemeSetting,
   SettingsUiPricesPayload,
 } from '../../contracts/src/settingsUi/prices.ts';
-import { offerPowerhour, readExportPriced, resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
+import { offerPowerhour, resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
+import { readExportPriced } from '../src/ui/priceTimelineRead.ts';
 import { loadPriceSetupSuggestion } from '../src/ui/priceSetupOffer.ts';
 
 vi.mock('../src/ui/priceSetupOffer.ts', () => ({ loadPriceSetupSuggestion: vi.fn() }));
@@ -162,4 +163,58 @@ describe('Belgian battery-only setup', () => {
     state.latestDevices[0]!.batteryControl = 'needs_homey_api_key';
     expect(recommendations()).not.toContain('market:flanders-capacity-period');
   });
+});
+
+it('withdraws offers with failed inputs while retaining independently checked offers', async () => {
+  vi.resetModules();
+  const prices = {
+    ...payload('homey', { kind: 'hub_location', country: 'SE' }),
+    priceOptimizationSetup: { state: 'resolved', setup: { enabled: true, configuredDeviceIds: [], solarSurplusDeviceIds: [] } },
+    priceTimeline: { state: 'ready', hasExportPrice: false },
+  };
+  vi.doMock('../src/ui/priceSetupOffer.ts', () => ({
+    loadPriceSetupSuggestion: async () => ({ powerhour: { kind: 'none' } }),
+  }));
+  const readPrices = vi.fn().mockResolvedValue(prices);
+  const readReport = vi.fn().mockResolvedValue(false);
+  let rosterLoaded = true;
+  let priceSwitch: boolean | null = true;
+  vi.doMock('../src/ui/prices.ts', () => ({ getPricesReadModel: readPrices }));
+  vi.doMock('../src/ui/homey.ts', async (original) => ({ ...(await original<object>()), getSetting: readReport }));
+  vi.doMock('../src/ui/deferredObjectiveSettings.ts', () => ({ hasLoadedDeferredObjectiveSettings: () => rosterLoaded }));
+  vi.doMock('../src/ui/mainHomeDevices.ts', () => ({
+    readMainHomeManagedDevices: () => ({ state: 'ready', devices: [] }),
+  }));
+  vi.doMock('../src/ui/setupPathFacts.ts', async (original) => ({
+    ...(await original<object>()),
+    isBelgianHomeOnHourlyPeriod: () => false,
+    readSetupPath: () => ({ state: 'complete' }),
+    readSetupRespondsToPrices: () => priceSwitch,
+  }));
+  const { loadAfterSetupFacts, readAfterSetupFacts } = await import('../src/ui/afterSetupFacts.ts');
+  await loadAfterSetupFacts();
+  expect(readAfterSetupFacts()).toMatchObject({
+    state: 'resolved', checksIncomplete: false, facts: { dailyDiagnosticsReportOff: true, priceOptimizationEnabled: true },
+  });
+  readPrices.mockRejectedValueOnce(new Error('Price read failed'));
+  await loadAfterSetupFacts();
+  expect(readAfterSetupFacts()).toMatchObject({
+    state: 'resolved', checksIncomplete: true, facts: {
+      dailyDiagnosticsReportOff: true, priceOptimizationEnabled: false,
+      priceSource: { kind: 'priced', scheme: 'homey', chosen: false },
+    },
+  });
+  readReport.mockRejectedValueOnce(new Error('Report setting read failed'));
+  await loadAfterSetupFacts();
+  expect(readAfterSetupFacts()).toMatchObject({
+    state: 'resolved', checksIncomplete: true, facts: { dailyDiagnosticsReportOff: false, priceOptimizationEnabled: true },
+  });
+  rosterLoaded = false;
+  await loadAfterSetupFacts();
+  expect(readAfterSetupFacts()).toMatchObject({ checksIncomplete: true, facts: { smartTaskConfigured: null } });
+  rosterLoaded = true;
+  priceSwitch = null;
+  expect(readAfterSetupFacts()).toMatchObject({ checksIncomplete: true });
+  priceSwitch = true;
+  expect(readAfterSetupFacts()).toMatchObject({ checksIncomplete: false, facts: { smartTaskConfigured: false } });
 });

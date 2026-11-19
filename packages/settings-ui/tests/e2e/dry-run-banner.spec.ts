@@ -115,17 +115,28 @@ test('the meter-area simulation banner opens that area at its own control', asyn
   await expect(page.locator('#home-limits-simulation-row')).toBeInViewport();
 });
 
-test('the meter-area banner still opens the area when the scope bar has not read it yet', async ({ page }) => {
+test('retry opens the banner’s meter area when the recovered roster restores a different saved scope', async ({ page }) => {
   await seedMeterAreaBeforeBoot(page);
   await page.addInitScript(() => {
     const stub = (window as unknown as {
       __PELS_HOMEY_STUB__: { settings: Record<string, unknown>; apiHandlers?: Record<string, () => unknown> };
     }).__PELS_HOMEY_STUB__;
     stub.settings.capacity_dry_run = false;
+    const previousArea = 'h_22222222';
+    const config = stub.settings.homes_config as { subHomes: unknown[] };
+    config.subHomes.push({
+      homeId: previousArea, name: 'Workshop', rootZoneId: 'z_workshop', meterDeviceId: 'dev_workshop_meter',
+    });
+    stub.settings[`capacity_dry_run:${previousArea}`] = false;
+    localStorage.setItem('pels.shell.homeScope', previousArea);
     stub.apiHandlers = { ...(stub.apiHandlers ?? {}), 'GET /ui_homes': () => { throw new Error('Offline'); } };
   });
   await gotoApp(page);
   await expect(page.locator('#dry-run-banner')).toHaveAttribute('data-home-scope', 'areas');
+  await page.locator('#simulation-disable-button').click();
+  await expect(page.locator('#toast')).toContainText('Could not open this meter area. Try again.');
+  await expect(page.locator('#overview-panel')).toBeVisible();
+  await expect(page.locator('#dry-run-banner')).toBeVisible();
 
   await page.evaluate(() => {
     (window as unknown as { Homey: { __stub: { clearApiHandler: (key: string) => void } } })
@@ -134,5 +145,6 @@ test('the meter-area banner still opens the area when the scope bar has not read
   await page.locator('#simulation-disable-button').click();
 
   await expect(page.locator('#limits-panel')).toBeVisible();
-  await expect(page.locator('#home-limits-simulation-switch')).toBeVisible();
+  await expect(page.locator('#home-limits-mount[data-home-id="h_11111111"] #home-limits-simulation-row')).toBeInViewport();
+  expect(await page.evaluate(() => localStorage.getItem('pels.shell.homeScope'))).toBe('h_11111111');
 });

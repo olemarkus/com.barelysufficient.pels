@@ -35,13 +35,14 @@ const fuseTargetKw = (fuse: MainFuse | null): number | null => (
 );
 
 const describeInstant = (targetKw: number | null): string | null => {
-  const finding = targetKw === null ? null : checkInstantLimit(targetKw, evidence);
-  return finding ? formatInstantLimitFinding(finding, Date.now(), getHomeyTimezone()) : null;
+  const nowMs = Date.now();
+  const finding = targetKw === null ? null : checkInstantLimit(targetKw, evidence, nowMs);
+  return finding ? formatInstantLimitFinding(finding, nowMs, getHomeyTimezone()) : null;
 };
 
 const describeHardCap = (limitKw: number | null, marginKw: number | null): string | null => {
   if (limitKw === null || marginKw === null) return null;
-  const finding = checkHardCap(limitKw - marginKw, evidence);
+  const finding = checkHardCap(limitKw - marginKw, evidence, Date.now());
   return finding ? formatHardCapFinding(finding) : null;
 };
 
@@ -61,9 +62,11 @@ export const refreshLimitUsageAlerts = (): void => {
   renderAlert(hardCapAlert, view?.capacityEnabled ? describeHardCap(view.limitKw, view.marginKw) : null);
 };
 
-/** The power read Limits & safety loaded (`null`: it failed, so no warning); warnings follow it. */
+/** An unavailable read repaints using the accepted evidence and its original timestamps. */
 export const publishLimitUsagePower = (payload: SettingsUiPowerPayload | null): void => {
-  evidence = payload ? resolveLimitUsageEvidence(payload, Date.now()) : NO_USAGE_EVIDENCE;
+  if (payload && !(payload.status?.state === 'unavailable' && payload.status.reason === 'read_failed')) {
+    evidence = resolveLimitUsageEvidence(payload, Date.now());
+  }
   refreshLimitUsageAlerts();
 };
 

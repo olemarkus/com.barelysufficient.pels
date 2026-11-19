@@ -103,6 +103,7 @@ import {
   loadRecommendationDismissals,
   refreshAfterSetupRecommendations,
   refreshDailyReportSuggestion,
+  refreshHardCapRecommendation,
   refreshRecommendationSurfaces,
   SETUP_RECOMMENDATION_DISMISSALS,
 } from './recommendations.ts';
@@ -161,13 +162,16 @@ const refreshCapacitySettings = (key: string, context: 'settings.set' | 'setting
   const powerLimitsChanged = key === CAPACITY_ENABLED || key === GRID_IMPORT_ENABLED
     || key === GRID_IMPORT_LIMIT_KW || key === MAIN_FUSE_SUPPLY || key === MAIN_FUSE_AMPS;
   if (key === CAPACITY_LIMIT_KW || powerLimitsChanged) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+  if (key === CAPACITY_ENABLED || key === CAPACITY_LIMIT_KW || key === CAPACITY_FOLLOW_MONTH_PEAK) {
+    if (key === CAPACITY_FOLLOW_MONTH_PEAK) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+    runLoggedTask(refreshHardCapRecommendation(), 'Failed to refresh hard cap advice', context);
+  }
   if (powerLimitsChanged) {
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
     refreshOverviewPlanIfVisible(context);
   }
   // The held hard cap moves with the switch: the running scalars and the hero's cap.
   if (key === CAPACITY_DRY_RUN || key === CAPACITY_FOLLOW_MONTH_PEAK) {
-    if (key === CAPACITY_FOLLOW_MONTH_PEAK) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
     refreshOverviewPlanIfVisible(context);
   }

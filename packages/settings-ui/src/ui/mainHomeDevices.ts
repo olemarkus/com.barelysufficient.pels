@@ -1,6 +1,7 @@
+import { supportsTemperatureAdjustments } from './deviceDetail/temperaturePolicy.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
-import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
+import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { MainHomeJobs } from './planHeroSummary.ts';
 import { readHomeMembership } from './homeScope.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
@@ -17,6 +18,7 @@ export type MainHomeManagedDevices =
 
 export const readMainHomeManagedDevices = (): MainHomeManagedDevices => {
   const membership = readHomeMembership();
+  if (state.devicesReadState === 'unavailable') return { state: 'unavailable' };
   if (!state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
   if (membership.state === 'unavailable') return { state: 'unavailable' };
   return {
@@ -33,13 +35,13 @@ export const readMainHomeManagedDevices = (): MainHomeManagedDevices => {
  */
 export const followsPrices = (device: SettingsUiDeviceListItem): boolean => (
   readSetupRespondsToPrices() === true
-  && supportsTemperatureControlDevice(device)
+  && supportsTemperatureAdjustments(device)
   && state.priceOptimizationSettings[device.id]?.enabled === true
 );
 
 /** Whether the device can carry a Smart task: a temperature, charging or supported relay energy task. */
 export const isSmartTaskCapable = (device: SettingsUiDeviceListItem): boolean => (
-  supportsTemperatureControlDevice(device) || device.isEvCharger || supportsSmartTaskKind(device, 'energy')
+  supportsTemperatureAdjustments(device) || device.isEvCharger || supportsSmartTaskKind(device, 'energy')
 );
 
 export const countMainHomeJobs = (nowMs: number): MainHomeJobs => {

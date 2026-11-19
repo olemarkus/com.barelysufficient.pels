@@ -1,25 +1,28 @@
-import { chargingRecommendations } from './chargingRecommendations.ts';
+import {
+  chargingRecommendationStatus, currentChargingAdvice, loadChargingRecommendations,
+} from './chargingRecommendationRead.ts';
 import { registerOverviewRecommendationDismissals } from './overviewControlWarnings.ts';
-import { loadChargingSetup } from './chargingSetupFacts.ts';
 import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
 import {
-  SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_POWER_PATH, SETTINGS_UI_RECOMMENDATION_CARS_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
 import {
-  callApi, coldStartReadRetryDelays, getHomeyTimezone, getSetting, getSettingFresh, sleep,
+  callApi, coldStartReadRetryDelays, getHomeyTimezone, getSetting, getSettingFresh,
+  invalidateApiCache, sleep,
 } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
-  resolveAutomaticChargingControlRecommendations,
   resolveSetupRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
 } from './recommendationsModel.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
+import { hasLoadedDeferredObjectiveSettings, loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { readDeferredObjectiveHistory } from './deferredObjectiveHistoryRead.ts';
 import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
 import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendations.ts';
@@ -34,12 +37,10 @@ import { resolveAfterSetupRecommendations } from './afterSetupRecommendations.ts
 import { loadHubMarket } from './hubMarket.ts';
 import { loadSetupPrices } from './setupPricesLoad.ts';
 import { formatSetupProgress } from './setupPathModel.ts';
-import { anyChargerHasSelectedCar, loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
 import {
-  createSerializedAsyncRunner,
-  readRecordSetting,
-  writeFreshSetting,
-} from './deviceDetail/settingsWrite.ts';
+  anyChargerHasSelectedCar, loadEvCarAssociations, readCarAssociationStatus,
+} from './deviceDetail/carAssociation.ts';
+import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './deviceDetail/settingsWrite.ts';
 import {
   renderSetupRecommendationsBanner,
   renderSetupRecommendationsView,
@@ -53,10 +54,10 @@ import {
 import { showToastError } from './toast.ts';
 import { resolveRecommendationTask, type RecommendationNavigation } from './recommendationActions.ts';
 export type { RecommendationNavigation } from './recommendationActions.ts';
-import { subscribeToHomeScope } from './homeScope.ts';
+import { readHomeMembership, refreshHomeScopeAndNotify, subscribeToHomeScope } from './homeScope.ts';
 import {
   loadHardCapReachFacts,
-  readHardCapReachFacts,
+  readHardCapReachFacts, readHardCapReachStatus,
   resolveHardCapReachRecommendations,
 } from './hardCapReachRecommendation.ts';
 
@@ -80,31 +81,16 @@ type NavigationState =
   | { state: 'uninitialized' }
   | { state: 'resolved'; navigation: RecommendationNavigation };
 
-type RecommendationReadiness = 'loading' | 'partial' | 'resolved';
+type RecommendationReadiness = 'loading' | 'checking' | 'partial' | 'resolved';
 
 type LoadedDismissalReadState = Extract<DismissalReadState, { state: 'resolved' | 'stale' }>;
 
-let currentChargingRecommendations: SetupRecommendation[] = [];
-let chargingReadGeneration = 0;
-let chargingReadAt = 0;
-async function loadChargingRecommendations(force = false): Promise<void> {
-  if (!state.latestDevices.some((device) => device.isEvCharger)) return;
-  if (!force && Date.now() - chargingReadAt < 30_000) return;
-  chargingReadAt = Date.now();
-  const generation = ++chargingReadGeneration;
-  try {
-    const { devices, access } = await loadChargingSetup();
-    if (generation !== chargingReadGeneration) return;
-    currentChargingRecommendations = chargingRecommendations(devices, access);
-    refreshRecommendationSurfaces();
-  } catch {
-    // Retain accepted recommendations, but let the next device update retry.
-    if (generation === chargingReadGeneration) chargingReadAt = 0;
-  }
-}
-
 let dismissalRead: DismissalReadState = { state: 'loading' };
 let carInventory: CarInventoryState = { state: 'loading' };
+const carChecksComplete = (): boolean => carInventory.state === 'resolved'
+  && carInventory.cars.every((car) => car.matchHistory.state === 'resolved');
+
+let retrySetupPath: (() => Promise<void>) | undefined;
 let navigationRead: NavigationState = { state: 'uninitialized' };
 let loadGeneration = 0;
 let dismissalRevision = 0;
@@ -139,18 +125,20 @@ const hasLoadedDismissals = (read: DismissalReadState): read is LoadedDismissalR
 );
 
 const resolveRecommendationReadiness = (afterSetupRead: AfterSetupFactsRead): RecommendationReadiness => {
-  if (!state.devicesLoaded) return 'loading';
-  const needsFlowReporterCheck = anyChargerHasSelectedCar();
-  const flowReporterRead = readEvSocFlowReporters();
-  return state.evCarAssociationsLoaded
-    && carInventory.state === 'resolved'
-    // A car whose match history is unreadable leaves its advice undecided.
-    && carInventory.cars.every((car) => car.matchHistory.state === 'resolved')
-    && smartTaskUsageRead === 'resolved'
-    && (!needsFlowReporterCheck || flowReporterRead.state === 'resolved')
-    && afterSetupRead.state === 'resolved'
-    ? 'resolved'
-    : 'partial';
+  if (!state.devicesLoaded) return state.devicesReadState === 'unavailable' ? 'partial' : 'loading';
+  const inventory = carInventory.state === 'resolved' && !carChecksComplete() ? 'unavailable' : carInventory.state;
+  let afterSetup: 'loading' | 'resolved' | 'unavailable' = afterSetupRead.state;
+  if (afterSetupRead.state === 'resolved') {
+    if (afterSetupRead.checksIncomplete) afterSetup = 'unavailable';
+    else if (afterSetupRead.checksPending) afterSetup = 'loading';
+  }
+  const checks = [
+    inventory, readCarAssociationStatus(), smartTaskUsageRead, readHardCapReachStatus(), afterSetup,
+    chargingRecommendationStatus(),
+    anyChargerHasSelectedCar() ? readEvSocFlowReporters().state : 'resolved',
+  ];
+  if (checks.includes('unavailable') || checks.includes('stale') || dismissalRead.state === 'stale') return 'partial';
+  return checks.includes('loading') ? 'checking' : 'resolved';
 };
 
 const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null } => ({
@@ -182,23 +170,11 @@ const resolveCurrentRecommendations = (
   // devices, by name. A device PELS does not manage gets none: its wiring,
   // its car and its Flows are not PELS's to set up until the owner chooses it.
   const managed = state.latestDevices.filter((device) => state.managedMap[device.id] === true);
-  const automaticRecommendations = state.devicePowerControlModesLoaded
-    ? resolveAutomaticChargingControlRecommendations(managed, state.devicePowerControlModes)
-    : [];
-  const automaticReviewDeviceIds = new Set(automaticRecommendations.flatMap(({ target }) => (
-    target.kind === 'device-control-model' ? [target.deviceId] : []
-  )));
   return [
     ...(afterSetupRead.state === 'resolved'
       ? resolveAfterSetupRecommendations(afterSetupRead.facts, dismissals)
       : []),
-    ...currentChargingRecommendations.filter(({ id, target }) => target.kind === 'device'
-      && managed.some((device) => device.id === target.deviceId
-        && device.automaticPowerControl?.mode !== 'automatic')
-      // Manual still owns real Flow conflicts; only onboarding competes with
-      // the recommendation to review the replacement Automatic route.
-      && !(id.startsWith('charging-setup:') && automaticReviewDeviceIds.has(target.deviceId))),
-    ...automaticRecommendations,
+    ...currentChargingAdvice(managed),
     ...resolveSetupRecommendations(
       managed,
       cars,
@@ -207,7 +183,9 @@ const resolveCurrentRecommendations = (
       evSocReporters,
     ),
     ...resolveDeviceSettingRecommendations(),
-    ...resolveHardCapReachRecommendations(readHardCapReachFacts(), Date.now(), getHomeyTimezone()),
+    ...resolveHardCapReachRecommendations(
+      readHardCapReachStatus() === 'resolved' ? readHardCapReachFacts() : null, Date.now(), getHomeyTimezone(),
+    ),
   ];
 };
 
@@ -378,9 +356,8 @@ export const refreshRecommendationSurfaces = (): void => {
       setupPath: setupRead,
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
-      retryAvailable: dismissalRead.state === 'unavailable'
-        || smartTaskUsageRead === 'unavailable'
-        || (anyChargerHasSelectedCar() && ['stale', 'unavailable'].includes(readEvSocFlowReporters().state)),
+      devicesUnavailable: state.devicesReadState === 'unavailable',
+      retryAvailable: readiness === 'partial' || dismissalRead.state === 'unavailable',
       busyRecommendationId,
       onAction: runRecommendationAction,
       onDismiss: (recommendation) => {
@@ -467,7 +444,7 @@ const loadEvSocReportersIfNeeded = (): Promise<void> => loadRecommendationFlowFa
 export const loadRecommendationData = async (): Promise<void> => {
   await Promise.all([
     loadRecommendationDismissals(),
-    loadChargingRecommendations(),
+    loadChargingRecommendations(refreshRecommendationSurfaces),
     ensureCarInventory(),
     loadSmartTaskUsage(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
@@ -479,19 +456,60 @@ export const loadRecommendationData = async (): Promise<void> => {
   ]);
 };
 
-const retryRecommendationData = (): void => {
-  const retryDismissals = dismissalRead.state === 'unavailable';
-  const retryFlowFacts = ['stale', 'unavailable'].includes(readEvSocFlowReporters().state);
-  const retrySmartTaskUsage = smartTaskUsageRead === 'unavailable';
-  if (!retryDismissals && !retryFlowFacts && !retrySmartTaskUsage) return;
-  if (retryDismissals) dismissalRead = { state: 'loading' };
-  if (retrySmartTaskUsage) smartTaskUsageRead = 'loading';
+export const refreshHardCapRecommendation = async (): Promise<void> => {
+  await loadHardCapReachFacts();
   refreshRecommendationSurfaces();
-  void Promise.all([
-    retryDismissals ? loadRecommendationDismissals() : Promise.resolve(),
-    retryFlowFacts ? loadRecommendationFlowFacts(refreshFlowConflictFactsExplicit) : Promise.resolve(),
-    retrySmartTaskUsage ? loadSmartTaskUsage() : Promise.resolve(),
-  ]);
+};
+
+const retryAfterSetupChecks = async (): Promise<void> => {
+  invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  const reads = [refreshAfterSetupRecommendations()];
+  if (!hasLoadedDeferredObjectiveSettings()) {
+    reads.push(loadDeferredObjectiveSettings().catch((error) => (
+      logSettingsError('Failed to reload the Smart task roster for suggestions', error, 'setup recommendations')
+    )));
+  }
+  if (readSetupPath().state === 'unavailable') {
+    if (readHardCapReachStatus() !== 'unavailable') invalidateApiCache(SETTINGS_UI_POWER_PATH);
+    if (retrySetupPath) reads.push(retrySetupPath());
+  }
+  await Promise.all(reads);
+};
+
+const refreshChargerChecks = async (onVisit: boolean): Promise<void> => {
+  const reads: Promise<void>[] = [];
+  if (readCarAssociationStatus() !== 'resolved') reads.push(loadEvCarAssociations());
+  if (onVisit || !carChecksComplete()) reads.push(refreshCarInventory());
+  if (onVisit || (anyChargerHasSelectedCar() && readEvSocFlowReporters().state !== 'resolved')) {
+    reads.push(loadRecommendationFlowFacts(onVisit ? refreshFlowConflictFacts : refreshFlowConflictFactsExplicit));
+  }
+  if (onVisit || chargingRecommendationStatus() !== 'resolved') {
+    reads.push(loadChargingRecommendations(refreshRecommendationSurfaces, true));
+  }
+  await Promise.all(reads);
+};
+
+// A visit refreshes facts that may have changed elsewhere. An explicit retry
+// requests only the missing checks, bypassing cached unavailable payloads.
+const refreshPageChecks = async (onVisit: boolean): Promise<void> => {
+  const reads: Promise<unknown>[] = [];
+  if (state.devicesReadState === 'unavailable') document.dispatchEvent(new Event('request-load-devices'));
+  if (readHomeMembership().state === 'unavailable') reads.push(refreshHomeScopeAndNotify());
+  if (dismissalRead.state !== 'resolved') reads.push(loadRecommendationDismissals());
+  reads.push(refreshChargerChecks(onVisit));
+  if (onVisit || smartTaskUsageRead !== 'resolved') reads.push(loadSmartTaskUsage());
+  if (readHardCapReachStatus() === 'unavailable') invalidateApiCache(SETTINGS_UI_POWER_PATH);
+  if (onVisit || readHardCapReachStatus() !== 'resolved') reads.push(refreshHardCapRecommendation());
+  const afterSetup = readAfterSetupFacts();
+  if (afterSetup.state === 'unavailable' || (afterSetup.state === 'resolved' && afterSetup.checksIncomplete)
+    || (!onVisit && afterSetup.state === 'loading')) reads.push(retryAfterSetupChecks());
+  await Promise.all(reads);
+  refreshRecommendationSurfaces();
+};
+
+let retryInFlight: Promise<void> | undefined;
+const retryRecommendationData = (): void => {
+  retryInFlight ??= refreshPageChecks(false).finally(() => { retryInFlight = undefined; });
 };
 
 export const clearRecommendationDismissals = (): void => {
@@ -501,13 +519,10 @@ export const clearRecommendationDismissals = (): void => {
   refreshRecommendationSurfaces();
 };
 
-const readTabId = (event: Event): string => {
-  if (!(event instanceof CustomEvent) || typeof event.detail !== 'object' || event.detail === null) return '';
-  const detail = event.detail as Record<string, unknown>;
-  return typeof detail.tabId === 'string' ? detail.tabId : '';
-};
-
-export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigation): void => {
+export const initRecommendationSurfaces = (
+  nextNavigation: RecommendationNavigation, retryPath?: () => Promise<void>,
+): void => {
+  retrySetupPath = retryPath;
   navigationRead = { state: 'resolved', navigation: nextNavigation };
   registerOverviewRecommendationDismissals({
     read: (recommendation) => {
@@ -526,9 +541,11 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   // makes sure it has loaded.
   document.addEventListener('devices-updated', () => {
     void ensureCarInventory().then(refreshRecommendationSurfaces);
-    void loadChargingRecommendations();
+    void loadChargingRecommendations(refreshRecommendationSurfaces);
   });
-  document.addEventListener('charging-control-changed', () => { void loadChargingRecommendations(true); });
+  document.addEventListener('charging-control-changed', () => {
+    void loadChargingRecommendations(refreshRecommendationSurfaces, true);
+  });
   document.addEventListener('ev-car-associations-updated', loadEvSocReportersIfNeeded);
   onSetupPathChange(refreshRecommendationSurfaces);
   // The device list is one of the path's facts, and it lands without any of the
@@ -538,26 +555,10 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   // A Smart task added or cleared elsewhere changes whether one is suggested.
   document.addEventListener('deferred-objectives-updated', refreshRecommendationSurfaces);
   document.addEventListener('pels:tab-shown', (event) => {
-    const panelId = readTabId(event);
+    if (!(event instanceof CustomEvent) || !isUnknownRecord(event.detail)) return;
+    const panelId = event.detail.tabId;
     if (panelId === 'recommendations') {
-      const associationLoad = state.evCarAssociationsLoaded
-        ? Promise.resolve()
-        : loadEvCarAssociations();
-      const dismissalLoad = dismissalRead.state === 'resolved'
-        ? Promise.resolve()
-        : loadRecommendationDismissals();
-      // Flow inventory can change while this WebView stays open. Refresh on
-      // every visit so a newly added reporting action can create a suggestion.
-      const flowFactsLoad = loadRecommendationFlowFacts();
-      void Promise.all([
-        refreshCarInventory(),
-        dismissalLoad,
-        associationLoad,
-        flowFactsLoad,
-        loadChargingRecommendations(true),
-        loadSmartTaskUsage(),
-        loadHardCapReachFacts(),
-      ]).then(refreshRecommendationSurfaces);
+      void refreshPageChecks(true);
     } else if (panelId === 'overview' || panelId === 'settings') {
       refreshRecommendationSurfaces();
     }
