@@ -85,6 +85,9 @@ export type RecommendationGroups = {
 
 const RECOMMENDATION_VERSION = 1;
 const FLOW_CONFLICT_RECOMMENDATION_VERSION = 2;
+// Version 2: a Flow-routed level that goes unanswered is a warning, so a card
+// dismissed while it was only advice comes back once for it.
+const FLOW_LEVEL_REPORT_VERSION = 2;
 
 const recommendationId = (kind: string, entityId: string): string => (
   `${kind}:${encodeURIComponent(entityId)}`
@@ -156,8 +159,11 @@ export const resolveNativeControlRecommendations = (
         target: { kind: 'flow-conflict-check', deviceId: device.id },
       }];
     }
+    // An unanswered Flow-routed level has its own warning, which names the same way out.
+    if (hasConflict && device.levelUnconfirmed === true) return [];
     const body = hasConflict
-      ? 'Your current Flow keeps working. PELS can also control this device directly. '
+      ? 'PELS can control this device directly and read back what it does, so no Flow has to '
+        + 'report it and there is no Flow to keep working. Your Flow keeps working until you switch. '
         + `To switch, ${flowConflictHandoffStep(conflict.flowName)}, `
         + 'and turn on built-in device control on the device page.'
       : 'PELS can control this device directly. If you use a Flow to control the same setting, '
@@ -482,7 +488,10 @@ export const resolveLevelReportRecommendations = (
   if (conflict !== undefined && conflict.conflictingCapabilities.length > 0) {
     return [{
       ...recommendation,
-      body: 'PELS changes its level through your Flow, but no level has come back, so PELS keeps asking. '
+      version: FLOW_LEVEL_REPORT_VERSION,
+      category: 'warning',
+      body: 'PELS changes its level through your Flow, but no level has come back, so PELS does not know '
+        + 'what the device is doing and keeps asking. '
         + 'PELS can control this device directly and read its level without a Flow. '
         + `To use built-in device control, ${flowConflictHandoffStep(conflict.flowName)}.`,
       actionLabel: 'Check again',
