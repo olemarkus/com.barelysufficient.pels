@@ -22,7 +22,6 @@ import {
 } from './recommendationsModel.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
-import { hasLoadedDeferredObjectiveSettings, loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { readDeferredObjectiveHistory } from './deferredObjectiveHistoryRead.ts';
 import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
 import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendations.ts';
@@ -79,7 +78,7 @@ type CarInventoryState =
 
 type NavigationState =
   | { state: 'uninitialized' }
-  | { state: 'resolved'; navigation: RecommendationNavigation };
+  | { state: 'resolved'; navigation: RecommendationNavigation; retrySetupPath: () => Promise<void> };
 
 type RecommendationReadiness = 'loading' | 'checking' | 'partial' | 'resolved';
 
@@ -90,7 +89,6 @@ let carInventory: CarInventoryState = { state: 'loading' };
 const carChecksComplete = (): boolean => carInventory.state === 'resolved'
   && carInventory.cars.every((car) => car.matchHistory.state === 'resolved');
 
-let retrySetupPath: (() => Promise<void>) | undefined;
 let navigationRead: NavigationState = { state: 'uninitialized' };
 let loadGeneration = 0;
 let dismissalRevision = 0;
@@ -461,48 +459,55 @@ export const refreshHardCapRecommendation = async (): Promise<void> => {
   refreshRecommendationSurfaces();
 };
 
-const retryAfterSetupChecks = async (): Promise<void> => {
+const retryAfterSetupChecks = async (setupUnavailable: boolean): Promise<void> => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   const reads = [refreshAfterSetupRecommendations()];
-  if (!hasLoadedDeferredObjectiveSettings()) {
-    reads.push(loadDeferredObjectiveSettings().catch((error) => (
-      logSettingsError('Failed to reload the Smart task roster for suggestions', error, 'setup recommendations')
-    )));
-  }
-  if (readSetupPath().state === 'unavailable') {
-    if (readHardCapReachStatus() !== 'unavailable') invalidateApiCache(SETTINGS_UI_POWER_PATH);
-    if (retrySetupPath) reads.push(retrySetupPath());
+  if (setupUnavailable && navigationRead.state === 'resolved') {
+    reads.push(navigationRead.retrySetupPath());
   }
   await Promise.all(reads);
 };
 
-const refreshChargerChecks = async (onVisit: boolean): Promise<void> => {
-  const reads: Promise<void>[] = [];
-  if (readCarAssociationStatus() !== 'resolved') reads.push(loadEvCarAssociations());
-  if (onVisit || !carChecksComplete()) reads.push(refreshCarInventory());
+const refreshCarAndFlowChecks = async (onVisit: boolean): Promise<void> => {
+  if (readCarAssociationStatus() !== 'resolved') await loadEvCarAssociations();
   if (onVisit || (anyChargerHasSelectedCar() && readEvSocFlowReporters().state !== 'resolved')) {
-    reads.push(loadRecommendationFlowFacts(onVisit ? refreshFlowConflictFacts : refreshFlowConflictFactsExplicit));
+    await loadRecommendationFlowFacts(onVisit ? refreshFlowConflictFacts : refreshFlowConflictFactsExplicit);
   }
+};
+
+const refreshChargerChecks = async (onVisit: boolean): Promise<void> => {
+  const reads = [refreshCarAndFlowChecks(onVisit)];
+  if (onVisit || !carChecksComplete()) reads.push(refreshCarInventory());
   if (onVisit || chargingRecommendationStatus() !== 'resolved') {
     reads.push(loadChargingRecommendations(refreshRecommendationSurfaces, true));
   }
   await Promise.all(reads);
 };
 
+const shouldRefreshAfterSetupChecks = (onVisit: boolean): boolean => {
+  const facts = readAfterSetupFacts();
+  switch (facts.state) {
+    case 'unavailable': return true;
+    case 'resolved': return facts.checksIncomplete === true;
+    case 'loading': return !onVisit;
+    default: return false;
+  }
+};
+
 // A visit refreshes facts that may have changed elsewhere. An explicit retry
 // requests only the missing checks, bypassing cached unavailable payloads.
 const refreshPageChecks = async (onVisit: boolean): Promise<void> => {
+  const setupUnavailable = readSetupPath().state === 'unavailable';
+  const hardCapStatus = readHardCapReachStatus();
+  if (setupUnavailable || hardCapStatus === 'unavailable') invalidateApiCache(SETTINGS_UI_POWER_PATH);
   const reads: Promise<unknown>[] = [];
   if (state.devicesReadState === 'unavailable') document.dispatchEvent(new Event('request-load-devices'));
   if (readHomeMembership().state === 'unavailable') reads.push(refreshHomeScopeAndNotify());
   if (dismissalRead.state !== 'resolved') reads.push(loadRecommendationDismissals());
   reads.push(refreshChargerChecks(onVisit));
   if (onVisit || smartTaskUsageRead !== 'resolved') reads.push(loadSmartTaskUsage());
-  if (readHardCapReachStatus() === 'unavailable') invalidateApiCache(SETTINGS_UI_POWER_PATH);
-  if (onVisit || readHardCapReachStatus() !== 'resolved') reads.push(refreshHardCapRecommendation());
-  const afterSetup = readAfterSetupFacts();
-  if (afterSetup.state === 'unavailable' || (afterSetup.state === 'resolved' && afterSetup.checksIncomplete)
-    || (!onVisit && afterSetup.state === 'loading')) reads.push(retryAfterSetupChecks());
+  if (onVisit || hardCapStatus !== 'resolved') reads.push(refreshHardCapRecommendation());
+  if (setupUnavailable || shouldRefreshAfterSetupChecks(onVisit)) reads.push(retryAfterSetupChecks(setupUnavailable));
   await Promise.all(reads);
   refreshRecommendationSurfaces();
 };
@@ -520,10 +525,9 @@ export const clearRecommendationDismissals = (): void => {
 };
 
 export const initRecommendationSurfaces = (
-  nextNavigation: RecommendationNavigation, retryPath?: () => Promise<void>,
+  navigation: RecommendationNavigation, retrySetupPath: () => Promise<void>,
 ): void => {
-  retrySetupPath = retryPath;
-  navigationRead = { state: 'resolved', navigation: nextNavigation };
+  navigationRead = { state: 'resolved', navigation, retrySetupPath };
   registerOverviewRecommendationDismissals({
     read: (recommendation) => {
       if (dismissalRead.state === 'loading') return 'loading';

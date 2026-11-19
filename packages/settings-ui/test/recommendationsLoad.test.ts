@@ -5,6 +5,7 @@ import type { AfterSetupFactsRead } from '../src/ui/afterSetupFacts.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
+  SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
 } from '../../contracts/src/settingsUi/paths.ts';
@@ -123,7 +124,13 @@ const loadSubject = async (devices: SettingsUiDeviceDetailItem[]) => {
   state.evCarAssociations = {};
   state.evCarAssociationsLoaded = true;
   state.nativeWiringMap = {};
-  return recommendations;
+  return {
+    ...recommendations,
+    initRecommendationSurfaces: (
+      navigation: Parameters<typeof recommendations.initRecommendationSurfaces>[0],
+      retrySetupPath = async () => {},
+    ) => recommendations.initRecommendationSurfaces(navigation, retrySetupPath),
+  };
 };
 
 // Every fixture car has been matched to the fixture chargers: Setup offers a
@@ -663,7 +670,7 @@ describe('recommendation loading', () => {
     }
   });
 
-  it('retries the task roster and setup prices even when sibling after-setup facts resolved', async () => {
+  it('retries setup prices even when sibling after-setup facts resolved', async () => {
     const recommendations = await loadSubject([]);
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue(resolvedCars());
@@ -671,9 +678,7 @@ describe('recommendation loading', () => {
     const resolved = afterSetupRead;
     afterSetupRead = { ...resolved, checksIncomplete: true };
     await recommendations.loadRecommendationData();
-    const roster = await import('../src/ui/deferredObjectiveSettings.ts');
     const prices = await import('../src/ui/setupPricesLoad.ts');
-    const retryRoster = vi.spyOn(roster, 'loadDeferredObjectiveSettings').mockResolvedValue();
     const retryPrices = vi.spyOn(prices, 'loadSetupPrices').mockResolvedValue();
     try {
       const page = document.getElementById('setup-recommendations-root')!;
@@ -682,10 +687,8 @@ describe('recommendation loading', () => {
       loadAfterSetupFacts.mockImplementationOnce(async () => { afterSetupRead = resolved; });
       retry!.dispatchEvent(new MouseEvent('click'));
       await vi.waitFor(() => expect(page.textContent).toContain('No setup suggestions right now'));
-      expect(retryRoster).toHaveBeenCalledOnce();
       expect(retryPrices).toHaveBeenCalledOnce();
     } finally {
-      retryRoster.mockRestore();
       retryPrices.mockRestore();
     }
   });
@@ -693,7 +696,11 @@ describe('recommendation loading', () => {
   it('retries the power, capacity and battery-plan reads for an unavailable setup path', async () => {
     const recommendations = await loadSubject([]);
     const path = await import('../src/ui/setupPathFacts.ts');
+    const homey = await import('../src/ui/homey.ts');
+    const powerAdvice = await import('../src/ui/hardCapReachRecommendation.ts');
     const pathRead = vi.spyOn(path, 'readSetupPath').mockReturnValue({ state: 'unavailable' });
+    const powerStatus = vi.spyOn(powerAdvice, 'readHardCapReachStatus').mockReturnValue('unavailable');
+    const invalidate = vi.spyOn(homey, 'invalidateApiCache');
     const retrySetupPathReads = vi.fn().mockResolvedValue(undefined);
     const listeners = vi.spyOn(document, 'addEventListener');
     recommendations.initRecommendationSurfaces(
@@ -709,7 +716,10 @@ describe('recommendation loading', () => {
       expect(retry).toBeDefined();
       retry!.dispatchEvent(new MouseEvent('click'));
       await vi.waitFor(() => expect(retrySetupPathReads).toHaveBeenCalledOnce());
+      expect(invalidate.mock.calls.filter(([route]) => route === SETTINGS_UI_POWER_PATH)).toHaveLength(1);
     } finally {
+      invalidate.mockRestore();
+      powerStatus.mockRestore();
       pathRead.mockRestore();
       for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
       listeners.mockRestore();
@@ -950,6 +960,44 @@ describe('recommendation loading', () => {
       expect(refreshFlowConflictsApi).toHaveBeenCalledTimes(2);
       expect(surface?.textContent).not.toContain('Some recommendation checks couldn’t be refreshed right now');
     });
+  });
+
+  it('retries the Flow scan on the same tap that recovers a car association', async () => {
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
+    const recommendations = await loadSubject([charger]);
+    const { state } = await import('../src/ui/state.ts');
+    state.evCarAssociationsLoaded = false;
+    const readAssociation = vi.fn()
+      .mockRejectedValueOnce(new Error('Car associations unavailable'))
+      .mockResolvedValue({ [charger.id]: { carIds: ['car-1'] } });
+    getSetting.mockImplementation(async (key: string) => key === 'ev_car_associations' ? readAssociation() : {});
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
+    refreshFlowConflictsApi
+      .mockRejectedValueOnce(new Error('Flow API unavailable'))
+      .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
+
+    const listeners = vi.spyOn(document, 'addEventListener');
+    try {
+      recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn(), openPanel: vi.fn(), openDevice: vi.fn() });
+      await recommendations.loadRecommendationData();
+      document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+      const surface = document.getElementById('setup-recommendations-root')!;
+      await vi.waitFor(() => {
+        expect(refreshFlowConflictsApi).toHaveBeenCalledOnce();
+        expect(surface.textContent).toContain('Some recommendation checks couldn’t be refreshed right now');
+      });
+      const retry = [...surface.querySelectorAll('md-text-button')].find((button) => button.textContent === 'Try again');
+      expect(retry).toBeDefined();
+      retry?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(readAssociation).toHaveBeenCalledTimes(2);
+        expect(refreshFlowConflictsApi).toHaveBeenCalledTimes(2);
+        expect(surface.textContent).not.toContain('Some recommendation checks couldn’t be refreshed right now');
+      });
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
+      listeners.mockRestore();
+    }
   });
 
   it('queues a stale selected-car Flow retry after an older advisory scan', async () => {
