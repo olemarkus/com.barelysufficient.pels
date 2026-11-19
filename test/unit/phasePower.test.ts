@@ -8,10 +8,11 @@ import {
 } from '../../lib/plan/phase/phaseRoom';
 
 const FUSE = { kind: 'on', supply: 'three_phase_neutral', amps: 25 } as const;
+type PhaseBasis = Extract<PhaseReading, { kind: 'healthy' }>['basis'];
 
-const healthy = (powers: readonly number[], options: { current?: readonly number[]; signed?: boolean } = {}): PhaseReading => ({
+const healthy = (powers: readonly number[], options: { current?: readonly number[]; basis?: PhaseBasis } = {}): PhaseReading => ({
   kind: 'healthy',
-  signed: options.signed ?? true,
+  basis: options.basis ?? 'active_power',
   acceptedAtMs: 0,
   phases: (['L1', 'L2', 'L3'] as const).map((phase, index) => ({
     phase,
@@ -41,9 +42,17 @@ describe('resolvePhasePower', () => {
   });
 
   it('acts on a current-only meter only while the home imports', () => {
-    const unsigned = healthy([6, 6, 6], { signed: false, current: [26, 26, 26] });
+    const unsigned = healthy([6, 6, 6], { basis: 'current', current: [26, 26, 26] });
     expect(resolvePhasePower(FUSE, unsigned, 18).kind).toBe('on');
     expect(resolvePhasePower(FUSE, unsigned, -1)).toEqual({ kind: 'off' });
+  });
+
+  it('keeps using apparent power to protect the fuse', () => {
+    const phases = healthy([6.2, 1, 1], { basis: 'apparent_power' });
+    expect(resolvePhasePower(FUSE, phases, 8.2)).toMatchObject({
+      kind: 'on',
+      phases: [{ drawKw: 6.2, breached: true, exportBreached: false }, {}, {}],
+    });
   });
 
   it('is off without a neutral supply, a fuse or a trusted reading', () => {
@@ -146,7 +155,7 @@ describe('an exporting phase past its target', () => {
   it('is an export breach only with signed readings', () => {
     const power = resolvePhasePower(FUSE, healthy([-6.2, 1, 1]), -4.2);
     expect(power.kind === 'on' && power.phases[0]).toMatchObject({ exportBreached: true, breached: false });
-    const unsigned = resolvePhasePower(FUSE, healthy([6.2, 1, 1], { signed: false, current: [27, 4, 4] }), 8);
+    const unsigned = resolvePhasePower(FUSE, healthy([6.2, 1, 1], { basis: 'current', current: [27, 4, 4] }), 8);
     expect(unsigned.kind === 'on' && unsigned.phases[0]?.exportBreached).toBe(false);
   });
 });

@@ -666,6 +666,8 @@ export const mockHomeyInstance = {
     _actionCardListeners: {} as Record<string, (args: unknown) => Promise<unknown>>,
     _conditionCardListeners: {} as Record<string, (args: unknown) => Promise<unknown>>,
     _triggerCardRunListeners: {} as Record<string, (args: unknown, state: unknown) => Promise<unknown>>,
+    _triggerCardArgumentValues: {} as Record<string, unknown>,
+    _triggerCardUpdateListeners: {} as Record<string, () => void>,
     // Tokens/state mirror the production `FlowTriggerCard` port in lib/ports/homeyRuntime.ts,
     // so a spec reading a token off a recorded trigger sees the same shape the runtime passes.
     _triggerCardTriggers: {} as Record<string, Array<{
@@ -715,6 +717,10 @@ export const mockHomeyInstance = {
       },
     }),
     getTriggerCard: (cardId: string) => ({
+      getArgumentValues: async () => mockHomeyInstance.flow._triggerCardArgumentValues[cardId] ?? [],
+      on: (_event: 'update', listener: () => void) => {
+        mockHomeyInstance.flow._triggerCardUpdateListeners[cardId] = listener;
+      },
       registerRunListener: (listener: (args: unknown, state: unknown) => Promise<unknown>) => {
         mockHomeyInstance.flow._triggerCardRunListeners[cardId] = listener;
       },
@@ -795,6 +801,8 @@ export const resetMockHomey = (): void => {
   flow._actionCardListeners = {};
   flow._conditionCardListeners = {};
   flow._triggerCardRunListeners = {};
+  flow._triggerCardArgumentValues = {};
+  flow._triggerCardUpdateListeners = {};
   flow._triggerCardTriggers = {};
   flow._actionCardAutocompleteListeners = {};
   flow._conditionCardAutocompleteListeners = {};
