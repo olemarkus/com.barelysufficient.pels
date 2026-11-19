@@ -635,6 +635,43 @@ test.describe('settings shell layout regressions', () => {
   });
 
   for (const width of [320, 480]) {
+    test(`fits legacy battery recovery at ${width}px`, async ({ page }) => {
+      await injectHomeyHostCss(page);
+      await page.addInitScript(() => {
+        (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+          settings: {
+            target_devices_snapshot: [{
+              id: 'stored-battery',
+              name: 'Home battery',
+              deviceClass: 'battery',
+              capabilities: ['measure_battery', 'measure_power'],
+              managed: false,
+              batteryControl: 'recovery_required',
+              batteryTakenOver: false,
+              batteryUsesHomeyApiKey: true,
+              batteryRecovery: {
+                claimedAtMs: 1,
+                candidates: [{ id: 'original-plant', name: 'Original plant in the garage' }],
+              },
+            }],
+            battery_control_devices: { 'stored-battery': false },
+          },
+        };
+      });
+      await openApp(page, width);
+      await openSettingsSection(page, 'devices');
+      await page.getByRole('button', { name: 'Open settings for Home battery', exact: true }).click();
+      const recovery = page.getByRole('group', { name: 'Restore the battery’s own control' });
+      const restore = recovery.getByRole('button', { name: 'Restore selected plant' });
+      await expect(restore).toBeDisabled();
+      await expect(recovery.getByRole('button', { name: 'I restored it manually' })).toBeEnabled();
+      const recoverySize = await recovery.evaluate((element) => ({
+        clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+      }));
+      expect(recoverySize.scrollWidth).toBeLessThanOrEqual(recoverySize.clientWidth);
+      await expectNoHorizontalOverflow(page, 'Battery recovery');
+    });
+
     test(`keeps the charger activity log reachable below its smart task at ${width}px`, async ({ page }) => {
       await injectHomeyHostCss(page);
       await page.addInitScript(() => {

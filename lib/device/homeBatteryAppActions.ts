@@ -38,7 +38,7 @@
 import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { AppActionControlTarget } from '../ports/storageCommand';
 import type {
-  BatteryCommandKeepAlive, BatteryControlRead, BatteryUnobservedCause, HomeBatteryControlMode,
+  BatteryCommandKeepAlive, BatteryControlRead, BatteryUnobservedCause, HomeBatteryControlMode, LegacyBatteryTargetRead,
 } from '../ports/batteryControlOwner';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
@@ -242,12 +242,42 @@ export class HomeBatteryAppActions {
     await this.runSteps(deviceId, { binding, cards }, steps, () => undefined);
   }
 
-  async handBackLegacy(deviceId: string): Promise<void> {
+  readLegacyTarget(deviceId: string): LegacyBatteryTargetRead {
     const device = this.getBattery(deviceId);
-    if (device === undefined) throw new Error('Home battery is unread.');
-    const target = this.requireBinding(deviceId).resolveLegacyTarget(device, this.getDevices());
+    if (device === undefined) return { kind: 'unavailable', reasonCode: 'battery_unread' };
+    const binding = this.bindingOf(device);
+    if (binding === undefined) return { kind: 'unavailable', reasonCode: 'binding_unavailable' };
+    const devices = this.getDevices();
+    const recovery = binding.resolveLegacyTarget(device, devices);
+    const inventory = this.inventory;
+    if (recovery.kind !== 'confirmation_required') return recovery;
+    if (inventory.kind !== 'read' || isKeyMissing(this.access) || this.access.status().state === 'permission_denied') {
+      return { kind: 'confirmation_required', candidates: [] };
+    }
+    return {
+      kind: 'confirmation_required',
+      candidates: recovery.candidates.filter(({ id }) => {
+        const steps = binding.handBack({ appUri: binding.appUri, deviceId: id }, devices);
+        return steps.length > 0 && missingCard(inventory.cards, binding.appUri, steps.slice(0, 1)) === undefined;
+      }),
+    };
+  }
+
+  async handBackLegacy(deviceId: string): Promise<void> {
+    const target = this.readLegacyTarget(deviceId);
     if (target.kind === 'unavailable') throw new Error(`Home battery hand-back unavailable (${target.reasonCode}).`);
+    if (target.kind === 'confirmation_required') {
+      throw new Error('The original battery hand-back target is unconfirmed.');
+    }
     await this.handBack(deviceId, target.target);
+  }
+
+  async handBackConfirmedLegacy(deviceId: string, targetId: string): Promise<void> {
+    const recovery = this.readLegacyTarget(deviceId);
+    if (recovery.kind !== 'confirmation_required' || !recovery.candidates.some(({ id }) => id === targetId)) {
+      throw new Error('The selected battery hand-back target is unavailable.');
+    }
+    await this.handBack(deviceId, { appUri: this.requireBinding(deviceId).appUri, deviceId: targetId });
   }
 
   private requireBinding(deviceId: string): HomeBatteryActionBinding {

@@ -1190,6 +1190,7 @@ keeps the word for what PELS holds it to do.
 | Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |
 | Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
+| Device page, legacy claim awaiting recovery (amber) | `Restore the battery’s own control`. Turn off `Managed by PELS`, then `Restore selected plant` for the original plant or choose `I restored it manually` after turning off remote EMS and removing both limits in the battery’s app. |
 | Device-list row, takeover notice (Managed off) | `You changed its mode in the battery app. PELS leaves it alone until you turn on Managed.` |
 | Device page, priority value | `N of M in <mode>` (e.g. `9 of 9 in Home`) |
 | Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |

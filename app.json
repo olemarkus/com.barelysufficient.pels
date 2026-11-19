@@ -670,6 +670,10 @@
     "ui_charging_current_save": {
       "method": "PUT",
       "path": "/ui_charging_current/:deviceId"
+    },
+    "ui_battery_recovery": {
+      "method": "POST",
+      "path": "/ui_battery_recovery/:deviceId"
     }
   },
   "images": {

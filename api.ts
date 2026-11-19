@@ -2,6 +2,7 @@
 // `.homeycompose/app.json`. Each endpoint family owns its table under
 // `setup/api/`; `npm run api:manifest-parity` checks this union against the
 // manifest.
+import { batteryRecoveryRoutes } from './setup/api/batteryRecoveryRoutes';
 import { carLinkRoutes } from './setup/api/carLinkRoutes';
 import { chargingControlRoutes } from './setup/api/chargingControlRoutes';
 import { dailyBudgetRoutes } from './setup/api/dailyBudgetRoutes';
@@ -24,6 +25,7 @@ export = {
   ...starvationRescueRoutes,
   ...supportReportRoutes,
   ...chargingControlRoutes,
+  ...batteryRecoveryRoutes,
   ...carLinkRoutes,
   ...recommendationRoutes,
   ...diagnosticsDebugRoutes,

@@ -25,5 +25,6 @@ export const resolveBatteryUndrivableLine = (
   if (control === 'not_reporting') return BATTERY_NOT_REPORTING_REASON_LINE;
   if (control === 'needs_local_api') return BATTERY_NEEDS_LOCAL_API_REASON_LINE;
   if (control === 'controlled_through_local_device') return BATTERY_THROUGH_LOCAL_DEVICE_REASON_LINE;
+  if (control === 'recovery_required') return 'Restore the battery’s own control from its device page';
   return control === 'observe_only' ? BATTERY_OBSERVE_ONLY_REASON_LINE : null;
 };

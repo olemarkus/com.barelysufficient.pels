@@ -31,7 +31,7 @@ export const createMainBatteryControl = (
     ctx.homey.settings,
     ctx.batteryManaged,
     actuator,
-    (deviceId) => deviceManager.readBatteryControl(deviceId),
+    deviceManager,
     bindSettledMainHomeMember(ctx),
     isActuationFenced,
     () => ctx.capacityDryRun,
