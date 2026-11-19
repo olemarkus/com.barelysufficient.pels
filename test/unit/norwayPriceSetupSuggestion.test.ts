@@ -10,7 +10,6 @@ import type { NorwayPriceSetup } from '../../packages/contracts/src/settingsUi/p
 import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import { testLogger } from '../utils/testLogger';
 
-// Recorded 2026-10-13 for the test Homey's location in Trondheim.
 const NVE_TRONDHEIM = {
   displayFieldName: 'KONSTYPE',
   fields: [{ name: 'navn' }, { name: 'eier_id' }],
@@ -20,14 +19,13 @@ const NVE_AT_SEA = { displayFieldName: 'KONSTYPE', fields: [], features: [] };
 const KARTVERKET_TRONDHEIM = {
   fylkesnavn: 'Trøndelag', fylkesnummer: '50', kommunenavn: 'Trondheim', kommunenummer: '5001',
 };
-// The test Homey's own zone answer: the owner pointed Homey Energy at Belgium,
-// and Homey set NO3 from the location.
+// The configured zone can differ from the zone Homey derives from location.
 const ZONE_USER_ELSEWHERE = {
   userConfigured: { zoneId: '10YBE----------2', zoneName: 'BE', zoneCountryKey: 'BE' },
   autoConfigured: { zoneId: '10YNO-3--------J', zoneName: 'NO-NO3', zoneCountryKey: 'NO' },
 };
 
-const TRONDHEIM: HubLocationRead = { kind: 'resolved', coordinates: { latitude: 63.4386125, longitude: 10.4011247 } };
+const TRONDHEIM: HubLocationRead = { kind: 'resolved', coordinates: { latitude: 63.43, longitude: 10.39 } };
 const IN_NORWAY: SettingsUiHubMarketRead = { state: 'resolved', country: 'NO' };
 
 describe('classifyGridCompanyLookup', () => {
@@ -128,7 +126,7 @@ describe('NorwayPriceSetupSuggester', () => {
       priceArea: { kind: 'from_homey_energy', area: 'NO3' },
     });
     const nveUrl = new URL(fetchMock.mock.calls[0][0] as string);
-    expect(nveUrl.searchParams.get('geometry')).toBe('10.4011247,63.4386125');
+    expect(nveUrl.searchParams.get('geometry')).toBe('10.39,63.43');
   });
 
   it('asks no one again for the same location', async () => {

@@ -28,8 +28,7 @@ See `notes/starvation/README.md` for the accounting and producer ownership.
 
 Export `/diagnostics/budget/days` in date ranges of at most 366 calendar days,
 then join its `records` into one JSON file. Supply archived structured
-`weather_advisor_fit` lines from the same physical Homey, without mixing SHS
-logs. The script loads the actual production fit, suggestion, normalization and
+`weather_advisor_fit` lines from the same Homey. The script loads the actual production fit, suggestion, normalization and
 feedback functions:
 
 ```sh
@@ -58,41 +57,14 @@ and capacity must match the home under evaluation. For each target day:
    hold as unresolved budget-attributed denial. This deliberately overstates
    the new feedback evidence; historical rows cannot establish recovery/cause.
 
-## Recorded comparison, 2026-10-03
+## Interpreting comparisons
 
-640 retained records were available. 59 days from August 2 through October 2
-had sufficient earlier training, reliable actual usage, and an applied budget.
-Nine had usable archived forecasts; 50 used the prior-week fallback.
-
-| Metric | Recorded budget | Revised replay | Conservative replay |
-|---|---:|---:|---:|
-| Mean actual usage | 56.4 kWh/day | 56.4 | 56.4 |
-| Mean budget | 67.1 kWh/day | 61.7 | 63.1 |
-| Mean absolute budget-to-usage error | 12.1 kWh/day | 8.2 | 9.2 |
-| Mean unused allowance | 11.4 kWh/day | 6.8 | 7.9 |
-| Budget below recorded usage | 7/59 days | 12/59 | 12/59 |
-| Sum of amounts below recorded usage | 41.4 kWh | 86.4 | 74.3 |
-
-On the nine archived-forecast days, mean absolute error fell from 35.0 to
-7.5 kWh/day (79%). Mean budget moved from 95.6 to 61.1 kWh/day against 60.6
-actual. Even the conservative replay reduced error to 11.0 kWh/day. Revised
-allowance fell below actual on two days, September 25 and October 2; recorded
-budgets were above actual on all nine.
-
-Over the four days at the 112.8 kWh ceiling, revised allowance averaged
-56.9 kWh/day against 49.7 actual; mean absolute error fell from 63.1 to
-11.6 kWh/day. Three of those days used archived forecasts, one the fallback.
-
-These measure budget fit, not a change in the weather model's pseudo-R².
-The revised policy covers recorded usage on approximately 80% of tested days,
-consistent with ordinary q80 headroom. A lower mean error is not proof that
-all device demand is served. Usage and holds remain fixed in replay: tighter
-budgets could change delivery, temperature, task completion and subsequent
-training. Backfilled prior records may have been available later than their
-observation dates. Archived historical recovery and cause attribution are
-incomplete; the conservative run exposes that uncertainty rather than treating
-absence as proof of no damage. Actual archived-forecast rows are the stronger
-comparison; fallback rows are a separate offline scenario.
+A lower allowance error measures budget fit. Replay holds usage and device
+holds fixed. Changing an actual budget can change delivery, temperature,
+task completion, and subsequent training. Backfilled records may have become
+available after their observation dates. Keep archived-forecast results and
+fallback results separate, and use the conservative run to show the effect
+of incomplete recovery and cause attribution.
 
 Focused checks cover observed recovery versus commanded target, capacity
 attribution, unavailable device readings, restart retention without pricing

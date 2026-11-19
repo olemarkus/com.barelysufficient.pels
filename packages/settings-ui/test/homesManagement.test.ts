@@ -18,7 +18,7 @@ import {
   formatZoneDeviceCount,
 } from '../src/ui/homesManagementCopy';
 
-// SHS-shaped zone fixture:
+// Homey zone hierarchy:
 //
 //   home (root)
 //   ├── Main floor

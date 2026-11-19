@@ -11,8 +11,8 @@ import {
   type StoredHomey,
 } from '../src/remote/remoteConnection.ts';
 
-const HOMEY_ID = '65687b03c6bcab0c0a4464c3';
-const OTHER_ID = '6acdea6cd18dc40482d6bc10';
+const HOMEY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+const OTHER_ID = 'bbbbbbbbbbbbbbbbbbbbbbbb';
 
 const homey = (overrides: Partial<StoredHomey> = {}): StoredHomey => ({
   name: 'House',
@@ -24,7 +24,7 @@ const homey = (overrides: Partial<StoredHomey> = {}): StoredHomey => ({
 });
 
 const RELAY = `https://${HOMEY_ID}.connect.athom.com`;
-const CLOUD = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+const CLOUD = `https://${HOMEY_ID}.homey.fixture.homeypro.net`;
 
 describe('parseHomeyAddress', () => {
   it.each([
@@ -32,7 +32,7 @@ describe('parseHomeyAddress', () => {
     [`https://my.homey.app/homeys/${HOMEY_ID}/settings/apps`, RELAY],
     [`${RELAY}/`, RELAY],
     [`${CLOUD}/`, CLOUD],
-    [`https://${OTHER_ID}.homey.athom-prod-euwest1-001-shs.homeyshs.net`, `https://${OTHER_ID}.homey.athom-prod-euwest1-001-shs.homeyshs.net`],
+    [`https://${OTHER_ID}.homey.fixture.homeyshs.net`, `https://${OTHER_ID}.homey.fixture.homeyshs.net`],
   ])('reads %s as a cloud address', (input, baseUrl) => {
     const homeyId = new URL(baseUrl).hostname.split('.')[0];
     expect(parseHomeyAddress(input)).toEqual({ kind: 'cloud', baseUrl, homeyId });
@@ -47,7 +47,7 @@ describe('parseHomeyAddress', () => {
   // Homey passes: no other host, no plain HTTP, no public or odd-port address.
   it.each([
     '', 'not an address', 'https://my.homey.app/', 'ftp://192.168.1.50',
-    'https://nope.connect.athom.com', 'https://nope.homey.athom-prod-euwest1-001.homeypro.net',
+    'https://nope.connect.athom.com', 'https://nope.homey.fixture.homeypro.net',
     'https://attacker.example', 'http://192.168.1.50', 'https://192.168.1.50',
     'http://192-168-1-50.homey.homeylocal.com', 'https://8-8-8-8.homey.homeylocal.com',
     'https://192-168-1-50.homey.homeylocal.com:8443',
@@ -64,9 +64,9 @@ describe('cloudAddressFor', () => {
   });
 
   it.each([
-    `https://${OTHER_ID}.homey.athom-prod-euwest1-001.homeypro.net`,
-    `http://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`,
-    `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net.evil.example`,
+    `https://${OTHER_ID}.homey.fixture.homeypro.net`,
+    `http://${HOMEY_ID}.homey.fixture.homeypro.net`,
+    `https://${HOMEY_ID}.homey.fixture.homeypro.net.evil.example`,
     `https://${HOMEY_ID}.evil.example`,
     'https://192-168-1-50.homey.homeylocal.com',
     'not a url',
@@ -77,8 +77,8 @@ describe('cloudAddressFor', () => {
 
 describe('localUrlFromAddress', () => {
   it.each([
-    ['192.168.89.239:4859', 'https://192-168-89-239.homey.homeylocal.com:4860'],
-    ['192.168.89.241:80', 'https://192-168-89-241.homey.homeylocal.com'],
+    ['192.168.1.25:4859', 'https://192-168-1-25.homey.homeylocal.com:4860'],
+    ['192.168.1.50:80', 'https://192-168-1-50.homey.homeylocal.com'],
     ['10.0.0.5', 'https://10-0-0-5.homey.homeylocal.com'],
     ['172.20.1.2:80', 'https://172-20-1-2.homey.homeylocal.com'],
   ])('gives %s the secure address the Athom account lists', (address, url) => {

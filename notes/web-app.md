@@ -13,7 +13,7 @@ built by `npm --workspace @pels/settings-ui run build:remote` into
 Each Homey is reached with an API key the owner creates in the Homey web app
 (Settings, API Keys) with permission to control apps (`homey.app.control`),
 sent as `Authorization: Bearer` to one of the Homey's addresses (see
-Addresses). Verified in the supervisor and live on the test Homey:
+Addresses).
 
 - PELS's non-public routes require exactly `homey.app.control`; Homey's
   app-settings endpoints accept it too, so `Homey.get`/`set`/`api` map one to
@@ -62,9 +62,8 @@ A Homey has three addresses the web app can use, in this order of preference:
    that opens PELS at home once keeps the cloud host for when it leaves. A
    pasted cloud address works too.
 3. **The relay**, `<homeyId>.connect.athom.com`, the only address a bare id
-   gives. It limits each Homey: in a burst of 200 calls it let 37 through and
-   answered the rest with 429 for about a minute, unauthenticated pings
-   included, while the cloud host answered all 200 (test Homey, 2026-10-22).
+   gives. Its per-Homey rate limit can produce HTTP 429 responses during request
+   bursts, including for unauthenticated pings.
 
 An API key goes wherever its address leads, so the web app accepts, keeps and
 uses only these forms (`remote/homeyAddress.ts`): an HTTPS Athom cloud host
@@ -199,11 +198,7 @@ Through the cloud a small request takes 0.1 to 0.4 s and `ui_bootstrap` 0.4
 to 1.4 s, so a boot that waits on one call after another costs seconds; on the
 home network the waves cost little. Fewer waves is the lever for time:
 `ui_bootstrap` carries every setting the boot reads, and a value it served is
-final, so an absent key gets no cold-start re-reads either. Booting the
-published build against the test Homey through its cloud host (2026-10-24):
-v3.21.0 sent 42 calls, 17 of them setting reads that followed the bootstrap;
-v3.22.0, whose bootstrap carries those settings, sent 27, and its only setting
-reads were the three cold-start reads of the recommendation dismissals.
+final, so an absent key gets no cold-start re-reads either.
 
 Requests also count against the cloud's per-Homey rate limit, so boot sends
 each read once. A boot of the browser stub now sends about 15 calls. Readers

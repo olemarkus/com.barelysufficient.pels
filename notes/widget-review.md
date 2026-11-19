@@ -4,9 +4,7 @@ Review of the five shipped dashboard widgets against: (1) intuitive/headers,
 (2) persona fit, (3) visual appeal/consistency, (4) Homey widget best practice.
 Sources: a dark-mode dashboard screenshot of all five stacked, the widget
 configs/CSS, [Homey widget styling guidelines](https://apps.developer.homey.app/the-basics/widgets/styling),
-`notes/personas.md`, `notes/ui-terminology.md`. **Reconciled with pels-m3-critic
-+ pels-ux-fit + pels-copy-and-terminology** (they corrected two findings in the
-first inline pass — noted inline below).
+`notes/personas.md`, `notes/ui-terminology.md`.
 
 Widgets (compose `name`): `create_smart_task` → **New smart task** (renamed →
 **Create smart task**); `headroom` → **Available power**; `plan_budget` →
@@ -116,8 +114,7 @@ ONLY when it contains a `var()` (regex `/color-mix\(.*var\(/`). (A blanket
 tracked as follow-ups: `border`/`outline` *shorthands* can't be linted (the plugin
 flags their `1px`/`solid` tokens — use longhand `border-color`/`outline-color`,
 which IS enforced); literal-colour *custom-property aliases* (`--pels-x: #fff`) aren't
-checked (all current `--pels-*` aliases are token-backed, so theoretical — codex
-F3K_S). The inconsistent-fallback-value defect (P2) is a separate manual fix.
+checked. The inconsistent-fallback-value defect (P2) is a separate manual fix.
 
 ## Fresh render — at-limit / empty / expanded states (2026-05-30, m3-critic + ux-fit)
 A second screenshot in different data states (Available power AT LIMIT 6.3/6.3, full
@@ -188,9 +185,6 @@ The product owner reviewing the render, in their words + the code reality:
 - Numbers reconcile (Available power: 4.9 − 2.3 = 2.6 exact).
 
 ## Shipped (widget-polish train — 2026-05-30)
-
-Five PRs, one per surface. Each ran the relevant `pels-*` lens + Codex review;
-bot findings (incl. several genuine bugs, noted below) were fixed in-PR.
 
 | PR | Surface | Shipped |
 |----|---------|---------|

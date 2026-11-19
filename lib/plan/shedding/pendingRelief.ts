@@ -7,11 +7,11 @@
  *
  * - **The device has not delivered it yet.** An EV charger takes seconds to
  *   ramp to a new current, and it echoes the new setpoint before its draw
- *   moves. On 2026-10-01 at 22:25 (SHS) a charger stepped 20 A -> 14 A for a
- *   1.02 kW deficit still drew its 20 A three seconds later; the next reading
+ *   moves. After stepping from 20 A to 14 A to cover a 1.02 kW deficit, a
+ *   charger can still draw 20 A three seconds later. In this case, the next reading
  *   re-priced it from that draw and cut it to 12 A, then the 14 A landed.
  * - **The meter has not caught up.** The aggregate lags the switch: a repeat of
- *   the pre-shed watts, or a jitter of a watt or two (4351 -> 4348, 2026-08-01),
+ *   the pre-shed watts, or a jitter of a watt or two (4351 -> 4348),
  *   reads as a deficit the shed has already covered.
  *
  * Either way, deepening on that reading cuts load the owner ranked higher for a

@@ -3023,9 +3023,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         'heater-1': {
           updatedAtMs: NOW_MS,
           lastSample: { observedAtMs: NOW_MS, value: 19 },
-          // Mill v2 reproducer: 0.30040 kWh/°C, 4 accepted samples, medium
-          // confidence; matches the SHS live-walk artifact captured against
-          // PELS v2.9.0.
+          // Four accepted samples yield a medium-confidence estimate.
           kwhPerUnit: {
             sampleCount: 4,
             mean: 0.3004,

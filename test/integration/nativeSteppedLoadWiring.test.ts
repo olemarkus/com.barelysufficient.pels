@@ -812,8 +812,8 @@ describe('native stepped-load wiring', () => {
 
     const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
       id: 'test-device-target-power-1',
-      ownerUri: 'homey:app:com.olemarkus.testdevices',
-      driverId: 'homey:app:com.olemarkus.testdevices:mock',
+      ownerUri: 'homey:app:com.example.fixturedevices',
+      driverId: 'homey:app:com.example.fixturedevices:mock',
       capabilities: ['measure_power', 'evcharger_charging_state'],
       capabilitiesObj: {
         measure_power: { value: 460, lastUpdated: TARGET_POWER_READ_AT },

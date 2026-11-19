@@ -9,9 +9,7 @@
  * A device can be managed by PELS while power-limit control is OFF. PELS then
  * watches it and never commands it, which is what the owner asked for — but it
  * also means a start nobody planned is simply absorbed as background usage, and
- * the house can sit over its hard cap with PELS holding no lever at all. On the
- * production home that shape ran for two clock hours at ~7.4 kWh against a 5 kWh
- * cap, with every managed device already at zero.
+ * the house can exceed its hard cap with every managed device at zero.
  *
  * `'pels_only'` says: this device runs when PELS starts it, and not otherwise.
  * The plan then carries a standing OFF intent for it, and PELS's ordinary

@@ -495,52 +495,22 @@ entry per `car` or `vehicle` device present in the home, which is a fixed, user-
 rather than something that grows over time. Capping it would silently make a legitimate car
 invisible, which is worse than the handful of bytes it costs.
 
-## Validating on SHS
+## Regression scenarios
 
-Unit and integration tiers model the producer's inputs; they cannot tell you whether those
-inputs ever arrive. They did not: the probe was originally wired only to `device.update`,
-which carries device-level changes, while capability VALUE changes arrive on the
-per-capability seam — so on hardware the probe saw nothing between fetches and could never
-link. Two things were needed: the probe's cars must be in the live feed's per-device
-subscription set (they are never in the managed snapshot, so nothing else adds them), and
-the probe must be called from the capability path.
+The SDK-boundary coverage is in `test/e2e/evCarLinkSdkE2E.test.ts`. Check
+one car and one charger, one car and two chargers, and two cars and one
+charger. Coincident edges may resolve an unambiguous pair. Ambiguous edges
+must produce no vote, even with an existing affinity prior.
 
-`tmp/shs-recipes/ev-car-link.sh` (local-only, gitignored) drives the mock `tesla_car` and
-mock chargers on SHS through the transitions that matter:
-`devices | state | baseline | link | two-cars | two-chargers | move | selfstop | limit`.
-Both chargers must be **managed** in PELS or the probe has no charger views to correlate
-against, and a car paired *after* PELS booted needs a PELS restart before the probe sees it
-at all (the "car created after startup" gap below is not theoretical — it silently produces
-a run where nothing links).
+For observed charge limits, drive distinct charge episodes. Resuming between
+stops clears the per-charger report flag and lets the next stop count. During
+the stop dwell the charger must report idle power. A fixture that calculates
+power from session state can overwrite a one-off 0 W write before the
+classifier sees a stop.
 
-Verified there (2026-07-27), reading `ev_car_*` out of the app log:
-
-| Scenario | Result |
-|---|---|
-| clean 1:1 | `ev_car_link_resolved` with `source: 'coincidence'`, edges 3.5 s apart |
-| one car, two chargers | both chargers `ev_car_link_ambiguous`, **no vote**, and the affinity prior did not overturn it |
-| two cars, one charger | `ev_car_link_ambiguous` carrying both car ids, **no vote** |
-
-Verified again (2026-08-08) for the observed charge limit, on a rebuilt lab after an SHS
-re-provision: three self-stops at 80 / 81 / 80 % banked `stopSocPct: [80, 81, 80]`, which
-summarises to a median of 80 with a spread of 1 — a cluster tight enough to read as a real
-limit, and a spread that moves, so the reported number is live rather than echoed back.
-
-Two things that scenario has to get right, both of which silently produce nothing:
-
-- **The charger's draw must be forced idle, not merely written idle.** The vendor mocks
-  simulate `measure_power` from their own session state, so writing 0 W to a charger sitting
-  in `Connected_Charging` is overwritten within seconds and the classifier — which bails
-  above `EV_CAR_LINK_IDLE_POWER_W` — never starts an episode. Pin it with the test-devices
-  `mock_set_power_override` card and clear the override to re-arm.
-- **Two stops need two episodes, not two dwells.** Resuming the charge between rounds is
-  what makes the classifier return null and clear the per-charger reported flag. Without it
-  the second stop is the same episode and banks nothing.
-
-Both `pairs[...].votes` and `cars[...].stopSocPct` also live in the userdata store
-(`ev_car_link_state` table, one JSON row per family) — the one place the raw sample array can
-be read rather than inferred from event fields. It is not an app setting any more, so it is not
-readable over the settings API.
+Both `pairs[...].votes` and `cars[...].stopSocPct` live in the userdata
+store (`ev_car_link_state` table, one JSON row per family). The raw sample
+array is available there.
 
 ## Known evidence limits
 
@@ -564,7 +534,7 @@ mind:
 
 ## Reviewing a production log
 
-Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
+Check these events in the structured PELS log:
 
 1. `ev_car_link_resolved` — did it pick the right pair, and after how many sessions?
    `source: 'coincidence'` is strong; `affinity_prior` means it fell back to history.

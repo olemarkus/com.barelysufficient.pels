@@ -18,7 +18,7 @@ const serve = (bodies: Record<string, unknown>) => async (path: string) => {
 
 describe('sumHomeyCostComponents', () => {
   it('sums the named components the way Homey does', () => {
-    // The shape the test Homey actually returns for a 0.30 NOK/kWh tariff.
+    // Homey response for a 0.30 NOK/kWh tariff.
     expect(sumHomeyCostComponents({ costs: { user_fixed_base: { value: 0.3 } } })).toBeCloseTo(0.3, 10);
     expect(sumHomeyCostComponents({ costs: { a: { value: 0.2 }, b: { value: 0.05 } } })).toBeCloseTo(0.25, 10);
   });

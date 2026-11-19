@@ -19,31 +19,15 @@ The goal: make a default (no-debug) report self-diagnosing for common runtime is
 the EV stepped-load clamp, starvation, capacity overshoot, command-vs-report mismatch —
 without a round-trip to enable debug topics and reproduce.
 
-## Measured baseline
+## Default-visible events
 
-Measured from `/tmp/pels/start.main.0a4464c3.stdout.log` over an ~86 h window on a
-14-device install, counting only **default-visible** lines (structured, no `debugTopic`;
-high-volume prose is `logDebug`, topic-gated, and `logger.debug`, which never emits at
-all). That path is a live log that rotates, so it is shorter now — the counts below are
-the measurement, not something re-derivable from the file today:
-
-- **~1.9 default-visible lines/min → ~100-line buffer survives ~50 min** on this install
-  (install-dependent; more EV/thermostat churn pushes it down).
-- Top default-visible emitters:
-
-  | lines (86 h) | event | note |
-  |---:|---|---|
-  | 4335 | `plan_rebuild_completed` | already gated to actioned/failed/slow/startup (`shouldLogPlanRebuildAtInfo`). The command record — keep. |
-  | 1798 | `device_near_target_idle_started`/`_cleared` | the dominant non-command flood; thermostat flap. **Demoted to debug — see below.** |
-  | 1248 | `stale_device_observation_refresh` | **Gone (2026-08-29)** — timeout-based device staleness was removed outright; see `lib/observer/AGENTS.md`. |
-  | 636 | `device_became_stale`/`_fresh` | **Gone (2026-08-29)** — same removal. Together these two were ~19% of default-visible volume. |
-  | 148 ×3 | `periodic_status` / `_device_health_summary` / `daily_budget_periodic_status` | twice-hourly (`:25`/`:55`); negligible. |
-
-  Notes that corrected the original intuition: `periodic_status` is **not** a 10 s
-  flooder (decoupled from the power poll, twice-hourly); the EV command side is **not**
-  missing — `stepped_load_command_requested` (default-visible info) already carries
-  `previousStepId`/`desiredStepId`/`plannedDesiredStepId`/`planningPowerW`. What was
-  missing is the **join** from command to the inbound report value.
+Count structured events without `debugTopic` to estimate how quickly routine
+events fill the diagnostics buffer. The lifetime of the buffer depends on
+device activity. `periodic_status`, `periodic_device_health_summary`, and
+`daily_budget_periodic_status` are emitted at :25 and :55. Rebuild completion
+is logged at info for actioned, failed, slow, or startup rebuilds
+(`shouldLogPlanRebuildAtInfo`). Near-target idle transitions moved to debug.
+The observer no longer emits timeout-based device staleness transitions.
 
 ## The pattern: a third emission tier — *deviation-gated*
 

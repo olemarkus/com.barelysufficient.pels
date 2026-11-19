@@ -5,12 +5,11 @@ unavailable. Objectives consume the accepted, metered device projection. Transpo
 inventory read failures and admission; objectives do not reinterpret an HTTP failure as
 an empty roster or transfer a commitment between Homey device IDs.
 
-## SHS lifecycle observations
+## Device inventory during app lifecycle changes
 
-On 2026-11-06, a fresh Homey Self-Hosted Server running 13.5.0 was tested with the local
-Test Devices app and one synthetic setpoint heater. The device-manager inventory was
-sampled every approximately 200 ms across each operation. App state was checked after
-installation. These measurements describe this app and server, not every vendor driver.
+The following reproduction uses Homey 13.5.0 and a synthetic setpoint heater.
+Sample the device-manager inventory across each operation and check app state
+after installation.
 
 | Operation | Inventory and identity observed |
 | --- | --- |
@@ -29,10 +28,9 @@ Binary control has its own admission rule and must not be inferred from this hea
 
 Polling cannot exclude a transition shorter than the sampling interval. No missing
 inventory sample or HTTP failure was observed during restart, reinstall-in-place, or
-upgrade. These tests do not establish a one-hour recovery time, nor demonstrate that
-an app update normally removes devices from the objectives roster.
+upgrade. Treat an unavailable app and a device removed from inventory as separate cases.
 
-To reproduce, use a disposable SHS and a synthetic device. Record the complete device
+Record the complete device
 inventory before and during each operation, including Homey ID, driver data, availability,
 readiness, capabilities, and failed reads separately. Preserve the original driver data
 for the final re-pair test. Distinguish installing over an app from uninstalling it first.

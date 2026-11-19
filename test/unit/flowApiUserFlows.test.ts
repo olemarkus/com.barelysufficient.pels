@@ -10,7 +10,7 @@ import {
   type FlowApiGet,
 } from '../../lib/flowApi/readUserFlows';
 
-// Shapes mirror the real SHS Homey responses captured during PR1 design:
+// Homey Flow response shapes:
 //  - flat flows  → { [flowId]: { trigger, conditions, actions } }
 //  - advanced    → { [flowId]: { cards: { [cardId]: { ownerUri, id, args, type } } } }
 

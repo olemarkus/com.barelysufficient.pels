@@ -1326,7 +1326,7 @@ describe('settingsUiApi', () => {
     // Previously this helper swallowed the throw and returned an empty
     // payload, which silently stripped diagnostics from the device-detail
     // page. Logging + recovery now belongs to the `api.ts` wrapper so the
-    // failure reaches `/tmp/pels` and the client sees the real error.
+    // failure reaches the app log and the client sees the real error.
     const homey = createHomey();
     homey.getDeviceDiagnosticsUiPayload.mockImplementation(() => {
       throw new Error('diagnostics not ready');

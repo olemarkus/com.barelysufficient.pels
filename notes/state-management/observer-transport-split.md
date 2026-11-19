@@ -176,10 +176,6 @@ Model-agnostic. Never branches on native vs flow.
 
 ## Decisions
 
-These were pressure-tested with `pels-layering-guardian` against the current
-cruiser config and the existing `notes/state-management/` contracts before
-being captured here.
-
 ### Write path: executor → transport directly, observer subscribes
 
 Observer does **not** mediate writes. Executor calls `transport.write(...)`

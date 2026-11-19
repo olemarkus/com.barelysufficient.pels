@@ -6,10 +6,8 @@ Use this file for project-wide rules. Read a nested `AGENTS.md` when doing subst
 
 ## Workflow
 
-- Work in a dedicated git worktree and keep the primary checkout clean. Match the process to the requested outcome: use `$pr-lifecycle-manager` for end-to-end PR work or an existing PR, and make scoped local changes directly in the task worktree.
-- Handle contained work directly. Use specialist skills or agents only for relevant expertise, and parallel agents only for substantial independent work or when requested.
+- Pull requests into `main` must be up to date with it and pass the required checks before merge.
 - Review feedback is a hypothesis. Trace a claimed failure through production producers and reachable inputs before changing contracts. Fix the owning layer, and use a focused regression check when behavior changed.
-- Land several ready PRs (a train) as one stack, not one at a time. `main` requires a branch to be up to date, so merging PRs in turn costs a rebase and a full CI round for each. Rebuild each branch as the branch below it plus its own commits, run the pre-push hook on the top branch (it holds the whole change), push the lower layers with `--no-verify` (each is a subset of the top), and link them with `gh stack link <bottom> … <top>` (`$gh-stack`). When every layer is green, run `gh stack merge <top PR> --yes --rebase`: it merges the whole stack atomically. Start at the top, because merging the bottom PR alone leaves every other layer behind. Each layer's CI picks its suites from its own diff, and the push to `main` then runs them all.
 
 ## Architecture
 
@@ -40,14 +38,14 @@ Execution uses the actuator seam and has no apply-without-decide reconciliation 
 
 ## Working in this repository
 
+- Keep machine settings, local workflow instructions, credentials, and raw captures outside tracked files. Use synthetic data for examples and test fixtures.
 - `app.json` and `settings/` are generated. Change `.homeycompose/` or `packages/settings-ui/src/` respectively. After `.homeycompose/` changes, run `homey app validate` and commit the regenerated `app.json`.
 - A build whose `app.json` (apart from its version) or store page (`README*.txt`, app, driver and widget preview images) differs from the Live build waits days for Athom's manual review; otherwise it releases at once. Run `npm run athom:review` before opening a PR (the pre-push hook also reports it) and state its result in the PR. The `athom-review` check fails such a PR until the owner adds the `athom-review` label. Only the owner adds it; prefer reusing existing routes, flow cards and settings over a change that needs it. Uploading a build does not restart the review of one already waiting; retracting its certification and requesting it again does.
-- `homey app validate` is the only Homey CLI command authorized by default. Run, install, and publish commands require an explicit user request.
+- Use `homey app validate` to validate locally. Run and install commands affect the selected Homey, and publishing affects App Store distribution.
 - For UI work, use Material Web when a matching component fits; otherwise use a shared PELS primitive and existing design tokens. Read `notes/ui-terminology.md` when changing user-facing wording.
 - For settings keys, use `notes/settings-key-ownership.md`; for planner capacity and safe pace, use `docs/technical.md` and `notes/safe-pace-two-constraints.md`; for test placement, use `notes/testing-taxonomy.md`.
-- To set up state on a running PELS (a lab, a test Homey, a script), do what the settings UI does: write only the settings keys it writes, and call the route it calls for the rest, such as `/ui_smart_task_create` for smart tasks. Every other key belongs to its runtime module, and only that module says what the key holds; a contract type gives a shape, not where it is stored.
-- Do not write hedges that scare users off, such as "still needs validation before advertising support" or "everything PELS cannot do yet", in docs, notes, store copy, or UI. State what PELS does; record a concrete known defect in the backlog instead.
-- The backlog is kept outside the repository, with the user reports (`$pels-report-intake`); there is no TODO file here and none is added. It is mutable, so code, docs and notes never cite it. Add only actionable items with a location, closing change, and completion criterion.
+- When setting up a running PELS, use the same writes as the settings UI: write only the settings keys it writes, and call the route it calls for the rest, such as `/ui_smart_task_create` for smart tasks. Every other key belongs to its runtime module, and only that module says what the key holds; a contract type gives a shape, not where it is stored.
+- Do not write hedges that scare users off, such as "still needs validation before advertising support" or "everything PELS cannot do yet", in docs, notes, store copy, or UI. State what PELS does.
 
 ### Device card reason lines
 
@@ -57,6 +55,6 @@ State what the device needs in its reason line; the overview hero states house-l
 
 Choose checks for the behavior changed. Documentation and copy changes need no runtime tests. Use focused npm test entrypoints and exact spec filters during development; hooks and CI run broader suites. Do not repeat a passing run without a new change or unresolved risk.
 
-Tests and test-running hooks use a shared lock across PELS worktrees. `ci:checks` and the commit hook's lint and typecheck share a separate static-check lock, so they run one at a time across worktrees without queueing behind a test run. Invoke npm scripts rather than raw Vitest or Playwright. Agents set `PELS_TEST_WORKERS=1 PELS_PLAYWRIGHT_WORKERS=1` for test, commit, and push commands. Serialize heavy tests, builds, checks, and browser capture in a multi-agent session; the lead owns validation. On OOM or a killed worker, stop the process tree you own and diagnose before another run.
+Tests and test-running hooks use a shared lock across PELS worktrees. `ci:checks` and the commit hook's lint and typecheck share a separate static-check lock, so they run one at a time across worktrees without queueing behind a test run. Invoke npm scripts rather than raw Vitest or Playwright. Set `PELS_TEST_WORKERS` and `PELS_PLAYWRIGHT_WORKERS` to limit concurrency when local resources are constrained. On OOM or a killed worker, stop the process tree you own and diagnose before another run.
 
-Useful focused entrypoints: `npm run test:unit -- <spec>`, `npm run test:integration -- <spec>`, `npm run test:e2e:runtime -- <spec>`, and `npm run test:ui -- <spec>`. CI and push hooks own coverage, broad static checks, and browser suites unless the user asks for a local run. `test/AGENTS.md` describes tier placement and mocks.
+Useful focused entrypoints: `npm run test:unit -- <spec>`, `npm run test:integration -- <spec>`, `npm run test:e2e:runtime -- <spec>`, and `npm --workspace @pels/settings-ui run test:unit -- <spec>`. CI and push hooks own coverage, broad static checks, and browser suites unless the user asks for a local run. `test/AGENTS.md` describes tier placement and mocks.

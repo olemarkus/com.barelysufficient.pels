@@ -23,7 +23,6 @@ describe('compilePriceFormula', () => {
   });
 
   it('reads an identity expression as the raw spot price', () => {
-    // The test Homey's own stored expression.
     expect(evaluate('{{ (0 + [[price]]) * 1 }}', 1.3117)).toBeCloseTo(1.3117, 10);
   });
 

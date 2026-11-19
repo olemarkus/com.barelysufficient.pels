@@ -38,8 +38,7 @@ resumes and offers by current and starts by its switch.
 An `offer` session is planned on its off step and its lowest charging step
 only (`resolveFinishedSessionProfile`, `lib/planInput/resolvePlanInputDeviceFacts.ts`).
 A car that takes nothing gains nothing from more current, and a step-up queued
-for it held a charger whose car was charging at its lowest step (SHS lab,
-2026-11-15: a full car's Easee climbed from 6 A to 28 A while a Zaptec waited).
+for it can block restores for a charger still able to charge.
 The full ladder returns with the next session state.
 
 A state that admits a start or resume can still be refused: an app that gives a

@@ -315,7 +315,7 @@ describe('Power by the Hour price service', () => {
     expect(service.getCombinedHourlyPrices()).toEqual([]);
   });
 
-  // Regression, found on the SHS test Homey: a day cleared on a device change was
+  // A day cleared on a device change was
   // later read as `unreadable`, and the source never stored that day again — the
   // home stayed unpriced for good. A cleared day is now no row at all.
   it('prices the home again after the device is changed', async () => {

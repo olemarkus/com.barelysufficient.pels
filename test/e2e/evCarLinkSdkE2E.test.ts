@@ -522,7 +522,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   // reader: an earlier design stamped it onto the device snapshot, where the
   // observed-state projection dropped it and every device re-parse wiped it.
   it('stops serving a Flow-reported battery level as soon as a car is selected', async () => {
-    // SHS 2026-10-04: selecting a car left the charger's earlier level in the
+    // Selecting a car used to leave the charger's earlier level in the
     // snapshot until the next scheduled re-parse, while the charger page said
     // the charger had no battery level and boost and Smart tasks still used it.
     vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));

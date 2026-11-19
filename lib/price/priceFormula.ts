@@ -8,12 +8,9 @@
  * under `.../dynamic/user-costs` (export: `.../dynamic/exported-user-costs`).
  * Homey applies that expression inside its OWN features — the current-price
  * Flow token, the cheapest-hours cards, the day high/low/average — and exposes
- * no route that returns a per-interval series with it applied (verified against
- * firmware 13.5 on the test Homey, and confirmed live: setting the expression
- * to `1 + [[price]]` moved `highestPriceWithUserCosts` from 1.3117 to 2.3117
- * while every `pricesPerInterval` value stayed at the raw 1.3117). The firmware
- * says this is deliberate — consumers are expected to apply the expression on
- * read, and Homey's own mobile app does exactly that.
+ * no per-interval series with it applied. For example, `1 + [[price]]`
+ * raises `highestPriceWithUserCosts` by 1 while leaving `pricesPerInterval`
+ * unchanged. Consumers apply the expression on read.
  *
  * So does this module. Without it, a Homey Energy owner whose formula adds
  * tariff and tax is planned against bare wholesale spot: too low in absolute

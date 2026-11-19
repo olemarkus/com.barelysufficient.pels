@@ -140,8 +140,7 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
     // JSX producer (`deviceId ?? ''`), so an empty string can legitimately
     // appear when the recourse has no deep-link by design (e.g. the
     // budget-exhausted "Lower daily budget" / "Open Settings" branches that
-    // never carry a deviceId). The degradation we want to surface in
-    // `/tmp/pels` is the cold-start / regression case where an `overview`-
+    // never carry a deviceId). Log the fallback when an `overview`-
     // targeted recourse — which would otherwise open the device-settings
     // overlay — falls back to tab-only landing because the upstream snapshot
     // didn't yield a deviceId. `targetTab === 'overview'` is the only tab

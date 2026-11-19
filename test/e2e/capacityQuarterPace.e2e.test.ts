@@ -3,8 +3,7 @@
 // THE RULE THIS TEST ENFORCES: in quarter mode the capacity safe pace never rises
 // above the sustainable rate (hard cap minus margin). Energy left unused early in a
 // quarter is not spent as a burst later in it: a quarter is too short to wind a
-// burst down again, and on the SHS lab that ended every quarter in a batch shed in
-// the final seconds (`notes/capacity-periods.md` § "Control rule").
+// burst down again without risking a batch shed in the final seconds (`notes/capacity-periods.md` § "Control rule").
 //
 // Nothing internal is mocked. Power enters through the real Homey Energy poll
 // (`manager/energy/live`), the clock is the faked `Date`, and the only thing asserted

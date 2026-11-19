@@ -34,10 +34,9 @@ equal-duration rescheduling and energy-only revisions do not fire **Smart task s
 The **Capacity period** setting, hourly daily-budget learning and the existing safety gates remain
 independent of the native price interval length.
 
-## Motivating evidence (prod, Connected 300, night of 2026-05-31)
+## Cold-start scheduling and chart example
 
-A soft `reach 65 °C by 06:00` objective on a stepped water heater. From the prod logs
-(`/tmp/pels/start.main.0a4464c3.stdout.log`):
+A stepped water heater has a `reach 65 °C by 06:00` objective:
 
 - The tank started cold (19.8 °C) at the 20:00 local cold-start tick and the device ran
   its full element (~2.87 kW) through the two **`avoid`** (expensive, 86 øre) evening
@@ -333,8 +332,7 @@ cannot complete a higher target.)
 ## Work item 4 — Cold-start release (don't dump the catch-up into an expensive hour) — DONE
 
 Work item 2 only releases once the device is **ahead** of its milestone, so it cannot help the
-**cold first hour**, where the device is behind. A prod replay (Connected 300, captured in
-`/tmp/pels/window_since_8pm.stdout.log`) showed the resulting waste: a cold tank made
+**cold first hour**, where the device is behind. For example, a cold tank made
 `energyNeededKWh` ~19–29 kWh while each bucket was sized at the committed `low`/`medium` step
 (1.25 / 1.67 kWh). The floor allocation can't fit that, so `cannot_meet`/`feasible_above_floor`
 booked the (relatively expensive) current hour cheapest-last, and — for a cap-off temperature
@@ -373,8 +371,7 @@ free/negative current price).
 real deliverable rate, so the feasibility proof is exact — no upper-bound optimism. Reserve hours
 excluded; re-checked each cycle. Throttleable kinds (`ev_soc`) are deliberately excluded: there the
 max step is an upper bound a capacity-shed device may not reach, which could erode the deadline;
-bringing them in safely needs observed-rate feasibility, not yet built. Two independent reviewers
-(`pels-runtime-reality`, Codex) flagged the unscoped version; the kind-scoping is the resolution.
+bringing them in safely needs observed-rate feasibility.
 
 ### Interaction with the per-cycle frozen read — the misread almost every reviewer makes
 

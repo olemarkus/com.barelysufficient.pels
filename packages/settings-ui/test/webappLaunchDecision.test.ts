@@ -1,8 +1,8 @@
 import { decideLaunch, readHomeyVersion } from '../src/remote/launchDecision.ts';
 import { RemoteHomeyError, type RemoteRequest } from '../src/remote/remoteHomeyClient.ts';
 
-const HOMEY_ID = '65687b03c6bcab0c0a4464c3';
-const CLOUD_HOST = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+const HOMEY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+const CLOUD_HOST = `https://${HOMEY_ID}.homey.fixture.homeypro.net`;
 
 const answering = (outcome: unknown): RemoteRequest => vi.fn(async () => {
   if (outcome instanceof Error) throw outcome;
@@ -18,16 +18,16 @@ describe('readHomeyVersion', () => {
   });
 
   it('turns the reported home-network address into the secure one the browser can use', async () => {
-    const request = answering({ version: '3.21.0', timeZone: 'Europe/Oslo', localAddress: '192.168.89.239:4859' });
+    const request = answering({ version: '3.21.0', timeZone: 'Europe/Oslo', localAddress: '192.168.1.25:4859' });
     await expect(readHomeyVersion(request, HOMEY_ID)).resolves.toMatchObject({
-      localUrl: 'https://192-168-89-239.homey.homeylocal.com:4860',
+      localUrl: 'https://192-168-1-25.homey.homeylocal.com:4860',
     });
   });
 
   it('takes the cloud host PELS learned only when it is this Homey\'s own', async () => {
     await expect(readHomeyVersion(answering({ version: '3.21.1', timeZone: 'Europe/Oslo', cloudHost: CLOUD_HOST }), HOMEY_ID))
       .resolves.toMatchObject({ cloudHost: CLOUD_HOST });
-    const other = CLOUD_HOST.replace(HOMEY_ID, '6a1d4fbe841154c744299b7c');
+    const other = CLOUD_HOST.replace(HOMEY_ID, 'cccccccccccccccccccccccc');
     await expect(readHomeyVersion(answering({ version: '3.21.1', timeZone: 'Europe/Oslo', cloudHost: other }), HOMEY_ID))
       .resolves.toMatchObject({ cloudHost: null });
     await expect(readHomeyVersion(answering({ version: '3.21.1', timeZone: 'Europe/Oslo', cloudHost: 'https://example.com' }), HOMEY_ID))

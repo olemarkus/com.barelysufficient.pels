@@ -37,16 +37,8 @@ export const OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS = 14 * 24 * 60 * 60 * 1000;
 // buffer (must hold ≥2× this to even attempt a split). Prevents a freshly-split
 // low-data band from dominating the estimate before it has enough evidence.
 //
-// SHS multi-band replay (2026-05-23, see
-// `test/unit/objectiveProfileBandsShsReplay.test.ts`): a 6-sample buffer with a
-// textbook bimodal split — 3 samples at 0.30 kWh/°C, 3 at 0.50 kWh/°C — would
-// reduce SSE by 99.94% at the natural boundary if the gate were bypassed (far
-// above the 10% `MIN_SSE_REDUCTION_FRACTION` floor). The fitter still
-// declines to split because each candidate cluster only holds 3 samples,
-// below this floor. That is intentional: a 3-sample band with one outlier
-// would skew the integrator without the law of large numbers to push back.
-// The conservative path (global mean, no bands) is correct for sparse buffers
-// — collect more samples per regime before trusting a split.
+// Even a clear split between two clusters is declined when either cluster
+// has too few observations to estimate its own rate.
 export const OBJECTIVE_PROFILE_MIN_BAND_SAMPLES = 8;
 export const OBJECTIVE_PROFILE_MAX_BANDS = 4;
 
@@ -60,10 +52,7 @@ export const OBJECTIVE_PROFILE_MAX_BANDS = 4;
 
 // A candidate split only commits if it reduces the sum of squared error by at
 // least this fraction of the parent band's SSE. Prevents fragmenting bands
-// that are already homogeneous. Threshold validated by the SHS replay above
-// — the bimodal regression's 99.94% reduction sits two orders of magnitude
-// above this floor, so the SSE fraction is not the active constraint for
-// undersized buffers; the min-samples floor above is.
+// that are already homogeneous.
 const MIN_SSE_REDUCTION_FRACTION = 0.1;
 
 // Cushion added to the topmost band's upper bound so the highest observed

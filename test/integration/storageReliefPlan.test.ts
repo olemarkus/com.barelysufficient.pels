@@ -918,7 +918,7 @@ describe('storage charge from surplus in the plan build', () => {
 
   it('steps a surplus tracker at Max down at once when the battery\'s own mode discharges to keep it there', async () => {
     const { build, state } = buildHarness({ paceKw: 10 });
-    // The SHS run: the tank climbed to Max (3 kW) on 2.8 kW of solar and a 0.3 kW
+    // The tank climbed to Max (3 kW) on 2.8 kW of solar and a 0.3 kW
     // house; the battery's own mode discharges the missing 0.5 kW, so the meter reads 0.
     state.surplusEligibilityByDevice.tank = { eligible: true, sinceMs: START_MS - 10 * 60_000 };
     state.surplusTrackingByDevice.tank = { kind: 'rung', stepId: 'max', funded: true };

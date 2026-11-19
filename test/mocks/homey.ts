@@ -506,7 +506,7 @@ export const mockHomeyInstance = {
     // `manager/energy/price/electricity/dynamic?date=`, per requested date. The
     // apps SDK has no `homey.api.energy`; this is the Web API route PELS reads.
     // A date Homey has no prices for is answered the way the real route answers
-    // it (verified on the SHS 2026-09-19): HTTP 500 `NotFoundError`, not an
+    // it: HTTP 500 `NotFoundError`, not an
     // empty day. A spec that needs prices serves them.
     _dynamicElectricityPrices: (async () => {
       throw new HomeyHttpStatusError(500, '{"error":"NotFoundError","error_description":"NotFoundError"}');

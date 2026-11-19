@@ -3,7 +3,7 @@ import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/t
 // of 2026-05-31): a cold tank at the start of an expensive window dumped its
 // whole catch-up into the most expensive hour, then the cheap window sat unused.
 //
-// Root cause (from /tmp/pels/window_since_8pm.stdout.log): the cold tank made
+// The cold tank made
 // `energyNeededKWh` ~19–29 kWh while each bucket was sized at the COMMITTED step
 // (`low` 1.25 kW / `medium` 1.67 kW). That looked infeasible → `cannot_meet` →
 // the allocator books every hour cheapest-first INCLUDING the `avoid` ones, and

@@ -3293,7 +3293,7 @@ describe('buildSheddingPlan', () => {
     });
   });
 
-  // SHS test Homey, 2026-10-01 22:25:17-20. The EV charger was stepped 20 A -> 14 A
+  // The EV charger was stepped 20 A -> 14 A
   // for a 1.02 kW deficit. It echoed 14 A a second later while still drawing its
   // 20 A, and the next reading (42 W higher) re-priced it from that draw and cut
   // it to 12 A. The 14 A step landed 60 ms after that decision.
