@@ -193,6 +193,8 @@ type BaseDeferredObjectiveDiagnostic = {
   // revisions and may replace (rather than floor-merge) a lower-priority
   // commitment when higher-priority claims changed its future schedule.
   allocationContextSignature?: string;
+  /** Position in the eligible device roster used for this fresh allocation. */
+  allocationRank?: number;
   replaceCommitment?: true;
   /** A lifecycle queue turn authorizes a fresh revision even after the settle window. */
   scheduledReplan?: true;

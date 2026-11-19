@@ -8,7 +8,7 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
-  DeviceDescriptor, MeasuredPowerObservedProbe, ObservedDeviceState,
+  MeasuredPowerObservedProbe, ObservedDeviceState,
 } from '../../../contracts/src/types.ts';
 import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
@@ -49,7 +49,7 @@ export const collectHorizonHours = (
 );
 
 export type ResolvedObjectiveContext = {
-  device: ObservedDeviceState & MeasuredPowerObservedProbe & Pick<DeviceDescriptor, 'priority'>;
+  device: ObservedDeviceState & MeasuredPowerObservedProbe;
   // The plan's resolved status for the task's device, the one its Overview card
   // shows; null when the bootstrap carried no plan.
   deviceStatus: DeviceStatus | null;

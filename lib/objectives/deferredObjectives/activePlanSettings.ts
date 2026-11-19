@@ -104,6 +104,10 @@ const isOptionalFinitePositive = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value > 0)
 );
 
+const isOptionalAllocationRank = (value: unknown): boolean => (
+  value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
+);
+
 const isPlanHour = (value: unknown): value is DeferredObjectivePlanInterval => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -223,6 +227,7 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && Array.isArray(v.hours)
     && v.hours.every(isPlanHour)
     && isOptionalReservationSegments(v.reservationSegments)
+    && isOptionalAllocationRank(v.allocationRank)
     && isOptionalNonEmptyString(v.allocationContextSignature)
     && hasValidRevisionEnergyFields(v)
     && hasValidRevisionDurationFields(v);

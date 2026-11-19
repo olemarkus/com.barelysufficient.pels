@@ -373,6 +373,7 @@ export const buildRevision = (
       : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
+    ...(diag.allocationRank === undefined ? {} : { allocationRank: diag.allocationRank }),
     ...(diag.allocationContextSignature
       ? { allocationContextSignature: diag.allocationContextSignature }
       : {}),
