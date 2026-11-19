@@ -149,7 +149,12 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
   const values = new Map<string, unknown>([['__test_presence', true]]);
   const flowHomey: MockHomey = {
     flow: {
-      getTriggerCard: vi.fn(() => createFlowCardMock()),
+      getTriggerCard: vi.fn(() => ({
+        ...createFlowCardMock(),
+        getArgumentValues: vi.fn(async () => []),
+        on: vi.fn(),
+        trigger: vi.fn(async () => undefined),
+      })),
       getConditionCard: vi.fn(() => createFlowCardMock()),
       getActionCard: vi.fn(() => createFlowCardMock()),
     },

@@ -329,12 +329,20 @@ describe('HomeyEnergyPollSource', () => {
       ? { state: 'read' as const, peakKw: 4.1, observedAtMs }
       : { state: 'none' as const }));
     const meterMonthlyPeaks = new MeterMonthlyPeaks();
+    const phaseReadings = new PhaseReadingTracker();
+    const brokenObserver = vi.fn(() => { throw new Error('Flow subscriber failed'); });
+    phaseReadings.subscribe(brokenObserver);
     const source = createHomeyEnergyPollSource({
       getPowerSource: () => 'homey_energy',
+      getNow: () => new Date(),
       timers: new TimerRegistry(),
       homey: mockHomeyInstance,
-      deviceManager: { readMeters, readMeterPhases: async () => ({ state: 'unavailable' as const }), readMeterMonthlyPeak },
-      capacityGuard: { phaseReadings: new PhaseReadingTracker() },
+      deviceManager: {
+        readMeters,
+        readMeterPhases: async () => ({ state: 'read', capabilityIds: [], powerW: [2100, 0, 0] }),
+        readMeterMonthlyPeak,
+      },
+      capacityGuard: { phaseReadings },
       getSubHomeMeters: () => ({ getMeterDeviceIds: () => ['m-area'], routeMeterReadings }),
       error: vi.fn(),
     }, { recordPowerSample }, meterMonthlyPeaks);
@@ -342,6 +350,7 @@ describe('HomeyEnergyPollSource', () => {
     await source.pollNow();
 
     expect(readMeters).toHaveBeenCalledWith(['meter-main', 'm-area']);
+    expect(brokenObserver).toHaveBeenCalledOnce();
     expect(routeMeterReadings).toHaveBeenCalledWith({ 'meter-main': 2_100, 'm-area': 700 }, expect.any(Number));
     expect(recordPowerSample).toHaveBeenCalledWith(2_100, undefined, {
       powerW: 2_100,
@@ -366,6 +375,7 @@ describe('HomeyEnergyPollSource', () => {
     const meterMonthlyPeaks = new MeterMonthlyPeaks();
     const source = createHomeyEnergyPollSource({
       getPowerSource: () => 'homey_energy',
+      getNow: () => new Date(),
       timers: new TimerRegistry(),
       homey: mockHomeyInstance,
       deviceManager: { readMeters, readMeterPhases: async () => ({ state: 'unavailable' as const }), readMeterMonthlyPeak },

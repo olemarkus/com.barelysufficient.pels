@@ -89,6 +89,8 @@ export type MeterPhasesRead =
     readonly capabilityIds: readonly string[];
     /** Signed per-phase power, W; positive is import. */
     readonly powerW?: PhaseTriple;
+    /** Per-phase apparent power, VA, without direction. */
+    readonly apparentPowerVA?: PhaseTriple;
     readonly currentA?: PhaseTriple;
     readonly voltageV?: PhaseTriple;
   };

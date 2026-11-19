@@ -25,6 +25,8 @@ While **Power source** is **Power meter**, PELS reads the meter itself and ignor
 | --- | --- |
 | **Hard cap breach imminent: manual action needed** | Fires when PELS projects that the current capacity period's hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
 | **Hard cap breach imminent for at least...: manual action needed** | The same situation, but only once it has lasted the time you choose (from 10 seconds up to 10 minutes, in 10-second steps). If the situation clears inside that time, nothing fires. Exposes the same `Home` tag. Use it when a brief spike is not worth a notification. |
+| **Phase current went above a limit** | Fires when the chosen phase's import or export current has stayed above the limit for the chosen time. **Any phase** follows the highest current across L1, L2 and L3. |
+| **Phase current went back below a limit** | Fires after an episode qualifies and the current reaches 1 A below the limit or lower. With **Any phase**, every phase must reach that clear level. |
 | **Operating mode changed to** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
@@ -48,11 +50,23 @@ On [Homey Energy](/homey-energy) those arrive every 10 seconds, so the whole 10-
 If your power comes in [from a Flow](/configuration) instead, the window restarts whenever more than a minute
 passes without a reading. Report power more often than once a minute, for example every 30 seconds.
 
+The phase triggers use the Main home's phase meter. Choose import or export, a limit from 1 to 250 A,
+and a time from 0 to 600 seconds in 10-second steps. A time of 0 uses the first reading above the limit. PELS uses measured
+current when available, or estimates it from the phase's power at 230 V. The meter needs to report
+direction. These Flows work independently of whether **Main fuse** protection is on.
+
+Both triggers include the phase, the current in the chosen direction, signed phase power in kW
+(positive for import), the chosen direction, and the elapsed seconds since PELS first saw the phase
+above the limit. A reading gap longer than a minute restarts a pending timer. After an above-limit
+episode qualifies, the next healthy reading can confirm recovery even after a gap. With **Any phase**,
+the tags identify the phase with the highest current at the rise and the last leading phase at recovery.
+
 ## Conditions
 
 | Card | What it does |
 | --- | --- |
 | **Is there enough available power?** | Checks whether current available power can fit a specified extra load in kW. |
+| **Phase current is above a limit** | Checks the latest signed phase reading against the chosen limit. **Any phase** matches if at least one phase is above it. If the reading is missing or more than a minute old, the condition stops the Flow. |
 | **Is there available power for device?** | Checks whether the house has room for the selected device to draw the requested kW, counting what the device already draws. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |

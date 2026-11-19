@@ -1,0 +1,124 @@
+{
+  "title": {
+    "en": "Phase current went back below a limit"
+  },
+  "titleFormatted": {
+    "en": "[[phase]] [[direction]] current went back below [[amps]] A after at least [[seconds]] seconds above it"
+  },
+  "hint": {
+    "en": "Fires when the current reaches at least 1 A below the limit after staying above it for the chosen time. With Any phase, all three phases must be at least 1 A below the limit. Requires a phase meter with import and export direction."
+  },
+  "args": [
+    {
+      "name": "phase",
+      "type": "dropdown",
+      "title": {
+        "en": "Phase"
+      },
+      "values": [
+        {
+          "id": "any",
+          "label": {
+            "en": "Any phase"
+          }
+        },
+        {
+          "id": "L1",
+          "label": {
+            "en": "L1"
+          }
+        },
+        {
+          "id": "L2",
+          "label": {
+            "en": "L2"
+          }
+        },
+        {
+          "id": "L3",
+          "label": {
+            "en": "L3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "direction",
+      "type": "dropdown",
+      "title": {
+        "en": "Direction"
+      },
+      "values": [
+        {
+          "id": "import",
+          "label": {
+            "en": "import"
+          }
+        },
+        {
+          "id": "export",
+          "label": {
+            "en": "export"
+          }
+        }
+      ]
+    },
+    {
+      "name": "amps",
+      "type": "range",
+      "title": {
+        "en": "Current limit (A)"
+      },
+      "min": 1,
+      "max": 250,
+      "step": 1
+    },
+    {
+      "name": "seconds",
+      "type": "range",
+      "title": {
+        "en": "Time above the limit (seconds)"
+      },
+      "min": 0,
+      "max": 600,
+      "step": 10
+    }
+  ],
+  "tokens": [
+    {
+      "name": "phase",
+      "type": "string",
+      "title": {
+        "en": "Phase"
+      }
+    },
+    {
+      "name": "current_a",
+      "type": "number",
+      "title": {
+        "en": "Current (A)"
+      }
+    },
+    {
+      "name": "power_kw",
+      "type": "number",
+      "title": {
+        "en": "Power (kW)"
+      }
+    },
+    {
+      "name": "direction",
+      "type": "string",
+      "title": {
+        "en": "Direction"
+      }
+    },
+    {
+      "name": "duration_seconds",
+      "type": "number",
+      "title": {
+        "en": "Episode duration (seconds)"
+      }
+    }
+  ]
+}

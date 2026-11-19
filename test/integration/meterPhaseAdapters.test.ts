@@ -54,11 +54,13 @@ describe('meter phases under an app\'s own capability names', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('reads a three-phase ZLinky\'s per-phase apparent power as L1 to L3', async () => {
-    await expect(readPhases(zlinky())).resolves.toMatchObject({
+    const read = await readPhases(zlinky());
+    expect(read).toMatchObject({
       state: 'read',
-      powerW: [2_000, 1_500, 1_100],
+      apparentPowerVA: [2_000, 1_500, 1_100],
       capabilityIds: expect.arrayContaining(['measure_power.l1', 'measure_power.l2', 'measure_power.l3']),
     });
+    expect(read).not.toHaveProperty('powerW');
   });
 
   it('reads no phases from a single-phase ZLinky', async () => {

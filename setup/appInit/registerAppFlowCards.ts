@@ -1,4 +1,4 @@
-import { observeFlowSamplePhases } from '../phaseSourceFeed';
+import { observeFlowSamplePhases, readMainPhaseMeter } from '../phaseSourceFeed';
 import {
   requireBatteryControl,
   requireDeviceManager,
@@ -101,6 +101,8 @@ export function registerAppFlowCards(
     getCombinedHourlyPrices: () => requirePriceCoordinator(ctx).getCombinedHourlyPrices(),
     getTimeZone: () => ctx.getTimeZone(),
     getNow: () => ctx.getNow(),
+    phaseReadings: ctx.capacityGuard?.phaseReadings,
+    readPhaseMeter: () => readMainPhaseMeter(ctx.homey.settings),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
   });
 }

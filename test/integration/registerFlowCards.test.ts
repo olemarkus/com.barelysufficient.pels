@@ -104,7 +104,12 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
       flow: {
         getActionCard: (cardId: string) => createCard(cardId, 'action'),
         getConditionCard: (cardId: string) => createCard(cardId, 'condition'),
-        getTriggerCard: (cardId: string) => createCard(cardId, 'trigger'),
+        getTriggerCard: (cardId: string) => ({
+          ...createCard(cardId, 'trigger'),
+          getArgumentValues: vi.fn(async () => []),
+          on: vi.fn(),
+          trigger: vi.fn(async () => undefined),
+        }),
       },
       settings: { get: vi.fn(), set: vi.fn(), unset: vi.fn(), getKeys: vi.fn(() => []) },
     },
@@ -123,6 +128,8 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getPriceLevelChangesWithin: vi.fn() as never,
     recordPowerSample: vi.fn().mockResolvedValue(undefined),
     getHeadroom: vi.fn((): ObservedHeadroom => ({ kind: 'unmeasured' })),
+    phaseReadings: undefined,
+    readPhaseMeter: () => null,
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),
     getControllableDevices: () => ({}),

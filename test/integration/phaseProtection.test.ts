@@ -12,6 +12,8 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const FUSE: MainFuse = { kind: 'on', supply: 'three_phase_neutral', amps: 25 };
+const METER = { powerSource: 'homey_energy', meterDeviceId: 'meter-main', capabilities: null } as const;
+
 // The fuse's total, as the settings store applies it to the grid axis.
 const LIMITS: PowerLimitSettings = {
   capacityEnabled: false, gridImportLimitKw: 17.25, limitKw: 30, marginKw: 0.2, periodMinutes: 60,
@@ -31,7 +33,7 @@ const UNKNOWN: PhaseFootprint = { kind: 'unknown' };
 const buildCycle = (state: PlanEngineState, phasesKw: PhasesKw, fuse: MainFuse = FUSE, limits = LIMITS) => {
   const netKw = phasesKw.reduce((sum, kw) => sum + kw, 0);
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-  capacityGuard.phaseReadings.admit({
+  capacityGuard.phaseReadings.admit(METER, {
     state: 'read', capabilityIds: [], powerW: phasesKw.map((kw) => kw * 1000) as unknown as readonly [number, number, number],
   }, netKw * 1000, Date.now());
   return new PlanBuilder({
@@ -349,7 +351,7 @@ describe('main fuse phase protection in the planner', () => {
       getMainFuse: () => FUSE,
       capacityGuard: (() => {
         const guard = createTestCapacityGuard({ homeId: 'main' });
-        guard.phaseReadings.admit({ state: 'read', capabilityIds: [], powerW: [-6200, 1000, 1000] }, -4200, Date.now());
+        guard.phaseReadings.admit(METER, { state: 'read', capabilityIds: [], powerW: [-6200, 1000, 1000] }, -4200, Date.now());
         return guard;
       })(),
       getCapacitySettings: () => configuredHardCap(LIMITS),

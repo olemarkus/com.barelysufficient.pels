@@ -3,6 +3,7 @@ import type {
     TargetPowerSteppedLoadPreset,
 } from '../../packages/contracts/src/types';
 import type { UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+import type { FlowTriggerCard } from '../ports/homeyRuntime';
 
 export type Logger = {
     log: (...args: unknown[]) => void;
@@ -21,11 +22,16 @@ export type FlowCard = {
             args?: Record<string, unknown>,
         ) => Promise<FlowAutocompleteResult[]> | FlowAutocompleteResult[],
     ) => void;
-    trigger?: (tokens?: Record<string, unknown>, state?: Record<string, unknown>) => Promise<void>;
+    trigger?: FlowTriggerCard['trigger'];
+};
+
+export type ConfigurableFlowTriggerCard = FlowCard & FlowTriggerCard & {
+    getArgumentValues: () => Promise<unknown>;
+    on: (event: 'update', listener: () => void) => void;
 };
 
 export type FlowManagerLike = {
-    getTriggerCard: (id: string) => FlowCard;
+    getTriggerCard: (id: string) => ConfigurableFlowTriggerCard;
     getConditionCard: (id: string) => FlowCard;
     getActionCard: (id: string) => FlowCard;
 };

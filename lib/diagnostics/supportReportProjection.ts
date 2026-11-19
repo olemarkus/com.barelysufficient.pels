@@ -209,14 +209,16 @@ export type PhaseReadingEvidence = {
   meterCapabilityIds: readonly string[];
 };
 
-export const reportPhaseReading = (evidence: PhaseReadingEvidence): SupportReportSection => ({
+export const reportPhaseReading = ({ reading, meterCapabilityIds }: PhaseReadingEvidence): SupportReportSection => ({
   title: 'Current meter phases',
   values: {
-    state: evidence.reading.kind,
-    meterCapabilities: evidence.meterCapabilityIds.join(', '),
-    ...(evidence.reading.kind === 'healthy' ? {
-      signed: evidence.reading.signed,
-      phases: evidence.reading.phases.map((phase) => `${phase.phase} ${phase.kw.toFixed(2)} kW`).join(', '),
+    state: reading.kind,
+    meterCapabilities: meterCapabilityIds.join(', '),
+    ...(reading.kind === 'healthy' ? {
+      signed: reading.basis === 'active_power',
+      phases: reading.phases.map(({ phase, kw }) => (
+        `${phase} ${kw.toFixed(2)} ${reading.basis === 'apparent_power' ? 'kVA' : 'kW'}`
+      )).join(', '),
     } : {}),
   },
 });
