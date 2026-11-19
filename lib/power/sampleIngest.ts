@@ -1,6 +1,7 @@
 import { getDebugEmitter } from '../logging/logger';
 import type { PowerTrackerState } from './tracker';
 import type { GenerationSegment, ManagedLoadDraw, RecordPowerSampleParams } from './trackerTypes';
+import type { MeterImportCounter } from '../ports/homeMeterReadings';
 import { resolveTrackedSample } from './trackerEnergy';
 import { resolveManagedLoadKey } from './heldReading';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
@@ -276,6 +277,8 @@ export async function recordPowerSampleForApp(params: {
   generationW?: number;
   /** Production the readings observed up to this sample; see `RecordPowerSampleParams`. */
   generationSegments: readonly GenerationSegment[];
+  /** The meter's import counter read beside `currentPowerW`; see `RecordPowerSampleParams`. */
+  importCounter?: MeterImportCounter;
   nowMs?: number;
   timeZone: string;
   capacitySettings: CapacitySettings;
@@ -355,6 +358,7 @@ export async function recordPowerSampleForApp(params: {
     ...resolveSampleExemption(usageDevices, readTaskBudgetExemptDeviceIds(nowMs)),
     currentDevicePowerWById,
     managedDraw,
+    ...(params.importCounter === undefined ? {} : { importCounter: params.importCounter }),
     nowMs,
     hourBudgetKWh,
     timeZone,

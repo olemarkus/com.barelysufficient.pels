@@ -94,6 +94,7 @@ const withLateHydratedEvidence = (
   const {
     capacityQuarter: _unmergedQuarter,
     capacityMonthlyPeak: _unmergedPeak,
+    importCounter: _unmergedCounter,
     ...history
   } = withHistoryUnder(current, stored);
   const capacityQuarter = mergeLateCapacityQuarter(current.capacityQuarter, stored.capacityQuarter);
@@ -102,6 +103,8 @@ const withLateHydratedEvidence = (
     ...history,
     ...(capacityQuarter === undefined ? {} : { capacityQuarter }),
     ...(capacityMonthlyPeak === undefined ? {} : { capacityMonthlyPeak }),
+    // The stored counter counts bookings up to the stored latch, not this run's.
+    ...(current.importCounter === undefined ? {} : { importCounter: current.importCounter }),
   };
 };
 

@@ -87,6 +87,7 @@ const SCALAR_KEYS = [
   'lastGenerationW',
   'lastTimestamp',
   'heldReading',
+  'importCounter',
   'lastDevicePowerWById',
   'unreliablePeriods',
   'objectiveProfiles',

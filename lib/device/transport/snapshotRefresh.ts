@@ -23,6 +23,7 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 export { SnapshotRefreshState } from './snapshotRefreshState';
 import { resolveLiveMeterReadings } from './liveMeterReadings';
+import { readMeterImportCounters } from './meterImportCounterRead';
 import type { Logger } from '../../utils/types';
 import type { LiveMeterReadings } from '../../ports/homeMeterReadings';
 import {
@@ -423,7 +424,11 @@ export async function readLiveMeters(
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
     meterDeviceIds: readonly string[],
 ): Promise<LiveMeterReadings | null> {
-    return resolveLiveMeterReadings(setGenerationW, await fetchLiveMeterReport(logger, meterDeviceIds));
+    const [report, importCounters] = await Promise.all([
+        fetchLiveMeterReport(logger, meterDeviceIds),
+        readMeterImportCounters(meterDeviceIds),
+    ]);
+    return resolveLiveMeterReadings(setGenerationW, report, importCounters);
 }
 
 async function resolveLivePowerForRefresh(
@@ -432,12 +437,16 @@ async function resolveLivePowerForRefresh(
     meterDeviceIds: readonly string[],
 ): Promise<RefreshLivePower> {
     if (!includeLivePower) return { byDeviceId: {}, meterReadings: null };
-    const report = await fetchLivePowerReport({ logger: refresh.reader.logger, meterDeviceIds });
+    const [report, importCounters] = await Promise.all([
+        fetchLivePowerReport({ logger: refresh.reader.logger, meterDeviceIds }),
+        readMeterImportCounters(meterDeviceIds),
+    ]);
     return {
         byDeviceId: report.state === 'measured' ? report.byDeviceId : {},
         meterReadings: resolveLiveMeterReadings(
             (watts, observedAtMs) => refresh.observationBridge.setGenerationW(watts, observedAtMs),
             report,
+            importCounters,
         ),
     };
 }

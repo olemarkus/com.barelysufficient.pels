@@ -3,6 +3,8 @@ import type {
   PowerTrackerState as SharedPowerTrackerState,
 } from '../../packages/contracts/src/powerTrackerTypes';
 
+import type { MeterImportCounter } from '../ports/homeMeterReadings';
+
 export type { PowerTrackerMeterIdentity };
 
 /** Longest interval for which one held whole-home sample remains accounting evidence. */
@@ -77,6 +79,22 @@ export type HeldReading = {
   replacedSinceMs: number | null;
 };
 
+/** The import counter the tracker last accepted, and what it has booked since (`lib/power/importCounter.ts`). */
+export type ImportCounterAnchor = MeterImportCounter & {
+  /** Import kWh the tracker has booked since `observedAtMs`. */
+  readonly bookedSinceKWh: number;
+  /**
+   * Whether the counter's steps last agreed with the import the tracker booked
+   * over them. A counter read for the first time, and one whose steps went
+   * backwards or disagreed, is not: a gap is never filled from it.
+   */
+  readonly verified: boolean;
+  /** The counter's steps not yet compared with the bookings, kWh. */
+  readonly pendingStepKWh: number;
+  /** The import booked over those steps, kWh. */
+  readonly pendingBookedKWh: number;
+};
+
 /** The contract's tracker state, plus the runtime's own freshness and capacity state. */
 export type PowerTrackerState = SharedPowerTrackerState & {
   /**
@@ -87,6 +105,12 @@ export type PowerTrackerState = SharedPowerTrackerState & {
    * every sample and cleared with it on a freshness reset.
    */
   heldReading?: HeldReading;
+  /**
+   * The whole-home meter's import counter as last accepted, and the import
+   * booked since (`lib/power/importCounter.ts`). Absent while no sample has
+   * carried a counter: a Flow-reported home, or a meter without one.
+   */
+  importCounter?: ImportCounterAnchor;
   capacityQuarter?: CapacityQuarter;
   capacityMonthlyPeak?: CapacityMonthlyPeak;
 };
@@ -139,6 +163,12 @@ export type RecordPowerSampleParams = {
   currentDevicePowerWById?: Record<string, number>;
   /** The evidence a held reading is checked against (`lib/power/heldReading.ts`). */
   managedDraw: ManagedLoadDraw;
+  /**
+   * The meter's import counter read beside `currentPowerW`. Absent when the
+   * sample came with none (a Flow-reported sample, a meter without the
+   * counter, a failed read): the counter last accepted then stands.
+   */
+  importCounter?: MeterImportCounter;
   nowMs?: number;
   hourBudgetKWh?: number;
   /** IANA timezone used to assign completed quarters to their local billing month. */

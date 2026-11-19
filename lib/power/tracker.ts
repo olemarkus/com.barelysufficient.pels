@@ -19,10 +19,12 @@ import {
   pruneHourlyBucketsOnly,
   serializeDeviceBuckets,
 } from './trackerEnergy';
-import { accrueCapacityQuarter, startCapacityQuarterTracking } from './capacityQuarterTracking';
+import { startCapacityQuarterTracking } from './capacityQuarterTracking';
 import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
 import { addToHourlyBuckets, updateHourlyBuckets } from './trackerBucketChanges';
 import { resolveNextHeldReading, withEndedSuspectStretch, withSuspectStretchBeforeReset } from './heldReading';
+import { resolveNextImportCounter } from './importCounter';
+import { accrueSampleImport } from './trackerImport';
 // 32 days keep every hour of the current calendar month, including a 31-day month with a 25-hour day.
 export const HOURLY_RETENTION_DAYS = 32;
 export const DAILY_RETENTION_DAYS = 365;
@@ -61,6 +63,7 @@ function buildNextPowerState(params: {
   currentGenerationW?: number;
   currentDevicePowerWById?: Record<string, number>;
   heldReading: HeldReading;
+  importCounter: PowerTrackerState['importCounter'];
   unreliablePeriods?: Array<{ start: number; end: number }>;
   capacityQuarter: PowerTrackerState['capacityQuarter'];
   capacityMonthlyPeak: PowerTrackerState['capacityMonthlyPeak'];
@@ -86,6 +89,7 @@ function buildNextPowerState(params: {
     currentGenerationW,
     currentDevicePowerWById,
     heldReading,
+    importCounter,
     unreliablePeriods,
     capacityQuarter,
     capacityMonthlyPeak,
@@ -94,7 +98,9 @@ function buildNextPowerState(params: {
   // reading must DROP any carried lastGenerationW rather than hold it stale, so
   // the base spread deliberately excludes it and the conditional spread below
   // re-adds it only when THIS sample carried one.
-  const { lastGenerationW: _droppedGenerationLatch, ...carriedState } = state;
+  // The accepted counter is absence-as-absence too: none is carried when the
+  // sample resolved none (`resolveNextImportCounter`).
+  const { lastGenerationW: _droppedGenerationLatch, importCounter: _replacedCounter, ...carriedState } = state;
   return {
     ...carriedState,
     buckets: addToHourlyBuckets(state.buckets, nextBuckets),
@@ -125,6 +131,7 @@ function buildNextPowerState(params: {
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
     heldReading,
+    ...(importCounter === undefined ? {} : { importCounter }),
     lastControlledPowerW: currentControlledPowerW,
     lastUncontrolledPowerW: currentUncontrolledPowerW,
     lastExemptPowerW: currentExemptPowerW,
@@ -458,6 +465,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   if (resetSampling) {
     const nextState = buildNextPowerState({
       ...nextStateArgs,
+      importCounter: resolveNextImportCounter(state.importCounter, params.importCounter, null),
       capacityQuarter: startCapacityQuarterTracking(nowMs),
       capacityMonthlyPeak: state.capacityMonthlyPeak,
       unreliablePeriods: withSuspectStretchBeforeReset(state.unreliablePeriods, state.heldReading),
@@ -469,24 +477,18 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
 
   const previousTs = state.lastTimestamp as number;
   const previousPower = state.lastPowerW as number;
+  const {
+    heldFromMs, recoveredW, measuredUntilMs, importCounter, capacityQuarter, capacityMonthlyPeak,
+  } = accrueSampleImport(params, nowMs, budgetKWh, nextBuckets, nextBudgets);
   const unreliablePeriods = withEndedSuspectStretch(
-    resolveUnreliablePeriods({ state, previousTs, nowMs }), state.heldReading, heldReading);
-
-  calculateEnergyAcrossBoundaries({
-    startTs: previousTs,
-    endTs: nowMs,
-    // Floor at 0: this is the BILLED total energy bucket and billed kWh can't decrease.
-    // On the homey_energy source the net `cumulative.W` goes negative during solar export;
-    // `lastPowerW` keeps that signed value for the capacity guard (export legitimately
-    // grows headroom), but it must not subtract kWh from the total bucket.
-    powerW: Math.max(0, previousPower),
-    buckets: nextBuckets,
-    budgets: nextBudgets,
-    budgetKWh,
-  });
-  const { quarter: capacityQuarter, monthlyPeak: capacityMonthlyPeak } = accrueCapacityQuarter(
-    state.capacityQuarter, state.capacityMonthlyPeak, previousTs, nowMs, previousPower, params.timeZone,
-  );
+    resolveUnreliablePeriods({ state, previousTs: measuredUntilMs, nowMs }), state.heldReading, heldReading);
+  // Nothing attributed the recovered energy to a device, so it is background.
+  if (state.lastUncontrolledPowerW !== undefined && sample.uncontrolledPowerW !== undefined) {
+    calculateEnergyAcrossBoundaries({
+      startTs: previousTs, endTs: heldFromMs, powerW: recoveredW,
+      buckets: nextUncontrolledBuckets, budgets: new Map(), budgetKWh: null,
+    });
+  }
 
   // Solar accounting (sparse export/generation families) — sparseness and
   // absence-as-absence rules live in trackerSolar.ts.
@@ -508,7 +510,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
       devicePowerWById: state.lastDevicePowerWById,
     },
     next: sample,
-    startTs: previousTs,
+    startTs: heldFromMs,
     endTs: nowMs,
     controlledBuckets: nextControlledBuckets,
     uncontrolledBuckets: nextUncontrolledBuckets,
@@ -521,6 +523,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     ...nextStateArgs,
     capacityQuarter,
     capacityMonthlyPeak,
+    importCounter,
     unreliablePeriods,
   });
   addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
