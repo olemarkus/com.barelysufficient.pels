@@ -212,7 +212,7 @@ describe('recorded sustainable daily ceiling', () => {
         recordBudgetDecision, getNowMs: () => Date.parse('2026-12-01T00:00:00Z'),
         getTimeZone: () => 'Europe/Oslo',
         getPowerLimitSettings: () => ({
-          ...capacityOnlyPowerLimits(5), monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 9.9 },
+          ...capacityOnlyPowerLimits(5), monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 },
         }),
       }));
       expect(recordBudgetDecision.mock.calls[0][0].sustainableDailyCeilingKwh).toBeCloseTo(limitKw * 24);

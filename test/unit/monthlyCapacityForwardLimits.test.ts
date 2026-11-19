@@ -6,7 +6,7 @@ import { applyBudgetPrices } from '../../lib/price/budgetPrice';
 
 const settings: PowerLimitSettings = {
   limitKw: 5, marginKw: 0.2, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null,
-  monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 9.9 },
+  monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 },
 };
 const novemberEnd = Date.parse('2026-11-30T22:00:00Z');
 const decemberStart = Date.parse('2026-11-30T23:00:00Z');

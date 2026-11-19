@@ -17,6 +17,17 @@ export const norwayMonthKey = (atMs: number): string => (
   getDateKeyInTimeZone(new Date(atMs), NORWAY_BILLING_ZONE).slice(0, 7)
 );
 
+/** The Oslo billing month as instants, including its daylight-saving offsets. */
+export const norwayMonthWindowMs = (monthKey: string): { startsAtMs: number; endsAtMs: number } => {
+  const year = Number(monthKey.slice(0, 4));
+  const month = Number(monthKey.slice(5, 7));
+  const next = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
+  return {
+    startsAtMs: getDateKeyStartMs(`${monthKey}-01`, NORWAY_BILLING_ZONE),
+    endsAtMs: getDateKeyStartMs(`${next}-01`, NORWAY_BILLING_ZONE),
+  };
+};
+
 const hasEveryHour = (hours: ReadonlySet<number>, firstHour: number, currentHour: number): boolean => {
   for (let hour = firstHour; hour <= currentHour; hour += HOUR_MS) {
     if (!hours.has(hour)) return false;

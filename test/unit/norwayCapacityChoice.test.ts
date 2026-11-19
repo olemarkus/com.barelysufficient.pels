@@ -27,10 +27,10 @@ describe('explicit monthly capacity choice', () => {
     expect(choice.processRequest(offer, scalars, now)).toBe(true);
     expect(choice.applyTo(scalars, now).limitKw).toBe(9.9);
     expect(choice.forPlanning(scalars, now)).toMatchObject({
-      limitKw: 5, monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 9.9 },
+      limitKw: 5, monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 },
     });
     expect(choice.forPlanning(scalars, Date.parse('2026-11-30T23:00:00Z'))).toMatchObject({
-      limitKw: 5, monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 9.9 },
+      limitKw: 5, monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 },
     });
     expect(choice.applyTo(scalars, Date.parse('2026-11-30T23:00:00Z')).limitKw).toBe(5);
     expect(scalars.limitKw).toBe(5);
@@ -94,6 +94,15 @@ describe('explicit monthly capacity choice', () => {
     settings.set('capacity_limit_kw', 5);
     choice.onSettingChanged('capacity_limit_kw');
     expect(choice.applyTo(scalars, now).limitKw).toBe(5);
+  });
+  it('restores the normal limit when the saved choice lacks its configuration snapshot', () => {
+    const { data, settings, choice } = fixture();
+    settings.set(NORWAY_CAPACITY_CHOICE_REQUEST, { id: 'a', action: 'apply', offer });
+    choice.processRequest(offer, scalars, now);
+    expect(new NorwayCapacityChoice(settings, readTariff).applyTo(scalars, now).limitKw).toBe(9.9);
+    const { configuration: _dropped, ...withoutSnapshot } = data.get('norway_capacity_choice_state') as Record<string, unknown>;
+    settings.set('norway_capacity_choice_state', withoutSnapshot);
+    expect(new NorwayCapacityChoice(settings, readTariff).applyTo(scalars, now).limitKw).toBe(5);
   });
   it('does not activate a choice if its accepted state cannot be persisted', () => {
     const { settings, choice } = fixture();

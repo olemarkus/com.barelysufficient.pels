@@ -400,7 +400,7 @@ describe('buildWeatherAdvisorReadout', () => {
       },
     }, {
       nowMs, timeZone: 'Europe/Oslo', powerLimitSettings: {
-        ...capacityOnlyPowerLimits(1), monthlyCapacityChoice: { monthKey: '2026-11', limitKw: 10 },
+        ...capacityOnlyPowerLimits(1), monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 10 },
       },
     }));
     expect(payload?.suggestion?.cappedByPowerLimit).toBe('capacity');

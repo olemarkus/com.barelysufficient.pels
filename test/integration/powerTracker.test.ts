@@ -8,6 +8,7 @@ import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/
 import {
   getUtcDayOfWeek,
   aggregateAndPruneHistory,
+  HOURLY_RETENTION_DAYS,
   recordPowerSample,
   type PowerTrackerState,
 } from '../../lib/power/tracker';
@@ -483,16 +484,16 @@ describe('power tracker integration', () => {
   it('counts a boundary day once per weekday/hour slot across two prune runs', () => {
     vi.useFakeTimers();
     try {
-      // A single calendar day whose hours age out of the 30-day hourly window across
+      // A single calendar day whose hours age out of the hourly window across
       // two prune runs must contribute count +1 (not +2) per weekday/hour slot. The
       // old dense 0..23 loop incremented every slot's count on every run, inflating the
       // divisor with zero-sum entries and biasing typical-day averages low.
       const dayStart = Date.UTC(2025, 0, 6, 0, 0, 0); // Monday
       const hour = (h: number) => new Date(dayStart + h * 60 * 60 * 1000).toISOString();
-      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      const thirtyDaysMs = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
       const dayOfWeek = new Date('2025-01-06T00:00:00.000Z').getUTCDay();
 
-      // Run 1: only hours 0 and 1 have aged past the 30-day threshold.
+      // Run 1: only hours 0 and 1 have aged past the retention threshold.
       vi.setSystemTime(dayStart + 2 * 60 * 60 * 1000 + thirtyDaysMs);
       const firstRun = aggregateAndPruneHistory({
         buckets: { [hour(0)]: 1, [hour(1)]: 2, [hour(2)]: 3, [hour(3)]: 4 },

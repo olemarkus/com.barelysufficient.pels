@@ -1,4 +1,4 @@
-import { aggregateAndPruneHistory } from '../../lib/power/tracker';
+import { aggregateAndPruneHistory, HOURLY_RETENTION_DAYS } from '../../lib/power/tracker';
 
 // PR-5 solar visibility: the generation/export prune fold must key daily
 // totals by the Homey-local calendar day, exactly like the billed families
@@ -7,7 +7,7 @@ import { aggregateAndPruneHistory } from '../../lib/power/tracker';
 // whole and land on the right local key regardless of host TZ.
 
 const OSLO = 'Europe/Oslo';
-const HOURLY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const HOURLY_RETENTION_MS = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 const isoHour = (utcMs: number): string => new Date(utcMs).toISOString();

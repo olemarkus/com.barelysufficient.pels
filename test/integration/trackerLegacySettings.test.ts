@@ -1,4 +1,4 @@
-import { aggregateAndPruneHistory } from '../../lib/power/tracker';
+import { aggregateAndPruneHistory, HOURLY_RETENTION_DAYS } from '../../lib/power/tracker';
 import { importLegacyPowerTrackers } from '../../lib/power/trackerLegacySettings';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
@@ -173,7 +173,7 @@ describe('importLegacyPowerTrackers', () => {
   it('retires the key of an import whose unset threw, so the prune never folds an hour twice', () => {
     const { settings, store } = rig();
     const hourMs = 60 * 60 * 1000;
-    const agedHour = new Date(Math.floor((Date.now() - 31 * 24 * hourMs) / hourMs) * hourMs).toISOString();
+    const agedHour = new Date(Math.floor((Date.now() - (HOURLY_RETENTION_DAYS + 1) * 24 * hourMs) / hourMs) * hourMs).toISOString();
     settings.set('power_tracker_state', { buckets: { [agedHour]: 2 } });
     const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk down'); });
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });

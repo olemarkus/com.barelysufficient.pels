@@ -932,8 +932,8 @@ describe('previewDeferredObjectivePlan', () => {
 
   it('measures current draw against the monthly hard cap while it applies', () => {
     const limits = { limitKw: 10, marginKw: 0.3 };
-    expect(atLimitFor(5_000, { ...limits, monthlyCapacityChoice: { monthKey: '2026-01', limitKw: 5 } })).toBe('capacity');
-    expect(atLimitFor(5_000, { ...limits, monthlyCapacityChoice: { monthKey: '2025-12', limitKw: 5 } })).toBeUndefined();
+    expect(atLimitFor(5_000, { ...limits, monthlyCapacityChoice: { startsAtMs: Date.parse('2025-12-31T23:00:00Z'), endsAtMs: Date.parse('2026-01-31T23:00:00Z'), limitKw: 5 } })).toBe('capacity');
+    expect(atLimitFor(5_000, { ...limits, monthlyCapacityChoice: { startsAtMs: Date.parse('2025-11-30T23:00:00Z'), endsAtMs: Date.parse('2025-12-31T23:00:00Z'), limitKw: 5 } })).toBeUndefined();
   });
 
   it('flags no limit at a switched-off hard cap when no power limit is enabled', () => {

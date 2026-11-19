@@ -1,6 +1,5 @@
 import type { PowerLimitCeiling, PowerLimitSettings } from '../../../contracts/src/capacitySettings';
 import { usableCapacityKw } from '../capacityAllowance';
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
 import { isFiniteNumber } from '../numberGuards';
 
 /**
@@ -64,11 +63,8 @@ const lowerLimit = (capacityKw: number | null, gridKw: number | null): PowerLimi
 /** Resolve an explicit monthly capacity choice for the instant being planned. */
 export function capacityLimitKwAt(settings: PowerLimitSettings, atMs: number): number {
   const choice = settings.monthlyCapacityChoice;
-  if (!choice) return settings.limitKw;
-  const monthKey = getDateKeyInTimeZone(new Date(atMs), 'Europe/Oslo').slice(0, 7);
-  return monthKey === choice.monthKey ? choice.limitKw : settings.limitKw;
+  return choice && atMs >= choice.startsAtMs && atMs < choice.endsAtMs ? choice.limitKw : settings.limitKw;
 }
-
 
 /**
  * The planning ceiling: the import rate planning forecasts against. It is the
@@ -88,7 +84,6 @@ export function capacityLimitKwAt(settings: PowerLimitSettings, atMs: number): n
  * (`packages/settings-ui/src/ui/budgetRedesign.ts`), and the weather domain,
  * which may not import `lib/power`, suggests budgets under the same ceiling.
  */
-
 export function planningPowerCeiling(settings: PowerLimitSettings, atMs = Date.now()): PowerLimitCeiling | null {
   return lowerLimit(
     settings.capacityEnabled ? usableCapacityKw(capacityLimitKwAt(settings, atMs), settings.marginKw) : null,

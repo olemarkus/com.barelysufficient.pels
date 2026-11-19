@@ -85,7 +85,7 @@ type ServedUsagePowerRead = Extract<UsagePowerRead, { state: 'served' }>;
 
 type HourlyPatternView = 'all' | 'weekday' | 'weekend';
 const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
-// Daily history shows the last 14 days; the tracker keeps 30 days of hourly
+// Daily history shows the last 14 days; the tracker keeps 32 days of hourly
 // buckets and 365 days of daily totals (week/month totals read the latter).
 const DAILY_HISTORY_DAYS = 14;
 const ZERO_KWH_EPSILON = 1e-9;

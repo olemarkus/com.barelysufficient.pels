@@ -107,7 +107,14 @@ export const resolveNorwayMonthlyCapacity = (
   const candidate = safeCandidate(
     month, ceiling, !targetLost || lossBuffered, nowMs, tariff.thresholdIncluded,
   );
-  const remainingMonthCap = remainingCap(candidate, ceiling, !targetLost || lossBuffered, appliedLimitKw);
+  // A Hard cap at the tier step is what Limits asks for; only recorded peaks justify a lower one.
+  const peaksBind = candidate < safeCandidate(
+    { ...month, peaks: [] }, ceiling, !targetLost || lossBuffered, nowMs, tariff.thresholdIncluded,
+  );
+  const stepCap = !targetLost && !peaksBind && ceiling !== undefined
+    && appliedLimitKw > candidate && appliedLimitKw <= ceiling;
+  const remainingMonthCap = stepCap ? { state: 'bounded' as const, limitKw: appliedLimitKw }
+    : remainingCap(candidate, ceiling, !targetLost || lossBuffered, appliedLimitKw);
   const recommendation = hardCapRecommendation(remainingMonthCap, scalars, appliedLimitKw, targetLost);
   const advice = recommendation.state === 'set'
     ? {

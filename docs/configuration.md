@@ -51,7 +51,7 @@ The Usage page helps you understand what PELS has observed.
 
 The hourly bars split each hour into **managed** device usage and **background** usage, so you can see how much of your consumption PELS can influence.
 
-Hourly data is kept for 30 days. Daily totals are kept for one year. Resetting usage history lives under **Settings > Advanced > Data management**.
+Hourly data is kept for 32 days, so the whole current month stays hourly. Daily totals are kept for one year. Resetting usage history lives under **Settings > Advanced > Data management**.
 
 **Recover hourly history from Insights** in the same section fills missing hours
 of completed days from the selected whole-home meter's recent hourly Insights.
@@ -91,9 +91,9 @@ This is where the grid import limit, the capacity settings and the whole-home po
 | **Power source** | Where whole-home power readings come from: **Flow card** or **Power meter** (read through Homey Energy). |
 | **Whole-home meter** | Shown with the Power meter source. Which meter whole-home power readings come from. PELS always reads one named meter: when the only whole-home meter Homey lists is marked **Tracks total home energy consumption** and no Flow has ever sent PELS readings, PELS picks it on its own shortly after starting; otherwise choose it here. A selection does not need Homey's **Tracks total home energy consumption** marking. The list shows whole-home meters rather than every power-using device, so an EV charger or smart plug won't appear; a meter you chose earlier stays selectable even if it no longer appears. |
 
-For the Main home using Norway prices and an hourly capacity period, **Usage > Monthly capacity** uses the existing 30-day hourly import history to show the estimated capacity tier and hourly cap for the remaining month. The **Safety margin** stays below the recommended **Hard cap**: a 4.8 kW Hard cap with a 0.3 kW margin gives a 4.5 kW planning allowance, reserving room for unmanaged load late in the hour. The margin never increases the tariff allowance. Expand **Three highest daily hours** to see the counted days, hours and average. PELS uses your selected grid company's supported three-day tariff and Norway's calendar. Homey's timezone must be Europe/Oslo.
+For the Main home using Norway prices and an hourly capacity period, **Usage > Monthly capacity** uses the existing hourly import history to show the estimated capacity tier and hourly cap for the remaining month. The **Safety margin** stays below the recommended **Hard cap**: a 4.8 kW Hard cap with a 0.3 kW margin gives a 4.5 kW planning allowance, reserving room for unmanaged load late in the hour. The margin never increases the tariff allowance. Expand **Three highest daily hours** to see the counted days, hours and average. PELS uses your selected grid company's supported three-day tariff and Norway's calendar. Homey's timezone must be Europe/Oslo.
 
-A partially tracked hour appears as **at least**: its recorded import already establishes that minimum hourly average. Missing days are labelled **Not recorded**. The figures use the same hourly history as Usage, rather than starting a separate capacity history when this feature is installed. On a 31-day month, the first day's hours can fall outside that retained window; missing or unreliable hours are identified in the card.
+A partially tracked hour appears as **at least**: its recorded import already establishes that minimum hourly average. Missing days are labelled **Not recorded**. The figures use the same hourly history as Usage, rather than starting a separate capacity history when this feature is installed. Missing or unreliable hours are identified in the card.
 
 A single hour above a tier boundary does not necessarily lose the tier. For example, a 5.01 kW day can still fit below a 5 kW three-day average when the other counted peaks are low enough. Later quiet days cannot lower the average of three peaks already recorded.
 
