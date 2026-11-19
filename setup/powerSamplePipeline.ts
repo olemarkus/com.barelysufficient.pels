@@ -338,6 +338,13 @@ export class PowerSamplePipeline {
           // identity - Main commanding from an area's watts. Publication is
           // contained, so a membership failure can never break the rebuild.
           this.publishResolvedHomeMeter(request);
+          // A fresh sample proves the meter live, so the rebuild it triggers
+          // plans without the startup restore hold. Cleared here, before that
+          // rebuild, so whether the sample's own plan is held never depends on
+          // how soon the throttle runs it.
+          if (previousSampleTs === undefined || nowMs > previousSampleTs) {
+            planEngine.clearStartupRestoreStabilization(nowMs);
+          }
           // Producer-side resolution (root `AGENTS.md` § Clean and trusted
           // interfaces): the scheduler is handed ONE whole-home total, already
           // finiteness-gated by `lib/power`, and no nullable crosses the seam.
@@ -376,9 +383,6 @@ export class PowerSamplePipeline {
         },
         saveState: (state) => this.deps.savePowerTracker(state),
       });
-      if (previousSampleTs === undefined || nowMs > previousSampleTs) {
-        planEngine.clearStartupRestoreStabilization(nowMs);
-      }
       // After the tracker and the plan rebuild, so reading the devices again can never hold them up.
       if (this.deps.recordHeatingObservations) {
         this.deps.recordHeatingObservations(this.deps.getDeviceSurfaces(), nowMs);

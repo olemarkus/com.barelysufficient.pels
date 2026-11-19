@@ -1,4 +1,4 @@
-import { resolveMeterImportCounter } from '../../lib/device/transport/meterImportCounterRead';
+import { resolveMeterImportCounter, resolveMeterImportCounters } from '../../lib/device/transport/meterImportCounterRead';
 import { readMeterSample } from '../../lib/home/homeMeters';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
@@ -26,6 +26,13 @@ describe('the meter import counter read', () => {
     ['an undated value', { value: 12345.67 }],
   ])('reads no counter from %s', (_name, entry) => {
     expect(resolveMeterImportCounter(meter(entry))).toBeNull();
+  });
+
+  it('reads only the requested meters from fetched devices', () => {
+    const dated = { value: 5, lastUpdated: '2026-11-17T07:11:00.000Z' };
+    const other = { ...meter(dated), id: 'other' } as HomeyDeviceLike;
+    expect(Object.keys(resolveMeterImportCounters([meter(dated), other], ['meter-1']))).toEqual(['meter-1']);
+    expect(resolveMeterImportCounters([meter(undefined)], ['meter-1'])).toEqual({});
   });
 
   it('rides the sample of the meter it was read from', () => {
