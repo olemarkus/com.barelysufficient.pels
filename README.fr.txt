@@ -6,7 +6,9 @@ Les prix proviennent de Homey Energy, de Power by the Hour ou de vos Flows. Les 
 
 Dans Smart tasks, vous fixez un objectif et une échéance : une voiture à 80 % à 7 h, un salon chaud pour votre retour ou une quantité d'énergie à fournir au chauffe-eau. PELS choisit les heures les moins chères pour y parvenir. Quand le niveau de batterie est disponible dans Homey, PELS s'en sert pour planifier la recharge jusqu'à l'objectif demandé. Dans Schedules, programmez la création de Smart tasks ou un changement de mode à une heure précise, une seule fois ou les jours choisis.
 
-Avec Grid import limit, vous réglez la limite de puissance prélevée sur le réseau selon votre abonnement et les besoins de la maison. À son approche, PELS réduit la recharge, ajuste le chauffage ou met les appareils moins prioritaires en pause. Ils reprennent lorsque de la puissance est disponible.
+Avec Grid import limit, vous réglez la limite de puissance prélevée sur le réseau selon les besoins de la maison. À son approche, PELS réduit la recharge, ajuste le chauffage ou met les appareils moins prioritaires en pause. Ils reprennent lorsque de la puissance est disponible.
+
+Dans Main fuse, indiquez la puissance souscrite en kVA. PELS surveille et limite la consommation phase par phase si votre compteur remonte les mesures de chaque phase, par exemple avec un LiXee ZLinky sur la sortie TIC d'un compteur Linky triphasé ou un compteur triphasé à pinces ampèremétriques.
 
 Avec des panneaux solaires, le surplus sert à chauffer l'eau, préchauffer ou rafraîchir la maison et recharger la voiture. PELS adapte la puissance de recharge au surplus disponible. Le prix de vente au réseau est pris en compte, y compris s'il est négatif. Avec une batterie domestique comme Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy ou Anker SOLIX, PELS stocke le surplus restant, réduit sa recharge au profit d'un autre appareil ou la décharge pour respecter la limite de puissance. Si vous l'activez, PELS peut aussi vendre l'énergie stockée lorsque cela réduit vos coûts.
 
