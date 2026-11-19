@@ -444,7 +444,7 @@ const buildDeferredObjectiveDiagnostic = (
   }
   const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
   const frozenFallback = resolveDeadlineBoundFrozenReadInputs(
-    deviceId, objective, progress.progressDirection, nowMs, activePlans,
+    deviceId, objective, progress.progressDirection, nowMs, activePlans, allocation === 'serve_idle',
   );
   if (shouldWaitForPlanningTurn(allocation, frozenFallback !== null, snapshot, progress)) {
     return buildWaitingForPlanDiagnostic(buildTaskDiagnosticBase(snapshot, task), objective, progress, 'held');
@@ -454,7 +454,7 @@ const buildDeferredObjectiveDiagnostic = (
     deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled: snapshot.priceOptimizationEnabled,
     // Allocation-horizon price source, resolved by the wiring-injected producer.
-    priceHorizon: allocation === 'serve' && frozenFallback ? []
+    priceHorizon: (allocation === 'serve' || allocation === 'serve_idle') && frozenFallback ? []
       : readers.buildPriceHorizon(nowMs, objective.deadlineAtMs),
     dailyBudgetSnapshot: snapshot.dailyBudgetSnapshot,
     powerLimits: snapshot.powerLimits,

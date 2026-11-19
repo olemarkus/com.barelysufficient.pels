@@ -52,7 +52,7 @@ describe('persisted device idle evidence', () => {
   it('loads finite observed coverage and the original planning rate', () => {
     expect(isPersistedMeteredDeliveryState(state({
       deviceIdleEvidence: {
-        firstConfirmedAtMs: HOUR_MS, lastAcceptedAtMs: 2 * HOUR_MS, permittedIdleMs: HOUR_MS, planningSpeedKw: 2,
+        firstIdleAtMs: HOUR_MS, lastAcceptedAtMs: 2 * HOUR_MS, permittedIdleMs: HOUR_MS, planningSpeedKw: 2,
       },
     }))).toBe(true);
   });
@@ -60,7 +60,7 @@ describe('persisted device idle evidence', () => {
   it('rejects negative observed coverage', () => {
     expect(isPersistedMeteredDeliveryState(state({
       deviceIdleEvidence: {
-        firstConfirmedAtMs: HOUR_MS, lastAcceptedAtMs: 2 * HOUR_MS, permittedIdleMs: -1, planningSpeedKw: 2,
+        firstIdleAtMs: HOUR_MS, lastAcceptedAtMs: 2 * HOUR_MS, permittedIdleMs: -1, planningSpeedKw: 2,
       },
     }))).toBe(false);
   });

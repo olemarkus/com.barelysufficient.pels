@@ -63,6 +63,7 @@ const resolveFrozenReadInputs = (
   progressDirection: ObjectiveProgressDirectionRead,
   nowMs: number,
   activePlans: DeferredObjectiveActivePlansV2,
+  keepElapsedSchedule: boolean,
 ): FrozenReadInputs | null => {
   const activePlan = resolveActiveCommittedPlan(
     deviceId,
@@ -74,7 +75,10 @@ const resolveFrozenReadInputs = (
   // Keep the existing all-elapsed recovery on the hourly clock. Ending the last
   // quarter is a control transition, not permission for an extra allocation.
   const currentHourStartMs = Math.floor(nowMs / 3_600_000) * 3_600_000;
-  if (!activePlan.commitmentHours.some((hour) => hour.endsAtMs > currentHourStartMs)) return null;
+  // An idle task still governs the intervals it intentionally did not book.
+  if (!keepElapsedSchedule && !activePlan.commitmentHours.some((hour) => hour.endsAtMs > currentHourStartMs)) {
+    return null;
+  }
   const { latest } = activePlan;
   return {
     planStatus: latest.planStatus,
@@ -109,9 +113,10 @@ export const resolveDeadlineBoundFrozenReadInputs = (
   progressDirection: ObjectiveProgressDirectionRead,
   nowMs: number,
   activePlans: DeferredObjectiveActivePlansV2,
+  keepElapsedSchedule = false,
 ): FrozenReadInputs | null => (
   objective.deadlineAtMs > nowMs
-    ? resolveFrozenReadInputs(deviceId, objective, progressDirection, nowMs, activePlans)
+    ? resolveFrozenReadInputs(deviceId, objective, progressDirection, nowMs, activePlans, keepElapsedSchedule)
     : null
 );
 

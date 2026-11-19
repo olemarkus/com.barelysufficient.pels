@@ -6,7 +6,7 @@ import {
   EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts, restoreEnergyTaskIdle,
 } from './deliveryEvidence';
 import { restoreTaskNonDelivery } from './taskDeliveryState';
-import { observeDeviceIdleEvidence } from './deviceIdleOutcome';
+import { observeDeviceIdleEvidence, reconcileIdleAtDeadline } from './deviceIdleOutcome';
 import type {
   TaskDeviceConstraint, TaskDeliveryControl, TaskDeliveryEvidence,
 } from '../../../packages/contracts/src/taskDelivery';
@@ -136,6 +136,7 @@ export type PlanHistoryPersistDeps = {
   getDeviceConstraint: (deviceId: string) => TaskDeviceConstraint;
   getDeliveryControl: (deviceId: string) => TaskDeliveryControl;
   isLiveMeasuredDraw: (deviceId: string) => boolean;
+  getLiveDrawAt: (deviceId: string, atMs: number) => number | null;
 };
 
 export type PlanHistoryLoadResult = {
@@ -506,7 +507,10 @@ export class DeferredObjectivePlanHistoryRecorder {
     nowMs: number,
     reason: 'deadline_passed' | 'replaced' | 'abandoned',
   ): void {
-    this.pushObservedEntry(finalizeRecord(record, nowMs, reason));
+    const finalRecord = reason === 'deadline_passed'
+      ? reconcileIdleAtDeadline(record, this.deps.getLiveDrawAt)
+      : record;
+    this.pushObservedEntry(finalizeRecord(finalRecord, nowMs, reason));
     this.inProgress.delete(key);
   }
 

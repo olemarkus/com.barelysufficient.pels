@@ -426,7 +426,10 @@ const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | u
   if (targetValue === undefined) return undefined;
   return {
     ...stripRetiredDiagnosticReasonCode(current),
-    liveCompletion: plan.liveCompletion ?? { kind: 'unavailable' },
+    // The permitted-idle window cannot be verified across app downtime.
+    liveCompletion: plan.liveCompletion?.kind === 'device_idle'
+      ? { kind: 'unmet', status: 'at_risk' }
+      : plan.liveCompletion ?? { kind: 'unavailable' },
     targetValue,
     original: plan.original === null ? null : normalizeChargingRevision(plan.original),
     latest: plan.latest === null ? null : normalizeChargingRevision(stripRetiredRevisionFields(plan.latest)),

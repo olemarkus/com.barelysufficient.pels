@@ -30,7 +30,6 @@ export const buildMeasuredPower = (overrides: MeasuredPowerFixtureOverrides = {}
     gridBreached: false,
     drawKw: 3,
     sampledAtMs: 0,
-    phaseSampledAtMs: null,
     headroom: headroomFixture(headroomKw),
     capacityHeadroom: headroomFixture(capacityHeadroomKw),
     budgetHeadroom: headroomFixture(budgetHeadroomKw),
@@ -127,7 +126,7 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
   const {
     total, headroom, headroomRaw, drawKw, headroomKw, capacityHeadroomKw, budgetHeadroomKw,
     capacityBreached, physicalLimitBreached, gridHeadroomKw, gridBreached,
-    capacityHeadroom, gridHeadroom: explicitGridHeadroom, budgetHeadroom, sampledAtMs, phaseSampledAtMs,
+    capacityHeadroom, gridHeadroom: explicitGridHeadroom, budgetHeadroom, sampledAtMs,
     ...contextOverrides
   } = spec;
   const context = buildPlanContextFixture(contextOverrides);
@@ -148,7 +147,6 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
       ...(explicitGridHeadroom === undefined ? {} : { gridHeadroom: explicitGridHeadroom }),
       ...(budgetHeadroom === undefined ? {} : { budgetHeadroom }),
       ...(sampledAtMs === undefined ? {} : { sampledAtMs }),
-      ...(phaseSampledAtMs === undefined ? {} : { phaseSampledAtMs }),
       ...(physicalLimitBreached === undefined ? {} : { physicalLimitBreached }),
     }),
   };

@@ -4,11 +4,10 @@ import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards
 import { hasOnlySettleControlPending } from './budgetOnlyMiss';
 import { MAX_DELIVERY_INTERVALS, type TaskDeliveryFacts } from './deliveryEvidence';
 import type { InProgressRecord } from './planHistoryInProgressState';
-import { DELIVERY_EPSILON_KWH } from './taskDeliveryState';
+import {
+  DELIVERY_EPSILON_KWH, isUsefulTaskDraw, MAX_CONTIGUOUS_DELIVERY_TICK_MS,
+} from './taskDeliveryState';
 
-// The lifecycle ticks every 30 seconds. Allow jitter, but never infer
-// continuous permitted operation across a missed sequence of ticks.
-const MAX_CONTIGUOUS_TICK_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
 // Capture an initially feasible booking's rate before idle can remove its
@@ -16,7 +15,7 @@ const HOUR_MS = 3_600_000;
 // full booking does not prove that the device had any opportunity to run.
 export type DeviceIdleEvidence = {
   planningSpeedKw: number;
-  firstConfirmedAtMs: number | null;
+  firstIdleAtMs: number | null;
   lastAcceptedAtMs: number | null;
   permittedIdleMs: number;
 };
@@ -25,7 +24,7 @@ export const isDeviceIdleEvidence = (raw: unknown): raw is DeviceIdleEvidence =>
   if (!raw || typeof raw !== 'object') return false;
   const value = raw as Record<string, unknown>;
   return isFiniteNumber(value.planningSpeedKw) && value.planningSpeedKw > 0
-    && (value.firstConfirmedAtMs === null || isFiniteNumber(value.firstConfirmedAtMs))
+    && (value.firstIdleAtMs === null || isFiniteNumber(value.firstIdleAtMs))
     && (value.lastAcceptedAtMs === null || isFiniteNumber(value.lastAcceptedAtMs))
     && isFiniteNumber(value.permittedIdleMs) && value.permittedIdleMs >= 0;
 };
@@ -40,7 +39,7 @@ const fromFeasiblePlan = (record: InProgressRecord): DeviceIdleEvidence | undefi
   if (remainingEnergyKWh === null || remainingEnergyKWh > bookedKWh + DELIVERY_EPSILON_KWH) return undefined;
   if (plan.floorShortfallCause !== undefined && plan.floorShortfallCause !== 'none') return undefined;
   return {
-    planningSpeedKw: plan.planningSpeedKw, firstConfirmedAtMs: null, lastAcceptedAtMs: null, permittedIdleMs: 0,
+    planningSpeedKw: plan.planningSpeedKw, firstIdleAtMs: null, lastAcceptedAtMs: null, permittedIdleMs: 0,
   };
 };
 
@@ -68,14 +67,40 @@ export const observeDeviceIdleEvidence = (
   const evidence = previous ?? fromFeasiblePlan(record);
   if (!evidence || delivery.energyIdle?.kind !== 'accepted') return evidence;
   if (!isPermittedIdle(facts, delivery)) return { ...evidence, lastAcceptedAtMs: nowMs };
-  const coveredMs = elapsedMs > 0 && elapsedMs <= MAX_CONTIGUOUS_TICK_MS
-    && wasPermittedIdle(record.deliveryEvidence) ? elapsedMs : 0;
+  const contiguous = elapsedMs > 0 && elapsedMs <= MAX_CONTIGUOUS_DELIVERY_TICK_MS;
+  const startAtMs = confirmedIdleStartedAt(record.deliveryEvidence, delivery, nowMs, elapsedMs);
+  const coveredMs = contiguous && wasPermittedIdle(record.deliveryEvidence) ? elapsedMs : nowMs - startAtMs;
   return {
     ...evidence,
-    firstConfirmedAtMs: evidence.firstConfirmedAtMs ?? nowMs,
+    firstIdleAtMs: evidence.firstIdleAtMs ?? nowMs - coveredMs,
     lastAcceptedAtMs: nowMs,
     permittedIdleMs: evidence.permittedIdleMs + coveredMs,
   };
+};
+
+const confirmedIdleStartedAt = (
+  prior: TaskDeliveryEvidence, next: TaskDeliveryEvidence, nowMs: number, elapsedMs: number,
+): number => {
+  // Include the initial watch only when it has just become confirmed. The
+  // lifecycle restarts a watch across gaps, so this time was permitted idle.
+  const contiguous = elapsedMs > 0 && elapsedMs <= MAX_CONTIGUOUS_DELIVERY_TICK_MS;
+  if (!contiguous || prior.energyIdle?.kind === 'accepted') return nowMs;
+  const watched = prior.nonDelivery;
+  const confirmed = next.nonDelivery;
+  return (watched.kind === 'watching' || watched.kind === 'rechecking')
+    && confirmed.kind === 'confirmed' && confirmed.sinceMs === watched.sinceMs
+    ? watched.sinceMs : nowMs;
+};
+
+export const reconcileIdleAtDeadline = (
+  record: InProgressRecord,
+  drawAt: (deviceId: string, atMs: number) => number | null,
+): InProgressRecord => {
+  if (record.deliveryEvidence.energyIdle?.kind !== 'accepted') return record;
+  const draw = drawAt(record.deviceId, record.deadlineAtMs);
+  return draw !== null && isUsefulTaskDraw(draw)
+    ? { ...record, deliveryEvidence: { ...record.deliveryEvidence, energyIdle: { kind: 'uncertain' } } }
+    : record;
 };
 
 const hasOnlyIdleRelatedBlockers = (delivery: TaskDeliveryEvidence, confirmedAtMs: number): boolean => {
@@ -100,13 +125,13 @@ export const isDeviceIdleOutcome = (record: InProgressRecord): boolean => {
   const { deviceIdleEvidence, deliveryEvidence, finalProgressValue } = record;
   if (record.objectiveKind !== 'energy' || finalProgressValue === null
     || deliveryEvidence.energyIdle?.kind !== 'accepted' || !deviceIdleEvidence) return false;
-  const { firstConfirmedAtMs, lastAcceptedAtMs, planningSpeedKw, permittedIdleMs } = deviceIdleEvidence;
-  if (firstConfirmedAtMs === null || firstConfirmedAtMs < record.startedAtMs || permittedIdleMs <= 0
-    || lastAcceptedAtMs === null || permittedIdleMs > lastAcceptedAtMs - firstConfirmedAtMs) return false;
+  const { firstIdleAtMs, lastAcceptedAtMs, planningSpeedKw, permittedIdleMs } = deviceIdleEvidence;
+  if (firstIdleAtMs === null || firstIdleAtMs < record.startedAtMs || permittedIdleMs <= 0
+    || lastAcceptedAtMs === null || permittedIdleMs > lastAcceptedAtMs - firstIdleAtMs) return false;
   const closingGapMs = record.deadlineAtMs - lastAcceptedAtMs;
-  if (closingGapMs < 0 || closingGapMs > MAX_CONTIGUOUS_TICK_MS) return false;
+  if (closingGapMs < 0 || closingGapMs > MAX_CONTIGUOUS_DELIVERY_TICK_MS) return false;
   const remainingKWh = record.targetValue - finalProgressValue;
   const lostKWh = planningSpeedKw * permittedIdleMs / HOUR_MS;
   return remainingKWh > 0 && remainingKWh <= lostKWh + DELIVERY_EPSILON_KWH
-    && hasOnlyIdleRelatedBlockers(deliveryEvidence, firstConfirmedAtMs);
+    && hasOnlyIdleRelatedBlockers(deliveryEvidence, firstIdleAtMs);
 };

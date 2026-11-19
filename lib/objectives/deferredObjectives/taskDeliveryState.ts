@@ -26,8 +26,12 @@ export type TaskDeliveryInput = {
   control: TaskControlState;
   draw: 'drawing' | 'not_drawing' | 'unobserved';
 };
+export const MAX_CONTIGUOUS_DELIVERY_TICK_MS = 60_000;
 export const NON_DELIVERY_HOLD_MS = 15 * 60 * 1000;
 export const DELIVERY_EPSILON_KWH = 0.001;
+export const isUsefulTaskDraw = (kw: number): boolean => (
+  kw * NON_DELIVERY_HOLD_MS / 3_600_000 >= DELIVERY_EPSILON_KWH
+);
 
 /** Whether the device is known to have stopped taking power: the status latch. */
 export const isTaskDeviceStopped = (state: TaskNonDeliveryState): state is Extract<
