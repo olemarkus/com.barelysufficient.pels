@@ -15,7 +15,7 @@ design-of-record behind those digests.
 ## Conventions & references
 
 - `AGENTS.md` — executable-plan intent rules for contributors/agents.
-- `personas.md` — who each surface serves; the PELS-wide product rubric (`pels-ux-fit` lens).
+- `personas.md` — who each surface serves; the PELS-wide product review rubric.
 - `persona-acquisition.md` — the "before" companion to `personas.md`: each persona's trigger,
   search and channel before they install PELS.
 - `ui-terminology.md` — canonical user-facing vocabulary for labels, status strings, tab names.

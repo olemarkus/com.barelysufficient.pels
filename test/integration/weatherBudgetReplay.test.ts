@@ -2,23 +2,16 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
+import { createWeatherBudgetHistory } from '../helpers/weatherBudgetHistory';
 
 it('uses its own budget on partial-temperature days before folding the next day', () => {
   const directory = mkdtempSync(join(tmpdir(), 'pels-budget-replay-'));
   try {
-    const history = JSON.parse(
-      readFileSync(resolve('test/fixtures/weatherHistoryProduction.json'), 'utf8'),
-    ) as { records: WeatherDailyRecord[] };
-    // The archive predates counted-energy observations. This counterfactual
-    // explicitly models no exempt load, so its actual and counted axes agree.
-    history.records = history.records.map((record) => (
-      record.kwhTotal === undefined ? record : { ...record, kwhBudgetCounted: record.kwhTotal }
-    ));
+    const history = { records: createWeatherBudgetHistory().slice(-40) };
     const partialDay = history.records.at(-1)!;
     partialDay.quality.partialTemp = true;
     history.records.push({
-      ...partialDay, dateKey: '2026-08-01', appliedBudgetKwh: 50,
+      ...partialDay, dateKey: '2030-08-01', appliedBudgetKwh: 50,
       quality: { ...partialDay.quality, partialTemp: false },
     });
     const logPath = join(directory, 'forecasts.log');
@@ -37,7 +30,7 @@ it('uses its own budget on partial-temperature days before folding the next day'
     const tight = replay(44);
     const roomy = replay(200);
     expect(tight.rows.map((row) => row.dateKey)).not.toContain(partialDay.dateKey);
-    const nextDay = (report: ReturnType<typeof replay>) => report.rows.find((row) => row.dateKey === '2026-08-01');
+    const nextDay = (report: ReturnType<typeof replay>) => report.rows.find((row) => row.dateKey === '2030-08-01');
     expect(nextDay(tight)).toBeDefined();
     // The recorded allowance is a baseline comparator, never the allowance
     // governing feedback once a counterfactual recommendation is available.

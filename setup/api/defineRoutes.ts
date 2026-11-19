@@ -16,7 +16,7 @@ type RouteHandler<Ctx extends ApiContext> = (ctx: Ctx) => unknown;
 // Wrap an async API handler so any thrown error is logged through the runtime's
 // structured pino logger before the rejection propagates to the Homey API
 // transport. Without this, handler exceptions become opaque "Network request
-// failed" responses on the client and never reach `/tmp/pels`, leaving the
+// failed" responses on the client and never reach the app log, leaving the
 // failure undiagnosable.
 //
 // During app restart `homey.app` (or its structured logger) may not be wired

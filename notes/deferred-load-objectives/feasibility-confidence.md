@@ -34,13 +34,10 @@ Two consecutive samples yield the learned rate:
 `unitPerHour = Δvalue / Δt` (speed). `energyNeededKWh = remainingUnits ×
 kwhPerUnit` is what the horizon planner sizes feasibility against.
 
-## What the prod logs (2026-05-22, `0a4464c3`) actually show
+## Reading the `objective_profile_*` events
 
-Sampled the `objective_profile_*` structured events:
-
-- **Rejections are mostly harmless skips, not data loss.** 24/44 are
-  `non_monotonic_time` — the sensor's `lastFreshDataMs` not advancing between
-  faster PELS polls (duplicate timestamp). `buildRejectedProfileSample` does
+- **Duplicate timestamps preserve the baseline.** A `non_monotonic_time` rejection means
+  the sensor's `lastFreshDataMs` did not advance between polls. `buildRejectedProfileSample` does
   **not** advance the baseline for these, so the next real rise still
   integrates the full elapsed interval. Energy is not lost.
 - **No-power intervals are already excluded from the energy estimate.** Every
@@ -50,8 +47,8 @@ Sampled the `objective_profile_*` structured events:
   Idle/coast drift never pollutes kWh/unit. The "if power fell to 0 we can't
   infer kWh/unit" rule is **already implemented** — but only for power = 0, not
   for power *variation* (see the poisoning vector below).
-- **Samples converge and bands engage.** Mature devices reach
-  `acceptedSamples:500+`, `bufferedSamples:64` (ring-buffer cap), `bandsCount:2`.
+- **The retained sample buffer is bounded.** Compare `acceptedSamples`,
+  `bufferedSamples` and `bandsCount` when investigating whether bands engage.
 - **The buffer is persisted.** It rides in the tracker's rows in the userdata
   store (`PowerTrackerState.objectiveProfiles`), saved every persist tick and
   reloaded at startup; retention is 30 days (`OBJECTIVE_PROFILE_RETENTION_MS`).
@@ -73,8 +70,7 @@ that replaced it now lives in `lib/objectives/energyAccumulator.ts`
 (`subIntervalEnergyKwh`), composed across the open window by
 `calculateWindowEnergyKwh`.
 
-Evidence (`/tmp/pels` 2026-05-22, the "Connected 300" device): per-interval
-implied power (`energyKwh / intervalHours`) lands on three discrete levels —
+For a stepped heater, per-interval implied power (`energyKwh / intervalHours`) lands on three discrete levels —
 **1193 W, 1671 W, 2865 W** — i.e. the device runs low/medium/high steps. Within
 a single 5-minute accepted interval, any mid-window step change is mis-attributed:
 the whole rise is charged at the baseline step's power. The intermediate samples

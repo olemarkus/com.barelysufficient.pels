@@ -33,8 +33,7 @@ const logger = getLogger('weather/metForecast');
  *   signature fit was trained on (`WeatherDailyRecord.tempMeanC =
  *   accumulator.sumC/count`). DO NOT weight, integrate, or feed heating-degree-
  *   HOURS to the mean-trained slope — Jensen convexity would over-budget swingy
- *   days. (That realignment is the deferred Phase 2; see
- *   `~/.claude/plans/weather-met-forecast.md`.)
+ *   days.
  * - min/max + the evening window are DISPLAY/VERDICT context only; the
  *   cold-evening flag is resolved downstream where the fit's balance point lives.
  * - `symbolCode`/`precip` are display-only; never fed to the fit.

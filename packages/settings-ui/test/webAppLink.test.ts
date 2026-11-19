@@ -27,27 +27,27 @@ describe('Open in a browser link', () => {
   });
 
   it('shows this Homey\'s address and links to the web app to open it', async () => {
-    callApi.mockResolvedValue({ version: '3.21.0', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3' });
+    callApi.mockResolvedValue({ version: '3.21.0', timeZone: 'Europe/Oslo', homeyId: 'aaaaaaaaaaaaaaaaaaaaaaaa' });
 
     await refreshWebAppLink();
 
     expect(callApi).toHaveBeenCalledWith('GET', '/ui_version');
-    expect(link()?.getAttribute('href')).toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3`);
+    expect(link()?.getAttribute('href')).toBe(`${WEB_APP_URL}?open=aaaaaaaaaaaaaaaaaaaaaaaa`);
     const address = document.getElementById('web-app-homey-address') as HTMLElement & { value: string };
-    expect(address.value).toBe('65687b03c6bcab0c0a4464c3');
+    expect(address.value).toBe('aaaaaaaaaaaaaaaaaaaaaaaa');
     expect(address.closest('.field')?.hasAttribute('hidden')).toBe(false);
   });
 
   it('shows and links this Homey\'s cloud host when Homey serves the page from it', async () => {
-    const cloud = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    const cloud = 'https://aaaaaaaaaaaaaaaaaaaaaaaa.homey.fixture.homeypro.net';
     vi.stubGlobal('location', { ...window.location, origin: cloud });
     try {
-      callApi.mockResolvedValue({ version: '3.21.0', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3' });
+      callApi.mockResolvedValue({ version: '3.21.0', timeZone: 'Europe/Oslo', homeyId: 'aaaaaaaaaaaaaaaaaaaaaaaa' });
 
       await refreshWebAppLink();
 
       expect(link()?.getAttribute('href'))
-        .toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3&via=${encodeURIComponent(cloud)}`);
+        .toBe(`${WEB_APP_URL}?open=aaaaaaaaaaaaaaaaaaaaaaaa&via=${encodeURIComponent(cloud)}`);
       expect((document.getElementById('web-app-homey-address') as HTMLElement & { value: string }).value).toBe(cloud);
     } finally {
       vi.unstubAllGlobals();
@@ -56,17 +56,17 @@ describe('Open in a browser link', () => {
 
   // Served from the home network, the page shows the cloud host PELS learned.
   it('shows and links the cloud host PELS learned when the page comes from the home network', async () => {
-    const cloud = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
-    vi.stubGlobal('location', { ...window.location, origin: 'https://192-168-89-241.homey.homeylocal.com' });
+    const cloud = 'https://aaaaaaaaaaaaaaaaaaaaaaaa.homey.fixture.homeypro.net';
+    vi.stubGlobal('location', { ...window.location, origin: 'https://192-168-1-50.homey.homeylocal.com' });
     try {
       callApi.mockResolvedValue({
-        version: '3.21.1', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3', cloudHost: cloud,
+        version: '3.21.1', timeZone: 'Europe/Oslo', homeyId: 'aaaaaaaaaaaaaaaaaaaaaaaa', cloudHost: cloud,
       });
 
       await refreshWebAppLink();
 
       expect(link()?.getAttribute('href'))
-        .toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3&via=${encodeURIComponent(cloud)}`);
+        .toBe(`${WEB_APP_URL}?open=aaaaaaaaaaaaaaaaaaaaaaaa&via=${encodeURIComponent(cloud)}`);
       expect((document.getElementById('web-app-homey-address') as HTMLElement & { value: string }).value).toBe(cloud);
     } finally {
       vi.unstubAllGlobals();
@@ -74,7 +74,7 @@ describe('Open in a browser link', () => {
   });
 
   it('saves the page\'s origin only when Homey serves it from a cloud host it does not hold yet', async () => {
-    const cloud = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    const cloud = 'https://aaaaaaaaaaaaaaaaaaaaaaaa.homey.fixture.homeypro.net';
     const servedFrom = (origin: string) => vi.stubGlobal('location', { ...window.location, origin });
     getSetting.mockReset().mockResolvedValue(undefined);
     setSetting.mockReset().mockResolvedValue(undefined);
@@ -89,7 +89,7 @@ describe('Open in a browser link', () => {
       getSetting.mockResolvedValue(cloud);
       await saveCloudHost();
 
-      servedFrom('https://192-168-89-241.homey.homeylocal.com');
+      servedFrom('https://192-168-1-50.homey.homeylocal.com');
       await saveCloudHost();
       servedFrom('https://pels.barelysufficient.org');
       await saveCloudHost();
@@ -101,7 +101,7 @@ describe('Open in a browser link', () => {
 
   it('copies the address, and selects it where the clipboard is refused', async () => {
     const address = document.getElementById('web-app-homey-address') as HTMLElement & { value: string; select: () => void };
-    address.value = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    address.value = 'https://aaaaaaaaaaaaaaaaaaaaaaaa.homey.fixture.homeypro.net';
     address.select = vi.fn();
     const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('denied'));
     vi.stubGlobal('navigator', { clipboard: { writeText } });

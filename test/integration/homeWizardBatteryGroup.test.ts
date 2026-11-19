@@ -164,7 +164,7 @@ describe('HomeWizard Plug-In Batteries as one group battery', () => {
 
   it('splits a device standing in for the P1 through its compatibility settings the same way', async () => {
     const mock = p1({
-      id: 'mock-p1', driverId: 'homey:app:com.olemarkus.testdevices:p1', ownerUri: 'homey:app:com.olemarkus.testdevices',
+      id: 'mock-p1', driverId: 'homey:app:com.example.fixturedevices:p1', ownerUri: 'homey:app:com.example.fixturedevices',
       settings: {
         pelsCompatibilityOwnerUri: 'homey:app:com.homewizard',
         pelsCompatibilityDriverId: 'homey:app:com.homewizard:energy_v2',

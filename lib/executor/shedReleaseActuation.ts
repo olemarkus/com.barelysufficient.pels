@@ -211,7 +211,7 @@ const buildShedReleaseSteppedAction = (
 // `lib/device/deviceActionProjection.ts`). Returns null on a degenerate empty profile or
 // when the intent isn't a `set_step` release; the caller treats that as "no target to
 // release toward" and bails. Emits a debug log so the silent no-op is observable in
-// /tmp/pels logs (otherwise a stepped-no-binary device with an unpopulated `releaseShedStepId`
+// the app log (otherwise a stepped-no-binary device with an unpopulated `releaseShedStepId`
 // on fresh boot stays at its current step with zero log signal).
 const resolveProducerShedReleaseStep = (
   intent: ExecutableReleaseIntent,

@@ -4,9 +4,7 @@
 // not before. The outside actor is a Web API write, which is what another app
 // or a Flow setting the heater looks like to PELS.
 import {
-  pairMock,
   readCapability,
-  runMockCard,
   setCapability,
   waitFor,
 } from '../lab.mjs';
@@ -21,9 +19,9 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 export const driftBreaker = {
   name: 'drift-breaker',
   summary: 'a heater set away from PELS\'s limit four times in an hour is reported; three times is not',
-  async run({ api, pels, log }) {
-    const meter = await pairMock(api, 'han');
-    const heater = await pairMock(api, 'mill_v2');
+  async run({ api, fixtures, pels, log }) {
+    const meter = await fixtures.pair('han');
+    const heater = await fixtures.pair('mill_v2');
     log(`paired meter ${meter.name} (${meter.id}) and heater ${heater.name} (${heater.id})`);
 
     const readHeater = async () => {
@@ -39,7 +37,7 @@ export const driftBreaker = {
     if (saved?.ok !== true) throw new Error(`PELS refused the meter: ${JSON.stringify(saved)}`);
     // A house drawing 5 kW against a 1 kW limit, whose one managed device PELS
     // limits by lowering its setpoint, so PELS keeps asking for that setpoint.
-    await runMockCard(api, 'mock_set_power_override', { device: { id: meter.id }, power_w: 5000 });
+    await fixtures.runCard('mock_set_power_override', { device: { id: meter.id }, power_w: 5000 });
     await pels.writeSetting('capacity_limit_kw', 1);
     await pels.writeSetting('capacity_margin_kw', 0);
     await pels.writeSetting('capacity_dry_run', false);

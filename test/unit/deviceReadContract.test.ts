@@ -366,8 +366,8 @@ describe('independent capability resolution', () => {
     expect(valid.capabilitiesObj?.[capabilityId]).toEqual({ value: previous, lastUpdated: Date.parse(STAMP) + 60_000 });
   });
 
-  it('retains accepted setpoint-heater observations during SHS app unavailability', () => {
-    // SHS 13.5.0 retains the device and capability list during app restart and
+  it('retains accepted setpoint-heater observations while the device app is unavailable', () => {
+    // Homey retains the device and capability list during app restart and
     // reinstall, but returns an empty capabilitiesObj while the app is down.
     const capabilities = ['target_temperature', 'measure_temperature', 'measure_power', 'meter_power'];
     const values = {

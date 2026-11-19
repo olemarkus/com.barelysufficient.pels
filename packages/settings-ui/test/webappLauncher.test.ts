@@ -5,7 +5,7 @@ import path from 'node:path';
 // not have before it checks the key, so on a PELS from before the web app the
 // version read cannot vouch for a key: the add form must check it on its own.
 
-const HOMEY_ID = '65687b03c6bcab0c0a4464c3';
+const HOMEY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 const KEY_CHECK_PATH = '/api/manager/apps/app/com.barelysufficient.pels/setting/web_app_key_check';
 const VERSION_PATH = '/api/app/com.barelysufficient.pels/ui_version';
 
@@ -150,7 +150,7 @@ describe('web app launcher', () => {
   });
 
   describe('choosing where to reach a Homey', () => {
-    const CLOUD = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+    const CLOUD = `https://${HOMEY_ID}.homey.fixture.homeypro.net`;
     const LOCAL = 'https://192-168-1-50.homey.homeylocal.com';
     const stored = () => JSON.parse(window.localStorage.getItem('pels.webapp.homeys.v1') ?? '{}') as {
       homeys: { baseUrl: string; localUrl?: string | null }[];
@@ -277,7 +277,7 @@ describe('web app launcher', () => {
     it('stays on the cloud when another Homey answers on the home-network address', async () => {
       listHouse(LOCAL);
       const path = await openWith('', (pathname) => (pathname === '/api/manager/system/ping'
-        ? new Response('', { status: 200, headers: { 'X-Homey-ID': '6acdea6cd18dc40482d6bc10' } })
+        ? new Response('', { status: 200, headers: { 'X-Homey-ID': 'bbbbbbbbbbbbbbbbbbbbbbbb' } })
         : version(null)));
 
       expect(path).toBe(`v3.20.0/#homey=${HOMEY_ID} cloud`);
@@ -285,7 +285,7 @@ describe('web app launcher', () => {
   });
 
   describe('adding Homeys to a phone', () => {
-    const CABIN_ID = '6acdea6cd18dc40482d6bc10';
+    const CABIN_ID = 'bbbbbbbbbbbbbbbbbbbbbbbb';
     const listed = (homeys: object[]) => window.localStorage.setItem(
       'pels.webapp.homeys.v1',
       JSON.stringify({ homeys, lastHomeyId: null }),
@@ -334,7 +334,7 @@ describe('web app launcher', () => {
         name: `Homey ${index}`,
         homeyId: index.toString(16).padStart(24, 'a'),
         token: `${'1'.repeat(36)}:${'2'.repeat(36)}:${index.toString().padStart(40, '3')}`,
-        baseUrl: `https://${index.toString(16).padStart(24, 'a')}.homey.athom-prod-euwest1-001.homeypro.net`,
+        baseUrl: `https://${index.toString(16).padStart(24, 'a')}.homey.fixture.homeypro.net`,
       }));
       listed(many);
       await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-pair-phone')?.hidden).toBe(false));
@@ -386,7 +386,7 @@ describe('web app launcher', () => {
     }).homeys;
 
     it('keeps a saved key that Homey does not accept in place of the one in the code', async () => {
-      const cloud = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+      const cloud = `https://${HOMEY_ID}.homey.fixture.homeypro.net`;
       listed([{ ...house, baseUrl: cloud }]);
       await scan([{ name: 'Home', homeyId: HOMEY_ID, token: 'a:b:c', baseUrl: `https://${HOMEY_ID}.connect.athom.com` }]);
       try {
@@ -426,7 +426,7 @@ describe('web app launcher', () => {
     });
 
     it('replaces a saved key Homey accepts, and keeps the cloud host learned here', async () => {
-      const cloud = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+      const cloud = `https://${HOMEY_ID}.homey.fixture.homeypro.net`;
       listed([{ ...house, baseUrl: cloud }]);
       await scan([{ name: 'Home', homeyId: HOMEY_ID, token: 'u:new:key', baseUrl: `https://${HOMEY_ID}.connect.athom.com` }]);
       try {
@@ -557,7 +557,7 @@ describe('web app launcher', () => {
       lastHomeyId: HOMEY_ID,
     }));
     const assign = vi.fn();
-    vi.stubGlobal('location', { ...window.location, search: '?open=6acdea6cd18dc40482d6bc10', assign });
+    vi.stubGlobal('location', { ...window.location, search: '?open=bbbbbbbbbbbbbbbbbbbbbbbb', assign });
     try {
       await loadLauncher(
         () => response(200, '{"version":"3.20.0","timeZone":"Europe/Oslo","homeyId":"x"}'),

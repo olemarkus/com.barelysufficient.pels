@@ -172,9 +172,8 @@ describe('Homey price service', () => {
     capture.restore();
   });
 
-  // Homey answers a day it has no prices for with HTTP 500 `NotFoundError`
-  // (SHS, 2026-09-19), so an unpublished tomorrow is a rejection, not an empty
-  // day. Before the day-ahead auction it is ordinary; after 13:00 it is one error.
+  // Homey answers a day it has no prices for with HTTP 500 `NotFoundError`.
+  // An unpublished tomorrow is expected before the auction. After 13:00 it is one error.
   it.each([
     { label: 'before 13:00 it is pending, not an error', utcHour: 8, missingTomorrowLogged: false },
     { label: 'after 13:00 it is one missing-tomorrow error', utcHour: 14, missingTomorrowLogged: true },

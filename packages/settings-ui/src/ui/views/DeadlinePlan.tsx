@@ -1653,7 +1653,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
 //
 // Breadcrumbs route through `logSettingsWarn` to the runtime
 // `settings_ui_log` API → `app.log(...)`, so the signal lands in the
-// app's stdout log (`/tmp/pels/start.*.stdout.log`) where new reason
+// app log where new reason
 // codes are actually noticed; the settings UI's `console` is invisible
 // to users in the Homey WebView and out of scope for ops anyway.
 const warnedFallbackRevisions = new Set<string>();

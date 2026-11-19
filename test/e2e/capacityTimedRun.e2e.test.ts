@@ -5,7 +5,7 @@
 // only what PELS writes back through the SDK is observed. The clock is faked, so
 // the pace, the drain and the timed run's stop are real.
 //
-// THE HOUSE (the 2026-11-15 SHS lab, from a prod night hour): 3.0 kW of background
+// Fixture: 3.0 kW of background
 // load and five on/off heaters, 0.5 / 0.78 / 0.8 / 1.1 / 1.4 kW in that priority
 // order, against a 5 kW limit with a 0.3 kW margin. With the two smallest heaters
 // on the house draws 4.28 kW: a 0.42 kW gap that only the 0.8 kW heater can fill,

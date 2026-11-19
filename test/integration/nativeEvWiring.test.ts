@@ -321,8 +321,8 @@ describe('native EV wiring shim', () => {
     const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice({
       id: 'zaptec-go2-mock',
       name: 'Zaptec Go 2 Mock',
-      driverId: 'homey:app:com.olemarkus.testdevices:go2',
-      ownerUri: 'homey:app:com.olemarkus.testdevices',
+      driverId: 'homey:app:com.example.fixturedevices:go2',
+      ownerUri: 'homey:app:com.example.fixturedevices',
     })]);
 
     expect(parsed).toEqual(expect.objectContaining({
@@ -344,8 +344,8 @@ describe('native EV wiring shim', () => {
     const device = buildZaptecDevice({
       id: 'zaptec-go2-compat-mock',
       name: 'Zaptec Go 2 compatibility mock',
-      driverId: 'homey:app:com.olemarkus.testdevices:go2',
-      ownerUri: 'homey:app:com.olemarkus.testdevices',
+      driverId: 'homey:app:com.example.fixturedevices:go2',
+      ownerUri: 'homey:app:com.example.fixturedevices',
       settings: {
         pelsCompatibilityOwnerUri: 'homey:app:com.zaptec',
         pelsCompatibilityDriverId: 'homey:app:com.zaptec:go2',
@@ -404,8 +404,8 @@ describe('native EV wiring shim', () => {
     expect(await seedTransportDevices(deviceManager, [
       buildZaptecDevice({
         id: 'zaptec-testdevices-go2',
-        driverId: 'homey:app:com.olemarkus.testdevices:go2',
-        ownerUri: 'homey:app:com.olemarkus.testdevices',
+        driverId: 'homey:app:com.example.fixturedevices:go2',
+        ownerUri: 'homey:app:com.example.fixturedevices',
       }),
     ])).toEqual([]);
   });

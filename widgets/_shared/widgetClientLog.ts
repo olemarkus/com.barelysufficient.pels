@@ -6,7 +6,7 @@
 // the settings-UI logging path (packages/settings-ui/src/ui/logging.ts →
 // `settings_ui_log`): the client POSTs the error to the widget's own `/log`
 // endpoint, whose app-process handler (widgetClientLogApi.ts) writes it into the
-// Homey app log where `/tmp/pels` can see it.
+// Homey app log.
 //
 // Browser-safe: imports nothing from the app runtime, so it bundles into each
 // widget's `public/index.js` IIFE. The app-process counterpart lives in
@@ -36,7 +36,7 @@ const MAX_PENDING = 20;
 
 // A persistent failure re-fires on every poll tick (~10 s). Collapse identical
 // (level+message) reports inside this window to one app-log line so a stuck
-// widget doesn't flood `/tmp/pels`.
+// widget doesn't flood the app log.
 const SUPPRESS_WINDOW_MS = 60 * 1000;
 
 // The reporter only ever POSTs to the widget's `/log` route, so it asks for no

@@ -685,7 +685,7 @@ export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): Se
   const host = readPelsHost(homey);
   if (!host) return buildEmptyDeviceDiagnosticsPayload();
   // No try/catch: let exceptions bubble to the api.ts wrapper so the client
-  // sees the real failure and the cause lands in `/tmp/pels` via app.error.
+  // sees the real failure and the cause lands in the app log via app.error.
   // Returning an empty payload here would silently strip diagnostics from the
   // device-detail page without any explanation.
   return host.getDeviceDiagnosticsUiPayload();
@@ -695,7 +695,7 @@ export const getSettingsUiDeviceLogPayload = ({ homey }: ApiContext): SettingsUi
   const host = readPelsHost(homey);
   if (!host) throw new Error('Device activity history is not ready');
   // No try/catch: let exceptions bubble to the api.ts wrapper so the client
-  // sees the real failure and the cause lands in `/tmp/pels` via app.error.
+  // sees the real failure and the cause lands in the app log via app.error.
   return host.getDeviceLogUiPayload();
 };
 

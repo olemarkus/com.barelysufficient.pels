@@ -3,7 +3,7 @@
 // for this device." with no clue what actually went wrong, and the client
 // did not log the failure either. The error card now embeds the underlying
 // transport message and the failure round-trips to the app log via
-// `logSettingsError`, so the user and `/tmp/pels` can see the real cause.
+// `logSettingsError`, so the user and the app log can see the real cause.
 
 const callApiMock = vi.fn();
 const logSettingsErrorMock = vi.fn().mockResolvedValue(undefined);
@@ -71,7 +71,7 @@ describe('mountDeadlinePlan boot failure', () => {
     // the user can read the failure without opening DevTools.
     expect(text).toContain('Smart task data could not be loaded');
     expect(text).toContain('Homey api GET /ui_bootstrap failed: Network request failed');
-    // And the failure round-trips so it shows up in `/tmp/pels` instead of
+    // And the failure round-trips so it shows up in the app log instead of
     // disappearing into a swallowed catch.
     expect(logSettingsErrorMock).toHaveBeenCalledExactlyOnceWith(
       'Failed to load smart task boot data',
@@ -214,7 +214,7 @@ describe('recourse dispatcher (history-detail "Review device")', () => {
   // link. The JSX producer always emits the attribute (`deviceId ?? ''`), so
   // the regression surfaces as an empty-string attribute, not an absent one.
   // The dispatcher routes that through `logSettingsWarn` so the degradation
-  // shows up in `/tmp/pels` operator logs instead of vanishing.
+  // shows up in the app log instead of vanishing.
   it('warns when an overview recourse fires with an empty deviceId', () => {
     setDeadlinePlanCloseHandler(() => {});
 

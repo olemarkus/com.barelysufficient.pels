@@ -1,5 +1,5 @@
 // The Homey the e2e suite runs on, and what the suite does to it: install PELS
-// and test-devices from scratch, pair the mocks a scenario needs, and set PELS
+// and the fixture app from scratch, pair the mocks a scenario needs, and set PELS
 // up the way the settings UI does.
 //
 // The Homey comes from the environment, never from a default: a clean install
@@ -11,9 +11,6 @@ import http from 'node:http';
 import https from 'node:https';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-
-export const PELS_APP_ID = 'com.barelysufficient.pels';
-export const TEST_DEVICES_APP_ID = 'com.olemarkus.testdevices';
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
@@ -181,14 +178,12 @@ export const installClean = async (box, api, dir, appId) => {
 
 export const commitOf = (dir) => execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
 
-const driverUri = (driver) => `homey:app:${TEST_DEVICES_APP_ID}:${driver}`;
-
-/** Pair one test-devices mock through the pair-session API the Homey app drives. */
-export const pairMock = async (api, driver) => {
+/** Pair one fixture device through the Homey pair-session API. */
+const pairMock = async (api, appUri, driver) => {
   const zones = Object.values(await api.get('/api/manager/zones/zone/'));
   const zoneId = (zones.find((zone) => zone.parent === null) ?? zones[0])?.id;
   const session = await api.post('/api/manager/drivers/pairsession', {
-    type: 'pair', driverId: driverUri(driver), ...(zoneId ? { zoneId } : {}),
+    type: 'pair', driverId: `${appUri}:${driver}`, ...(zoneId ? { zoneId } : {}),
   });
   const sessionId = session.id ?? session;
   try {
@@ -204,11 +199,13 @@ export const pairMock = async (api, driver) => {
   }
 };
 
-/** Run a test-devices Flow action card, as a Flow would. */
-export const runMockCard = (api, card, args) => api.post(
-  `/api/manager/flow/flowcardaction/homey:app:${TEST_DEVICES_APP_ID}/homey:app:${TEST_DEVICES_APP_ID}:${card}/run`,
-  { args },
-);
+export const createFixtureDevices = (api, appId) => {
+  const appUri = `homey:app:${appId}`;
+  return {
+    pair: (driver) => pairMock(api, appUri, driver),
+    runCard: (card, args) => api.post(`/api/manager/flow/flowcardaction/${appUri}/${appUri}:${card}/run`, { args }),
+  };
+};
 
 export const readDevice = (api, deviceId) => api.get(`/api/manager/devices/device/${deviceId}`);
 
@@ -223,8 +220,8 @@ export const setCapability = (api, deviceId, capabilityId, value) => api.put(
 );
 
 /** PELS as the settings UI reaches it: its app settings and its API routes. */
-export const createPels = (api) => ({
-  writeSetting: (key, value) => api.put(`/api/manager/apps/app/${PELS_APP_ID}/setting/${key}`, { value }),
-  get: (route) => api.get(`/api/app/${PELS_APP_ID}${route}`),
-  post: (route, body) => api.post(`/api/app/${PELS_APP_ID}${route}`, body),
+export const createPels = (api, appId) => ({
+  writeSetting: (key, value) => api.put(`/api/manager/apps/app/${appId}/setting/${key}`, { value }),
+  get: (route) => api.get(`/api/app/${appId}${route}`),
+  post: (route, body) => api.post(`/api/app/${appId}${route}`, body),
 });

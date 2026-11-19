@@ -167,7 +167,7 @@ Homey stays until the target changes.
   charge confirms as on. Read as off, that write never confirmed: the car
   ending its session read as an outside turn-off, a restore countdown labelled
   the charger limited, and the unconfirmed restore held every other device's
-  restore behind it (SHS lab, 2026-11-14). A realtime current or plug-state report carries the switch
+  restore behind it. A realtime current or plug-state report carries the switch
   it implies (the realtime path reads the held current as the reported step,
   which puts 0-5 A on the off step); the app's switch events are dropped, and
   a malformed plug state or current implies nothing, as does a paused or
@@ -560,7 +560,5 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
 
 ## Validation reference
 
-Real fixtures for tests come from the SHS test Homey advanced flows
-`Zaptec stepped load` and `Easee stepped load` (see
-`test/unit/flowApiUserFlows.test.ts`). The in-app token was confirmed able to read
-both endpoints during the PR1 spike.
+See `test/unit/flowApiUserFlows.test.ts` for fixtures covering ordinary and
+Advanced Flow responses.

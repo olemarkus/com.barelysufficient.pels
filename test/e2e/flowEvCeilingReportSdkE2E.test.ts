@@ -1,7 +1,7 @@
 /**
  * SDK-boundary e2e for a bridge Flow reporting an EV charger's draw.
  *
- * The production shape (SHS, 2026-10-01): an EV charger under the EV 1-phase
+ * The fixture uses an EV charger under the EV 1-phase
  * preset without built-in control. The owner's Flow reports the charger's power
  * through "Report stepped load power". A car draws a little under nominal, so
  * the reading sits just below a rung, and the card matches it to that rung.

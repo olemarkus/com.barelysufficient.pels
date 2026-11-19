@@ -2,7 +2,7 @@
 // browser-safe reporter in widgetClientLog.ts and the app-side mirror of
 // `logSettingsUiMessage` (setup/settingsUiApi.ts): it writes a WebView-reported
 // problem into the Homey app log (`homey.app.error/log`), so the cause behind a
-// widget's load-error state surfaces in `/tmp/pels` instead of dying in the
+// widget's load-error state surfaces in the app log instead of dying in the
 // unreachable mobile WebView console.
 //
 // Runs in the app process: imported only by each widget's `api.ts` node entry

@@ -40,9 +40,8 @@ const DAILY_BURST_RATE_MIN_REMAINING_HOURS = 10 / 60;
 // floor, keeps it finite as the quarter ends. The floor only has to stop a
 // division by zero, and it must not overstate the time left: a one-minute floor
 // read "0.06 kWh left with 12 s to go" as 3.6 kW rather than 17 kW, and a quarter
-// running just under the pace shed a device seconds before its boundary (SHS,
-// 2026-09-19). One Homey Energy poll (10 s) is the shortest span a decision can
-// act on.
+// running just under the pace shed a device seconds before its boundary.
+// One Homey Energy poll (10 s) is the shortest span a decision can act on.
 const QUARTER_BURST_RATE_MIN_REMAINING_HOURS = 10 / 3600;
 
 // End-of-hour drain (hourly control only; a quarter never bursts above the

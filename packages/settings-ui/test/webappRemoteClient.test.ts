@@ -13,7 +13,7 @@ import type { HomeySettingsClient } from '../src/ui/homey.ts';
 const homey: StoredHomey = {
   name: 'House',
   baseUrl: 'https://homey.example',
-  homeyId: '65687b03c6bcab0c0a4464c3',
+  homeyId: 'aaaaaaaaaaaaaaaaaaaaaaaa',
   token: 'u:s:t',
   localUrl: 'https://192-168-1-50.homey.homeylocal.com',
 };
@@ -115,7 +115,7 @@ describe('remote Homey client', () => {
   it('takes a handed-over address once, only for its Homey, and only while stored', () => {
     const local = homey.localUrl ?? '';
     handOverAddress(homey.homeyId, local);
-    expect(takeHandedAddress({ ...homey, homeyId: '6acdea6cd18dc40482d6bc10' })).toBeNull();
+    expect(takeHandedAddress({ ...homey, homeyId: 'bbbbbbbbbbbbbbbbbbbbbbbb' })).toBeNull();
     handOverAddress(homey.homeyId, local);
     expect(takeHandedAddress(homey)).toBe('local');
     expect(takeHandedAddress(homey)).toBeNull();

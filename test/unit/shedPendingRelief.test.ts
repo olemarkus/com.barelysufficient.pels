@@ -17,7 +17,7 @@ import { selectShedDevices } from '../../lib/plan/shedding/selection';
 
 const NOW = 1_000_000;
 
-// A 1-phase EV charger in amps, 230 W per amp, as on the SHS test Homey.
+// A 1-phase EV charger in amps, 230 W per amp.
 const chargerProfile: SteppedLoadProfile = {
   steps: [
     { id: 'off', planningPowerW: 0 },

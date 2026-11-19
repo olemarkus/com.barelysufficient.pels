@@ -15,7 +15,7 @@ governing rule:
 Companion note: the **before** angle (who each persona is *before* they have
 heard of PELS — triggers, search queries, communities, arrival channel) lives in
 [`notes/persona-acquisition.md`](persona-acquisition.md). This file is the
-**after** angle — the per-surface UX rubric that `pels-ux-fit` consumes. The two
+**after** angle — the per-surface UX review rubric. The two
 map 1:1 by persona.
 
 ---
@@ -243,9 +243,8 @@ NL (net-metering phase-out) and DE; nascent in NO.
 | Smart tasks | "Charge from your own surplus by deadline." | ✅ — the planning price steers deadline EV/heat load into surplus hours, and the create-task preview draws its price curve at that same price. A charger can also match surplus directly (`Charge on solar surplus`); while a smart task is active, the task decides when the device runs (owner ruling 2026-09-25). |
 | Settings | PV/inverter source + self-consume-vs-price honesty when they conflict. | ◐ — export-price config (share % / fixed) + the `using your solar` reason line on the Budget and smart-task charts + surplus-outranks-price honesty all ship; solar production is auto-detected, and compatible native inverter production limits are opt-in under Electricity prices to avoid paying to export; battery control and takeover opt-out ship: a Main-home battery appears as a regular device with Managed as its off switch, its own Overview card, and a place in the priority order; a meter area's battery is not controlled. |
 
-> The first solar surfaces have shipped, so `pels-ux-fit` **may** now grade the
-> solar surfaces (Usage Solar card, Overview "Solar now" subline, per-device
-> "Use solar surplus" control, export-price settings) against this persona.
+> Apply this persona to the Usage Solar card, the Overview "Solar now" subline,
+> per-device solar-surplus controls, and export-price settings.
 > **Still roadmap** (keep as untrimmed needs, do not grade as served): the
 > export-to-zero self-consumption maximiser, a self-consumption-rate **KPI**
 > surfaced as a headline number, and month-by-month solar-money history.
@@ -314,7 +313,7 @@ capacity-exceeded pushes, and aggregate-failure lines on Overview — the data
 (`cannotMeetDailyBudgetExhausted`, exhaustion bucket counts, shortfall,
 `objective_invalid_session`) is captured but composes into no on-surface sentence.
 
-**Review rule (wire into `pels-ux-fit`):** evaluate each surface for its **single
+**Review rule:** evaluate each surface for its **single
 primary persona**, in **both** its Steady and Failing scenarios — a surface passes
 only if it serves the primary in both. The Failing scenario always carries the
 P0/P1 weight.
@@ -402,8 +401,6 @@ leads with — not the persona list.
   surveyed/forum-stated willingness (it runs well above realised behaviour).
 - **Positioning / onboarding:** walk the **before** angle in
   [`persona-acquisition.md`](persona-acquisition.md).
-- **`pels-ux-fit`:** this file is its rubric. Keep the two aligned; the per-surface
-  primary table + the Failing rule are the parts it executes most directly.
 
 ---
 

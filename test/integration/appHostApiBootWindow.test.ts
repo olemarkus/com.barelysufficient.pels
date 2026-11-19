@@ -140,14 +140,14 @@ describe('web app version API', () => {
       settings: partialDouble<Homey.App['homey']['settings']>({ get: () => undefined }),
       clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
       cloud: partialDouble<Homey.App['homey']['cloud']>({
-        getHomeyId: async () => '65687b03c6bcab0c0a4464c3',
+        getHomeyId: async () => 'aaaaaaaaaaaaaaaaaaaaaaaa',
         getLocalAddress: async () => '192.168.1.50:80',
       }),
     });
     await expect(api.ui_version({ homey })).resolves.toEqual({
       version: '3.20.0',
       timeZone: 'Europe/Oslo',
-      homeyId: '65687b03c6bcab0c0a4464c3',
+      homeyId: 'aaaaaaaaaaaaaaaaaaaaaaaa',
       localAddress: '192.168.1.50:80',
       cloudHost: null,
     });
@@ -159,7 +159,7 @@ describe('web app version API', () => {
       settings: partialDouble<Homey.App['homey']['settings']>({ get: () => undefined }),
       clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
       cloud: partialDouble<Homey.App['homey']['cloud']>({
-        getHomeyId: async () => '65687b03c6bcab0c0a4464c3',
+        getHomeyId: async () => 'aaaaaaaaaaaaaaaaaaaaaaaa',
         getLocalAddress: async () => {
           throw new Error('not available');
         },
@@ -171,8 +171,8 @@ describe('web app version API', () => {
   // Homey cannot say its cloud cluster, so the settings page saves the host it
   // was served from and PELS hands it to the web app.
   describe('the cloud host', () => {
-    const HOMEY_ID = '65687b03c6bcab0c0a4464c3';
-    const CLOUD_HOST = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+    const HOMEY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+    const CLOUD_HOST = `https://${HOMEY_ID}.homey.fixture.homeypro.net`;
     const homeyWithSaved = (saved: unknown) => partialDouble<Homey.App['homey']>({
       manifest: { version: '3.21.1' },
       settings: partialDouble<Homey.App['homey']['settings']>({
@@ -192,7 +192,7 @@ describe('web app version API', () => {
 
     it.each([
       ['nothing saved', undefined],
-      ['another Homey\'s cloud host', CLOUD_HOST.replace(HOMEY_ID, '6a1d4fbe841154c744299b7c')],
+      ['another Homey\'s cloud host', CLOUD_HOST.replace(HOMEY_ID, 'cccccccccccccccccccccccc')],
       ['the relay', `https://${HOMEY_ID}.connect.athom.com`],
       ['another site', 'https://example.com'],
       ['junk', 42],

@@ -1,9 +1,9 @@
 import { pairingLink, readPairing } from '../src/remote/phonePairing.ts';
 import type { StoredHomey } from '../src/remote/remoteConnection.ts';
 
-const HOMEY_ID = '65687b03c6bcab0c0a4464c3';
-const OTHER_ID = '6acdea6cd18dc40482d6bc10';
-const CLOUD = `https://${OTHER_ID}.homey.athom-prod-euwest1-001-shs.homeyshs.net`;
+const HOMEY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+const OTHER_ID = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+const CLOUD = `https://${OTHER_ID}.homey.fixture.homeyshs.net`;
 const LAUNCHER = 'https://pels.barelysufficient.org/app/';
 
 const house: StoredHomey = {

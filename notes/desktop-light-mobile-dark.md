@@ -16,7 +16,7 @@ We retired that approach in favour of a Homey-native design: PELS ships as a **l
 
 ## The signal that does not exist
 
-Before redesigning, we verified empirically that no in-iframe signal exists for Homey's parent theme. Live probing against the test Homey at `https://my.homey.app/homeys/69ec731ed5c71c23b9304203/settings/apps/com.barelysufficient.pels` via Playwright Firefox produced:
+The desktop settings iframe does not receive Homey's parent theme. The following probes show what iframe code can observe.
 
 | Probe | Result |
 |---|---|
