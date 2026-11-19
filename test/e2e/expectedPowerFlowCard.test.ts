@@ -108,6 +108,7 @@ describe('Expected power flow card', () => {
 
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ device: { id: 'dev-1' }, power_w: 1500 })).resolves.toBe(true);
+    expect(app.expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.5, ts: expect.any(Number), origin: 'flow' });
 
     const snapshot = app.latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapDev = snapshot.find((d) => d.id === 'dev-1');
@@ -123,7 +124,7 @@ describe('Expected power flow card', () => {
     expect(app.expectedPowerKwOverrides['dev-1']).toBeTruthy();
   });
 
-  it('does not rewrite override when requested expected power is unchanged', async () => {
+  it('does not rewrite the figure when the requested expected power is unchanged, only its writer', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 0);
@@ -132,10 +133,11 @@ describe('Expected power flow card', () => {
     const app = createApp();
     await app.onInit();
 
-    app.expectedPowerKwOverrides['dev-1'] = { kw: 1.25, ts: 12345 };
+    app.expectedPowerKwOverrides['dev-1'] = { kw: 1.25, ts: 12345, origin: 'settings' };
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ device: { id: 'dev-1' }, power_w: 1250 })).resolves.toBe(true);
-    expect(app.expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.25, ts: 12345 });
+    // The figure stands; only its writer changes, so the owner is sent to the Flow that sets it.
+    expect(app.expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.25, ts: 12345, origin: 'flow' });
   });
 
   // Was: rejected with "Device already has load configured in settings". That

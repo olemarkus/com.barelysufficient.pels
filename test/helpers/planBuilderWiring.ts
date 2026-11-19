@@ -28,6 +28,7 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   getStorageDischargeObservations: () => new Map(),
   inverterCurtailment: NO_INVERTER_PLANNER,
   leaveOffOnRelease: () => 'released',
+  soleSwitchOffFalls: { recordSoleSwitchOffFall: () => {} },
   getPriceOptimizationSettings: () => ({}),
   getDailyBudgetSnapshot: () => null,
   getShedBehavior: () => ({ action: 'turn_off' }),

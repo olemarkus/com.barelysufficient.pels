@@ -1,3 +1,5 @@
+import { createPowerFigureChecks, type PowerFigureChecks } from './powerFigureCheck';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
 import {
@@ -98,6 +100,8 @@ export type FlowBackedDeviceStateDeps = {
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
   /** The learned peaks' store; reached once the userdata database is open. */
   getLearnedPowerPeakStore: () => LearnedPowerPeakStore;
+  /** The app's userdata database, where the power-figure check keeps the home meter's falls; reached once open. */
+  getUserdataDatabase: () => UserdataDatabase;
   /** Owns the learned peaks' legacy-import retry registered by `learnedPowerPeakState`. */
   timers: TimerRegistry;
   syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => void;
@@ -120,6 +124,14 @@ export class FlowBackedDeviceState {
 
   private readonly learnedPowerPeakState: LearnedPowerPeakState;
 
+  /**
+   * Whether a device draws well above the figure PELS plans it with, judged
+   * against the manual figures and learned peaks this state keeps: every home's
+   * plan builder records its lone switch-offs here, and the settings UI's
+   * device list reads it (`powerFigureCheck.ts`).
+   */
+  readonly powerFigureChecks: PowerFigureChecks;
+
   constructor(private readonly deps: FlowBackedDeviceStateDeps) {
     this.learnedPowerPeakState = createLearnedPowerPeakState({
       getStore: () => deps.getLearnedPowerPeakStore(),
@@ -127,6 +139,10 @@ export class FlowBackedDeviceState {
       timers: deps.timers,
       getStructuredLogger: () => deps.getStructuredLogger('devices'),
     });
+    this.powerFigureChecks = createPowerFigureChecks(() => deps.getUserdataDatabase(), () => ({
+      expectedPowerKwOverrides: deps.getExpectedPowerKwOverrides(),
+      lastKnownPowerKw: deps.getLearnedPowerPeaks(),
+    }));
   }
 
   /** The capability values Flow cards reported for one device. */
@@ -158,9 +174,15 @@ export class FlowBackedDeviceState {
       && typeof existing?.kw === 'number'
       && Math.abs(existing.kw - kw) <= EXPECTED_OVERRIDE_EQUALS_EPSILON_KW
     ) {
+      // The same figure, now the Flow's: record who sets it, so the owner is
+      // sent to the Flow rather than offered a figure the Flow would overwrite.
+      if (existing.origin !== 'flow') {
+        overrides[deviceId] = { ...existing, origin: 'flow' };
+        this.persistExpectedPowerOverrides(deviceId, overrides);
+      }
       return false;
     }
-    overrides[deviceId] = { kw, ts: Date.now() };
+    overrides[deviceId] = { kw, ts: Date.now(), origin: 'flow' };
     // Persist immediately. This is the owner's own figure for a device, entered
     // deliberately; losing it to a restart is how it used to silently revert to
     // whatever PELS could infer.

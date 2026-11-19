@@ -35,6 +35,7 @@ describe('Flow capability persistence reads', () => {
       getLearnedPowerPeakStore: () => createImportingLearnedPowerPeakStore(
         mockHomeyInstance.settings, createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
       ),
+      getUserdataDatabase: () => openUserdataDatabase(IN_MEMORY_DATABASE),
       timers: new TimerRegistry(),
       syncHeadroomUsageObservation: () => {},
     },

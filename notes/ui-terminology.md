@@ -1015,6 +1015,33 @@ correct it, not as a settled fact. Reading `expectedPowerSource` to say where th
 number came from is its one sanctioned use — no surface may branch on it to
 decide behaviour.
 
+### "Check the power for <Device>" — the power-figure recommendation
+
+A dismissable recommendation, so it reaches the Overview counter: owners do not
+read device pages for this. It is raised while PELS sees a managed device draw
+well above the figure it plans the device with (`powerFigureCheck` on the device
+list, `lib/device/powerFigureCheck.ts`). Source of truth for the copy:
+`resolvePowerFigureRecommendations` in
+`packages/settings-ui/src/ui/powerFigureRecommendations.ts`.
+
+- The title is `Check the power for <Device>`. The body opens with what PELS saw,
+  `PELS sees about 4.5 kW leave your home each time it turns <Device> off`, then
+  names where the figure came from: `your figure`, a Flow, `its own settings in
+  Homey`, `Homey’s energy information`, or `PELS had no figure for it and
+  assumed`. It ends `If 2.6 kW is right, dismiss this.`: dismissing is the owner
+  confirming the figure, so it stays dismissed until that figure changes.
+- A figure from the device's own reading reads `<Device> reports 2.6 kW while it
+  runs, but your home drops about 4.5 kW…`, and says the reading may be low, for
+  example from how it is wired, or come from a power setting in its app.
+- A stepped device reads `<Device> has drawn up to 900 W, but its highest level is
+  200 W, so PELS sets too little aside each time it turns it back on.`, plus
+  `Without levels, PELS controls it by its temperature.` for a temperature
+  device.
+- The action is `Use 4.5 kW`, which saves the figure as Power when running, the
+  same write as the field. A Flow-set figure gets `Open device` instead (the Flow
+  would overwrite a saved figure), and levels get `Review levels`.
+- Figures read in W below 1 kW and in kW with one decimal above.
+
 ### "Held back" — the Held-back devices widget
 
 The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining, with a per-device **Let it run now** action (a one-device rescue that lifts the budget for it and clears room from lower-priority load — never a hard-cap change). Its confirm states the consequence for today: `This lets the device use power beyond today’s budget until it reaches its normal target.`, or, while no daily budget is on, `This lets the device take power from lower-priority devices until it reaches its normal target, within the hard cap.` Every rescue keeps its budget exemption either way, because it is one of the conditions under which the planner fully reserves the device's steps; the surfaces choose the wording from whether a daily budget is on, and the permission line leaves out `May go over daily budget` without one. The overview card's chip tooltip, shown before any preview, reads `This lets the device take power ahead of lower-priority devices until it reaches its normal target.` Every row reads `Held back · N min`, rolling over into hours past 60 minutes (`Held back · 2 h 15 min`). The former cause-specific `Waiting · N min` variant went with the `budget`/`capacity` bucket on 2026-08-04: the bucket was a snapshot of whichever constraint bound on the last tick, so a steady device flipped chip word — and rescue button — between cycles. (There is no "manual"/"external" cause either: a device held below its target by its own mode or schedule, not by PELS, is not held back and never appears here.) The only row without a rescue button is one whose device already has its own smart task, which says so in a note. This is a deliberate, widget-scoped synonym of the overview **Limited** state word: the widget's job is the devices PELS has kept below a target temperature or battery level, which the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview state word) and **Held back** (the widget and device-detail diagnostics).

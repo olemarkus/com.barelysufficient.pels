@@ -39,6 +39,7 @@ describe('expected power override persistence', () => {
     getLearnedPowerPeakStore: () => createImportingLearnedPowerPeakStore(
       homey.settings, createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
     ),
+    getUserdataDatabase: () => openUserdataDatabase(IN_MEMORY_DATABASE),
     timers: new TimerRegistry(),
     syncHeadroomUsageObservation: () => {},
   });
@@ -62,7 +63,7 @@ describe('expected power override persistence', () => {
     expect(flowBacked.setExpectedOverride('heater', 2.4)).toBe(true);
 
     expect(mockHomeyInstance.settings.get(DEVICE_EXPECTED_POWER_OVERRIDES))
-      .toEqual({ heater: { kw: 2.4, ts: NOW } });
+      .toEqual({ heater: { kw: 2.4, ts: NOW, origin: 'flow' } });
   });
 
   it('lets a retry of the same figure through when the first write threw', () => {
@@ -90,7 +91,17 @@ describe('expected power override persistence', () => {
     failWrite = false;
     expect(flowBacked.setExpectedOverride('heater', 2.4)).toBe(true);
     expect(mockHomeyInstance.settings.get(DEVICE_EXPECTED_POWER_OVERRIDES))
-      .toEqual({ heater: { kw: 2.4, ts: NOW } });
+      .toEqual({ heater: { kw: 2.4, ts: NOW, origin: 'flow' } });
+  });
+
+  it('records a Flow as the writer of a figure it sets to the value already typed', () => {
+    overrides.heater = { kw: 2.4, ts: NOW - 1000, origin: 'settings' };
+    const flowBacked = buildFlowBacked();
+    flowBacked.loadPersistedState();
+    overrides.heater = { kw: 2.4, ts: NOW - 1000, origin: 'settings' };
+
+    expect(flowBacked.setExpectedOverride('heater', 2.4)).toBe(false);
+    expect(overrides.heater).toEqual({ kw: 2.4, ts: NOW - 1000, origin: 'flow' });
   });
 
   it('still reports an unchanged figure as unchanged once it is persisted', () => {
@@ -127,8 +138,8 @@ describe('expected power override persistence', () => {
     readable = true;
     flowBacked.setExpectedOverride('charger', 7);
     expect(mockHomeyInstance.settings.get(DEVICE_EXPECTED_POWER_OVERRIDES)).toEqual({
-      heater: { kw: 2.4, ts: NOW - 1000 },
-      charger: { kw: 7, ts: NOW },
+      heater: { kw: 2.4, ts: NOW - 1000, origin: 'settings' },
+      charger: { kw: 7, ts: NOW, origin: 'flow' },
     });
   });
 });

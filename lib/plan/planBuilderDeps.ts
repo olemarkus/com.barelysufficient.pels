@@ -22,6 +22,7 @@ import type {
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { MainFuse } from '../../packages/contracts/src/capacitySettings';
 import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
+import type { SoleSwitchOffFallRecording } from '../ports/soleSwitchOffFalls';
 
 export type PlanBuilderDeps = {
   /** One coherent phase-owner read per build, before objectives and admission. */
@@ -61,6 +62,8 @@ export type PlanBuilderDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /** Where lone switch-offs go as the home meter's witness of a device's draw; one recorder for the app. */
+  soleSwitchOffFalls: SoleSwitchOffFallRecording;
   /** The observer's evidence that an increase's draw has arrived (restore pacing). */
   drawEvidence: DrawEvidenceReads;
   // Observer-owned pending-binary-command store. Plan-side reads consult

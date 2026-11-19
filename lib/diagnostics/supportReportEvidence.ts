@@ -1,3 +1,4 @@
+import type { PowerFigureCheckEntry } from '../device/powerFigureCheck';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetUiRead } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
@@ -98,6 +99,8 @@ export type SupportReportReads = {
   readHeatingShadowDaily(capturedAtMs: number): SupportReportSection | undefined;
   /** The app's memory now: Homey's fresh reading (or the last one, with its age) and V8's. */
   readAppMemory(): Promise<AppMemorySnapshot>;
+  /** Managed devices PELS sees draw well above the figure it plans them with (`lib/device/powerFigureCheck.ts`). */
+  readPowerFigureChecks(nowMs: number): readonly PowerFigureCheckEntry[];
 };
 
 type ReportSubject = {
@@ -520,6 +523,21 @@ const readHeatingShadowSection = (
   }
 };
 
+export const POWER_FIGURE_CHECKS_REPORT_TITLE = 'Power figure checks';
+
+/** An app report lists the devices whose figure PELS doubts, none when it doubts none. */
+const readPowerFigureChecksSection = (
+  host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number,
+): SectionRead[] => {
+  if (request.subject.kind !== 'app') return [];
+  try {
+    const devices = [...host.readPowerFigureChecks(capturedAtMs)];
+    return [{ state: 'available', section: { title: POWER_FIGURE_CHECKS_REPORT_TITLE, values: { devices } } }];
+  } catch {
+    return [{ state: 'unavailable', reason: `${POWER_FIGURE_CHECKS_REPORT_TITLE} is unavailable.` }];
+  }
+};
+
 export const APP_MEMORY_REPORT_TITLE = 'App memory';
 
 /**
@@ -571,6 +589,7 @@ export class SupportReportEvidenceSource {
       ...readAppSmartTaskSections(host, request, deviceNames(host, history, capturedAtMs), capturedAtMs),
       ...readCarLinkSection(carLink),
       ...heating,
+      ...readPowerFigureChecksSection(host, request, capturedAtMs),
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
       homeyDevices,

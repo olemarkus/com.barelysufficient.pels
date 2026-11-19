@@ -77,6 +77,8 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & { chargingPhaseControl?: import('../../../contracts/src/chargingPhases.ts').ChargingPhaseRead }
   // Present while PELS's level changes draw no level report back (`SettingsUiDeviceSnapshot`).
   & { levelUnconfirmed?: true }
+  // Present while PELS sees the device draw well above the figure it plans it with (`SettingsUiDeviceSnapshot`).
+  & Pick<SettingsUiDeviceSnapshot, 'powerFigureCheck'>
   // Present while a plugged-in charger waits to identify its car (`SettingsUiDeviceSnapshot`).
   & Pick<SettingsUiDeviceSnapshot, 'carIdentificationState'>
   // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto

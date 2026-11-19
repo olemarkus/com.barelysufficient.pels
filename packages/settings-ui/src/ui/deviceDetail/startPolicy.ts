@@ -154,6 +154,13 @@ const revealCarSection = (): void => {
   else section.scrollIntoView({ block: 'start', behavior: 'smooth' });
 };
 
+/** Focuses that land on a row or notice without a control to focus. */
+const REVEALED_ROW_IDS: Partial<Record<DeviceDetailFocus, string>> = {
+  'control-contest': 'device-detail-control-contest-notice',
+  'expected-power': 'device-detail-expected-power-row',
+  levels: 'device-detail-stepped-section',
+};
+
 /** Land on the row a deep link names; `top` leaves the page where it opened. */
 export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
   if (focus === 'charging-control') {
@@ -180,7 +187,8 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
     control?.focus({ preventScroll: true });
   }
   if (focus === 'car') revealCarSection();
-  if (focus === 'control-contest') revealDetailRow(document.getElementById('device-detail-control-contest-notice'));
+  const revealedRowId = REVEALED_ROW_IDS[focus];
+  if (revealedRowId) revealDetailRow(document.getElementById(revealedRowId));
   if (focus === 'solar') {
     const row = ['device-detail-surplus-opt-row', 'device-detail-dump-load-row', 'device-detail-surplus-track-row']
       .map((id) => document.getElementById(id))

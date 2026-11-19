@@ -105,40 +105,61 @@ type ExpectedPowerHandlerDeps = {
   refreshOpenDeviceDetail: () => void;
 };
 
-export const initExpectedPowerHandlers = (deps: ExpectedPowerHandlerDeps) => {
-  const persist = async (deviceId: string, entry: Exclude<ExpectedPowerFieldEntry, { kind: 'invalid' }>) => {
-    await runSerializedExpectedPowerWrite(async () => {
-      await writeFreshSetting<DeviceExpectedPowerOverrides>({
-        key: DEVICE_EXPECTED_POWER_OVERRIDES,
-        context: 'device detail',
-        logMessage: 'Failed to save power when running',
-        toastMessage: 'Failed to save power when running.',
-        // Use the live snapshot as the fallback so a transient null or
-        // non-object SDK read does not erase other devices' figures.
-        fallbackValue: state.deviceExpectedPowerOverrides,
-        // Shape-guard only. Entry validation is the runtime's
-        // (`parseExpectedPowerOverrides`), and duplicating it here would mean
-        // copying a validator across the settings-UI/runtime boundary the UI
-        // may not import across.
-        readFresh: (value) => readRecordSettingStrict<ExpectedPowerOverride>(value),
-        mutate: (currentOverrides) => {
-          const nextOverrides = { ...currentOverrides };
-          if (entry.kind === 'set') nextOverrides[deviceId] = { kw: entry.kw, ts: Date.now() };
-          else delete nextOverrides[deviceId];
-          return nextOverrides;
-        },
-        commit: (nextOverrides) => {
-          state.deviceExpectedPowerOverrides = nextOverrides;
-          // No optimistic write onto the device: `expectedPowerKw` is the
-          // producer's resolved answer, and the runtime re-parses the snapshot
-          // on this settings write. Re-rendering from the device we hold keeps
-          // the field honest until that answer arrives.
-          deps.refreshOpenDeviceDetail();
-        },
-        rollback: deps.refreshOpenDeviceDetail,
-      });
+/**
+ * Save or clear one device's "Power when running", serialized with every other
+ * write of the record. `refresh` re-renders whatever shows the figure: the
+ * open device page, or nothing for a write made from elsewhere, whose screen
+ * follows the device list the runtime serves after the settings write.
+ */
+const persistExpectedPowerEntry = async (
+  deviceId: string,
+  entry: Exclude<ExpectedPowerFieldEntry, { kind: 'invalid' }>,
+  refresh: () => void,
+): Promise<void> => {
+  await runSerializedExpectedPowerWrite(async () => {
+    await writeFreshSetting<DeviceExpectedPowerOverrides>({
+      key: DEVICE_EXPECTED_POWER_OVERRIDES,
+      context: 'device detail',
+      logMessage: 'Failed to save power when running',
+      toastMessage: 'Failed to save power when running.',
+      // Use the live snapshot as the fallback so a transient null or
+      // non-object SDK read does not erase other devices' figures.
+      fallbackValue: state.deviceExpectedPowerOverrides,
+      // Shape-guard only. Entry validation is the runtime's
+      // (`parseExpectedPowerOverrides`), and duplicating it here would mean
+      // copying a validator across the settings-UI/runtime boundary the UI
+      // may not import across.
+      readFresh: (value) => readRecordSettingStrict<ExpectedPowerOverride>(value),
+      mutate: (currentOverrides) => {
+        const nextOverrides = { ...currentOverrides };
+        if (entry.kind === 'set') nextOverrides[deviceId] = { kw: entry.kw, ts: Date.now(), origin: 'settings' };
+        else delete nextOverrides[deviceId];
+        return nextOverrides;
+      },
+      commit: (nextOverrides) => {
+        state.deviceExpectedPowerOverrides = nextOverrides;
+        // No optimistic write onto the device: `expectedPowerKw` is the
+        // producer's resolved answer, and the runtime re-parses the snapshot
+        // on this settings write. Re-rendering from the device we hold keeps
+        // the field honest until that answer arrives.
+        refresh();
+      },
+      rollback: refresh,
     });
-  };
+  });
+};
+
+const NOTHING_TO_REFRESH = (): void => {};
+
+/** The "Use X kW" recommendation's write: the same record and path as typing the figure on the device page. */
+export const saveExpectedPowerFigure = (deviceId: string, kw: number): Promise<void> => (
+  persistExpectedPowerEntry(deviceId, { kind: 'set', kw }, NOTHING_TO_REFRESH)
+);
+
+export const initExpectedPowerHandlers = (deps: ExpectedPowerHandlerDeps) => {
+  const persist = (deviceId: string, entry: Exclude<ExpectedPowerFieldEntry, { kind: 'invalid' }>) => (
+    persistExpectedPowerEntry(deviceId, entry, deps.refreshOpenDeviceDetail)
+  );
 
   deviceDetailExpectedPower?.addEventListener('change', async () => {
     const deviceId = deps.getCurrentDetailDeviceId();

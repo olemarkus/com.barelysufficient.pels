@@ -710,12 +710,16 @@ export class PlanBuilder {
     };
   }
 
-  /** Credited relief beside the meter, for the logs; a simulated shed sends nothing to show. */
+  /**
+   * Credited relief beside the meter, for the logs, and the lone switch-offs to
+   * the home meter's witness; a simulated shed sends nothing to show.
+   */
   private auditShedRelief(context: PlanContext, power: MeasuredPower, restoreResult: RestorePlanResult): void {
     if (this.deps.getCapacityDryRun()) return;
-    this.state.shedReliefAudit.observe(
+    const soleSwitchOffs = this.state.shedReliefAudit.observe(
       this.state.shedPlanLatch, context.devices, power.drawKw, restoreResult.restoredThisCycle, context.nowTs,
     );
+    for (const fall of soleSwitchOffs) this.deps.soleSwitchOffFalls.recordSoleSwitchOffFall(fall);
   }
 
   private applySheddingOutcome(sheddingPlan: SheddingPlan): void {

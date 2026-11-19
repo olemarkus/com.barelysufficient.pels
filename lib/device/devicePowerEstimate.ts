@@ -1,6 +1,8 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import { resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePowerPeak';
-import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packages/contracts/src/types';
+import type {
+  BinaryControlCapabilityId, DeviceExpectedPowerOverrides, ExpectedPowerSource,
+} from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import { getDebugEmitter } from '../logging/logger';
 import { resolveSettingsEnergyWatts } from './managerEnergy';
@@ -26,7 +28,7 @@ const DEFAULT_EXPECTED_POWER_KW = 1;
 const EV_DEFAULT_EXPECTED_POWER_KW = 1.38;
 
 export type PowerEstimateState = {
-  expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
+  expectedPowerKwOverrides: DeviceExpectedPowerOverrides;
   lastKnownPowerKw: LearnedPeaksByDeviceId;
   lastEstimateDecisionLogByDevice: Map<string, { signature: string; emittedAt: number }>;
   lastPeakPowerLogByDevice: Map<string, { signature: string; emittedAt: number }>;

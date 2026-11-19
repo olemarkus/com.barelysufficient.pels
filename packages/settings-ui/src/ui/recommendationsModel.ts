@@ -48,6 +48,8 @@ export type RecommendationTarget =
   | { kind: 'device-start-policy'; deviceId: string }
   // The device page at its "Limited temperature" field.
   | { kind: 'device-shed-limit'; deviceId: string }
+  // Saves `kw` as the device's "Power when running".
+  | { kind: 'expected-power'; deviceId: string; kw: number }
   | { kind: 'device-control-model'; deviceId: string }
   | { kind: 'flow-conflict-check'; deviceId: string }
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }

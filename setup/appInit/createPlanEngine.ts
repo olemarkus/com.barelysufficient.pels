@@ -149,6 +149,7 @@ export function createPlanEngineComposition(
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     getShedBehavior,
+    soleSwitchOffFalls: ctx.flowBacked.powerFigureChecks,
     drawEvidence: ctx.observer,
     deviceDiagnostics,
     structuredLog,

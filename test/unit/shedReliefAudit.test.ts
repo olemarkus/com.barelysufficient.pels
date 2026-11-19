@@ -68,6 +68,38 @@ describe('ShedReliefAudit', () => {
     ]);
   });
 
+  it('hands back the lone switch-offs only, with the fall the meter showed', () => {
+    const switchOff = (decidedAtMs: number): ShedLatchDecision => ({ kind: 'electrical', creditedKw: 2, decidedAtMs });
+    const steppedDevice = { ...device('s', 2), steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }] } };
+    const lone = new ShedReliefAudit();
+    lone.observe(latch({ a: [switchOff(T0)] }), [device('a', 2)], 7, NO_RESTORES, T0);
+    expect(lone.observe(null, [device('a', 0)], 4.6, NO_RESTORES, T0 + 61_000)).toEqual([
+      { deviceId: 'a', decidedAtMs: T0, fallKw: 2.4 },
+    ]);
+    const others = new ShedReliefAudit();
+    others.observe(latch({ d: [decision(T0)] }), [device('d', 1)], 7, NO_RESTORES, T0);
+    expect(others.observe(null, [device('d', 0)], 6, NO_RESTORES, T0 + 61_000)).toEqual([]);
+    others.observe(
+      latch({ s: [switchOff(T0 + 200_000)] }), [steppedDevice as unknown as PlanInputDevice], 7, NO_RESTORES, T0 + 200_000,
+    );
+    expect(others.observe(null, [], 5, NO_RESTORES, T0 + 261_000)).toEqual([]);
+  });
+
+  it('hands back no fall read long after the decision, or for a metered device that drew nothing', () => {
+    const switchOff = (decidedAtMs: number): ShedLatchDecision => ({ kind: 'electrical', creditedKw: 2, decidedAtMs });
+    const late = new ShedReliefAudit();
+    late.observe(latch({ a: [switchOff(T0)] }), [device('a', 2)], 7, NO_RESTORES, T0);
+    expect(late.observe(null, [device('a', 0)], 3, NO_RESTORES, T0 + 3 * 60 * 60_000)).toEqual([]);
+    const idle = new ShedReliefAudit();
+    idle.observe(latch({ b: [switchOff(T0)] }), [device('b', 0)], 7, NO_RESTORES, T0);
+    expect(idle.observe(null, [device('b', 0)], 4, NO_RESTORES, T0 + 61_000)).toEqual([]);
+    const unmetered = new ShedReliefAudit();
+    unmetered.observe(latch({ c: [switchOff(T0)] }), [device('c')], 7, NO_RESTORES, T0);
+    expect(unmetered.observe(null, [device('c')], 5, NO_RESTORES, T0 + 61_000)).toEqual([
+      { deviceId: 'c', decidedAtMs: T0, fallKw: 2 },
+    ]);
+  });
+
   it('ignores decisions it did not see taken and withdrawn demand', () => {
     const audit = new ShedReliefAudit();
     audit.observe(

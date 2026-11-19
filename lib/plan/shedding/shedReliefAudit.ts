@@ -15,13 +15,17 @@
  * written, so the fall can only be this device's or unrelated load. Those,
  * taken together, show whether a device's credited relief matches the meter.
  *
- * Observation only: nothing here feeds a decision. In-memory, like the latch
- * it reads; a restart drops the open audits.
+ * Observation only: nothing here feeds a control decision. The lone
+ * switch-offs are also handed back to the caller, which records them as the
+ * home meter's witness of the device's draw (`lib/ports/soleSwitchOffFalls.ts`).
+ * In-memory, like the latch it reads; a restart drops the open audits.
  */
 import { getLogger } from '../../logging/logger';
 import type { ShedLatchDecision, ShedPlanLatch } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
+import { isSteppedLoadDevice } from '../planSteppedLoad';
+import type { SoleSwitchOffFall } from '../../ports/soleSwitchOffFalls';
 
 const logger = getLogger('plan/shed-relief-audit');
 
@@ -32,6 +36,17 @@ const logger = getLogger('plan/shed-relief-audit');
  */
 export const SHED_RELIEF_AUDIT_HORIZON_MS = 60 * 1000;
 
+/**
+ * The latest a lone switch-off's fall still counts as the device's draw. Audits
+ * close on measured builds only, so one opened before a silent meter or a spell
+ * of simulation can close hours later, and the fall across those hours is the
+ * home's, not the device's.
+ */
+const SOLE_FALL_MAX_AGE_MS = 2 * SHED_RELIEF_AUDIT_HORIZON_MS;
+
+/** A metered device drawing less than this before its switch-off was not running: the fall cannot be its draw. */
+const SOLE_FALL_MIN_DEVICE_DRAW_KW = 0.05;
+
 type OpenAudit = {
   readonly deviceId: string;
   readonly deviceName: string;
@@ -40,6 +55,8 @@ type OpenAudit = {
   creditedKw: number;
   readonly wholeHomeBeforeKw: number;
   readonly deviceDrawBeforeKw: number | null;
+  /** The device was switched off, not stepped down or asked to want less: its whole draw left the home. */
+  readonly switchOff: boolean;
   sole: boolean;
 };
 
@@ -68,6 +85,14 @@ function buildObservedLine(
   };
 }
 
+/** A lone switch-off whose fall the home meter showed in time, of a device that was drawing. */
+const isWitnessedSwitchOff = (audit: OpenAudit, nowTs: number): boolean => (
+  audit.sole
+  && audit.switchOff
+  && nowTs - audit.decidedAtMs <= SOLE_FALL_MAX_AGE_MS
+  && (audit.deviceDrawBeforeKw === null || audit.deviceDrawBeforeKw >= SOLE_FALL_MIN_DEVICE_DRAW_KW)
+);
+
 export class ShedReliefAudit {
   private readonly open = new Map<string, OpenAudit>();
   /** When recent decisions were taken, to judge overlap for later ones. */
@@ -76,7 +101,8 @@ export class ShedReliefAudit {
   /**
    * One measured build: the latch it committed (decisions stamped `nowTs` were
    * taken now), the draw it was decided on, and the devices it restored, whose
-   * rise would read as a smaller fall.
+   * rise would read as a smaller fall. Answers the lone switch-offs whose fall
+   * this build read.
    */
   observe(
     latch: ShedPlanLatch | null,
@@ -84,17 +110,26 @@ export class ShedReliefAudit {
     wholeHomeKw: number,
     restoredIds: ReadonlySet<string>,
     nowTs: number,
-  ): void {
+  ): SoleSwitchOffFall[] {
     const devicesById = new Map(devices.map((device) => [device.id, device]));
     if (restoredIds.size > 0) for (const audit of this.open.values()) audit.sole = false;
     this.openNewDecisions(latch, wholeHomeKw, devicesById, nowTs);
+    const soleSwitchOffs: SoleSwitchOffFall[] = [];
     for (const [key, audit] of this.open) {
       if (nowTs - audit.decidedAtMs < SHED_RELIEF_AUDIT_HORIZON_MS) continue;
       this.open.delete(key);
       logger.info(buildObservedLine(audit, wholeHomeKw, readDrawKw(devicesById.get(audit.deviceId)), nowTs));
+      if (isWitnessedSwitchOff(audit, nowTs)) {
+        soleSwitchOffs.push({
+          deviceId: audit.deviceId,
+          decidedAtMs: audit.decidedAtMs,
+          fallKw: roundKw(audit.wholeHomeBeforeKw - wholeHomeKw),
+        });
+      }
     }
     this.recentDecisionsAtMs = this.recentDecisionsAtMs
       .filter((atMs) => nowTs - atMs < SHED_RELIEF_AUDIT_HORIZON_MS);
+    return soleSwitchOffs;
   }
 
   private openNewDecisions(
@@ -141,6 +176,7 @@ export class ShedReliefAudit {
       creditedKw: decision.creditedKw,
       wholeHomeBeforeKw: wholeHomeKw,
       deviceDrawBeforeKw: readDrawKw(device),
+      switchOff: reliefKind === 'electrical' && !isSteppedLoadDevice(device),
       sole: !overlapping,
     });
     this.recentDecisionsAtMs.push(nowTs);
