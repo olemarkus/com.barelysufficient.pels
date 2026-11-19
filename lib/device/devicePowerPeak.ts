@@ -6,7 +6,7 @@
  * `pruneMissingLearnedPeaks` own mutation; `lib/device/devicePowerEstimate`
  * reads it as one rung of the expected-power ladder. Persistence lives in the
  * userdata store (`lib/device/learnedPowerPeakStore.ts`), which validates each
- * row it loads with `parseLearnedPeaks` below.
+ * row with the same shape and ceiling checks as the legacy settings import.
  *
  * WHY A WINDOW. The peak used to be a monotonic max held only in memory, which
  * made a one-off spike survive until the next restart and no longer. Persisting
@@ -227,9 +227,18 @@ const isFiniteTimestamp = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0
 );
 
+/** Decode the stored shape before applying the ceiling. Undefined means the id or peak is malformed. */
+export const parseLearnedPeakEntry = (value: unknown, deviceId: string): LearnedPeak | undefined => {
+  const entry = asUnknownRecord(value);
+  if (!deviceId || !entry || !isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.observedAtMs)) return undefined;
+  return { kw: entry.kw, observedAtMs: entry.observedAtMs };
+};
+
+/** The plausibility check shared by stored rows and the legacy settings import. */
+export const exceedsLearnedPeakCeiling = (peak: LearnedPeak): boolean => peak.kw > MAX_PLAUSIBLE_DEVICE_POWER_KW;
+
 /**
- * Validate a persisted learned-peak record at the store boundary (and the legacy
- * settings blob it was imported from).
+ * Decode the legacy learned-peak settings record using the same entry and ceiling checks as stored rows.
  *
  * Entry-wise, not all-or-nothing: one corrupt device must not discard the
  * learning for every other device. A rejected entry is simply absent, and the
@@ -249,12 +258,8 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
   if (!record) return {};
   const parsed: LearnedPeaksByDeviceId = {};
   for (const [deviceId, value] of Object.entries(record)) {
-    if (!deviceId) continue;
-    const entry = asUnknownRecord(value);
-    if (!entry) continue;
-    if (!isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.observedAtMs)) continue;
-    if (entry.kw > MAX_PLAUSIBLE_DEVICE_POWER_KW) continue;
-    parsed[deviceId] = { kw: entry.kw, observedAtMs: entry.observedAtMs };
+    const entry = parseLearnedPeakEntry(value, deviceId);
+    if (entry && !exceedsLearnedPeakCeiling(entry)) parsed[deviceId] = entry;
   }
   return parsed;
 };

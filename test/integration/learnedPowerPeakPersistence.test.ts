@@ -78,6 +78,27 @@ describe('learned power peak persistence', () => {
     expect(peaks).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
   });
 
+  it('drops an obsolete peak at info and quarantines only damaged rows at error', () => {
+    const insert = db.prepare('INSERT INTO device_power_peaks (device_id, peak_json) VALUES (?, ?)');
+    const valid = { kw: 25, observedAtMs: NOW };
+    insert.run('heater', JSON.stringify({ kw: 88, observedAtMs: NOW }));
+    insert.run('missing-time', JSON.stringify({ kw: 88 }));
+    insert.run('bad-json', '{');
+    insert.run('charger', JSON.stringify(valid));
+    const capture = captureLogger();
+    onTestFinished(() => capture.restore());
+
+    expect(repository.read()).toEqual({ charger: valid });
+    expect(rowCount(db)).toBe(1);
+    expect(capture.findEvents('device_power_peak_dropped')).toMatchObject([
+      { level: 30, deviceId: 'heater', kw: 88, reason: 'above_plausible_ceiling' },
+    ]);
+    expect(capture.findEvents('userdata_row_quarantined')).toMatchObject([
+      { level: 50, table: 'device_power_peaks', key: 'bad-json' },
+      { level: 50, table: 'device_power_peaks', key: 'missing-time' },
+    ]);
+  });
+
   it('writes nothing over a store the boot read could not see, and merges once a read lands', () => {
     // The cold-boot data-loss shape: the in-memory record is empty too, so a
     // write would make the store hold exactly that and delete every stored row.
