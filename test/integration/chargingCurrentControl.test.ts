@@ -258,3 +258,31 @@ test('an unreadable store is rewritten by the next accepted scan, even one with 
   // The store writes only the rows that changed, so saving the empty list clears what it still holds.
   expect(write).toHaveBeenCalledExactlyOnceWith(new Map());
 });
+
+test('a charger with neither built-in control nor a current-setting Flow has no current route', async () => {
+  const { control, inventory } = fixture(zaptec(true));
+  const writing = { writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]), evSocReporters: [] };
+  const clear = { writes: new Map(), evSocReporters: [] };
+
+  expect(control.lacksCurrentRoute('charger')).toBe(true);
+  expect(control.lacksCurrentRoute('heater')).toBe(false);
+  // The owner's Flow sets the current.
+  control.acceptFlowFacts(writing);
+  expect(control.lacksCurrentRoute('charger')).toBe(false);
+  control.acceptFlowFacts(clear);
+  // Built-in control sets it.
+  await control.save('charger', selected);
+  expect(control.lacksCurrentRoute('charger')).toBe(false);
+  await control.save('charger', { method: 'flow', confirmation: 'none' });
+  expect(control.lacksCurrentRoute('charger')).toBe(true);
+  // A shared installation is left to the Flow that coordinates it.
+  inventory.push({ ...zaptec(true), id: 'second', data: { id: 'second-id', installationId: 'installation' } });
+  expect(control.lacksCurrentRoute('charger')).toBe(false);
+});
+
+test('a Flow holding built-in control back is named before an unfinished setup', () => {
+  const { control } = fixture(zaptec(true));
+  expect(control.unusedBuiltInControl('charger', undefined)).toBe('not_set_up');
+  expect(control.unusedBuiltInControl('charger', { flowConflict: { conflictingCapabilities: ['x'] } })).toBe('held_by_flow');
+  expect(control.unusedBuiltInControl('heater', {})).toBe('none');
+});

@@ -32,6 +32,8 @@ While charging, the limit echo still matters: it acknowledges the command. The T
 
 Use **Stepped device target changed**, select the PELS device, connect it to the vendor current action. Pass **EV charger current (A)** to that action. Start/stop stays with the capability adapter.
 
+The settings UI offers this route only to an owner whose Flow already sets the current, or whose installation is shared. A device with neither built-in control nor a current-setting Flow has no current route (`ChargingCurrentControl.lacksCurrentRoute`): its setup section, its card and its recommendation all point at built-in control, never at building a Flow.
+
 Built-in current control rejects stepped reports from an old user Flow.
 
 ## Verified boundary

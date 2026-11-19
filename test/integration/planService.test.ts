@@ -210,7 +210,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'getDevicePowerSetupRequired'
   | 'getHomeBatteryCard'
   | 'getDeviceControlAdapter'
-  | 'isBuiltInControlHeldByFlow'
+  | 'getUnusedBuiltInControl'
   | 'isTargetPowerControlRefused'
   | 'planBuildGate'
   | 'getSteppedSettleDevices'
@@ -224,7 +224,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   hasStandingCommandGrant: () => false,
   getDevicePowerSetupRequired: () => false,
   getDeviceControlAdapter: () => undefined,
-  isBuiltInControlHeldByFlow: () => false,
+  getUnusedBuiltInControl: () => 'none' as const,
   isTargetPowerControlRefused: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' }),
   planBuildGate: openPlanBuildGate(),
@@ -1203,7 +1203,7 @@ describe('PlanService', () => {
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
     const { service } = createPlanService({
       getDeviceControlAdapter: () => undefined,
-      isBuiltInControlHeldByFlow: () => false,
+      getUnusedBuiltInControl: () => 'none' as const,
       isTargetPowerControlRefused: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {

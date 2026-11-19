@@ -25,19 +25,6 @@ Each command changes only this charger, so there is no installation to confirm.
 
 Before switching from an existing Flow, remove its **Set current limit** action and choose **Check again**. Enable built-in control and check that the page says **Built-in current control is selected**. If you add a current-setting Flow later, PELS cannot stop it, and the two would override each other: the page then says **Built-in current control is paused**, PELS leaves the current to the Flow, and built-in control resumes on its own once you remove that action and choose **Check again**.
 
-## Flow alternative
-
-Use this Flow shape:
-
-| Flow part | Card |
-| --- | --- |
-| **When** | PELS: **Stepped device target changed** for your Futurehome charger |
-| **Then** | Futurehome: **Set current limit to** |
-
-Choose **Use a Flow** in Charging current. PELS controls start and stop separately.
-
-In the Futurehome action card, use the PELS Flow tag **EV charger current (A)** for the current value.
-
 ## Related Pages
 
 - [Configure an EV Charger](/ev-charger)

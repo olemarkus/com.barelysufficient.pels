@@ -29,7 +29,7 @@ For most supported chargers PELS controls charging through the charger's Homey a
 | **Smappee EV Wall** (Smappee) | Starts and stops charging through the charging mode: it pauses the charger and resumes it in standard charging. The app offers no current control. |
 | **Zappi** (myenergi) | Starts and stops charging. The Zappi charges in the charge mode you chose in the myenergi app. |
 | Another charger whose Homey app lets Homey set its charging power and publishes a power range for it | Directly through that power setting, no key or Flow. The device page offers **Automatic** with that range. |
-| Any other charger | A current-control Flow (Step 3). |
+| Any other charger | Ask for direct control from PELS, or use a current-control Flow. See [A charger PELS does not list](#a-charger-pels-does-not-list). |
 
 A Homey API key with **Flow** permission is created with [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro). Enter it under **Setup → Charging current** and choose **Save key and enable**; if a key is already verified, choose **Use built-in control**. One key works for all supported chargers and cars on this Homey.
 
@@ -80,42 +80,7 @@ The minimum is the lowest current PELS requests while charging; PELS can still p
 
 A charger whose **Automatic** model uses power levels in watts from its own settings, such as Zaptec, charges within those levels. Current limits do not apply to it, so its Setup has no default limits, and a car's limits apply when that car charges on another charger. An on/off charger also has no current for limits to set.
 
-## Step 3: Create the Charger Current Flow (Only Without Direct Control)
-
-Skip this step for every charger PELS controls directly (see the table above). Build it only for a charger PELS cannot control directly, or one where you chose a Flow instead: **Use a Flow** under **Setup → Charging current**, or **Use built-in device control** turned off.
-
-Create the Flows that connect PELS to the charger app. The first Flow sends PELS' desired current to the charger. The second Flow reports the selected current back to PELS when your charger app can expose it.
-
-![EV charger Flow example](images/howto_ev_charger_flow_example.png)
-*Figure 1. Example EV charger wiring: PELS emits the desired charger current, the charger reports the selected current back into PELS, and the car reports battery level for boost mode.*
-
-### Send desired current to the charger
-
-Use this Flow shape:
-
-| Flow part | Card |
-| --- | --- |
-| **When** | PELS: **Stepped device target changed** for your charger |
-| **Then** | Your charger app: set available charging current |
-
-In the charger app action card, use the PELS Flow tag **EV charger current (A)** for the current value.
-
-PELS handles the 1-phase or 3-phase conversion based on the control mode you selected in Step 2. Do not use **Planning power (W)** for a charger current field unless you are intentionally building a manual conversion Flow.
-
-### Report selected current back to PELS
-
-If your charger app reports the selected current, add this Flow:
-
-| Flow part | Card |
-| --- | --- |
-| **When** | Your charger app: charger current changed |
-| **Then** | PELS: **Report stepped load for** your charger **matching** the charger-current tag |
-
-This feedback lets PELS confirm which charging level the charger selected. Use the charger app's current tag, not **EV charger current (A)**, in this feedback Flow.
-
-When the reported value is amps, add `A` after the tag in the **matching** field, for example `[[Charger dynamic current]] A`. Without the `A` suffix, Homey may pass the number without a unit and PELS cannot reliably match it as charger current.
-
-## Step 4 (Optional): Charge on Solar Surplus
+## Step 3 (Optional): Charge on Solar Surplus
 
 If you have solar and PELS can see your export, you can have the charger follow the sun instead of running to your hard cap. In the charger's device page, turn on **Charge on solar surplus**.
 
@@ -123,7 +88,7 @@ PELS then picks the charging current your export covers and adjusts it as the su
 
 Your grid import limit, hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
 
-## Step 5: Configure Boost Mode Battery Reporting
+## Step 4: Configure Boost Mode Battery Reporting
 
 This step is optional. Basic capacity control does not need battery reporting.
 
@@ -162,20 +127,20 @@ Choose the same charger in the PELS action card, and map the battery percentage 
 
 With no car selected, this Flow supplies battery reports for the charger. EV boost mode can use the resulting battery level to let the charger take power from lower-priority devices while the car is below the configured boost threshold.
 
-## Step 6 (Optional): Charge to a Battery Level
+## Step 5 (Optional): Charge to a Battery Level
 
 Without a target battery level, a charger under power limiting charges until the car stops, at the car's own charge limit. To keep the car at an everyday level instead, open the charger's device page and turn on **Charge to a battery level** in the **Charging** card, then set the level, for example 30%.
 
 - **PELS stops charging at that level.** At or above it, PELS turns the charger off. Below it, the car charges as power allows. At 100%, PELS never turns it off: the car stops itself, and can keep heating or cooling from the wall.
 - **A smart task charges further.** In the periods a smart task booked, the car charges past the level toward the task's target, for example 80% by 07:00. When the task ends, the level applies again.
-- **PELS needs the car's battery level**, from a car selected under **Car**, from the charger itself, or from a Flow (Step 5). The status line under the setting says what the level means for the car on the cable right now.
+- **PELS needs the car's battery level**, from a car selected under **Car**, from the charger itself, or from a Flow (Step 4). The status line under the setting says what the level means for the car on the cable right now.
 - **Charge before the battery level is known** decides what happens to a car whose level PELS does not have: a guest car, a second car not selected under **Car**, a car whose app doesn't share its battery level, or your own car before its app reports in after you plug in. On (the default), such a car charges to its own limit. Off, it does not charge until PELS knows its level. An energy smart task (kWh by a time) still charges it in its booked periods; a battery level task needs the level to plan, so it waits too.
 - **PELS needs Power-limit control** (or **Only PELS starts this device**) and a power reading from the charger to stop it. Without them, PELS only watches the charger and the status line says so.
 - **A car kept below the level shows as held back.** When PELS keeps the charger paused for 15 minutes while the car's known battery level is below the level, its Overview card says **Held back**, and the **Held-back devices** widget offers **Let it run now**: a short smart task that aims to charge the car to the level within three hours.
 
 Charge boost and **Charge to a battery level** do different jobs: boost takes power from lower-priority devices while the battery is below its level, and the battery level is where charging stops.
 
-## Step 7: Check the Setup
+## Step 6: Check the Setup
 
 Start with **Simulation mode** if you are still tuning the rest of PELS. Then verify:
 
@@ -211,12 +176,55 @@ Choosing **Leave to charger**, turning off management or enabling simulation
 returns the phase setting PELS recorded before taking control. Returning to a
 setting that permits more phases can pause charging first.
 
+## A charger PELS does not list
+
+This section is only for a charger that is missing from the table under [Charging-current setup](#charging-current-setup). Every charger in that table is controlled by PELS itself and needs none of these Flows.
+
+### Ask for direct control
+
+Support for a new charger usually comes in an app update within a few days, and then it needs no Flow. Ask for it from PELS, so the request carries what Homey reports about the charger:
+
+- If the charger is not under **Settings → Devices**, choose **Request support** on the **Missing a device?** card at the end of that page and pick the charger.
+- If it is there, open it and choose **Report a problem** at the bottom of its page. Say which charger and Homey app it is, and that you want PELS to control its charging current.
+
+See [Missing a device?](/configuration#missing-a-device) and [Get help](/support).
+
+### Or connect it with Flows
+
+Until then, or instead, two Flows connect PELS to the charger app. The first sends PELS' desired current to the charger. The second reports the selected current back to PELS when your charger app can expose it.
+
+#### Send desired current to the charger
+
+Use this Flow shape:
+
+| Flow part | Card |
+| --- | --- |
+| **When** | PELS: **Stepped device target changed** for your charger |
+| **Then** | Your charger app: set available charging current |
+
+In the charger app action card, use the PELS Flow tag **EV charger current (A)** for the current value.
+
+PELS handles the 1-phase or 3-phase conversion based on the control mode you selected in Step 2. Do not use **Planning power (W)** for a charger current field unless you are intentionally building a manual conversion Flow.
+
+#### Report selected current back to PELS
+
+If your charger app reports the selected current, add this Flow:
+
+| Flow part | Card |
+| --- | --- |
+| **When** | Your charger app: charger current changed |
+| **Then** | PELS: **Report stepped load for** your charger **matching** the charger-current tag |
+
+This feedback lets PELS confirm which charging level the charger selected. Use the charger app's current tag, not **EV charger current (A)**, in this feedback Flow.
+
+When the reported value is amps, add `A` after the tag in the **matching** field, for example `[[Charger dynamic current]] A`. Without the `A` suffix, Homey may pass the number without a unit and PELS cannot reliably match it as charger current.
+
 ## Troubleshooting
 
 | Problem | What to check |
 | --- | --- |
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. If it is still missing, choose **Request support** on the **Missing a device?** card there. |
-| The Flow does not trigger | For a Flow-controlled charger, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. Check the [charger table](#charging-current-setup) to see whether your charger offers built-in control. |
+| The charging current never changes | For a charger in the table under [Charging-current setup](#charging-current-setup), open **Setup → Charging current** and finish it: the page must say **Built-in current control is selected**. For a charger PELS does not list, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. |
 | The charger receives the wrong current | Under **Manual**, check that the device uses the correct **EV 1-phase** or **EV 3-phase** model. Under **Automatic**, check the phase and current settings in the charger's own app. |
 | Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check that your battery-reporting Flow selects the correct charger. |
 | PELS never limits the charger | Check the charger priority, your limits in **Limits & safety**, and whether Simulation mode is still enabled. |

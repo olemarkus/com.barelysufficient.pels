@@ -16,7 +16,7 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getCarIdentificationState'
   | 'getSteppedLoadProfileById'
   | 'getDeviceControlAdapter'
-  | 'isBuiltInControlHeldByFlow'
+  | 'getUnusedBuiltInControl'
   | 'isTargetPowerControlRefused'
   | 'hasStandingCommandGrant'
   | 'getDevicePowerSetupRequired'
@@ -38,7 +38,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getCarIdentificationState: () => 'not_waiting',
   getSteppedLoadProfileById: () => new Map(),
   getDeviceControlAdapter: () => undefined,
-  isBuiltInControlHeldByFlow: () => false,
+  getUnusedBuiltInControl: () => 'none' as const,
   isTargetPowerControlRefused: () => false,
   hasStandingCommandGrant: () => false,
   getDevicePowerSetupRequired: () => false,

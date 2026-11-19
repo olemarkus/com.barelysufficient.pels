@@ -30,6 +30,31 @@ export const needsVehicleChargingConsent = (device: ChargingCurrentRead): boolea
   device.scope === 'vehicle' && device.setup.confirmation !== 'vehicle'
 );
 
+/**
+ * Nothing sets this device's charging current: built-in control is not selected
+ * and no Flow sets it. A shared installation is left to its coordinating Flow.
+ */
+export const lacksChargingCurrentRoute = (device: ChargingCurrentRead): boolean => (
+  device.setup.method === 'flow' && device.flowCheck === 'clear' && !device.sharedInstallation
+);
+
+/** Unknown setup never invents a missing route; failed refreshes retain accepted facts. */
+export const chargingCurrentRouteMissing = (deviceId: string): boolean => {
+  const device = accepted?.devices.find((candidate) => candidate.deviceId === deviceId);
+  return device !== undefined && lacksChargingCurrentRoute(device);
+};
+
+/**
+ * A charger with no current route has no Flow to report a level back, so its
+ * level-report card asks for the wrong thing. Its setup card, the charging
+ * setup one or the Automatic review that replaces it, is the one card for it.
+ */
+export const isReportBackCardForUnroutedCharger = (
+  { id, target }: { id: string; target: { kind: string; deviceId?: string } },
+  setupCardDeviceIds: ReadonlySet<string>,
+): boolean => id.startsWith('level-report:') && target.kind === 'device' && target.deviceId !== undefined
+  && chargingCurrentRouteMissing(target.deviceId) && setupCardDeviceIds.has(target.deviceId);
+
 /** Unknown setup never invents a prerequisite; failed refreshes retain accepted facts. */
 export const vehicleChargingConsentMissing = (deviceId: string): boolean => {
   const device = accepted?.devices.find((candidate) => candidate.deviceId === deviceId);
