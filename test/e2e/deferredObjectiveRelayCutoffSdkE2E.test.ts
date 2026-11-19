@@ -30,7 +30,9 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
     vi.useRealTimers();
   });
 
-  it.each(['stays idle', 'starts drawing again'] as const)('handles a relay that %s after its thermostat cuts off', async (scenario) => {
+  it.each([
+    'stays idle', 'starts drawing again', 'starts drawing at the deadline',
+  ] as const)('handles a relay that %s after its thermostat cuts off', async (scenario) => {
     const heater = new MockDevice(DEVICE_ID, 'Relay water heater', ['onoff', 'measure_power'], 'socket');
     heater.setSettings({ load: 2_000 });
     await heater.setCapabilityValue('onoff', true);
@@ -112,11 +114,21 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
       return;
     }
 
+    if (scenario === 'starts drawing at the deadline') {
+      await pump(Math.ceil((DEADLINE_MS - Date.now()) / 60_000) - 1);
+      await vi.advanceTimersByTimeAsync(DEADLINE_MS - Date.now() - 1_000);
+      wholeHomeW = 2_500;
+      await heater.setCapabilityValue('measure_power', 2_000);
+      await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
+      await drainPending();
+      expect(recorder.getDeliveryEvidence(DEVICE_ID, DEADLINE_MS).energyIdle).toEqual({ kind: 'accepted' });
+    }
+    const outcome = scenario === 'stays idle' ? 'device_idle' : 'missed';
     await pump(Math.ceil((DEADLINE_MS - Date.now()) / 60_000) + 1);
     const history = await api.ui_deferred_objective_history({ homey: mockHomeyInstance as never });
     expect(history.entriesByDeviceId[DEVICE_ID]).toEqual([
       expect.objectContaining({
-        outcome: 'device_idle',
+        outcome,
         deliveryExplanation: {
           kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
           contributors: expect.any(Array), intervals: expect.any(Array),
@@ -125,6 +137,6 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
     ]);
     expect(JSON.stringify(history.entriesByDeviceId[DEVICE_ID][0].deliveryExplanation)).not.toContain('capacity_limited');
     expect(mockHomeyInstance.flow._triggerCardTriggers.deadline_ended?.[0]?.tokens)
-      .toMatchObject({ outcome: 'device_idle', shortfall_known: true });
+      .toMatchObject({ outcome, shortfall_known: true });
   });
 });

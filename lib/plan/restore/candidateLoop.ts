@@ -27,6 +27,21 @@ import { isBehindWaitingHandBack, planStorageHandBack } from './storageHandBack'
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { RestoreCycle, RestoreLane, RestoreLoopState } from './types';
 
+export function applyRestoreLanes(
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  restoreCandidates: RestoreCandidate[],
+  ledger: RestoreHeadroomLedger,
+  restoredOne: boolean,
+  steppedFilter?: (dev: DevicePlanDevice) => boolean,
+): { restoredOneThisCycle: boolean } {
+  const ordinary = restoreCandidates.filter((candidate) => candidate.device.usesAvailablePower !== true);
+  const first = applyRestoreCandidates(cycle, lane, ordinary, ledger, restoredOne);
+  const stepped = applyActiveSteppedRestoreCandidates(cycle, lane, ledger, first.restoredOneThisCycle, steppedFilter);
+  const availablePower = restoreCandidates.filter((candidate) => candidate.device.usesAvailablePower === true);
+  return applyRestoreCandidates(cycle, lane, availablePower, ledger, stepped.restoredOneThisCycle);
+}
+
 export function applyRestoreCandidates(
   cycle: RestoreCycle,
   lane: RestoreLane,

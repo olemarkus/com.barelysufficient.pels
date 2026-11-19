@@ -59,7 +59,8 @@ type LedgerDevice = Pick<DevicePlanDevice, 'budgetExempt' | 'phaseFootprint'>;
 
 export type RestoreHeadroomLedger = {
   availableFor(dev: LedgerDevice): number | null;
-  commit(dev: LedgerDevice, spentKw: number): void;
+  /** Phase readings can lag the home total and require a larger debit. */
+  commit(dev: LedgerDevice, spentKw: number, phaseSpentKw?: number): void;
   /** A phase redistribution can consume phase room while its total-power increase is zero. */
   commitPhaseVector(dev: Pick<LedgerDevice, 'budgetExempt'>, debit: ChargingPhaseDebit): void;
   summaryAvailableKw(): number | null;
@@ -85,14 +86,17 @@ export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHe
     availableFor(dev) {
       return restoreHeadroomFor({ capacity, grid, budget, phase }, dev);
     },
-    commit(dev, spentKw) {
+    commit(dev, spentKw, phaseSpentKw = spentKw) {
       // Negative swaps free no room until the next meter sample; keep the existing
       // admission-delta boundary's finite-positive gate.
-      if (!Number.isFinite(spentKw) || spentKw <= 0) return;
-      capacity = spendLimitHeadroom(capacity, spentKw);
-      grid = spendLimitHeadroom(grid, spentKw);
-      if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
-      phase = spendPhaseRoom(phase, dev.phaseFootprint, spentKw);
+      if (Number.isFinite(spentKw) && spentKw > 0) {
+        capacity = spendLimitHeadroom(capacity, spentKw);
+        grid = spendLimitHeadroom(grid, spentKw);
+        if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
+      }
+      if (Number.isFinite(phaseSpentKw) && phaseSpentKw > 0) {
+        phase = spendPhaseRoom(phase, dev.phaseFootprint, phaseSpentKw);
+      }
     },
     commitPhaseVector(dev, debit) {
       capacity = spendLimitHeadroom(capacity, debit.totalKw);

@@ -90,6 +90,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
     getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
     getDeliveryControl: (deviceId) => requirePlanService(ctx).getTaskDeliveryControl(deviceId),
     isLiveMeasuredDraw: (deviceId) => ctx.observer.isLiveMeasuredDraw(deviceId),
+    getLiveDrawAt: (deviceId, atMs) => ctx.observer.getLiveDrawAt(deviceId, atMs),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;

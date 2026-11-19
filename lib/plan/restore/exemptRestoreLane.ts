@@ -4,10 +4,7 @@ import { markSteppedDevicesStayAtCurrentLevel } from './helpers';
 import { markOffDevicesStayOff } from './marking';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState } from './batch';
-import {
-  applyActiveSteppedRestoreCandidates,
-  applyRestoreCandidates,
-} from './candidateLoop';
+import { applyRestoreLanes } from './candidateLoop';
 import type { RestoreCycle, RestoreLane } from './types';
 import { withChargingPhaseOffCandidates } from './chargingPhaseRestore';
 
@@ -38,7 +35,6 @@ export function applyBudgetExemptRestorePass(
   restoredOne: boolean,
 ): { restoredOneThisCycle: boolean } {
   const { deviceMap, state } = cycle;
-  let restoredOneThisCycle = restoredOne;
   // No swap sources: `attemptSwapRestore` finds nothing and falls through to the
   // ordinary insufficient-headroom reject. The batch throttle is disabled here,
   // so this lane derives its own cycle rather than borrowing the caller's.
@@ -59,11 +55,5 @@ export function applyBudgetExemptRestorePass(
     ...getStorageHandBackCandidates(snapshot, cycle.storageLevers),
   ])
     .filter((candidate) => isBudgetExempt(candidate.device));
-  ({ restoredOneThisCycle } = applyRestoreCandidates(
-    laneCycle, lane, restoreCandidates, ledger, restoredOneThisCycle,
-  ));
-  ({ restoredOneThisCycle } = applyActiveSteppedRestoreCandidates(
-    laneCycle, lane, ledger, restoredOneThisCycle, isBudgetExempt,
-  ));
-  return { restoredOneThisCycle };
+  return applyRestoreLanes(laneCycle, lane, restoreCandidates, ledger, restoredOne, isBudgetExempt);
 }

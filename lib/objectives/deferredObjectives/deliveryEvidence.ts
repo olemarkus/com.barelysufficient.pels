@@ -4,7 +4,7 @@ import type {
 } from '../../../packages/contracts/src/taskDelivery';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import {
-  DELIVERY_EPSILON_KWH, isTaskDeviceStopped, NON_DELIVERY_HOLD_MS, observeTaskNonDelivery,
+  DELIVERY_EPSILON_KWH, isTaskDeviceStopped, isUsefulTaskDraw, MAX_CONTIGUOUS_DELIVERY_TICK_MS, observeTaskNonDelivery,
 } from './taskDeliveryState';
 import { isTaskSatisfied } from './taskCompletion';
 
@@ -43,7 +43,7 @@ const resolveObligation = (diagnostic: DeferredObjectiveDiagnostic, nowMs: numbe
 };
 const resolveDraw = (diagnostic: DeferredObjectiveDiagnostic, measured: boolean): TaskDeliveryFacts['observation'] => {
   if (!measured || diagnostic.currentDrawKw === null) return { kind: 'unavailable' };
-  if (diagnostic.currentDrawKw * NON_DELIVERY_HOLD_MS / 3600000 >= DELIVERY_EPSILON_KWH) {
+  if (isUsefulTaskDraw(diagnostic.currentDrawKw)) {
     return { kind: 'drawing', kw: diagnostic.currentDrawKw };
   }
   return { kind: 'not_drawing' };
@@ -148,11 +148,14 @@ const observeRenewedEnergyDraw = (
   return { kind: 'recovering', startedKWh: deliveredKWh, previouslyAccepted: previous.kind === 'accepted' };
 };
 
+const hasAcceptedIdle = (idle: EnergyTaskIdleState | undefined): boolean => (
+  idle?.kind === 'accepted' || (idle?.kind === 'recovering' && idle.previouslyAccepted)
+);
+
 const observePermittedIdle = (
   previous: EnergyTaskIdleState | undefined, confirmed: boolean,
 ): EnergyTaskIdleState | undefined => {
-  if (confirmed || previous?.kind === 'accepted'
-    || (previous?.kind === 'recovering' && previous.previouslyAccepted)) return { kind: 'accepted' };
+  if (confirmed || hasAcceptedIdle(previous)) return { kind: 'accepted' };
   return previous?.kind === 'recovering' ? { kind: 'uncertain' } : previous;
 };
 
@@ -171,6 +174,21 @@ const observeEnergyIdle = (
     ? observePermittedIdle(previous, confirmed) : previous;
 };
 
+const extendTaskDeliveryExplanation = (
+  previous: TaskDeliveryEvidence['explanation'], nowMs: number, elapsedMs: number,
+): Extract<TaskDeliveryEvidence['explanation'], { kind: 'recorded' }> => {
+  if (previous.kind === 'legacy_unrecorded') {
+    return { ...EMPTY_DELIVERY_EVIDENCE.explanation, contributors: ['legacy_unrecorded'] };
+  }
+  if (previous.primary.kind !== 'blocked' || elapsedMs <= 0) return previous;
+  const { cause } = previous.primary;
+  return {
+    ...previous,
+    contributors: previous.contributors.includes(cause) ? previous.contributors : [...previous.contributors, cause],
+    intervals: appendInterval(previous.intervals, cause, nowMs - elapsedMs, nowMs),
+  };
+};
+
 /** One transition per lifecycle tick; a cleared cause survives only as a contributor. */
 export const observeTaskDelivery = (
   previous: TaskDeliveryEvidence,
@@ -180,24 +198,20 @@ export const observeTaskDelivery = (
 ): TaskDeliveryEvidence => {
   // Expiry freezes the last live blocker; it is an outcome, not a cause.
   if (facts.obligation === 'expired') return previous;
-  const prior = previous.explanation.kind === 'recorded' ? previous.explanation : EMPTY_DELIVERY_EVIDENCE.explanation;
-  const nonDelivery = observeTaskNonDelivery(previous.nonDelivery, {
+  // Require a new uninterrupted watch after a missed lifecycle observation.
+  const hasGap = facts.energyIdleEligible === true && elapsedMs > MAX_CONTIGUOUS_DELIVERY_TICK_MS;
+  const priorNonDelivery = hasGap ? { kind: 'none' as const } : previous.nonDelivery;
+  const priorEnergyIdle = hasGap ? restoreEnergyTaskIdle(previous.energyIdle) : previous.energyIdle;
+  const nonDelivery = observeTaskNonDelivery(priorNonDelivery, {
     obligation: facts.obligation === 'unavailable' ? 'inactive' : facts.obligation,
     control: facts.control.kind === 'no_decision' ? 'pending' : facts.control.kind,
     draw: facts.observation.kind === 'unavailable' ? 'unobserved' : facts.observation.kind,
   }, nowMs);
   const confirmed = nonDelivery.kind === 'confirmed';
-  const energyIdle = observeEnergyIdle(previous.energyIdle, facts, confirmed, nowMs);
+  const energyIdle = observeEnergyIdle(priorEnergyIdle, facts, confirmed, nowMs);
   const primary = resolveBlocker(facts, confirmed || energyIdle?.kind === 'accepted');
-  let { contributors, intervals } = prior;
-  if (previous.explanation.kind === 'legacy_unrecorded') contributors = ['legacy_unrecorded'];
-  if (prior.primary.kind === 'blocked' && elapsedMs > 0) {
-    const { cause } = prior.primary;
-    contributors = contributors.includes(cause) ? contributors : [...contributors, cause];
-    intervals = appendInterval(intervals, cause, nowMs - elapsedMs, nowMs);
-  }
   return {
-    explanation: { kind: 'recorded', primary, contributors, intervals },
+    explanation: { ...extendTaskDeliveryExplanation(previous.explanation, nowMs, elapsedMs), primary },
     nonDelivery,
     ...(energyIdle ? { energyIdle } : {}),
   };
@@ -274,7 +288,7 @@ export const reportTaskDeliveryStatus = (
   if (diagnostic.trajectory.status === 'satisfied' || diagnostic.trajectory.status === 'invalid') return diagnostic;
   const evidence = read(diagnostic.deviceId, diagnostic.deadlineAtMs);
   const cause = resolveDeliveryRiskCause(evidence);
-  if (evidence.energyIdle?.kind === 'accepted' && cause !== 'device_limit' && cause !== 'device_schedule'
+  if (hasAcceptedIdle(evidence.energyIdle) && cause !== 'device_limit' && cause !== 'device_schedule'
     && diagnostic.energyIdleEligible && diagnostic.evaluation.completion.kind === 'unmet') {
     const completion = { kind: 'device_idle' } as const;
     return {

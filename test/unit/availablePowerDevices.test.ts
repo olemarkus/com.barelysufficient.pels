@@ -47,6 +47,23 @@ describe('energized loads using available power', () => {
     expect(ledger.availableFor(relay)).toBe(1);
   });
 
+  it('does not credit whole-home draw against an independent phase reading', () => {
+    const relay = buildPlanDevice({
+      id: 'relay', currentState: 'on', currentDrawKw: 2, expectedPowerKw: 2, usesAvailablePower: true,
+      phaseFootprint: { kind: 'single', phase: 'L1' },
+    });
+    const devices = new Map([[relay.id, relay]]);
+    const ledger = buildRestoreHeadroomLedger({
+      capacity: { kind: 'on', kw: 4 },
+      grid: { kind: 'off' },
+      budget: { kind: 'off' },
+      phase: { kind: 'on', roomKw: { L1: 3, L2: 3, L3: 3 } },
+    });
+    accountForAvailablePowerDevices(devices, ledger, () => 2);
+    expect(ledger.axes().capacity).toEqual({ kind: 'on', kw: 4 });
+    expect(ledger.availableFor(relay)).toBe(1);
+  });
+
   it('asks an idle relay to yield without giving its watts to a waiting load in the same cycle', () => {
     const relay = buildPlanDevice({
       id: 'relay', currentState: 'on', currentDrawKw: 0, expectedPowerKw: 2, usesAvailablePower: true,

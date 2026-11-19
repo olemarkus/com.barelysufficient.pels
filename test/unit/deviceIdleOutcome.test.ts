@@ -1,6 +1,9 @@
+import { vi } from 'vitest';
 import type { TaskDeliveryCause, TaskDeliveryEvidence } from '../../packages/contracts/src/taskDelivery';
 import type { TaskDeliveryFacts } from '../../lib/objectives/deferredObjectives/deliveryEvidence';
-import { isDeviceIdleOutcome, observeDeviceIdleEvidence } from '../../lib/objectives/deferredObjectives/deviceIdleOutcome';
+import {
+  isDeviceIdleOutcome, observeDeviceIdleEvidence, reconcileIdleAtDeadline,
+} from '../../lib/objectives/deferredObjectives/deviceIdleOutcome';
 import type { InProgressRecord } from '../../lib/objectives/deferredObjectives/planHistoryInProgressState';
 import { partialDouble } from '../helpers/partialDouble';
 
@@ -34,7 +37,7 @@ const run = (overrides: Partial<InProgressRecord> = {}): InProgressRecord => par
   },
   deliveryEvidence: accepted,
   deviceIdleEvidence: {
-    firstConfirmedAtMs: CONFIRMED_AT_MS,
+    firstIdleAtMs: CONFIRMED_AT_MS,
     lastAcceptedAtMs: 3 * HOUR_MS - 30_000,
     permittedIdleMs: 80 * MINUTE_MS,
     planningSpeedKw: 4,
@@ -67,7 +70,7 @@ describe('energy task device-idle outcome', () => {
     const record = run({ deviceIdleEvidence: undefined, deliveryEvidence: { ...accepted, energyIdle: undefined } });
     const first = observeDeviceIdleEvidence(record, permittedIdle, accepted, CONFIRMED_AT_MS, 30_000);
     expect(first).toEqual({
-      firstConfirmedAtMs: CONFIRMED_AT_MS, lastAcceptedAtMs: CONFIRMED_AT_MS, permittedIdleMs: 0, planningSpeedKw: 4,
+      firstIdleAtMs: CONFIRMED_AT_MS, lastAcceptedAtMs: CONFIRMED_AT_MS, permittedIdleMs: 0, planningSpeedKw: 4,
     });
 
     const withoutBookings = run({ originalPlan: null, deviceIdleEvidence: first });
@@ -83,6 +86,25 @@ describe('energy task device-idle outcome', () => {
       CONFIRMED_AT_MS + 30_000,
       30_000,
     )).toMatchObject({ permittedIdleMs: 0, lastAcceptedAtMs: CONFIRMED_AT_MS + 30_000 });
+  });
+
+  it('credits the continuous permitted watch once it confirms', () => {
+    const watching: TaskDeliveryEvidence = {
+      ...accepted, energyIdle: undefined, nonDelivery: { kind: 'watching', sinceMs: 0 },
+    };
+    const record = run({ deviceIdleEvidence: undefined, deliveryEvidence: watching });
+    const confirming = observeDeviceIdleEvidence(record, permittedIdle, accepted, CONFIRMED_AT_MS, 30_000);
+    expect(confirming).toMatchObject({ firstIdleAtMs: 0, permittedIdleMs: CONFIRMED_AT_MS });
+    expect(observeDeviceIdleEvidence(record, permittedIdle, accepted, CONFIRMED_AT_MS, CONFIRMED_AT_MS))
+      .toMatchObject({ permittedIdleMs: 0 });
+  });
+
+  it('uses the device reading at the deadline to invalidate a retained idle verdict', () => {
+    const record = run({ deviceId: 'relay' });
+    const drawAtDeadline = vi.fn(() => 2);
+    expect(isDeviceIdleOutcome(reconcileIdleAtDeadline(record, drawAtDeadline))).toBe(false);
+    expect(drawAtDeadline).toHaveBeenCalledWith('relay', record.deadlineAtMs);
+    expect(isDeviceIdleOutcome(reconcileIdleAtDeadline(record, () => 0))).toBe(true);
   });
 
   it('requires a booking that could cover the requested delivery', () => {

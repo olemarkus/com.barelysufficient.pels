@@ -13,9 +13,19 @@ const permitted: TaskDeliveryFacts = {
   obligation: 'claimed', control: { kind: 'permitted' }, observation: { kind: 'not_drawing' },
   progress: { kind: 'known', value: 0 }, deviceConstraint: { kind: 'none' }, schedule: 'fits',
 };
+const observeMinutes = (
+  initial: TaskDeliveryEvidence, facts: TaskDeliveryFacts, fromMinute: number, toMinute: number,
+): TaskDeliveryEvidence => {
+  let evidence = initial;
+  for (let minute = fromMinute + 1; minute <= toMinute; minute += 1) {
+    evidence = observeTaskDelivery(evidence, facts, minute * MINUTE, MINUTE);
+  }
+  return evidence;
+};
+
 const tick = (facts: TaskDeliveryFacts = permitted) => {
   const first = observeTaskDelivery(EMPTY_DELIVERY_EVIDENCE, facts, 0, 0);
-  return observeTaskDelivery(first, facts, 15 * MINUTE, 15 * MINUTE);
+  return observeMinutes(first, facts, 0, 15);
 };
 describe('device-neutral delivery evidence', () => {
   it('confirms a mechanical thermostat or EV cutoff only during claimed permitted delivery', () => {
@@ -65,6 +75,14 @@ describe('device-neutral delivery evidence', () => {
 describe('provisional relay energy delivery', () => {
   const eligible = { ...permitted, energyIdleEligible: true } as const;
 
+  it('does not carry a partial idle watch across missing lifecycle observations', () => {
+    const first = observeTaskDelivery(EMPTY_DELIVERY_EVIDENCE, eligible, 0, 0);
+    const afterGap = observeTaskDelivery(first, eligible, 20 * MINUTE, 20 * MINUTE);
+    expect(afterGap.nonDelivery).toEqual({ kind: 'watching', sinceMs: 20 * MINUTE });
+    expect(afterGap.energyIdle).toBeUndefined();
+    expect(observeMinutes(afterGap, eligible, 20, 35).energyIdle).toEqual({ kind: 'accepted' });
+  });
+
   it('keeps a price hold neutral and requires fresh evidence after an unobserved permitted interval', () => {
     const accepted = tick(eligible);
     expect(accepted.energyIdle).toEqual({ kind: 'accepted' });
@@ -78,7 +96,7 @@ describe('provisional relay energy delivery', () => {
     expect(noReading.energyIdle).toEqual({ kind: 'uncertain' });
     const rechecking = observeTaskDelivery(noReading, eligible, 18 * MINUTE, MINUTE);
     expect(rechecking.energyIdle).toEqual({ kind: 'uncertain' });
-    expect(observeTaskDelivery(rechecking, eligible, 33 * MINUTE, 15 * MINUTE).energyIdle)
+    expect(observeMinutes(rechecking, eligible, 18, 33).energyIdle)
       .toEqual({ kind: 'accepted' });
   });
 
@@ -175,6 +193,18 @@ describe('live status overlay', () => {
   const blocked = (cause: TaskDeliveryCause): TaskDeliveryEvidence => ({
     explanation: { kind: 'recorded', primary: { kind: 'blocked', cause }, contributors: [], intervals: [] },
     nonDelivery: { kind: 'none' },
+  });
+
+  it('holds the tentative status while a brief draw is being verified', () => {
+    const reported = reportTaskDeliveryStatus({
+      ...diagnostic,
+      energyIdleEligible: true,
+      evaluation: { ...diagnostic.evaluation, completion: { kind: 'unmet' } },
+    }, () => ({
+      ...EMPTY_DELIVERY_EVIDENCE,
+      energyIdle: { kind: 'recovering', startedKWh: 1, previouslyAccepted: true },
+    }));
+    expect(reported.evaluation.completion).toEqual({ kind: 'device_idle' });
   });
 
   // Planner decisions and transient executor facts: the horizon plan owns them,

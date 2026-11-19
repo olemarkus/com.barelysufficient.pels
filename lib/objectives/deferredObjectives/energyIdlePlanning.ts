@@ -99,7 +99,7 @@ const resolveEnergyIdleDiagnostic = (
   if (energyIdle === 'available_power') return withoutIdleBookings(diagnostic, selected);
   if (energyIdle !== 'reopening') return diagnostic;
   if (hasFreshPositiveEnergy(diagnostic)) return { ...diagnostic, restoresIdleBookings: true };
-  return withoutIdleBookings(evaluate('serve'), selected);
+  return withoutIdleBookings(evaluate('serve_idle'), selected);
 };
 
 type EvaluateTaskAllocation = (
@@ -117,16 +117,17 @@ export const resolveTaskAllocationDiagnostic = (
   reservations: readonly DeferredObjectivePriorityReservation[],
   readOtherBookings: () => DeferredObjectivePriorityReservation[],
 ): DeferredObjectiveDiagnostic => {
-  const allocationReservations = energyIdle === 'reopening' ? [...reservations, ...readOtherBookings()] : reservations;
+  const protectedBookings = energyIdle === 'reopening' ? readOtherBookings() : undefined;
+  const allocationReservations = protectedBookings ? [...reservations, ...protectedBookings] : reservations;
   const diagnostic = resolveEnergyIdleDiagnostic(
     (mode) => evaluate(task, allocationReservations, mode),
-    energyIdle === 'available_power' ? 'serve' : allocation,
+    energyIdle === 'available_power' ? 'serve_idle' : allocation,
     energyIdle, selected,
   );
   const contention = diagnostic.evaluation.usesAvailablePower ? diagnostic.evaluation
     : resolveHigherPriorityContentionEvaluation(
-      diagnostic.evaluation, allocationReservations, task.higherPriorityUnbookedPowerKw,
-      () => evaluate({ ...task, higherPriorityUnbookedPowerKw: 0 }, [], 'fresh').evaluation,
+      diagnostic.evaluation, reservations, task.higherPriorityUnbookedPowerKw,
+      () => evaluate({ ...task, higherPriorityUnbookedPowerKw: 0 }, protectedBookings ?? [], 'fresh').evaluation,
     );
   const resolved = reportHigherPriorityContention(diagnostic, contention);
   if (energyIdle === 'ineligible') return resolved;
