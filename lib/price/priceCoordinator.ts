@@ -1,3 +1,4 @@
+import type { NorwayCapacityTariffRead } from '../../packages/contracts/src/norwayCapacityTariff';
 /**
  * Orchestrates refresh and rotation of the combined-prices store and notifies
  * consumers when it changes — the 3-hour spot/grid-tariff refresh loop and the
@@ -180,6 +181,11 @@ export class PriceCoordinator {
   }
 
   /** The price source and Norway settings in force, each marked chosen or assumed. */
+  /** Selected grid company's capacity tariff for the requested Oslo calendar month. */
+  getNorwayCapacityTariff(monthKey: string): NorwayCapacityTariffRead {
+    return this.priceService.getNorwayCapacityTariff(monthKey);
+  }
+
   readPriceSetup(): PriceSetupRead {
     return readPriceSetup(this.deps.homey.settings, this.priceService.getResolvedPriceScheme());
   }

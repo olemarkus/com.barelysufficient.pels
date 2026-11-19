@@ -70,8 +70,8 @@ export const resolvePlanningPrice = (budgetPrice: number | undefined, totalPrice
  * (no capacity tariff, often solar), which planned with it before the switches
  * existed.
  */
-export const resolveExpectedManagedDrawKwh = (settings: PowerLimitSettings): number => (
-  configuredPowerCeiling(settings)?.kw ?? settings.limitKw
+export const resolveExpectedManagedDrawKwh = (settings: PowerLimitSettings, atMs = Date.now()): number => (
+  configuredPowerCeiling(settings, atMs)?.kw ?? settings.limitKw
 );
 
 /** Per-hour inputs the blend needs beyond the price entry itself. */
@@ -106,10 +106,14 @@ export const applyBudgetPrices = <T extends CombinedPriceFields>(
   timeZone: string,
 ): T[] => {
   if (!inputs) return prices;
-  const expectedManagedDrawKwh = resolveExpectedManagedDrawKwh(inputs.getPowerLimitSettings());
-  if (!isPositiveFinite(expectedManagedDrawKwh)) return prices;
+  const powerLimits = inputs.getPowerLimitSettings();
+  if (!powerLimits.monthlyCapacityChoice
+    && !isPositiveFinite(resolveExpectedManagedDrawKwh(powerLimits))) return prices;
   return prices.map((entry) => {
     const startsAtMs = Date.parse(entry.startsAt);
+    if (!Number.isFinite(startsAtMs)) return entry;
+    const expectedManagedDrawKwh = resolveExpectedManagedDrawKwh(powerLimits, startsAtMs);
+    if (!isPositiveFinite(expectedManagedDrawKwh)) return entry;
     const surplusKwh = Number.isFinite(startsAtMs)
       ? inputs.getSurplusKwh(getHourStartInTimeZone(new Date(startsAtMs), timeZone))
       : undefined;
@@ -152,7 +156,13 @@ export const readBudgetPriceInputs = (
   inputs: BudgetPriceInputs | undefined,
 ): unknown[] => {
   if (!inputs) return [];
-  const expectedManagedDrawKwh = resolveExpectedManagedDrawKwh(inputs.getPowerLimitSettings());
-  if (!isPositiveFinite(expectedManagedDrawKwh)) return [expectedManagedDrawKwh];
-  return [expectedManagedDrawKwh, ...hoursMs.map((hourMs) => inputs.getSurplusKwh(hourMs))];
+  const powerLimits = inputs.getPowerLimitSettings();
+  const expectedManagedDrawKwh = resolveExpectedManagedDrawKwh(powerLimits);
+  if (!powerLimits.monthlyCapacityChoice) {
+    if (!isPositiveFinite(expectedManagedDrawKwh)) return [expectedManagedDrawKwh];
+    return [expectedManagedDrawKwh, ...hoursMs.map((hourMs) => inputs.getSurplusKwh(hourMs))];
+  }
+  return [expectedManagedDrawKwh, ...hoursMs.flatMap((hourMs) => [
+    resolveExpectedManagedDrawKwh(powerLimits, hourMs), inputs.getSurplusKwh(hourMs),
+  ])];
 };

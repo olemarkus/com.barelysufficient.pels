@@ -1653,8 +1653,13 @@ md-filled-tonal-button.is-busy {
   min-width: 0;
 }
 
+.monthly-capacity-overview,
+.plan-smart-task-row,
 .plan-task-status {
   margin-block: var(--spacing-2);
+}
+
+.plan-task-status {
   padding: var(--spacing-4);
 }
 
@@ -3615,12 +3620,6 @@ md-filled-tonal-button.is-busy {
   inline-size: 100%;
   min-block-size: var(--pels-touch-target-min);
   padding: var(--spacing-3) var(--spacing-4);
-  /* Match the 8 px stack rhythm of `.plan-cards` on both sides: without the
-     block-start margin the row sits flush against the hero's bottom edge
-     (0 px) while every other card pair on the page gets 8 px. Both margins
-     collapse against their neighbours' (hero: none, `.plan-cards`:
-     margin-top --spacing-2), so the rendered gap is 8 px above and below. */
-  margin-block: var(--spacing-2);
   text-align: start;
   font-size: var(--font-size-sm);
   color: var(--text);
@@ -9625,3 +9624,59 @@ md-switch {
 #device-detail-report-section .inline-actions {
   margin: 0;
 }
+
+.monthly-capacity-mount { min-width: 0; }
+.monthly-capacity-card,
+.monthly-capacity-settings { gap: var(--spacing-2); }
+
+.monthly-capacity-copy { margin: 0; }
+
+.monthly-capacity-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-1) var(--spacing-3);
+}
+
+.monthly-capacity-action,
+.monthly-capacity-choice {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-1);
+}
+
+.monthly-capacity-nav { place-self: start; }
+.monthly-capacity-peaks { list-style: none; padding: 0; margin: 0; }
+.monthly-capacity-peaks li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding-block: var(--spacing-2);
+}
+.monthly-capacity-peaks strong { white-space: nowrap; }
+#usage-panel[data-loading="true"] > .monthly-capacity-mount,
+#usage-panel[data-scope-read="unavailable"] > .monthly-capacity-mount { display: none; }
+
+.monthly-capacity-limit {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-1) var(--spacing-2);
+}
+
+.monthly-capacity-limit strong { white-space: nowrap; }
+.monthly-capacity-details { border-top: 1px solid var(--panel-border); }
+#monthly-capacity-card .monthly-capacity-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-height: var(--pels-touch-target-min);
+  cursor: pointer;
+  list-style: none;
+}
+.monthly-capacity-details summary::-webkit-details-marker { display: none; }
+
+#monthly-capacity-card .monthly-capacity-details .disclosure-chevron { flex-shrink: 0; }

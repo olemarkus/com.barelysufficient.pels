@@ -1,4 +1,5 @@
 import { scrollSettingsAnchorWhenVisible } from './settingsAnchor.ts';
+import { initPowerHistoryRecovery } from './powerHistoryRecovery.ts';
 import { loadEvCarCurrentLimits, loadEvChargerCurrentLimits } from './deviceDetail/chargingCurrentLimits.tsx';
 import { bindMainFuseControls } from './mainFuseControls.ts';
 import { initAreaSimulationBannerNavigation } from './simulationBannerNavigation.ts';
@@ -385,6 +386,7 @@ const initAdvancedHandlers = () => {
     });
   });
 
+  initPowerHistoryRecovery();
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
 };

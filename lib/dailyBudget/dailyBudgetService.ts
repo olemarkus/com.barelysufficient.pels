@@ -1,3 +1,4 @@
+import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { readCombinedPriceData } from '../price/priceStore';
@@ -178,12 +179,14 @@ export class DailyBudgetService {
    * frozen, are rebuilt on them.
    */
   private readPlanInputs(nowMs: number, timeZone: string): DailyBudgetPlanInputs {
+    const powerLimits = this.deps.getCapacitySettings();
     return {
       combinedPrices: readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone),
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
       // `null` when no power limit is enabled: the day's hours are then capped by
       // observed peaks alone.
-      planningCeiling: resolvePlanningPowerCeiling(this.deps.getCapacitySettings()),
+      planningCeiling: resolvePlanningPowerCeiling(powerLimits, nowMs),
+      planningCeilingAt: (atMs) => resolvePlanningPowerCeiling(powerLimits, atMs),
     };
   }
 
@@ -505,7 +508,10 @@ export class DailyBudgetService {
   private setDaySnapshot(snap: DailyBudgetDayPayload, nowMs: number,
     inputs: DailyBudgetPlanInputs, includeAdjacentDays = false): void {
     const priceSignature = computeAdjacentDaysSeedSignature(snap.dateKey, inputs.combinedPrices);
-    const seedSignature = `${priceSignature}|${this.manager.getAdjacentDaysInputsMark()}`;
+    const tomorrowMs = getNextLocalDayStartUtcMs(nowMs, this.resolveTimeZone());
+    const nextCeiling = inputs.planningCeilingAt ? inputs.planningCeilingAt(tomorrowMs) : inputs.planningCeiling;
+    const inputsMark = this.manager.getAdjacentDaysInputsMark();
+    const seedSignature = `${priceSignature}|${inputsMark}|${JSON.stringify(nextCeiling)}`;
     if (includeAdjacentDays || seedSignature !== this.adjacentDaysSeedSignature) {
       this.adjacentDaysSeedSignature = seedSignature;
       this.rebuildSnapshotWithAdjacentDays(snap, nowMs, inputs);

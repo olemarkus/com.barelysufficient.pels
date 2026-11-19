@@ -52,6 +52,78 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('HomeTrackerPersistence additive hourly recovery', () => {
+  const nowMs = Date.parse('2026-11-18T16:30:00Z');
+  const oldHour = '2026-11-16T12:00:00.000Z';
+  const existingHour = '2026-11-17T12:00:00.000Z';
+  const initial: PowerTrackerState = {
+    lastTimestamp: nowMs, lastPowerW: 3200, buckets: { [existingHour]: 2.4 },
+    controlledBuckets: { [existingHour]: 1.1 }, hourlySampleCounts: { [existingHour]: 100 },
+    unreliablePeriods: [{ start: 1, end: 2 }],
+  };
+
+  it('persists missing completed hours only and keeps all live state and attribution', () => {
+    const { tracker, stored } = build(UNBOUND, initial);
+    tracker.hydrate();
+    const result = tracker.appendMissingHours({
+      [oldHour]: 3.2, [existingHour]: 99,
+      '2026-11-18T00:00:00.000Z': 7, '2026-10-01T00:00:00.000Z': 7,
+    }, tracker.getHistoryRevision(), nowMs);
+    expect(result).toEqual({ state: 'saved', addedHours: 1, firstHour: oldHour, lastHour: oldHour });
+    expect(tracker.getState()).toEqual({ ...initial, buckets: { ...initial.buckets, [oldHour]: 3.2 } });
+    expect(stored()).toEqual(tracker.getState());
+    expect(tracker.appendMissingHours({ [oldHour]: 55 }, tracker.getHistoryRevision(), nowMs))
+      .toEqual({ state: 'saved', addedHours: 0 });
+  });
+
+  it('excludes the last observed hour and its open accounting gap', () => {
+    const { tracker } = build(UNBOUND, { ...initial, lastTimestamp: Date.parse('2026-11-16T12:30:00Z') });
+    tracker.hydrate();
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2, '2026-11-17T00:00:00.000Z': 4 },
+      tracker.getHistoryRevision(), nowMs)).toEqual({ state: 'saved', addedHours: 0 });
+  });
+
+  it('refuses before hydration, fences replacements and meter freshness resets', () => {
+    const { tracker } = build(UNBOUND, initial);
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2 }, tracker.getHistoryRevision(), nowMs)).toEqual({ state: 'failed' });
+    tracker.hydrate();
+    const revision = tracker.getHistoryRevision();
+    tracker.replace(initial);
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2 }, revision, nowMs)).toEqual({ state: 'stale' });
+    const afterReset = tracker.getHistoryRevision();
+    tracker.resetFreshness();
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2 }, afterReset, nowMs)).toEqual({ state: 'stale' });
+  });
+
+  it('settles owed hydration before overlap reads and additive persistence', () => {
+    const { store } = build(UNBOUND);
+    store.save('main', initial);
+    const { tracker } = build(UNBOUND, { lastTimestamp: nowMs, lastPowerW: 4000 }, store);
+    vi.spyOn(store, 'load').mockImplementationOnce(() => { throw new Error('busy'); });
+    tracker.hydrate();
+    expect(tracker.getHistoryForRecovery()).toEqual({ ...initial, lastPowerW: 4000 });
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2 }, tracker.getHistoryRevision(), nowMs).state).toBe('saved');
+    expect(tracker.getState().buckets).toEqual({ ...initial.buckets, [oldHour]: 3.2 });
+  });
+
+  it('does not publish recovered hours if persistence fails', () => {
+    const { tracker, store, onPersisted } = build(UNBOUND, initial);
+    tracker.hydrate();
+    vi.spyOn(store, 'save').mockImplementation(() => { throw new Error('disk full'); });
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2 }, tracker.getHistoryRevision(), nowMs)).toEqual({ state: 'failed' });
+    expect(tracker.getState()).toEqual(initial);
+    expect(onPersisted).not.toHaveBeenCalled();
+  });
+
+  it('retains durable success when the notification listener fails', () => {
+    const { tracker, stored, onPersisted } = build(UNBOUND, initial);
+    tracker.hydrate();
+    onPersisted.mockImplementation(() => { throw new Error('listener failed'); });
+    expect(tracker.appendMissingHours({ [oldHour]: 3.2 }, tracker.getHistoryRevision(), nowMs).state).toBe('saved');
+    expect(stored()?.buckets?.[oldHour]).toBe(3.2);
+  });
+});
+
 describe('HomeTrackerPersistence boot hydration', () => {
   it('adopts the stored tracker and, unbound, stamps no meter identity on what it persists', () => {
     const { store } = build(UNBOUND);

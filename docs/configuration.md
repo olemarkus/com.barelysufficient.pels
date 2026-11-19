@@ -53,6 +53,12 @@ The hourly bars split each hour into **managed** device usage and **background**
 
 Hourly data is kept for 30 days. Daily totals are kept for one year. Resetting usage history lives under **Settings > Advanced > Data management**.
 
+**Recover hourly history from Insights** in the same section fills missing hours
+of completed days from the selected whole-home meter's recent hourly Insights.
+Existing usage stays in place. Recovered meter totals have no device split and
+count toward the monthly capacity figures. Recovery checks the source against
+recorded usage and does not convert older, coarser averages into hourly data.
+
 ## Smart Tasks
 
 Smart tasks show devices with an active target and ready-by time. Tasks are created with **New smart task** on the Smart tasks page, the **Smart task** row of a device page's **Temporary** card, Homey Flow cards, or the **Create smart task** dashboard widget, then shown in the settings UI so you can inspect the current plan and history.
@@ -84,6 +90,14 @@ This is where the grid import limit, the capacity settings and the whole-home po
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |
 | **Power source** | Where whole-home power readings come from: **Flow card** or **Power meter** (read through Homey Energy). |
 | **Whole-home meter** | Shown with the Power meter source. Which meter whole-home power readings come from. PELS always reads one named meter: when the only whole-home meter Homey lists is marked **Tracks total home energy consumption** and no Flow has ever sent PELS readings, PELS picks it on its own shortly after starting; otherwise choose it here. A selection does not need Homey's **Tracks total home energy consumption** marking. The list shows whole-home meters rather than every power-using device, so an EV charger or smart plug won't appear; a meter you chose earlier stays selectable even if it no longer appears. |
+
+For the Main home using Norway prices and an hourly capacity period, **Usage > Monthly capacity** uses the existing 30-day hourly import history to show the estimated capacity tier and hourly cap for the remaining month. The **Safety margin** stays below the recommended **Hard cap**: a 4.8 kW Hard cap with a 0.3 kW margin gives a 4.5 kW planning allowance, reserving room for unmanaged load late in the hour. The margin never increases the tariff allowance. Expand **Three highest daily hours** to see the counted days, hours and average. PELS uses your selected grid company's supported three-day tariff and Norway's calendar. Homey's timezone must be Europe/Oslo.
+
+A partially tracked hour appears as **at least**: its recorded import already establishes that minimum hourly average. Missing days are labelled **Not recorded**. The figures use the same hourly history as Usage, rather than starting a separate capacity history when this feature is installed. On a 31-day month, the first day's hours can fall outside that retained window; missing or unreliable hours are identified in the card.
+
+A single hour above a tier boundary does not necessarily lose the tier. For example, a 5.01 kW day can still fit below a 5 kW three-day average when the other counted peaks are low enough. Later quiet days cannot lower the average of three peaks already recorded.
+
+When an adjustment is useful, Overview links to the monthly detail. **Usage > Monthly capacity** and **Limits & safety** let you apply the suggested Hard cap for this month or return to your normal limit. Your normal Hard cap stays saved and takes effect automatically at midnight in Oslo on the first day of the next month, including after an app restart. Editing it or the safety margin cancels the temporary choice. A lower Hard cap can be applied with incomplete history; an increase requires recorded hours throughout the elapsed month without known gaps. The calculation is an estimate from recorded usage; your grid operator determines the billed tier. Resetting usage history also clears the history used by this calculation.
 
 On the 15-minute period, **Highest completed quarter this month** reports PELS's largest fully tracked 15-minute average for the current month. It is an operational estimate from the readings sent to PELS, not a grid bill or a reproduction of operator rules such as a minimum monthly peak.
 

@@ -83,7 +83,8 @@ export function computeEnergySignatureUpdate(
     ? buildSuggestion({
       fit,
       forecast,
-      planningCeilingKw: planningPowerCeiling(deps.getPowerLimitSettings())?.kw,
+      planningCeilingKw: planningPowerCeiling(deps.getPowerLimitSettings(),
+        getDateKeyStartMs(forecast.targetDateKey, deps.getTimeZone()))?.kw,
       budgetPressure: state.budgetPressure,
       timeZone: deps.getTimeZone(),
       nowMs,

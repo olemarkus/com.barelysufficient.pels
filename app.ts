@@ -112,7 +112,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   protected readonly runtime: AppRuntimeHandles = {};
   // Tripped once, as the first edge of uninit; every in-flight continuation
   // that must not act on a stopping app reads it.
-  private readonly shutdown = new ShutdownLatch();
+  protected readonly shutdown = new ShutdownLatch();
   public startupBootstrap?: StartupBootstrapConfig;
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
@@ -645,9 +645,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     };
     const executor = new ScheduleActionExecutor(createScheduledSmartTaskHost(this, listTaskDevices), this.homey.clock);
     const schedules = new ScheduleService({
-      settings: this.homey.settings,
-      clock: this.homey.clock,
-      timers: this.timers,
+      settings: this.homey.settings, clock: this.homey.clock, timers: this.timers,
       receipts: createScheduleReceiptStore(this.getUserdataDatabase()),
       getNowMs: () => this.getNow().getTime(),
       listModes: () => Array.from(this.getHomeModeNames()),
@@ -657,6 +655,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       execute: (schedule, at) => executor.execute(schedule, at),
     });
     this.scheduleService = schedules;
+    for (const owner of [this.norwayMonthlyCapacity, this.powerHistoryRecovery]) owner.attach(this.homey.settings);
     this.homey.settings.on('set', this.scheduleSettingsChanged);
     this.homey.settings.on('unset', this.scheduleSettingsChanged);
     registerScheduleFlowCards(this.homey, schedules, listTaskDevices);
@@ -665,6 +664,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
 
   protected async stopSchedules(): Promise<void> {
     this.shutdown.stop();
+    for (const owner of [this.norwayMonthlyCapacity, this.powerHistoryRecovery]) owner.detach(this.homey.settings);
     this.homey.settings.removeListener('set', this.scheduleSettingsChanged);
     this.homey.settings.removeListener('unset', this.scheduleSettingsChanged);
     await this.scheduleService?.stop();

@@ -117,10 +117,10 @@ function recordDecision(
 // The planning ceiling over the target local day; null when no power limit is
 // enabled: nothing caps the day.
 function resolveDailyCeiling(targetDateKey: string, deps: AutoApplyDeps): number | null {
-  const ceiling = planningPowerCeiling(deps.getPowerLimitSettings());
-  if (ceiling === null) return null;
   const timeZone = deps.getTimeZone();
   const startMs = getDateKeyStartMs(targetDateKey, timeZone);
+  const ceiling = planningPowerCeiling(deps.getPowerLimitSettings(), startMs);
+  if (ceiling === null) return null;
   const hours = (getNextLocalDayStartUtcMs(startMs, timeZone) - startMs) / (60 * 60 * 1000);
   return ceiling.kw * hours;
 }

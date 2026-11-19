@@ -441,7 +441,7 @@ export class DailyBudgetManager {
       priceShapingEnabled: settings.priceShapingEnabled,
       profileSampleCount: profile.sampleCount,
       profileBreakdown: profile.breakdown,
-      planningCeiling: inputs.planningCeiling,
+      planningCeiling: inputs.planningCeilingAt ? inputs.planningCeilingAt(dayStartUtcMs) : inputs.planningCeiling,
     });
   }
 
@@ -458,7 +458,8 @@ export class DailyBudgetManager {
       this.state,
       settings,
       buildPreviewDayContext(dayStartUtcMs, timeZone),
-      inputs,
+      { ...inputs, planningCeiling: inputs.planningCeilingAt
+        ? inputs.planningCeilingAt(dayStartUtcMs) : inputs.planningCeiling },
       DEFAULT_PROFILE,
     );
   }

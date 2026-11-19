@@ -1,3 +1,4 @@
+import { captureMonthlyCapacityRead, updateMonthlyCapacityUsage } from './norwayMonthlyCapacityActions.ts';
 import { classifyPhaseLoad } from './phaseLoadRead.ts';
 import {
   powerList,
@@ -497,6 +498,7 @@ const applyUsageScopeReadState = (state: 'served' | 'unavailable'): void => {
 export const renderPowerStatsFromRead = async (
   read: UsagePowerRead,
   isCurrentRun: () => boolean,
+  monthlyReadStamp = captureMonthlyCapacityRead(),
 ) => {
   try {
     // ONE discriminated read drives this render pass: the honest-state flip,
@@ -510,6 +512,7 @@ export const renderPowerStatsFromRead = async (
     if (footer) footer.textContent = resolveUsageFooterText(getHomeScope().selectedHomeId, areMeterAreasInUse());
     const { stats, timeZone } = computePowerStats(read.payload.tracker);
     renderPhasePeaks(read.payload.phasePeaks, timeZone);
+    updateMonthlyCapacityUsage(read.payload, monthlyReadStamp);
     latestPowerStats = stats;
     latestPowerStatsTimeZone = timeZone;
     powerStatsRendered = true;

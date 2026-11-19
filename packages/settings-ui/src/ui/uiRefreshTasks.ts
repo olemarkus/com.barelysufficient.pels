@@ -1,3 +1,4 @@
+import { captureMonthlyCapacityRead } from './norwayMonthlyCapacityActions.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
@@ -143,6 +144,7 @@ export const refreshPowerData = async () => {
   // One discriminated read owns the complete Usage refresh. In particular, an
   // unavailable Main read must not be flattened to an empty hourly list and
   // then masked by a second successful stats read.
+  const monthlyReadStamp = captureMonthlyCapacityRead();
   const read = await readUsagePower();
   // A newer run started while this read was in flight; its answer owns the
   // panel. Dropping the whole completion keeps every Usage surface on the
@@ -151,7 +153,7 @@ export const refreshPowerData = async () => {
   if (read.state === 'served') {
     renderPowerUsage(getPowerUsageFromRead(read));
   }
-  await renderPowerStatsFromRead(read, isCurrentRun);
+  await renderPowerStatsFromRead(read, isCurrentRun, monthlyReadStamp);
 };
 
 export const refreshPowerDataIfVisible = (

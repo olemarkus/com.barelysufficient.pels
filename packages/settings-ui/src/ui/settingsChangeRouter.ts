@@ -1,3 +1,4 @@
+import { notifyMonthlyCapacitySettingChanged } from './norwayMonthlyCapacityActions.ts';
 import {
   clearEvCarCurrentLimits, loadEvCarCurrentLimits, clearEvChargerCurrentLimits, loadEvChargerCurrentLimits,
 } from './deviceDetail/chargingCurrentLimits.tsx';
@@ -255,6 +256,7 @@ const refreshModeCatalogSurfaces = (key: string, context: string): void => {
 const notifyHomeScopedControllers = (key: string) => {
   notifyHomeScopeSettingChanged(key);
   notifyHomeLimitsSettingChanged(key);
+  notifyMonthlyCapacitySettingChanged(key);
   notifyAreaSimulationSettingChanged(key);
 };
 
@@ -516,6 +518,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Route the bare key through the full loader so it can preserve and repaint
   // that posture instead of fabricating a boot default.
   refreshCapacitySettings(key, 'settings.unset');
+  notifyMonthlyCapacitySettingChanged(key);
   // An unset suffixed flag is a real posture change too: the runtime reads an
   // absent per-area flag as its simulating boot default. So is an unset
   // roster — the posture must narrow with it, and no other unset route

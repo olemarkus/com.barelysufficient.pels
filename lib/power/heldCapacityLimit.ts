@@ -8,6 +8,7 @@ import { resolveCurrentMonthCapacityPeak, type CapacityMonthPeak } from './capac
 import type { MeterMonthlyPeak } from './meterMonthlyPeak';
 import { nextCapacityMonthStartMs } from './capacityQuarterTracking';
 import { resolvePlanningCeilingKw } from './capacityModel';
+import { capacityLimitKwAt } from '../../packages/shared-domain/src/settings/powerLimits';
 
 export type { HardCapSource } from '../../packages/contracts/src/capacitySettings';
 
@@ -81,6 +82,8 @@ export function resolveScheduledPowerLimits(
 
 export function powerLimitsAt(limits: ScheduledPowerLimits, atMs: number): PowerLimitSettings {
   const { monthPeak } = limits;
+  // An explicit monthly capacity choice (hourly periods only) and a held month peak (15-minute only) never coincide.
+  if (limits.monthlyCapacityChoice) return { ...limits, limitKw: capacityLimitKwAt(limits, atMs) };
   return monthPeak && atMs < monthPeak.endsAtMs ? { ...limits, limitKw: monthPeak.limitKw } : limits;
 }
 

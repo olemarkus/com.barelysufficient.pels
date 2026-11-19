@@ -377,6 +377,10 @@ const getSettingsUiPower = (host: PelsHost): SettingsUiPowerPayload => {
     capacityScalars: { state: 'resolved', scalars: host.getCapacityScalars() },
     hardCapConfiguration: host.readHardCapConfiguration(),
     capacityPeak: host.getCurrentMonthCapacityPeak(),
+    norwayMonthlyCapacity: host.readNorwayMonthlyCapacity(),
+    powerHistoryRecovery: host.readPowerHistoryRecovery(),
+    norwayMonthlyCapacityChoice: host.norwayCapacityChoice.readState(host.getCapacityScalars(), Date.now()),
+    norwayMonthlyCapacityOutcome: host.norwayCapacityChoice.readOutcome(),
     // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). A role-detected PV device is now the whole condition:

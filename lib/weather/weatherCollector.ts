@@ -686,7 +686,7 @@ export class WeatherCollector {
     const dayStartMs = getDateKeyStartMs(record.dateKey, timeZone);
     const dayLengthHours = (getNextLocalDayStartUtcMs(dayStartMs, timeZone) - dayStartMs) / HOUR_MS;
     // No power limit enabled: no ceiling, so the carried pressure is not clamped.
-    const ceiling = planningPowerCeiling(this.deps.getPowerLimitSettings());
+    const ceiling = planningPowerCeiling(this.deps.getPowerLimitSettings(), dayStartMs);
     this.state = {
       ...this.state,
       budgetPressure: foldBudgetPressureDay(

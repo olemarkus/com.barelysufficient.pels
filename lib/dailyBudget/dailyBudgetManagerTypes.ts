@@ -37,6 +37,8 @@ export type DailyBudgetPlanInputs = {
   combinedPrices: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   planningCeiling: PowerLimitCeiling | null;
+  /** One update's stable power-owner read, evaluated for each adjacent day. */
+  planningCeilingAt?: (atMs: number) => PowerLimitCeiling | null;
 };
 
 export type ExistingPlanState = {

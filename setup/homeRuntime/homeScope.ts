@@ -293,7 +293,9 @@ export function buildMainHomeScope(
     // snapshot is the in-memory truth kept current by the settings handler.
     // Main's month peak is the one its readout shows (`getCurrentMonthCapacityPeak`):
     // its tracker against the peak its selected meter reports.
-    getCapacitySettings: () => resolveHeldPowerLimits(ctx.getCapacityScalars(), ctx.getCurrentMonthCapacityPeak()),
+    getCapacitySettings: () => resolveHeldPowerLimits(
+      ctx.getCapacityScalars('live'), ctx.getCurrentMonthCapacityPeak(),
+    ),
     getMainFuse: () => ctx.capacitySettingsStore.mainFuse(),
     // The EFFECTIVE dry-run, the same composition a meter area makes: the
     // owner's persisted intent OR a home-wide fence that holds for the whole

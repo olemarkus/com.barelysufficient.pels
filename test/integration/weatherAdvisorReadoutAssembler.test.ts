@@ -19,12 +19,15 @@ describe('assembleWeatherAdvisorReadout', () => {
 
     const context = partialDouble<Pick<
       AppContext,
-      'homey' | 'getNow' | 'getTimeZone' | 'capacitySettings'
+      'homey' | 'getNow' | 'getTimeZone' | 'getCapacityScalars'
     >>({
       homey: appHomey,
       getNow: () => new Date('2026-09-28T12:00:00.000Z'),
       getTimeZone: () => 'UTC',
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 },
+      getCapacityScalars: () => ({
+        capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5,
+        periodMinutes: 60, dryRun: false, followMonthPeak: false,
+      }),
     });
     const collector = partialDouble<WeatherCollector>({
       getHistoryStateSnapshot: () => ({ records: [] }),

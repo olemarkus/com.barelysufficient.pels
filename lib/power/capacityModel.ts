@@ -60,11 +60,11 @@ export function resolveCapacityMarginKWh(capacitySettings: CapacitySettings): nu
  * The live capacity pace is NOT this: it stays on the period allowance
  * (`computeDynamicSoftLimit`), and live admission spends measured grid headroom.
  */
-export function resolvePlanningPowerCeiling(settings: PowerLimitSettings): PowerLimitCeiling | null {
-  return planningPowerCeiling(settings);
+export function resolvePlanningPowerCeiling(settings: PowerLimitSettings, atMs = Date.now()): PowerLimitCeiling | null {
+  return planningPowerCeiling(settings, atMs);
 }
 
 /** The planning ceiling read as a rate alone, for consumers that never name the limit. */
-export function resolvePlanningCeilingKw(settings: PowerLimitSettings): number | null {
-  return resolvePlanningPowerCeiling(settings)?.kw ?? null;
+export function resolvePlanningCeilingKw(settings: PowerLimitSettings, atMs = Date.now()): number | null {
+  return resolvePlanningPowerCeiling(settings, atMs)?.kw ?? null;
 }

@@ -21,7 +21,7 @@ type DailyBudgetService = NonNullable<AppContext['dailyBudgetService']>;
  * settings UI renders no weather surface for that member.
  */
 export async function assembleWeatherAdvisorReadout(
-  ctx: Pick<AppContext, 'homey' | 'getNow' | 'getTimeZone' | 'capacitySettings'>,
+  ctx: Pick<AppContext, 'homey' | 'getNow' | 'getTimeZone' | 'getCapacityScalars'>,
   collector: WeatherCollector,
   dailyBudget: DailyBudgetService,
 ): Promise<WeatherAdvisorReadout> {
@@ -47,7 +47,7 @@ export async function assembleWeatherAdvisorReadout(
     ...(outdoor.temperatureC !== undefined ? { currentOutdoorTempC: outdoor.temperatureC } : {}),
     ...(currentDailyBudgetKwh !== undefined ? { currentDailyBudgetKwh } : {}),
     dailyBudgetEnabled: dailyBudget.isEnabled(),
-    powerLimitSettings: ctx.capacitySettings,
+    powerLimitSettings: ctx.getCapacityScalars('planning'),
     nowMs: ctx.getNow().getTime(),
     timeZone: ctx.getTimeZone(),
   });

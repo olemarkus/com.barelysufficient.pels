@@ -1,3 +1,8 @@
+import { PowerHistoryRecoveryOwner } from '../lib/power/powerHistoryRecoveryOwner';
+import { NorwayMonthlyCapacityOwner } from '../lib/power/norwayMonthlyCapacityOwner';
+import { NorwayCapacityChoice } from '../lib/power/norwayCapacityChoice';
+import type { HomeTrackerPersistence } from '../lib/power/homeTrackerPersistence';
+import { bindPowerHistoryRecoveryPorts } from './appInit/createPowerHistoryRecovery';
 import type { SettingsUiTaskPricePeriod } from '../packages/contracts/src/settingsUi/prices';
 import type { DeferredObjectiveSettingsKind } from '../packages/contracts/src/deferredObjectiveSettings';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
@@ -112,6 +117,27 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly runtime: AppRuntimeHandles;
   /** Main's month-peak switch, held by `PelsApp` beside the scalars it installs. */
   protected abstract capacityFollowMonthPeak: boolean;
+  public readonly norwayCapacityChoice = new NorwayCapacityChoice(this.homey.settings, (monthKey) => (
+    this.context.priceCoordinator ? this.context.priceCoordinator.getNorwayCapacityTariff(monthKey)
+      : { state: 'unavailable', reason: 'startup' }
+  ));
+  public readonly norwayMonthlyCapacity = new NorwayMonthlyCapacityOwner({
+    readTracker: () => this.context.powerTracker,
+    readScalars: () => this.getCapacityScalars(),
+    readTariff: (monthKey) => this.context.priceCoordinator
+      ? this.context.priceCoordinator.getNorwayCapacityTariff(monthKey)
+      : { state: 'unavailable', reason: 'startup' },
+    readTimeZone: () => this.getTimeZone(),
+    requestRebuild: () => { void requirePlanService(this.context).rebuildPlanFromCache('settings'); },
+  }, this.norwayCapacityChoice);
+  public readNorwayMonthlyCapacity = () => this.norwayMonthlyCapacity.read(Date.now());
+  public abstract readonly mainTracker: HomeTrackerPersistence;
+  protected abstract readonly shutdown: { isStopped(): boolean };
+  public readonly powerHistoryRecovery = new PowerHistoryRecoveryOwner(bindPowerHistoryRecoveryPorts(
+    this.homey.settings, () => this.mainTracker, () => this.getTimeZone(), () => this.shutdown.isStopped(),
+    () => requireDailyBudgetService(this.context).updateState({ forcePlanRebuild: true, persistReason: 'manual' }),
+  ));
+  public readPowerHistoryRecovery = () => this.powerHistoryRecovery.read();
   /** The month peaks the polled meters report, constructed by `PelsApp` and filled by its poll. */
   protected abstract readonly meterMonthlyPeaks: MeterMonthlyPeaks;
   // The price wiring replaces PelsApp's default once the coordinator exists.
@@ -122,11 +148,17 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.context.capacitySettingsStore.readHardCapConfiguration()
   );
 
-  public getCapacityScalars = (): CapacityScalarSettings => ({
-    ...this.context.capacitySettings,
-    dryRun: this.context.capacityDryRun,
-    followMonthPeak: this.capacityFollowMonthPeak,
-  });
+  public getCapacityScalars = (
+    purpose: 'configuration' | 'planning' | 'live' = 'configuration',
+  ): CapacityScalarSettings => {
+    const scalars = {
+      ...this.context.capacitySettings,
+      dryRun: this.context.capacityDryRun,
+      followMonthPeak: this.capacityFollowMonthPeak,
+    };
+    if (purpose === 'live') return this.norwayCapacityChoice.applyTo(scalars, Date.now());
+    return purpose === 'planning' ? this.norwayCapacityChoice.forPlanning(scalars, Date.now()) : scalars;
+  };
 
   public readPriceOptimizationSetup = (): PriceOptimizationSetupRead => {
     const coordinator = this.context.priceCoordinator;
@@ -157,7 +189,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   /** Main's limits as live control holds them (`lib/power/heldCapacityLimit.ts`). */
   public readHeldPowerLimits = (): HeldPowerLimitSettings => resolveHeldPowerLimits(
-    this.getCapacityScalars(),
+    this.norwayCapacityChoice.applyTo(this.getCapacityScalars(), Date.now()),
     this.getCurrentMonthCapacityPeak(),
   );
 
