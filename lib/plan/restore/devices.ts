@@ -10,7 +10,7 @@ import type {
 } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
-import { compareDeviceIdAsc, sortByPriorityAsc } from '../planSort';
+import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { buildChargeTargetHoldReason } from '../shedding/chargeTargetHold';
 import { resolveShedLever } from '../shedding/shedLever';
@@ -250,11 +250,11 @@ export function getOnDevices(
       }
       return canSwapOutDevice(device, temperatureSetpoints);
     });
-  return filtered.slice().sort((a, b) => (
-    (Number(b.usesAvailablePower === true) - Number(a.usesAvailablePower === true))
-    || b.priority - a.priority
-    || compareDeviceIdAsc(a, b)
-  ));
+  const byPriority = sortByPriorityDesc(filtered);
+  return [
+    ...byPriority.filter((device) => device.usesAvailablePower === true),
+    ...byPriority.filter((device) => device.usesAvailablePower !== true),
+  ];
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
