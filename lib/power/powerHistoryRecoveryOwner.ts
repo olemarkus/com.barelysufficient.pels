@@ -108,7 +108,7 @@ export class PowerHistoryRecoveryOwner {
       const revision = tracker.getHistoryRevision();
       const logs = readHourlyInsightsLogs(await this.fetchWithDeadline('manager/insights/log'), meter);
       const entryPath = (log: { ownerUri: string; id: string }): string => (
-        `manager/insights/log/${log.ownerUri}/${log.id}/entry?resolution=last7Days`
+        `manager/insights/log/${log.ownerUri}/${log.id}/entry?resolution=last14Days`
       );
       const [power, exported] = await Promise.all([
         this.fetchWithDeadline(entryPath(logs.power)), this.fetchWithDeadline(entryPath(logs.exported)),

@@ -54,7 +54,7 @@ The hourly bars split each hour into **managed** device usage and **background**
 Hourly data is kept for 32 days, so the whole current month stays hourly. Daily totals are kept for one year. Resetting usage history lives under **Settings > Advanced > Data management**.
 
 **Recover hourly history from Insights** in the same section fills missing hours
-of completed days from the selected whole-home meter's recent hourly Insights.
+of completed days from the selected whole-home meter's hourly Insights for the last 14 days.
 Existing usage stays in place. Recovered meter totals have no device split and
 count toward the monthly capacity figures. Recovery checks the source against
 recorded usage and does not convert older, coarser averages into hourly data.
