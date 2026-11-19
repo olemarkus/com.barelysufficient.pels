@@ -26,6 +26,7 @@ const resolveProps = (overrides: Partial<Parameters<typeof resolveSolarUsageCard
   resolveSolarUsageCardProps({
     tracker: solarTracker,
     combined: pricesBoth,
+    exportPriced: true,
     timeZone: OSLO,
     todayKey: TODAY_KEY,
     hasManagedSolarDevice: true,
@@ -109,7 +110,7 @@ describe('resolveSolarUsageCardProps + SolarUsageCard', () => {
       avoidedValueText: '≈ 1.50 kr',
       // exported 0.5 × 40 øre = 20 øre ≈ 0.20 kr
       earnedValueText: '≈ 0.20 kr',
-      showExportPriceHint: false,
+      exportHint: null,
     });
     const container = renderToContainer(props);
     const text = container.textContent ?? '';
@@ -148,15 +149,29 @@ describe('resolveSolarUsageCardProps + SolarUsageCard', () => {
 
   it('avoided-only tier (import prices without export price) shows the export-price hint', () => {
     const props = resolveProps({
+      exportPriced: false,
       combined: pricesBoth.map((row) => ({ startsAt: row.startsAt, total: row.total })),
     });
     expect(props?.money?.avoidedValueText).toBe('≈ 1.50 kr');
     expect(props?.money?.earnedValueText).toBeNull();
-    expect(props?.money?.showExportPriceHint).toBe(true);
+    expect(props?.money?.exportHint).toBe('check_price');
     const text = renderToContainer(props).textContent ?? '';
     expect(text).toContain('Grid cost avoided today');
     expect(text).not.toContain('Earned from export');
-    expect(text).toContain('Add an export price under Settings → Electricity prices');
+    expect(text).toContain('check your export price under Settings → Electricity prices');
+  });
+
+  it.each([true, null])('explains missing earnings without a setup prompt when export pricing is %s', (exportPriced) => {
+    const props = resolveProps({
+      exportPriced,
+      combined: [
+        { startsAt: iso(H0), total: 100 },
+        { startsAt: iso(H0 + HOUR_MS), total: 100, exportPrice: 40 },
+      ],
+    });
+    const text = renderToContainer(props).textContent;
+    expect(text).toContain('No export price is available for the hours you exported today.');
+    expect(text).not.toContain('Settings → Electricity prices');
   });
 
   it('kWh-only tier: no prices → no money block', () => {
@@ -228,7 +243,7 @@ describe('resolveSolarUsageCardProps + SolarUsageCard', () => {
       avoidedValueText: null,
       // 1.5 × 40 øre = 60 øre ≈ 0.60 kr
       earnedValueText: '≈ 0.60 kr',
-      showExportPriceHint: false,
+      exportHint: null,
     });
   });
 

@@ -7,14 +7,20 @@ import { setMdValue } from './fixtures/materialWeb';
 // `Choose what PELS does` offers its plan.
 const SCREENSHOT_DIR = process.env.PELS_SETUP_BATTERY_SCREENSHOT_DIR;
 
-const seedBatteryHome = async (page: Page, hasPrices = true) => {
-  await page.addInitScript(({ hasPrices }) => {
+const seedBatteryHome = async (page: Page, { hasPrices = true, hasCharger = false } = {}) => {
+  await page.addInitScript(({ hasPrices, hasCharger }) => {
     const battery = {
       id: 'setup-battery', name: 'Thuisbatterij', zone: 'Garage', available: true,
       deviceClass: 'battery', deviceType: 'onoff', isEvCharger: false, isBatteryOrSolar: true,
       batteryControl: 'drivable', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
       canSetControl: true, powerCapable: true, capabilities: ['measure_power', 'measure_battery'], targets: [],
       measuredPowerKw: 0, expectedPowerKw: 2.5, expectedPowerSource: 'default',
+    };
+    const charger = {
+      id: 'optional-ev', name: 'Optional EV', deviceClass: 'evcharger', deviceType: 'onoff',
+      isEvCharger: true, isBatteryOrSolar: false, available: true, powerCapable: true, canSetControl: true,
+      measuredPowerKw: 0, targets: [], capabilities: ['onoff', 'evcharger_charging', 'measure_power'],
+      managed: false, binaryControllable: true, controlModel: 'binary_power',
     };
     const w = window as unknown as {
       __PELS_HOMEY_STUB__: unknown;
@@ -30,19 +36,19 @@ const seedBatteryHome = async (page: Page, hasPrices = true) => {
     };
     w.__PELS_HOMEY_STUB__ = {
       settings: {
-        target_devices_snapshot: [battery], managed_devices: {}, controllable_devices: {},
+        target_devices_snapshot: hasCharger ? [battery, charger] : [battery], managed_devices: {}, controllable_devices: {},
         battery_control_devices: {}, continuous_battery_plan: {},
-        price_optimization_settings: {}, capacity_dry_run: true, capacity_enabled: false,
+        price_optimization_settings: {}, capacity_dry_run: sessionStorage.getItem('saved-dry-run') !== 'false',
+        capacity_enabled: false,
         daily_budget_enabled: false, ui_hub_market_country: 'NL',
         ui_devices_has_managed_solar: true, ui_devices_has_exhibited_export: true,
         ui_devices_surplus_pool_reachable: true,
       },
       continuousBatteryPlans: () => ({ [battery.id]: planRead() }),
       apiHandlers: {
-        // The battery alone: the stub's default list adds an EV charger, which
-        // would leave the Devices step open for the owner to choose it.
         'GET /ui_devices': () => ({
-          devices: [{ ...battery, managed: true, binaryControllable: false }], inverterDevices: [],
+          devices: [{ ...battery, managed: true, binaryControllable: false }, ...(hasCharger ? [charger] : [])],
+          inverterDevices: [],
           continuousBatteryPlans: { [battery.id]: planRead() },
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: true, hasExhibitedExport: true, surplusPoolReachable: true,
@@ -55,7 +61,7 @@ const seedBatteryHome = async (page: Page, hasPrices = true) => {
         }),
       },
     };
-  }, { hasPrices });
+  }, { hasPrices, hasCharger });
 };
 
 const stored = (page: Page, key: string) => page.evaluate((key) => (
@@ -122,7 +128,7 @@ for (const width of [320, 480]) {
     test.use({ viewport: { width, height: 900 } });
 
     test('failed battery setup restores the switch and offers price setup', async ({ page }, testInfo) => {
-      await seedBatteryHome(page, false);
+      await seedBatteryHome(page, { hasPrices: false });
       await page.goto('/?page=settings/devices&setup=goals');
       const card = page.locator('#device-card-list [data-device-id="setup-battery"]');
       const toggle = card.getByRole('switch', { name: 'Plan charging with PELS for Thuisbatterij', exact: true });
@@ -139,3 +145,34 @@ for (const width of [320, 480]) {
     });
   });
 }
+
+test('a battery home can leave its charger unmanaged through review, activation and reload', async ({ page }) => {
+  await seedBatteryHome(page, { hasCharger: true });
+  await page.goto('/?page=settings/devices&setup=devices');
+  const header = page.locator('#devices-panel .setup-journey');
+  const charger = page.getByRole('switch', { name: 'Manage Optional EV', exact: true });
+  await expect(charger).toBeEnabled();
+  await expect(charger).not.toBeChecked();
+  await expect(header).toContainText('You can also choose an EV charger.');
+  await expect(page.getByRole('switch', { name: 'Manage Thuisbatterij', exact: true })).toBeChecked();
+  await header.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page).toHaveURL(/setup=goals/);
+  await header.getByRole('button', { name: 'Review setup', exact: true }).click();
+  const review = page.locator('#setup-review-root');
+  await expect(review).toContainText('Thuisbatterij');
+  await expect(review.locator('[data-device-id="optional-ev"]')).toHaveCount(0);
+  await expect(review.getByRole('button', { name: 'Choose an EV charger (optional)' })).toBeVisible();
+  await review.getByRole('button', { name: 'Start managing' }).click();
+  await expect.poll(() => stored(page, 'capacity_dry_run')).toBe(false);
+  expect(await stored(page, 'managed_devices')).toEqual({});
+  // Homey keeps the saved switch when the WebView reopens.
+  const savedDryRun = await stored(page, 'capacity_dry_run');
+  await page.evaluate((value) => sessionStorage.setItem('saved-dry-run', String(value)), savedDryRun);
+  await page.goto('/?page=settings/setup-review&setup=review');
+  await expect(review).toContainText('Simulation mode is off');
+  await expect(review.getByRole('button', { name: 'Continue setup' })).toHaveCount(0);
+  await review.getByRole('button', { name: 'Open Overview' }).click();
+  await expect(page.locator('#overview-panel')).toBeVisible();
+  await expect(page.locator('#overview-setup-path')).toHaveCount(0);
+  await expect(page.locator('#dry-run-banner')).toBeHidden();
+});

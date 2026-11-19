@@ -14,14 +14,14 @@ import {
   getPrimaryTargetCapability, normalizeTargetCapabilityValue,
 } from '../../../shared-domain/src/targetCapabilities.ts';
 import { showTab } from './tabNavigation.ts';
-import { refreshHomeScope, selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
+import { selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange, readSetupLimitsInForce,
   isSetupDeviceLimitable,
 } from './setupPathFacts.ts';
 import type { SetupStep, SetupPath } from './setupPathModel.ts';
-import { isMainFuseMarket } from './setupPathModel.ts';
+import { isMainFuseMarket, nextSetupStep } from './setupPathModel.ts';
 import {
   currentSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
   acknowledgeSetupSaveFailures,
@@ -32,11 +32,11 @@ import {
 import { renderDevices } from './devices.ts';
 import { setEditingMode } from './modes.ts';
 import {
-  loadCapacitySettings, readSimulationBannerAreaId, saveSimulationModeSettings, saveCapacityPeriodSettings,
+  loadCapacitySettings, loadStaleDataStatus, saveSimulationModeSettings, saveCapacityPeriodSettings,
   saveCapacityOffSettings,
 } from './capacity.ts';
 import { flushDebouncedSettingSaves } from './utils.ts';
-import { resolveSolarSetupAction } from './setupDevices.ts';
+import { resolveSolarSetupAction, retrySetupDeviceReads } from './setupDevices.ts';
 import { getPowerReadModel } from './power.ts';
 import { getApiReadModel } from './homey.ts';
 import { SETTINGS_UI_PLAN_PATH } from '../../../contracts/src/settingsUi/paths.ts';
@@ -91,26 +91,13 @@ const navigateStep = (step: SetupStep): void => {
   showTab(step.target.panel, step.id);
 };
 
-const openSetupReview = (): void => {
+export const openSetupReview = (): void => {
   selectHomeScope(MAIN_HOME_ID);
-  const next = readSetupReview()?.steps.find((step) => step.status !== 'done');
-  simulationExitOffered = next !== undefined;
+  const path = readSetupReview();
+  const next = path && nextSetupStep(path);
+  simulationExitOffered = Boolean(next);
   if (next) navigateStep(next);
   else showTab('setup-review', 'review');
-};
-
-export const followSimulationBanner = async (): Promise<void> => {
-  const areaId = readSimulationBannerAreaId();
-  if (areaId === null) {
-    openSetupReview();
-    return;
-  }
-  // The banner names areas from saved settings and the scope bar from
-  // `ui_homes`, so a tap can come before the bar knows the area. Selecting it
-  // then would open Main's page instead.
-  if (!getHomeScope().areas.some((area) => area.homeId === areaId)) await refreshHomeScope();
-  selectHomeScope(areaId);
-  showTab('limits');
 };
 
 const runAction = async (action: () => Promise<void>): Promise<void> => {
@@ -149,7 +136,7 @@ const continueSetup = (): void => {
     const review = readSetupReview();
     if (!review) throw new Error('Setup could not be read. Return to setup and try again.');
     if (currentStep() === 'priorities') prioritiesShown = true;
-    const next = review.steps.find((step) => step.status !== 'done');
+    const next = nextSetupStep(review);
     if (next) navigateStep(next);
     else if (goalsComeNext()) openSetupGoals();
     else if (prioritiesComeNext()) showTab('modes', 'priorities');
@@ -160,7 +147,7 @@ const continueSetup = (): void => {
 const startManaging = (): void => {
   void runAction(async () => {
     const review = readSetupReview();
-    if (!review || review.doneCount !== review.steps.length) {
+    if (!review || nextSetupStep(review)) {
       throw new Error('Complete the remaining setup steps first.');
     }
     await saveSimulationModeSettings(false);
@@ -256,6 +243,7 @@ const paintReview = (): void => {
     busy: actionBusy || setupSavePending(),
     error,
     solarNote: resolveReviewSolarNote(devices),
+    onRetryDevices: state.devicesReadState === 'unavailable' ? retrySetupDeviceReads : undefined,
     onStart: startManaging,
     onContinue: continueSetup,
     onChooseGoals: offersSetupGoals() ? openSetupGoals : null,
@@ -303,7 +291,7 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
   if (step === 'priorities') return `Optional. In ${state.activeMode}, the top device keeps running longest. `
     + (countSetupBatteryPlansOn() >= 2 ? 'Batteries higher in the list are also planned first. ' : '')
     + 'Drag to change the order, or continue with the current order. You can change it later in Modes.';
-  if (step === 'devices') return null;
+  if (step === 'devices') return fact?.status === 'done' ? fact.detail : null;
   return fact?.detail ?? null;
 };
 
@@ -328,18 +316,22 @@ const headerProgress = (step: SetupJourneyStep, path: SetupPath | null): string 
 // Every step done and managing started: the after-setup suggestion opens
 // `Choose what PELS does` on its own, with no journey around it.
 const setupFinished = (path: SetupPath | null): boolean => (
-  path !== null && path.doneCount === path.steps.length && !path.simulating
+  path !== null && !nextSetupStep(path) && !path.simulating
 );
 
 const continueLabel = (path: SetupPath | null): string => (
-  path !== null && path.doneCount === path.steps.length && !goalsComeNext() && !prioritiesComeNext()
+  path !== null && !nextSetupStep(path) && !goalsComeNext() && !prioritiesComeNext()
     ? 'Review setup' : 'Continue'
 );
 
 const simulationExitStep = (path: SetupPath | null): string | null => {
   if (!simulationExitOffered || !state.dryRun) return null;
-  return path?.steps.find((candidate) => candidate.status !== 'done')?.title ?? null;
+  return path ? nextSetupStep(path)?.title ?? null : null;
 };
+
+const canContinueSetup = (step: SetupJourneyStep, fact: SetupStep | undefined): boolean => (
+  step === 'goals' || step === 'priorities' || fact?.status === 'done' || fact?.status === 'unchecked'
+);
 
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
   const fact = path?.steps.find((candidate) => candidate.id === step);
@@ -351,7 +343,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     detail: headerDetail(step, fact),
     busy: actionBusy || setupSavePending(),
     // The optional page never holds the journey back.
-    canContinue: step === 'goals' || step === 'priorities' || fact?.status === 'done',
+    canContinue: canContinueSetup(step, fact),
     error,
     meterHelp: step === 'goals' && solarPending() && usesFlowMeter(),
     fluviusHelp: step === 'power' && fact?.status !== 'done' && market.state === 'resolved' && market.country === 'BE',
@@ -394,7 +386,8 @@ const paintJourney = (): void => {
 
 const repaintJourney = (): void => {
   paintJourney();
-  if (currentStep() === 'goals' && state.devicesLoaded) renderDevices(state.latestDevices);
+  const step = currentStep();
+  if (step === 'goals' || step === 'devices') renderDevices(state.latestDevices);
 };
 
 const formatMeterReading = (kw: number, stamp: number): string => {
@@ -424,6 +417,10 @@ const refreshLivePreview = async (): Promise<void> => {
   paintJourney();
 };
 
+export const retrySetupPathReads = async (): Promise<void> => {
+  await Promise.all([loadStaleDataStatus(), retrySetupBatteryPlans()]);
+};
+
 export const initSetupJourney = (): void => {
   document.addEventListener(CHARGING_SETUP_UPDATED, repaintJourney);
   void loadSetupBatteryPlans();
@@ -446,7 +443,7 @@ export const initSetupJourney = (): void => {
   // offers and whether its controls are busy, not only its header.
   document.addEventListener('pels:setup-save', repaintJourney);
   document.addEventListener('pels:recommendations-updated', paintJourney);
-  document.addEventListener('modes-loaded', paintJourney);
+  document.addEventListener('modes-loaded', () => { notifySetupPathChange(); paintJourney(); });
   document.addEventListener('devices-updated', () => {
     void retrySetupBatteryPlans();
     paintJourney();

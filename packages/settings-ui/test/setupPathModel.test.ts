@@ -208,7 +208,9 @@ describe('setup path', () => {
 
   it('distinguishes an unread price setup from one the devices do not use', () => {
     const path = resolveSetupSteps({ ...configuredAndSimulating, prices: { state: 'unread' } });
-    expect(path.steps[3]).toMatchObject({ status: 'done', detail: 'Price settings could not be read. Check Electricity prices.' });
+    expect(path.doneCount).toBe(3);
+    expect(resolveSetupPath({ ...configuredAndSimulating, prices: { state: 'unread' } })).toEqual({ state: 'complete' });
+    expect(path.steps[3]).toMatchObject({ status: 'unchecked', detail: 'Price settings could not be read. Check Electricity prices.' });
     expect(resolveSetupSteps(configuredAndSimulating).steps[3].detail).toBe('Not needed for your devices');
   });
 

@@ -57,6 +57,49 @@ describe('saving a limit below the home usage', () => {
     await expect(decision).resolves.toBe(true);
   });
 
+  it('retains recent evidence when a poll fails and expires the original meter reading', async () => {
+    const { alerts, dialog, close } = await load();
+    const now = Date.now();
+    alerts.publishLimitUsagePower({
+      tracker: { lastPowerW: 5000 }, readings: { state: 'received', lastPowerUpdateMs: now },
+    } as SettingsUiPowerPayload);
+    alerts.publishLimitUsagePower(null);
+    alerts.publishLimitUsagePower({
+      tracker: {}, status: { state: 'unavailable', reason: 'read_failed' }, readings: { state: 'never' },
+    } as SettingsUiPowerPayload);
+    const change = { ...stored, gridImportLimitKw: 3, mainFuse: off };
+    const decision = alerts.allowLimitsSave(change, stored);
+    expect(dialog.show).toHaveBeenCalled();
+    close('cancel');
+    await expect(decision).resolves.toBe(false);
+    vi.mocked(dialog.show).mockClear();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + HOUR / 2);
+    try {
+      alerts.publishLimitUsagePower(null);
+      await expect(alerts.allowLimitsSave(change, stored)).resolves.toBe(true);
+      expect(dialog.show).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('skips the confirmation when the reading expired while the form was open', async () => {
+    const { alerts, dialog } = await load();
+    const sampledAt = Date.now();
+    alerts.publishLimitUsagePower({
+      tracker: { lastPowerW: 5000 },
+      readings: { state: 'received', lastPowerUpdateMs: sampledAt },
+    } as SettingsUiPowerPayload);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(sampledAt + HOUR / 2);
+    try {
+      const decision = alerts.allowLimitsSave({ ...stored, gridImportLimitKw: 3, mainFuse: off }, stored);
+      expect(dialog.show).not.toHaveBeenCalled();
+      await expect(decision).resolves.toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('keeps the saved limits when the owner says so', async () => {
     const { alerts, close } = await load();
     const decision = alerts.allowLimitsSave({ ...stored, gridImportLimitKw: 0.1, mainFuse: off }, stored);

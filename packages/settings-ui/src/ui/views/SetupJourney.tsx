@@ -1,5 +1,5 @@
 import type { DeviceDetailFocus } from '../cardActivation.ts';
-import type { SetupPath } from '../setupPathModel.ts';
+import { nextSetupStep, type SetupPath } from '../setupPathModel.ts';
 import type { SolarSetupAction } from '../setupDevices.ts';
 import { useState } from 'preact/hooks';
 import type { SetupGoalChoices } from '../setupGoals.ts';
@@ -319,6 +319,7 @@ export type SetupReviewProps = {
   busy: boolean;
   error: string | null;
   solarNote: string | null;
+  onRetryDevices?: () => void;
   onStart: () => void;
   onContinue: () => void;
   /** Back to `Choose what PELS does`, while it has something to offer; `null` hides the link. */
@@ -326,62 +327,73 @@ export type SetupReviewProps = {
   onOpenDevice?: (id: string, focus: DeviceDetailFocus) => void;
 };
 
-export const SetupReview = (props: SetupReviewProps) => {
-  const complete = props.path !== null && props.path.doneCount === props.path.steps.length;
+const ReviewPanel = (props: SetupReviewProps & { path: SetupPath }) => {
+  const complete = !nextSetupStep(props.path);
   return (
-    <>
-      <AppBar title="Review setup" back={{ label: 'Back to setup', target: 'recommendations' }} />
-      {props.path === null ? <p>Setup could not be read yet. Return to setup to check your settings.</p> : (
-        <section class="pels-surface-card setup-journey">
-          <h3 class="plan-card__title">{props.path.simulating ? 'Simulation mode is on' : 'Simulation mode is off'}</h3>
-          {props.path.simulating && <p class="pels-card-supporting">
-            PELS shows what it would do without changing your devices. Start managing lets it act on the controls you set.
-          </p>}
-          <dl class="setup-journey__summary">
-            {props.activeMode !== null && <div><dt>Active mode</dt><dd>{props.activeMode}</dd></div>}
-            {props.path.steps.filter((step) => step.id !== 'devices').map((step) => (
-              <div key={step.id}><dt>{step.title}</dt><dd>{step.id === 'power' && step.status === 'done' ? props.meterSummary ?? step.detail : step.detail}</dd></div>
-            ))}
-          </dl>
-          {props.activeMode !== null && props.devices.length > 1 && (
-            <p class="pels-card-supporting">Higher-priority devices keep running longest.</p>
-          )}
-          {props.devices.map((device) => (
-            <div class="setup-journey__review-device" data-device-id={device.id} key={device.id}>
-              <strong>{device.name}</strong>
-              {device.configuration.map((line) => <p class="pels-card-supporting" key={line}>{line}</p>)}
-              {device.control !== null && <p class="pels-card-supporting">{device.control}</p>}
-              {device.setupAction && <p class="pels-card-supporting">{device.setupAction.hint}</p>}
-              {device.status && <p class="pels-card-supporting">{device.status}</p>}
-              {device.setupAction && props.onOpenDevice && (
-                <MdTextButton type="button" disabled={props.busy}
-                  onClick={() => props.onOpenDevice?.(device.id, device.setupAction!.focus)}>
-                  {device.setupAction.label}
-                </MdTextButton>
-              )}
-            </div>
-          ))}
-          <ReviewNoJobNote devices={props.devices} goalsOffered={props.onChooseGoals !== null} />
-          {props.onChooseGoals && (
-            <div class="setup-recommendation-card__actions">
-              <MdTextButton type="button" disabled={props.busy} onClick={props.onChooseGoals}>Choose what PELS does</MdTextButton>
-            </div>
-          )}
-          {props.solarNote && <p class="pels-notice-info">{props.solarNote}</p>}
-          {props.error && <p role="alert" class="pels-notice-warning">{props.error}</p>}
-          <div class="setup-recommendation-card__actions">
-            {complete && props.path.simulating && (
-              <MdFilledButton type="button" disabled={props.busy} onClick={props.onStart}>
-                {props.busy ? 'Starting…' : 'Start managing'}
-              </MdFilledButton>
-            )}
-            {!complete && <MdFilledButton type="button" disabled={props.busy} onClick={props.onContinue}>Continue setup</MdFilledButton>}
-            <MdTextButton type="button" data-settings-target="overview" disabled={props.busy}>
-              {props.path.simulating ? 'Keep simulating' : 'Open Overview'}
-            </MdTextButton>
-          </div>
-        </section>
+    <section class="pels-surface-card setup-journey">
+      <h3 class="plan-card__title">{props.path.simulating ? 'Simulation mode is on' : 'Simulation mode is off'}</h3>
+      {props.path.simulating && <p class="pels-card-supporting">
+        PELS shows what it would do without changing your devices. Start managing lets it act on the controls you set.
+      </p>}
+      <dl class="setup-journey__summary">
+        {props.activeMode !== null && <div><dt>Active mode</dt><dd>{props.activeMode}</dd></div>}
+        {props.path.steps.filter((step) => step.id !== 'devices').map((step) => (
+          <div key={step.id}><dt>{step.title}</dt><dd>{step.id === 'power' && step.status === 'done' ? props.meterSummary ?? step.detail : step.detail}</dd></div>
+        ))}
+      </dl>
+      {props.activeMode !== null && props.devices.length > 1 && (
+        <p class="pels-card-supporting">Higher-priority devices keep running longest.</p>
       )}
-    </>
+      {props.devices.map((device) => (
+        <div class="setup-journey__review-device" data-device-id={device.id} key={device.id}>
+          <strong>{device.name}</strong>
+          {device.configuration.map((line) => <p class="pels-card-supporting" key={line}>{line}</p>)}
+          {device.control !== null && <p class="pels-card-supporting">{device.control}</p>}
+          {device.setupAction && <p class="pels-card-supporting">{device.setupAction.hint}</p>}
+          {device.status && <p class="pels-card-supporting">{device.status}</p>}
+          {device.setupAction && props.onOpenDevice && (
+            <MdTextButton type="button" disabled={props.busy}
+              onClick={() => props.onOpenDevice?.(device.id, device.setupAction!.focus)}>
+              {device.setupAction.label}
+            </MdTextButton>
+          )}
+        </div>
+      ))}
+      {props.path.offersEvCharger && (
+        <MdTextButton type="button" data-settings-target="devices" data-setup-journey="devices">
+          Choose an EV charger (optional)
+        </MdTextButton>
+      )}
+      <ReviewNoJobNote devices={props.devices} goalsOffered={props.onChooseGoals !== null} />
+      {props.onChooseGoals && (
+        <div class="setup-recommendation-card__actions">
+          <MdTextButton type="button" disabled={props.busy} onClick={props.onChooseGoals}>Choose what PELS does</MdTextButton>
+        </div>
+      )}
+      {props.solarNote && <p class="pels-notice-info">{props.solarNote}</p>}
+      {props.error && <p role="alert" class="pels-notice-warning">{props.error}</p>}
+      <div class="setup-recommendation-card__actions">
+        {complete && props.path.simulating && (
+          <MdFilledButton type="button" disabled={props.busy} onClick={props.onStart}>
+            {props.busy ? 'Starting…' : 'Start managing'}
+          </MdFilledButton>
+        )}
+        {!complete && <MdFilledButton type="button" disabled={props.busy} onClick={props.onContinue}>Continue setup</MdFilledButton>}
+        <MdTextButton type="button" data-settings-target="overview" disabled={props.busy}>
+          {props.path.simulating ? 'Keep simulating' : 'Open Overview'}
+        </MdTextButton>
+      </div>
+    </section>
   );
 };
+
+export const SetupReview = (props: SetupReviewProps) => (
+  <>
+    <AppBar title="Review setup" back={{ label: 'Back to setup', target: 'recommendations' }} />
+    {props.path !== null && <ReviewPanel {...props} path={props.path} />}
+    {props.path === null && (props.onRetryDevices ? <>
+      <p>Device setup could not be read.</p>
+      <MdTextButton type="button" onClick={props.onRetryDevices}>Try again</MdTextButton>
+    </> : <p>Setup could not be read yet. Return to setup to check your settings.</p>)}
+  </>
+);

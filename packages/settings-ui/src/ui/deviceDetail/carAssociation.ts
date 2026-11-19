@@ -13,7 +13,9 @@ import {
   SETTINGS_UI_DEVICES_PATH,
 } from '../../../../contracts/src/settingsUi/paths.ts';
 import {
+  carConfirmationAction,
   hasMatchedAnotherCurrentCharger,
+  isConnectedCharger,
   parseCarAssociationCandidatesRead,
   REMOVED_CAR_LABEL,
 } from '../carAssociationCandidates.ts';
@@ -40,11 +42,10 @@ import {
   getSetting,
   getSettingFresh,
   invalidateApiCacheForAllHomes,
+  invalidateSettingCache,
   sleep,
 } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
-import { isEvPlugStateConnected } from '../../../../shared-domain/src/evPlugState.ts';
 import { showToast, showToastError } from '../toast.ts';
 import { createSwitchField } from '../components.ts';
 import { state } from '../state.ts';
@@ -65,6 +66,11 @@ type CarOption = SettingsUiRecommendationCar;
 const runSerializedCarWrite = createSerializedAsyncRunner();
 const ASSOCIATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
 let associationLoadGeneration = 0;
+let associationReadFailed = false;
+export const readCarAssociationStatus = (): 'loading' | 'unavailable' | 'resolved' => {
+  if (associationReadFailed) return 'unavailable';
+  return state.evCarAssociationsLoaded ? 'resolved' : 'loading';
+};
 let confirmationPending = false;
 
 // Cars are fetched lazily on the first charger page. `null` means never loaded.
@@ -102,7 +108,11 @@ export const loadEvCarAssociations = async (): Promise<void> => {
     // A newer reload or an authoritative unset owns the state now. An older SDK
     // read may still resolve, but it must not restore the map that event replaced.
     if (generation !== associationLoadGeneration) return;
+    associationReadFailed = false;
     if (value !== null && value !== undefined && !isUnknownRecord(value)) {
+      associationReadFailed = true;
+      // getSetting cached the rejected value. The next retry must reach Homey.
+      invalidateSettingCache(EV_CAR_ASSOCIATIONS);
       await logSettingsError(
         'Ignoring malformed car associations',
         new TypeError('Invalid car association setting.'),
@@ -125,6 +135,8 @@ export const loadEvCarAssociations = async (): Promise<void> => {
     state.evCarAssociations = normalizeEvCarAssociations(value);
     state.evCarAssociationsLoaded = true;
   } catch (error) {
+    if (generation !== associationLoadGeneration) return;
+    associationReadFailed = true;
     // Deliberately NOT reset to `{}`: the last-known map is better than none, and
     // an empty one becomes the fallback for the next write, which would persist
     // every charger's cars away on the strength of one failed read.
@@ -139,6 +151,7 @@ export const anyChargerHasSelectedCar = (): boolean => (
 
 export const clearEvCarAssociations = (): void => {
   associationLoadGeneration += 1;
+  associationReadFailed = false;
   state.evCarAssociations = {};
   state.evCarAssociationsLoaded = true;
 };
@@ -234,20 +247,28 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
     return;
   }
   deviceDetailCarStatus.textContent = isConnectedCharger(device)
-    ? resolveIdentificationStatus(device)
+    ? resolveIdentificationStatus(device, ticked)
     : 'No car connected';
 };
+
+const canConfirmSelectedCar = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): boolean => (
+  carOptions?.some((car) => ticked.includes(car.id) && carConfirmationAction(device, car) === 'confirm') ?? false
+);
 
 /**
  * The wait as the charger's card states it, worded for this section, which holds
  * the confirm button: once PELS will not identify the car by itself, it asks for
  * the confirmation here too.
  */
-const resolveIdentificationStatus = (device: SettingsUiDeviceDetailItem): string => {
+const resolveIdentificationStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): string => {
   if (device.carIdentificationState === 'selected_cars_unplugged') {
-    return 'No selected car reports a plug-in. Confirm the connected car below.';
+    return canConfirmSelectedCar(device, ticked)
+      ? 'No selected car reports a plug-in. Confirm the connected car below.' : 'No selected car reports a plug-in.';
   }
-  if (device.carIdentificationState === 'timed_out') return 'Could not identify the connected car. Confirm it below.';
+  if (device.carIdentificationState === 'timed_out') {
+    return canConfirmSelectedCar(device, ticked)
+      ? 'Could not identify the connected car. Confirm it below.' : 'Could not identify the connected car.';
+  }
   return 'Waiting to identify the connected car';
 };
 
@@ -291,16 +312,21 @@ const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly str
     return;
   }
   if (!matched) {
-    deviceDetailCarFlowNote.textContent = 'Until a car is matched, this charger has no battery level. '
-      + 'Confirm which selected car is connected to use its battery level for this connection. '
-      + 'While a car is selected, PELS ignores the Flow card that reports the level. '
-      + 'A smart task for an amount of energy needs no battery level.';
+    deviceDetailCarFlowNote.textContent = unmatchedCarFlowNote(device, ticked);
     return;
   }
   deviceDetailCarFlowNote.textContent = hasBatteryLevel
     ? `Battery level comes from ${formatDisplayDeviceName(matched.carName)}.`
     : `${formatDisplayDeviceName(matched.carName)} is matched but has not reported a battery level. `
       + 'Charge boost and Smart tasks cannot use it yet.';
+};
+
+const unmatchedCarFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): string => {
+  const confirmation = canConfirmSelectedCar(device, ticked)
+    ? 'Confirm which selected car is connected to use its battery level for this connection. ' : '';
+  return `Until a car is matched, this charger has no battery level. ${confirmation}`
+    + 'While a car is selected, PELS ignores the Flow card that reports the level. '
+    + 'A smart task for an amount of energy needs no battery level.';
 };
 
 const lastMatchToCharger = (
@@ -338,10 +364,6 @@ const matchHint = (car: CarOption, charger: SettingsUiDeviceDetailItem): string 
     : 'Not matched to this charger yet';
 };
 
-const canConfirmCar = (device: SettingsUiDeviceDetailItem, carId: string): boolean => (
-  device.available && isConnectedCharger(device) && device.carConfirmation?.carId !== carId
-);
-
 const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): void => {
   if (!deviceDetailCarList) return;
   const editors = new Map([...deviceDetailCarList.querySelectorAll<HTMLElement>('[data-car-current-limits]')]
@@ -373,7 +395,7 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     if (!selected || orphans.includes(car)) continue;
     // The confirm button sits right under its car, ahead of the car's current
     // limits, so the Car section opened to confirm shows it without a scroll.
-    if (canConfirmCar(device, car.id)) deviceDetailCarList.append(confirmControl(deviceId, car));
+    deviceDetailCarList.append(...confirmationControls(device, car));
     if (ticked.length === 1) deviceDetailCarList.append(standingCarSwitch(deviceId, car));
     const editor = editors.get(car.id) ?? document.createElement('div');
     editor.dataset.carCurrentLimits = car.id;
@@ -382,14 +404,13 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
   }
 };
 
-/**
- * Homey reports the car unavailable: a confirmation would be refused, so the card
- * says what to check instead of offering the button.
- */
-const confirmControl = (deviceId: string, car: CarOption): HTMLElement => (car.available
-  ? confirmButton(deviceId, car)
-  : hint(`${formatDisplayDeviceName(car.name)} is not available in Homey right now, so PELS cannot confirm it. `
-    + 'Check the car in its app, then open this device again.'));
+const confirmationControls = (device: SettingsUiDeviceDetailItem, car: CarOption): HTMLElement[] => {
+  const action = carConfirmationAction(device, car);
+  if (action === 'confirm') return [confirmButton(device.id, car)];
+  if (action === 'hidden') return [];
+  return [hint(`${formatDisplayDeviceName(car.name)} is not available in Homey right now, so PELS cannot confirm it. `
+    + 'Check the car in its app, then open this device again.')];
+};
 
 const confirmButton = (deviceId: string, car: CarOption): HTMLElement => {
   const button = document.createElement('md-outlined-button');
@@ -559,10 +580,6 @@ export const renderCarAssociation = (device: SettingsUiDeviceDetailItem | null):
   renderStatus(device, ticked);
   renderFlowNote(device, ticked);
 };
-
-const isConnectedCharger = (device: SettingsUiDeviceDetailItem): boolean => (
-  isEvObserved(device) && isEvPlugStateConnected(device.evChargingState)
-);
 
 const updateConfirmation = async (chargerId: string, carId?: string): Promise<void> => {
   if (confirmationPending) return;

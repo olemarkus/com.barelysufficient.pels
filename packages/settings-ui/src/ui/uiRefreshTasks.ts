@@ -223,6 +223,7 @@ const publishDeviceLoadFailure = (): void => {
   // A malformed response may have reached the transport cache before the
   // device adapter rejected it. A later page activation must read again.
   invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+  notifySetupPathChange();
   refreshPlanSurface();
 };
 
@@ -269,7 +270,10 @@ export const ensureDevicePanelsPainted = () => {
 
 export const loadDevicesOnce = () => {
   state.devicesLoading = true;
-  if (!state.devicesLoaded) state.devicesReadState = 'loading';
+  if (!state.devicesLoaded) {
+    state.devicesReadState = 'loading';
+    notifySetupPathChange();
+  }
   getTargetDevices()
     .then((devices) => {
       state.devicesLoaded = true;

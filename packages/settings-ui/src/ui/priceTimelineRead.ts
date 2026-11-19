@@ -1,3 +1,4 @@
+import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type {
   PriceTimelineLines, PriceTimelinePeriod, PriceTimelineRead,
 } from '../../../contracts/src/priceTimeline.ts';
@@ -42,3 +43,12 @@ export const classifyPriceTimelineRead = (value: unknown): PriceTimelineRead => 
     lines,
   };
 };
+
+/**
+ * Whether the published prices hold an export price for any period: the
+ * runtime's own answer, so an export price switched on whose source publishes
+ * none still counts as missing. `null` while prices are not ready.
+ */
+export const readExportPriced = (payload: Pick<SettingsUiPricesPayload, 'priceTimeline'>): boolean | null => (
+  payload.priceTimeline.state === 'ready' ? payload.priceTimeline.hasExportPrice : null
+);

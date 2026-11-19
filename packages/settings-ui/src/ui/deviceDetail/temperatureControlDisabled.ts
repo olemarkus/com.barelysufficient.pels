@@ -1,3 +1,4 @@
+import { notifySetupPathChange } from '../setupPathFacts.ts';
 import { manualTemperaturePowerHint } from './temperaturePolicy.ts';
 import { confirmTemperatureControlChange } from './temperatureControlConfirmation.ts';
 import { TEMPERATURE_CONTROL_MODES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
@@ -81,6 +82,7 @@ export const initTemperatureControlDisabledHandler = (deps: HandlerDeps): void =
         state.temperatureControlDisabledMap = temperatureControlDisabledDevices(
           modes, state.temperatureControlDisabledMap,
         );
+        notifySetupPathChange();
         deps.refreshSharedDeviceViews();
         deps.refreshOpenDeviceDetail();
       },

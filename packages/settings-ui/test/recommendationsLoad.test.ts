@@ -69,7 +69,13 @@ vi.mock('../src/ui/setupPricesLoad.ts', () => ({
 vi.mock('../src/ui/hardCapReachRecommendation.ts', () => ({
   loadHardCapReachFacts: () => Promise.resolve(),
   readHardCapReachFacts: () => null,
+  readHardCapReachStatus: () => 'resolved',
   resolveHardCapReachRecommendations: () => [],
+}));
+
+vi.mock('../src/ui/deferredObjectiveSettings.ts', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/ui/deferredObjectiveSettings.ts')>(),
+  loadDeferredObjectiveSettings: async () => undefined,
 }));
 
 const loadAfterSetupFacts = vi.fn(() => Promise.resolve());
@@ -620,7 +626,7 @@ describe('recommendation loading', () => {
     expect(text.indexOf('Choose what PELS does')).toBeLessThan(text.indexOf('Use built-in device control for Connected 300'));
   });
 
-  it('does not claim an all-clear while Price setup facts are unavailable', async () => {
+  it('does not claim an all-clear or offer a retry while price setup is loading', async () => {
     const recommendations = await loadSubject([]);
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue(resolvedCars());
@@ -629,9 +635,99 @@ describe('recommendation loading', () => {
     await recommendations.loadRecommendationData();
 
     const text = document.getElementById('setup-recommendations-root')?.textContent ?? '';
-    expect(text).toContain('Some recommendation checks couldn’t be refreshed right now');
-    expect(text).toContain('No suggestions from the checks that finished');
+    expect(text).toContain('Checking for more suggestions');
+    expect(text).not.toContain('Try again');
     expect(text).not.toContain('No setup suggestions right now');
+  });
+
+  it.each(['retry', 'revisit'])('recovers after-setup recommendations on %s', async (action) => {
+    const recommendations = await loadSubject([]);
+    const resolved = afterSetupRead;
+    afterSetupRead = { state: 'unavailable' };
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    const listeners = vi.spyOn(document, 'addEventListener');
+    try {
+      recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn() });
+      await recommendations.loadRecommendationData();
+      const page = document.getElementById('setup-recommendations-root')!;
+      const retry = [...page.querySelectorAll('md-text-button')].find(button => button.textContent === 'Try again');
+      expect(retry).toBeDefined();
+      loadAfterSetupFacts.mockImplementationOnce(async () => { afterSetupRead = resolved; });
+      if (action === 'retry') retry!.dispatchEvent(new MouseEvent('click'));
+      else document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+      await vi.waitFor(() => expect(page.textContent).toContain('No setup suggestions right now'));
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
+      listeners.mockRestore();
+    }
+  });
+
+  it('retries the task roster and setup prices even when sibling after-setup facts resolved', async () => {
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    if (afterSetupRead.state !== 'resolved') throw new Error('Expected resolved setup facts');
+    const resolved = afterSetupRead;
+    afterSetupRead = { ...resolved, checksIncomplete: true };
+    await recommendations.loadRecommendationData();
+    const roster = await import('../src/ui/deferredObjectiveSettings.ts');
+    const prices = await import('../src/ui/setupPricesLoad.ts');
+    const retryRoster = vi.spyOn(roster, 'loadDeferredObjectiveSettings').mockResolvedValue();
+    const retryPrices = vi.spyOn(prices, 'loadSetupPrices').mockResolvedValue();
+    try {
+      const page = document.getElementById('setup-recommendations-root')!;
+      const retry = [...page.querySelectorAll('md-text-button')].find(button => button.textContent === 'Try again');
+      expect(retry).toBeDefined();
+      loadAfterSetupFacts.mockImplementationOnce(async () => { afterSetupRead = resolved; });
+      retry!.dispatchEvent(new MouseEvent('click'));
+      await vi.waitFor(() => expect(page.textContent).toContain('No setup suggestions right now'));
+      expect(retryRoster).toHaveBeenCalledOnce();
+      expect(retryPrices).toHaveBeenCalledOnce();
+    } finally {
+      retryRoster.mockRestore();
+      retryPrices.mockRestore();
+    }
+  });
+
+  it('retries the power, capacity and battery-plan reads for an unavailable setup path', async () => {
+    const recommendations = await loadSubject([]);
+    const path = await import('../src/ui/setupPathFacts.ts');
+    const pathRead = vi.spyOn(path, 'readSetupPath').mockReturnValue({ state: 'unavailable' });
+    const retrySetupPathReads = vi.fn().mockResolvedValue(undefined);
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces(
+      { openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn() }, retrySetupPathReads,
+    );
+    try {
+      afterSetupRead = { state: 'unavailable' };
+      getSetting.mockResolvedValue({});
+      callApi.mockResolvedValue(resolvedCars());
+      await recommendations.loadRecommendationData();
+      const page = document.getElementById('setup-recommendations-root')!;
+      const retry = [...page.querySelectorAll('md-text-button')].find(button => button.textContent === 'Try again');
+      expect(retry).toBeDefined();
+      retry!.dispatchEvent(new MouseEvent('click'));
+      await vi.waitFor(() => expect(retrySetupPathReads).toHaveBeenCalledOnce());
+    } finally {
+      pathRead.mockRestore();
+      for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
+      listeners.mockRestore();
+    }
+  });
+
+  it('shows the failed charger check and retries it from the page', async () => {
+    const recommendations = await loadSubject([device({ isEvCharger: true })]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    chargingApi.mockRejectedValueOnce(new Error('Charging service unavailable'));
+    await recommendations.loadRecommendationData();
+    const page = document.getElementById('setup-recommendations-root')!;
+    expect(page.textContent).toContain('couldn’t be refreshed');
+    expect(page.textContent).not.toContain('No setup suggestions right now');
+    const retry = [...page.querySelectorAll('md-text-button')].find(button => button.textContent === 'Try again');
+    retry!.dispatchEvent(new MouseEvent('click'));
+    await vi.waitFor(() => expect(page.textContent).toContain('No setup suggestions right now'));
   });
 
   it('redraws membership-dependent suggestions when Main-home ownership changes', async () => {
@@ -1532,7 +1628,7 @@ it.each(['failed_read', 'tab_revisit'] as const)('refreshes charging recommendat
     await new Promise((resolve) => setTimeout(resolve, 0));
     const callsBeforeRetry = chargingApi.mock.calls.length;
     chargingApi.mockResolvedValue([{ deviceId: 'device-1', name: 'Garage',
-      setup: { method: 'flow', confirmation: 'single_charger' },
+      setup: { method: 'built_in', confirmation: 'single_charger' },
       scope: 'installation', capabilityWritable: true, sharedInstallation: false,
       flowCheck: 'conflict', flowNames: ['Current bridge'], currentRoute: 'flow' }]);
     document.dispatchEvent(scenario === 'failed_read'
@@ -1541,7 +1637,7 @@ it.each(['failed_read', 'tab_revisit'] as const)('refreshes charging recommendat
     await vi.waitFor(() => {
       expect(chargingApi.mock.calls.length).toBeGreaterThan(callsBeforeRetry);
       expect(document.getElementById('setup-recommendations-root')?.textContent)
-        .toContain('Remove duplicate current control for Garage');
+        .toContain('Built-in current control is paused for Garage');
     });
   } finally {
     for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);

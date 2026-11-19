@@ -27,6 +27,7 @@ const StepIcon = ({ status }: { status: SetupStep['status'] }) => (
 
 const STATUS_LABEL: Record<SetupStep['status'], string> = {
   done: 'Done',
+  unchecked: 'Not checked',
   next: 'Next step',
   later: 'Later',
 };

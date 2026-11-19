@@ -25,7 +25,10 @@ const COLUMN_DAY = 'Day';
 const COLUMN_PRODUCED = 'Produced';
 const COLUMN_AT_HOME = 'At home';
 const COLUMN_EXPORTED = 'Exported';
-const EXPORT_PRICE_HINT = 'Add an export price under Settings → Electricity prices to see export earnings.';
+const EXPORT_PRICE_HINTS = {
+  check_price: 'To see export earnings, check your export price under Settings → Electricity prices.',
+  unpriced_hours: 'No export price is available for the hours you exported today.',
+};
 const GATHERING_BODY = 'Watching your solar production. Numbers appear after the first hour with sun.';
 const EXPORT_ONLY_NOTE = 'Your meter reports export only — production is not measured.';
 const BATTERY_EXPORT_NOTE = 'Exported can be higher than produced when a battery sends stored power to the grid.';
@@ -48,8 +51,7 @@ export type SolarMoneyBlock = {
   avoidedValueText: string | null;
   /** "≈ 3.10 kr" (signed, optionally suffixed) — null hides the earned line. */
   earnedValueText: string | null;
-  /** Show the "add an export price" nudge (avoided-only tier). */
-  showExportPriceHint: boolean;
+  exportHint: keyof typeof EXPORT_PRICE_HINTS | null;
 };
 
 export type SolarHistoryRow = SolarDayRow & {
@@ -123,7 +125,7 @@ const MoneyBlock = ({ money }: { money: SolarMoneyBlock }) => (
         <span class="solar-money__value">{money.earnedValueText}</span>
       </div>
     )}
-    {money.showExportPriceHint && <p class="pels-card-supporting solar-money__note">{EXPORT_PRICE_HINT}</p>}
+    {money.exportHint && <p class="pels-card-supporting solar-money__note">{EXPORT_PRICE_HINTS[money.exportHint]}</p>}
   </div>
 );
 

@@ -227,7 +227,7 @@ describe('setup review', () => {
     const root = mount();
     const onOpenDevice = vi.fn();
     act(() => render(h(SetupReview, {
-      path: { steps: [], doneCount: 0, lede: '', simulating: true },
+      path: { steps: [], doneCount: 0, offersEvCharger: false, lede: '', simulating: true },
       activeMode: null, meterSummary: null, busy: false, error: null, solarNote: null,
       devices: [{
         ...device('car', REVIEW_DEVICE_NO_JOB),

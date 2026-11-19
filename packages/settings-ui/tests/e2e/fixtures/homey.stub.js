@@ -2015,6 +2015,8 @@
         { id: 'dev_bath_fan', name: 'Bathroom fan', class: 'fan', zoneName: 'Bathroom', hasTemperature: false, hasPower: false },
       ];
     },
+    'GET /ui_charging_current': () => [],
+    'GET /ui_charging_access': () => ({ configured: false, state: 'not_configured' }),
     // A spec seeds car candidates, with their match history, through
     // `window.__PELS_HOMEY_STUB__.recommendationCars`.
     'GET /ui_recommendation_cars': () => ({

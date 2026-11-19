@@ -1,6 +1,6 @@
 import type { SettingsUiHardCapShortfall } from '../../../contracts/src/settingsUi/power.ts';
 import type { CapacityScalarSettings } from '../../../contracts/src/capacitySettings.ts';
-import { getDateKeyInTimeZone } from '../../../shared-domain/src/utils/dateUtils.ts';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import type { SetupRecommendation } from './recommendationsModel.ts';
 import { logSettingsError } from './logging.ts';
@@ -21,7 +21,6 @@ export type HardCapReachFacts = {
 
 const WINDOW_DAYS = 7;
 const MIN_DAYS = 3;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const CAP_EPSILON_KW = 1e-6;
 
 const isShortfall = (value: unknown): value is SettingsUiHardCapShortfall => isUnknownRecord(value)
@@ -35,6 +34,10 @@ export const classifyHardCapShortfalls = (raw: unknown): SettingsUiHardCapShortf
 );
 
 let facts: HardCapReachFacts | null = null;
+let readStatus: 'loading' | 'resolved' | 'unavailable' = 'loading';
+let readGeneration = 0;
+
+export const readHardCapReachStatus = () => readStatus;
 
 /**
  * Reads the Main power payload the Limits form and the stale-data banner
@@ -42,11 +45,20 @@ let facts: HardCapReachFacts | null = null;
  * unread log is not a week without incidents.
  */
 export const loadHardCapReachFacts = async (): Promise<void> => {
+  const generation = ++readGeneration;
   try {
     const power = await getPowerReadModel();
-    if (power.capacityScalars.state !== 'resolved') return;
+    if (generation !== readGeneration) return;
+    if (power.capacityScalars.state !== 'resolved'
+      || (power.hardCapShortfalls !== undefined && !Array.isArray(power.hardCapShortfalls))) {
+      readStatus = 'unavailable';
+      return;
+    }
+    readStatus = 'resolved';
     facts = { scalars: power.capacityScalars.scalars, shortfalls: classifyHardCapShortfalls(power.hardCapShortfalls) };
   } catch (error) {
+    if (generation !== readGeneration) return;
+    readStatus = 'unavailable';
     await logSettingsError('Failed to read hard cap incidents for recommendations', error, 'setup recommendations');
   }
 };
@@ -55,9 +67,10 @@ export const readHardCapReachFacts = (): HardCapReachFacts | null => facts;
 
 const formatKw = (kw: number): string => `${(Math.round(kw * 10) / 10).toFixed(1)} kW`;
 
-const lastLocalDays = (nowMs: number, timeZone: string): Set<string> => new Set(
-  Array.from({ length: WINDOW_DAYS }, (_, back) => getDateKeyInTimeZone(new Date(nowMs - back * DAY_MS), timeZone)),
-);
+const lastLocalDays = (nowMs: number, timeZone: string): Set<string> => {
+  const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+  return new Set(Array.from({ length: WINDOW_DAYS }, (_, back) => shiftDateKey(todayKey, -back)));
+};
 
 /**
  * Counts only incidents under the hard cap in force now: an owner who changed

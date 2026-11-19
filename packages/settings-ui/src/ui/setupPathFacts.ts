@@ -15,7 +15,7 @@ import {
   type SetupPrices,
 } from './setupPathModel.ts';
 import type { ResolvedPriceSetupStatus } from './priceSetupStatus.ts';
-import { supportsTemperatureDevice } from './deviceUtils.ts';
+import { supportsTemperatureAdjustments } from './deviceDetail/temperaturePolicy.ts';
 import { resolveDeviceManageability } from './deviceListPresentation.ts';
 import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import {
@@ -74,7 +74,7 @@ let lastNotifiedPath = '';
 const notify = (): void => {
   // The market is part of it: with setup complete the path is unchanged either way,
   // yet a market landing still changes which recommendations are drawn.
-  const resolved = JSON.stringify([readSetupPath(), readSetupReview(), market]);
+  const resolved = JSON.stringify([readSetupPath(), readSetupReview(), market, state.devicesReadState]);
   if (resolved === lastNotifiedPath) return;
   lastNotifiedPath = resolved;
   listeners.forEach((listener) => listener());
@@ -207,7 +207,7 @@ export type SetupPathRead =
 const usesPrices = (deviceId: string): boolean => {
   const device = state.latestDevices.find((candidate) => candidate.id === deviceId);
   const priceControlled = state.priceOptimizationSettings[deviceId]?.enabled === true;
-  return (priceControlled && supportsTemperatureDevice(device)) || hasActiveDeadlineObjective(deviceId);
+  return (priceControlled && supportsTemperatureAdjustments(device ?? null)) || hasActiveDeadlineObjective(deviceId);
 };
 
 const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
@@ -258,6 +258,7 @@ const countUnchosenBesideBattery = (knownIds: ReadonlySet<string>, actionableIds
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const membership = readHomeMembership();
+  if (state.devicesReadState === 'unavailable') return { state: 'unavailable' };
   if (power.state === 'loading' || hardCap.state === 'loading' || prices.state === 'loading'
     || !state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
   if (power.state === 'unavailable' || hardCap.state === 'unavailable'

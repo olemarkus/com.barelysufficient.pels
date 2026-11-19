@@ -30,7 +30,9 @@ import {
   type SettingsUiDeviceDetailItem,
   type SettingsUiDeviceListItem,
 } from './deviceUtils.ts';
-import { hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL } from './carAssociationCandidates.ts';
+import {
+  carConfirmationAction, hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL,
+} from './carAssociationCandidates.ts';
 import { flowConflictHandoffStep } from './deviceDetail/nativeWiringCopy.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
@@ -263,15 +265,24 @@ const unmatchedSelectionBody = (
     matchHistory.state === 'resolved'
     && hasMatchedAnotherCurrentCharger(matchHistory, charger.id, currentChargerIds)
   ));
-  const confirmation = selected.length === 1
-    ? 'If this car is connected, confirm it in the charger’s Car section to use its battery level.'
-    : 'If one of these cars is connected, confirm it in the charger’s Car section to use its battery level.';
-  if (chargesElsewhere) {
-    return `${lead}PELS has not matched ${label} to this charger, so the charger has no battery level. `
-      + `${confirmation}${removedNote}`;
+  const confirmed = charger.carConfirmation;
+  if (confirmed && selectedCarIds.includes(confirmed.carId)) {
+    return `${lead}${formatDisplayDeviceName(confirmed.carName)} is confirmed for this connection. `
+      + `Check the car’s app for its battery level.${removedNote}`;
   }
-  return `${lead}PELS has not matched ${label} to this charger yet, so the charger has no battery level. `
-    + `${confirmation}${removedNote}`;
+  let nextStep = '';
+  if (selected.some((car) => carConfirmationAction(charger, car) === 'confirm')) {
+    nextStep = selected.length === 1
+      ? ' If this car is connected, confirm it in the charger’s Car section to use its battery level.'
+      : ' If the connected car is available in Homey, confirm it in the charger’s Car section.';
+  } else if (selected.every((car) => !car.available)) {
+    nextStep = selected.length === 1
+      ? ' Check the selected car in its app and reopen the charger when it is available in Homey.'
+      : ' Check the selected cars in their apps and reopen the charger when one is available in Homey.';
+  }
+  const timing = chargesElsewhere ? '' : ' yet';
+  return `${lead}PELS has not matched ${label} to this charger${timing}, so the charger has no battery level.`
+    + `${nextStep}${removedNote}`;
 };
 
 const flowReference = (reporter: SettingsUiEvSocFlowReporter): string => (

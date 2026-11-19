@@ -3,6 +3,22 @@ import type {
   SettingsUiRecommendationCarsRead,
 } from '../../../contracts/src/settingsUi/carLink.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import type { SettingsUiDeviceDetailItem } from './deviceUtils.ts';
+import { isEvObserved } from '../../../shared-domain/src/evObservedState.ts';
+import { isEvPlugStateConnected } from '../../../shared-domain/src/evPlugState.ts';
+
+export const isConnectedCharger = (device: SettingsUiDeviceDetailItem): boolean => (
+  isEvObserved(device) && isEvPlugStateConnected(device.evChargingState)
+);
+
+/** The same confirmation control that the charger's Car section offers for a selected car. */
+export function carConfirmationAction(
+  charger: SettingsUiDeviceDetailItem,
+  car: SettingsUiRecommendationCar,
+): 'hidden' | 'car_unavailable' | 'confirm' {
+  if (!charger.available || !isConnectedCharger(charger) || charger.carConfirmation?.carId === car.id) return 'hidden';
+  return car.available ? 'confirm' : 'car_unavailable';
+}
 
 /**
  * How the charger's car picker and Setup name a selected car that is no longer

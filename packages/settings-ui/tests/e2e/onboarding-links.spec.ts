@@ -509,4 +509,30 @@ test.describe('Onboarding links', () => {
     await devicesStep.click();
     await expect(page.locator('#devices-panel')).toBeVisible();
   });
+
+  for (const [route, surface, recovered] of [
+    ['settings/recommendations', '#setup-recommendations-root', 'Set your export price'],
+    ['settings/devices&setup=devices', '#device-card-list', 'Living Room Heat Pump'],
+    ['settings/setup-review&setup=review', '#setup-review-root', 'Living Room Heat Pump'],
+  ] as const) {
+    test(`an unavailable device list can be retried from ${route}`, async ({ page }) => {
+      await page.addInitScript(() => {
+        (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+          apiHandlers: { 'GET /ui_devices': () => { throw new Error('Inventory unavailable'); } },
+        };
+      });
+      await page.goto(`/?page=${route}`);
+      const setup = page.locator(surface);
+      const retry = setup.getByRole('button', { name: 'Try again' });
+      await expect(retry).toBeVisible();
+      await expect(setup).not.toContainText('Checking your configuration…');
+      await page.evaluate(() => {
+        const { Homey } = window as unknown as { Homey: { __stub: { clearApiHandler: (id: string) => void } } };
+        Homey.__stub.clearApiHandler('GET /ui_devices');
+      });
+      await retry.click();
+      await expect(setup).toContainText(recovered);
+      await expect(retry).toHaveCount(0);
+    });
+  }
 });

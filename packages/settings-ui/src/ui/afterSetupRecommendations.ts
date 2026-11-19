@@ -52,7 +52,8 @@ export type AfterSetupFacts = {
    * engage. It includes a zero-export home that curtails.
    */
   solarSurplusAvailable: boolean;
-  smartTaskConfigured: boolean;
+  /** Unknown while the task roster is unavailable. */
+  smartTaskConfigured: boolean | null;
   /** Where the hub is, from geography alone. `unavailable` = the neutral order. */
   market: SettingsUiHubMarketRead;
   /**
@@ -162,7 +163,7 @@ const OFFER_APPLIES: Record<Offer, (facts: AfterSetupFacts) => boolean> = {
   solar: (facts) => facts.solarSurplusAvailable
     && facts.devices.some((device) => device.limitable)
     && !usesAny(facts.devices, 'usesSolarSurplus'),
-  smartTasks: (facts) => !facts.smartTaskConfigured && facts.devices.some((device) => device.taskCapable),
+  smartTasks: (facts) => facts.smartTaskConfigured === false && facts.devices.some((device) => device.taskCapable),
 };
 
 // What the page offers that is not in use yet, in the order the card names it.

@@ -28,7 +28,7 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/
 export type SetupStepId = 'power' | 'hardCap' | 'devices' | 'prices';
 
 /** `next` is the first step still open; every later open step is `later`. */
-type SetupStepStatus = 'done' | 'next' | 'later';
+type SetupStepStatus = 'done' | 'next' | 'later' | 'unchecked';
 
 export type SetupStep = {
   id: SetupStepId;
@@ -111,6 +111,7 @@ export type SetupPathFacts = {
 export type SetupPath = {
   steps: readonly SetupStep[];
   doneCount: number;
+  offersEvCharger: boolean;
   lede: string;
   /** Whether the path should name the simulation posture below its steps. */
   simulating: boolean;
@@ -243,7 +244,7 @@ const resolveHardCapDetail = (facts: SetupPathFacts): string => {
   return formatLimitsSummary(hardCap);
 };
 
-const BATTERY_ONLY_DEVICES_DETAIL = 'Your home battery is managed. Choose the other devices PELS should run';
+const BATTERY_ONLY_DEVICES_DETAIL = 'Your home battery is managed. You can also choose an EV charger.';
 
 // A fact, never an instruction. Devices that cannot be limited (no power
 // reading) or that the owner chose not to limit are a finished choice; telling
@@ -268,28 +269,38 @@ const resolvePricesStageDetail = (facts: SetupPathFacts): string => {
   return 'Not needed for your devices';
 };
 
+const resolvePricesStageStatus = (facts: SetupPathFacts): SetupStepStatus => {
+  if (facts.actionableDeviceCount === 0) return 'later';
+  if (facts.prices.state === 'unread') return 'unchecked';
+  return facts.prices.state === 'unused' || facts.prices.complete ? 'done' : 'later';
+};
+
+export const nextSetupStep = (path: SetupPath): SetupStep | undefined => (
+  path.steps.find((step) => step.status === 'next')
+);
+
 /** Keep the resolved steps available for the explicit review, even after setup closes. */
 export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
   const devicesChosen = facts.actionableDeviceCount > 0;
   const hardCapApplies = facts.limitableDeviceCount > 0;
-  const candidates: Array<Omit<SetupStep, 'status'> & { done: boolean }> = [
+  const steps: SetupStep[] = [
     {
       id: 'power',
-      done: facts.power.state === 'received',
+      status: facts.power.state === 'received' ? 'done' : 'later',
       title: 'Power meter',
       detail: resolvePowerDetail(facts.power),
       target: { panel: 'limits', anchor: '#settings-power-source' },
     },
     {
       id: 'devices',
-      done: facts.actionableDeviceCount > 0 && facts.unchosenBesideBatteryCount === 0,
+      status: devicesChosen ? 'done' : 'later',
       title: 'Devices',
       detail: resolveDevicesDetail(facts),
       target: { panel: 'devices' },
     },
     {
       id: 'hardCap',
-      done: devicesChosen && (!hardCapApplies || facts.hardCap.state !== 'unset'),
+      status: devicesChosen && (!hardCapApplies || facts.hardCap.state !== 'unset') ? 'done' : 'later',
       title: 'Limits',
       detail: resolveLimitsStageDetail(facts),
       target: isMainFuseMarket(facts.market)
@@ -298,26 +309,20 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
     },
     {
       id: 'prices',
-      done: devicesChosen && (facts.prices.state !== 'used' || facts.prices.complete),
+      status: resolvePricesStageStatus(facts),
       title: 'Prices',
       detail: resolvePricesStageDetail(facts),
       target: { panel: 'electricity-prices', anchor: '#price-source-select' },
     },
   ];
 
-  const nextIndex = candidates.findIndex((step) => !step.done);
-  const statusAt = (done: boolean, index: number): SetupStepStatus => {
-    if (done) return 'done';
-    return index === nextIndex ? 'next' : 'later';
-  };
-  const steps: SetupStep[] = candidates.map(({ done, ...step }, index) => ({
-    ...step,
-    status: statusAt(done, index),
-  }));
+  const firstOpen = steps.find((step) => step.status === 'later');
+  if (firstOpen) firstOpen.status = 'next';
 
   return {
     steps,
-    doneCount: candidates.filter((step) => step.done).length,
+    offersEvCharger: facts.unchosenBesideBatteryCount > 0,
+    doneCount: steps.filter((step) => step.status === 'done').length,
     lede: 'Connect your meter, choose a device, then review your settings.',
     simulating: facts.simulating,
   };
@@ -325,12 +330,14 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
 
 export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
   const path = resolveSetupSteps(facts);
-  return path.doneCount === path.steps.length ? { state: 'complete' } : { state: 'open', path };
+  return nextSetupStep(path) ? { state: 'open', path } : { state: 'complete' };
 };
 
 /** Whether the path is open AND still waiting on this step. */
 export const isSetupStepOpen = (read: SetupPathVisibility, id: SetupStepId): boolean => (
-  read.state === 'open' && read.path.steps.some((step) => step.id === id && step.status !== 'done')
+  read.state === 'open' && read.path.steps.some((step) => (
+    step.id === id && (step.status === 'next' || step.status === 'later')
+  ))
 );
 
 /** Completed stages out of the fixed four-stage path. */

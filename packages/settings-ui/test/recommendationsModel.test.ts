@@ -11,11 +11,11 @@ import {
   type SetupRecommendation,
 } from '../src/ui/recommendationsModel.ts';
 import { state } from '../src/ui/state.ts';
-import type { EvCarAssociations } from '../../contracts/src/types.ts';
+import type { EvCarAssociations, EvObservedFields } from '../../contracts/src/types.ts';
 import type { SettingsUiRecommendationCar } from '../../contracts/src/settingsUi/carLink.ts';
 import type { SettingsUiEvSocFlowReporter } from '../../contracts/src/settingsUi/devices.ts';
 
-const device = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
+const device = (overrides: Partial<SettingsUiDeviceSnapshot & EvObservedFields> = {}): SettingsUiDeviceSnapshot => ({
   id: 'device-1',
   name: 'Connected 300',
   available: true,
@@ -502,7 +502,7 @@ describe('setup recommendations', () => {
 
   it('warns instead of asking to remove battery reporting while no selected car has been matched', () => {
     const recommendations = resolve(
-      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true, evChargingState: 'plugged_in' })],
       [car('car-1', 'Kia EV6', [{ chargerId: 'charger-2', lastMatchedAtMs: 1_000 }])],
       { 'charger-1': { carIds: ['car-1'] } },
       {},
@@ -529,7 +529,7 @@ describe('setup recommendations', () => {
   it('drops "yet" for a selected car that has matched another of the home\'s chargers', () => {
     const recommendations = resolve(
       [
-        device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true }),
+        device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true, evChargingState: 'plugged_in' }),
         device({ id: 'charger-2', name: 'Zaptec', deviceClass: 'evcharger', isEvCharger: true }),
       ],
       [car('car-1', 'Kia EV6', [{ chargerId: 'charger-2', lastMatchedAtMs: 1_000 }])],
@@ -545,6 +545,25 @@ describe('setup recommendations', () => {
     // Nor does it promise the match the dropped "yet" denies.
     expect(recommendations[0]?.body).toContain('If this car is connected, confirm it in the charger’s Car section to use its battery level.');
     expect(recommendations[0]?.body).not.toContain('once it shows as matched');
+  });
+
+  it.each([false, true])('offers a reachable next step for an unavailable selected car (confirmed: %s)', (confirmed) => {
+    const charger = {
+      ...device({ id: 'charger-1', name: 'Easee', isEvCharger: true, evChargingState: 'plugged_in' }),
+      ...(confirmed ? { carConfirmation: { carId: 'car-1', carName: 'Kia EV6', available: false } } : {}),
+    };
+    const [advice] = resolve([charger], [{ ...car('car-1', 'Kia EV6'), available: false }],
+      { 'charger-1': { carIds: ['car-1'] } }, {}, [{ chargerDeviceId: 'charger-1' }]);
+    expect(advice?.body).toContain(confirmed ? 'Kia EV6 is confirmed' : 'Check the selected car in its app');
+    expect(advice?.body).not.toContain('confirm it');
+  });
+
+  it('waits to offer confirmation until the charger has a connection', () => {
+    const charger = device({ id: 'charger-1', isEvCharger: true, evChargingState: 'plugged_out' });
+    const [advice] = resolve([charger], [car('car-1', 'Kia EV6')], { 'charger-1': { carIds: ['car-1'] } },
+      {}, [{ chargerDeviceId: 'charger-1' }]);
+    expect(advice?.body).toContain('PELS ignores');
+    expect(advice?.body).not.toContain('confirm it');
   });
 
   it('asks to clear a selected car that was removed from Homey', () => {
