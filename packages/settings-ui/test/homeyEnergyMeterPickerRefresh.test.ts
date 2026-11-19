@@ -65,6 +65,23 @@ describe('whole-home meter picker list', () => {
     expect(hintText()).toBe(WHOLE_HOME_METER_HINT);
   });
 
+  it('keeps the selected meter name through silence and clears it when another meter is selected', async () => {
+    callApiMock.mockResolvedValueOnce([{ id: 'han', name: 'HAN meter' }]).mockResolvedValueOnce([]);
+    const { syncHomeyEnergyMeterSelection, syncHomeyEnergyMeterVisibility, getChosenWholeHomeMeterName } =
+      await import('../src/ui/homeyEnergyMeter.ts');
+
+    syncHomeyEnergyMeterSelection('han');
+    syncHomeyEnergyMeterVisibility('homey_energy');
+    await flushAsync();
+    expect(getChosenWholeHomeMeterName()).toBe('HAN meter');
+
+    syncHomeyEnergyMeterVisibility('homey_energy');
+    await flushAsync();
+    expect(getChosenWholeHomeMeterName()).toBe('HAN meter');
+    syncHomeyEnergyMeterSelection('garage');
+    expect(getChosenWholeHomeMeterName()).toBeNull();
+  });
+
   it('keeps the last good list when a later fetch fails', async () => {
     callApiMock
       .mockResolvedValueOnce([{ id: 'han', name: 'HAN meter' }])

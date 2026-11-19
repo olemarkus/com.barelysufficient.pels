@@ -599,7 +599,7 @@ The line is the same in every mode, Capacity limit on or off and grid import
 limit on or off: without a measurement no ceiling is known to bind, so it names
 none. Like the spent-hour line it carries no kW, because freeing power would not
 resume the device; unlike it, it states what the device needs. It pairs with the
-no-readings banner's `Managed devices stay limited until a new reading arrives.`
+no-readings banner's explanation of how the meter outage affects the plan.
 Do not substitute `Limited by the hard cap`: with Capacity limit off that named
 a limit that was not even on.
 
@@ -2472,21 +2472,18 @@ payload's producer-resolved readings fact (`never` | `received` + stamp) aged
 against the 60-second freshness threshold — the UI never re-derives the fact
 from tracker fields or persisted-blob fallbacks.
 
-- Leads: `No power readings yet.` (never received) / `No new power readings
-  in the last minute.` (stopped, or suspect: a meter repeating one value while
-  the metered load has moved for two minutes counts as stopped here, and it
-  still shows that value in Homey, so "no readings" would contradict it) / `No new power readings for over 10
-  minutes. Managed devices stay limited until a new reading arrives.` (the
-  fail-closed pass has run). Say what happens — never "stale", "outdated", or
-  an age readout.
-- Hints name the remedy and the real control: the Flow card by its
-  registered name (**Report power usage** — `… or set up a Flow with the
-  Report power usage action.` / `Check the Flow that runs Report power usage
-  and the meter it reads from.`), the picker as `Pick a whole-home meter under
-  Limits & safety.`, a chosen meter as `Check that the selected whole-home
-  meter is available in Homey Energy and its reading is changing.` A frozen
-  meter is available and reports power, so the stopped hints name the reading
-  moving, which is what it fails.
+- Before the first reading the lead is `No power readings yet.` Once readings
+  stop, `Last new power reading {age} ago.` uses the power owner's timestamp,
+  including the suspect-reading timestamp when measured device load contradicts
+  a repeated value. Show elapsed whole minutes, hours or days.
+- A gap before the silent-meter plan says `PELS uses the last reading for its
+  power plan.` Only a plan built without a measurement says `PELS plans to keep
+  managed devices limited until a new reading arrives.` This describes what
+  PELS plans even when simulation is on.
+- Hints name the remedy: check the selected meter by its Homey Energy name and
+  whether its reading changes. If the name is unavailable, refer to the
+  selected whole-home meter. A Flow source points to **Report power usage** and
+  the meter the Flow reads.
 - The never-received Flow arm names BOTH remedies, **meter first** (`Pick a
   whole-home meter under Limits & safety, or set up a Flow with the Report
   power usage action.`) — the one state where the install has nothing
@@ -2501,7 +2498,9 @@ from tracker fields or persisted-blob fallbacks.
   `isNoReadingsCarriedBySetupPath` (`packages/settings-ui/src/ui/setupPathFacts.ts`).
 - The guided `Connect your meter` page also carries the never-received remedy
   and suppresses its duplicate banner. Stopped readings still use the banner.
-- Action label: `Check power source` on every arm.
+- Before the first reading, **Check power source** opens the source setting.
+  After readings stop, **Check meter** opens the whole-home meter picker for a meter
+  source, or the power source setting for a Flow source.
 - Retired: the onboarding arm ("PELS needs to know where to read your home's
   power use") — an install with no source chosen is the never-received Flow
   arm, which already names both remedies; and the hero's "Power

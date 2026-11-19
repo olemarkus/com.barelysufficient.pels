@@ -1,5 +1,5 @@
 export const DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH = 1;
-export const NORGESPRIS_TARGET_EX_VAT = 40;
+export { NORGESPRIS_TARGET_EX_VAT } from '../../packages/shared-domain/src/price/norwayPrice';
 export const NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH = 5000;
 export const NORGESPRIS_CABIN_MONTHLY_CAP_KWH = 1000;
 

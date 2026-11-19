@@ -123,7 +123,7 @@ export const PLAN_STATE_HOUR_ENDING_STATUS = 'Waiting to resume — '
 // Capacity limit off "Limited by the hard cap" named a limit that was not even
 // on. No kW figure either: freeing power would not resume it. One string for
 // the card, device detail and the activity log, and it pairs with the Overview
-// banner's `Managed devices stay limited until a new reading arrives.`
+// banner's explanation of how the meter outage affects the plan.
 // Registered in `notes/ui-terminology.md`.
 export const PLAN_STATE_METER_SILENT_STATUS = 'Waiting for a new power reading';
 

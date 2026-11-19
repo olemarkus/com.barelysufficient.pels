@@ -78,6 +78,28 @@ for (const [width, mobile] of [[320, false], [480, false], [320, true], [480, tr
   });
 }
 
+test('returns from incomplete Norway prices to device goals and can finish without price control', async ({ page }) => {
+  await seedHomeWithoutPrices(page, 'NO');
+  await page.goto('/?page=settings/electricity-prices&setup=prices');
+  const prices = page.locator('#electricity-prices-panel');
+  const continuePrices = prices.getByRole('button', { name: 'Continue', exact: true });
+  await expect(continuePrices).toBeDisabled();
+  await prices.getByRole('button', { name: 'Choose what PELS does', exact: true }).click();
+  await expect(page).toHaveURL(/setup=goals/);
+  const goals = page.locator('#devices-panel');
+  await expect(goals.getByRole('switch', { name: 'Price-based control for Heat pump' })).toBeChecked();
+  await goals.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page).toHaveURL(/setup=prices/);
+  await expect(continuePrices).toBeDisabled();
+
+  await prices.getByRole('button', { name: 'Choose what PELS does', exact: true }).click();
+  const priceControl = goals.getByRole('switch', { name: 'Price-based control for Heat pump' });
+  await priceControl.click();
+  await expect(priceControl).not.toBeChecked();
+  await goals.getByRole('button', { name: /^(Continue|Review setup)$/ }).click();
+  await expect(page).toHaveURL(/setup=review/);
+  await expect(page.getByRole('button', { name: 'Start managing', exact: true })).toBeEnabled();
+});
 
 type PriceOverlapWindow = Window & {
   Homey: {

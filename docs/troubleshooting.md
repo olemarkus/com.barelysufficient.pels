@@ -189,8 +189,8 @@ The banner above the Overview tells you which state you are in:
 | Banner | Meaning |
 | --- | --- |
 | **No power readings yet.** | PELS has never received a reading. |
-| **No new power readings in the last minute.** | Readings have stopped, or keep the same value while your devices' power changes. |
-| **No new power readings for over 10 minutes. Managed devices stay limited until a new reading arrives.** | PELS has limited every managed device and is waiting for a new reading. |
+| **Last new power reading … ago. PELS uses the last reading for its power plan.** | Readings have stopped, or keep the same value while your devices' power changes. |
+| **PELS plans to keep managed devices limited until a new reading arrives.** | The meter outage has triggered the limiting plan. Choose **Check meter** to inspect the configured source. |
 
 ## No price data, or cheap hours aren't being used
 

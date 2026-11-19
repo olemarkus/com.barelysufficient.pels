@@ -48,12 +48,16 @@
  */
 import { bindingPhaseFor, phaseRoomFor } from './phase/phaseRoom';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
-import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, SteppedPlanDevice } from './planTypes';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restore/headroomLedger';
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { computeRestoreRequirementKw, estimateRestorePower } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { resolvePlannedShedTargetKind } from './planActionMaterialization';
+import {
+  getSteppedLoadRestoreStep, isSteppedLoadOffStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { ceilToDisplayKw, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
@@ -126,6 +130,23 @@ export type CeilingShortfallResolution =
   | { kind: 'blocked_by_reserve'; holderName: string }
   | { kind: 'no_gap' };
 
+function willRestartFromOff(dev: SteppedPlanDevice): boolean {
+  // The final plan stamps its shed target kind after the reasons are resolved.
+  const targetKind = resolvePlannedShedTargetKind(dev);
+  return targetKind === 'binary_off'
+    || (targetKind === 'step' && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.desiredStepId));
+}
+
+function ceilingRestoreRequirementKw(dev: DevicePlanDevice, inputs: CeilingShortfallInputs): number {
+  // A stepped device being turned off can still report the rung it is leaving.
+  // Its next start is from zero at the restore rung, even before off is observed.
+  const restart = isSteppedLoadDevice(dev) && willRestartFromOff(dev)
+    ? getSteppedLoadRestoreStep(dev.steppedLoadProfile)
+    : null;
+  const increaseKw = restart && restart.planningPowerW > 0 ? restart.planningPowerW / 1000 : estimateRestorePower(dev);
+  return computeRestoreRequirementKw(increaseKw, inputs.lastDeviceShedMsById[dev.id], inputs.nowMs);
+}
+
 /**
  * The phase holding this device back, when its phases are what binds it: their
  * room is below what it needs and no other axis is tighter. Names the phase it
@@ -135,9 +156,7 @@ export function resolvePhaseHoldPhase(dev: DevicePlanDevice, inputs: CeilingShor
   const axis = inputs.ledger.axes().phase;
   const roomKw = phaseRoomFor(axis, dev.phaseFootprint);
   if (axis.kind === 'off' || roomKw.kind === 'off') return null;
-  const neededKw = computeRestoreRequirementKw(
-    estimateRestorePower(dev), inputs.lastDeviceShedMsById[dev.id], inputs.nowMs,
-  );
+  const neededKw = ceilingRestoreRequirementKw(dev, inputs);
   if (roomKw.kw >= neededKw || inputs.ledger.availableFor(dev) !== roomKw.kw) return null;
   return bindingPhaseFor(axis, dev.phaseFootprint);
 }
@@ -149,9 +168,7 @@ export function resolveCeilingShortfall(params: {
   inputs: CeilingShortfallInputs;
 }): CeilingShortfallResolution {
   const { dev, inputs } = params;
-  const neededKw = computeRestoreRequirementKw(
-    estimateRestorePower(dev), inputs.lastDeviceShedMsById[dev.id], inputs.nowMs,
-  );
+  const neededKw = ceilingRestoreRequirementKw(dev, inputs);
   const reserved = resolveReserveAdmission(dev, inputs.ledger.availableFor(dev), neededKw, inputs.headroomReserves);
   if (reserved.kind === 'blocked_by_reserve') {
     return { kind: 'blocked_by_reserve', holderName: reserved.holderName };

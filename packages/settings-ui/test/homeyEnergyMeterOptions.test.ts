@@ -64,7 +64,7 @@ describe('buildMeterSelectEntries', () => {
 });
 
 describe('resolvePowerReadingsBannerContent', () => {
-  const base = { nowMs: 10 * 60 * 1000 };
+  const base = { nowMs: 10 * 60 * 1000, meterName: null };
 
   it('hides the banner while the last sample is fresh', () => {
     expect(resolvePowerReadingsBannerContent({
@@ -86,19 +86,31 @@ describe('resolvePowerReadingsBannerContent', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, planUnmeasured: false,
     })).toEqual({
-      text: 'No new power readings in the last minute. Check the Flow that runs Report power usage and the meter it reads from.',
-      actionLabel: 'Check power source',
+      text: 'Last new power reading 9 min ago. PELS uses the last reading for its power plan. '
+        + 'Check the Flow that runs Report power usage and the meter it reads from.',
+      actionLabel: 'Check meter',
     });
   });
 
   it('points a Homey Energy home at its chosen meter, or at the picker before one is chosen', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'homey_energy', meterChosen: true, planUnmeasured: false,
-    })?.text).toBe('No new power readings in the last minute. Check that the selected whole-home '
+    })?.text).toBe('Last new power reading 9 min ago. PELS uses the last reading for its power plan. Check that the selected whole-home '
       + 'meter is available in Homey Energy and its reading is changing.');
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'never' }, source: 'homey_energy', meterChosen: false, planUnmeasured: false,
     })?.text).toBe('No power readings yet. Pick a whole-home meter under Limits & safety.');
+  });
+
+  it('names a selected meter and ages a longer outage from the producer timestamp', () => {
+    expect(resolvePowerReadingsBannerContent({
+      ...base, nowMs: 3 * 3_600_000, readings: { state: 'received', lastPowerUpdateMs: 0 },
+      source: 'homey_energy', meterChosen: true, meterName: 'HAN meter', planUnmeasured: false,
+    })).toEqual({
+      text: 'Last new power reading 3 h ago. PELS uses the last reading for its power plan. '
+        + 'Check that HAN meter is available in Homey Energy and its reading is changing.',
+      actionLabel: 'Check meter',
+    });
   });
 
   it('names the consequence once the plan itself was built without a measurement', () => {
@@ -108,9 +120,9 @@ describe('resolvePowerReadingsBannerContent', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, planUnmeasured: true,
     })).toEqual({
-      text: 'No new power readings for over 10 minutes. Managed devices stay limited until a new reading arrives. '
+      text: 'Last new power reading 9 min ago. PELS plans to keep managed devices limited until a new reading arrives. '
         + 'Check the Flow that runs Report power usage and the meter it reads from.',
-      actionLabel: 'Check power source',
+      actionLabel: 'Check meter',
     });
     // Fresh readings still win: the next admitted sample rebuilds, and a plan
     // one cycle behind must not keep the banner up.

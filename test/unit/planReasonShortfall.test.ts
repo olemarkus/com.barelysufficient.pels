@@ -74,6 +74,42 @@ describe('resolveCeilingShortfall', () => {
     })).toBe(0.7);
   });
 
+  it('prices a charger shed to off at its restart rung while the old rung is still observed', () => {
+    const steppedLoadProfile = {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: '6a', planningPowerW: 1380 },
+        { id: '16a', planningPowerW: 3680 },
+      ],
+    };
+    const charger = (currentOn: boolean, plannedShedStepId: string) => ({
+      ...buildPlanDevice({
+        id: 'charger', isEvCharger: true, plannedState: 'shed', shedAction: 'turn_off',
+        currentOn, steppedLoadProfile, selectedStepId: '16a', plannedShedStepId, desiredStepId: plannedShedStepId,
+      }),
+      // The reason fold runs before plan finalization stamps the shed target kind.
+      plannedShedTargetKind: undefined,
+    });
+    const available = inputs({ capacityAvailableKw: -1 });
+    const recentlyShed = inputs({ capacityAvailableKw: -1, lastDeviceShedMsById: { charger: NOW_MS - 60_000 } });
+    for (const currentOn of [true, false]) {
+      const dev = charger(currentOn, 'off');
+      // 1.38 kW plus a 0.238 kW buffer and the 1 kW deficit, rounded up.
+      expect(gapKw({ dev, inputs: available })).toBe(2.7);
+      expect(gapKw({ dev, inputs: recentlyShed })).toBe(2.9);
+    }
+    // With no binary handle the same stop is a step command. Only the decided
+    // rung distinguishes stopping from a partial reduction.
+    const stepOnly = buildPlanDevice({
+      id: 'charger', isEvCharger: true, plannedState: 'shed', shedAction: 'set_step',
+      binaryControllable: false, steppedLoadProfile, selectedStepId: '16a',
+      plannedShedStepId: 'off', desiredStepId: 'off',
+    });
+    expect(gapKw({ dev: { ...stepOnly, plannedShedTargetKind: undefined }, inputs: available })).toBe(2.7);
+    // Parking at an active rung leaves the charger running.
+    expect(gapKw({ dev: charger(true, '6a'), inputs: available })).toBe(5.2);
+  });
+
   it('ceils to the 0.1 kW display step, never floors', () => {
     // available 1.16, needed 1.2 → gap = 0.04 → renders 0.1: rounding down
     // would invite freeing nothing and still being short.

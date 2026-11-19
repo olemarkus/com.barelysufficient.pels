@@ -4,6 +4,9 @@ import type {
   PriceSchemeSetting,
   SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUi/prices.ts';
+import {
+  getNorgesprisTarget, getVatMultiplier, VAT_MULTIPLIER_EXEMPT,
+} from '../../../shared-domain/src/price/norwayPrice.ts';
 import { getFlowPricePayload } from '../../../shared-domain/src/price/flowPriceUtils.ts';
 import { getDateKeyInTimeZone, shiftDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
@@ -35,6 +38,17 @@ export type PriceSourceAssumption =
 export type NorwayChoices =
   | { kind: 'unknown' }
   | { kind: 'resolved'; choices: Pick<NorwayPriceSetup, 'county' | 'pricingModel' | 'priceArea'> };
+
+export const norgesprisTargetText = (norway: NorwayChoices): string => {
+  if (norway.kind === 'unknown') return 'Your price area determines whether VAT applies to the fixed spot price.';
+  const area = norway.choices.priceArea;
+  const vat = getVatMultiplier(area.value);
+  const tax = vat === VAT_MULTIPLIER_EXEMPT ? 'VAT exempt' : 'including VAT';
+  const rate = `${getNorgesprisTarget(vat)} øre/kWh (${tax})`;
+  return area.chosen
+    ? `The fixed spot price in ${area.value} is ${rate}.`
+    : `Until you choose your price area, PELS uses ${area.value}, where the fixed spot price is ${rate}.`;
+};
 
 export type ResolvedPriceSetupStatus = { state: 'complete' | 'open'; summary: string };
 
