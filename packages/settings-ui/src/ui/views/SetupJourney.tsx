@@ -319,7 +319,7 @@ export type SetupReviewProps = {
   busy: boolean;
   error: string | null;
   solarNote: string | null;
-  onRetryDevices?: () => void;
+  onRetry?: () => void;
   onStart: () => void;
   onContinue: () => void;
   /** Back to `Choose what PELS does`, while it has something to offer; `null` hides the link. */
@@ -391,9 +391,9 @@ export const SetupReview = (props: SetupReviewProps) => (
   <>
     <AppBar title="Review setup" back={{ label: 'Back to setup', target: 'recommendations' }} />
     {props.path !== null && <ReviewPanel {...props} path={props.path} />}
-    {props.path === null && (props.onRetryDevices ? <>
-      <p>Device setup could not be read.</p>
-      <MdTextButton type="button" onClick={props.onRetryDevices}>Try again</MdTextButton>
+    {props.path === null && (props.onRetry ? <>
+      <p>Could not check your setup.</p>
+      <MdTextButton type="button" disabled={props.busy} onClick={props.onRetry}>Try again</MdTextButton>
     </> : <p>Setup could not be read yet. Return to setup to check your settings.</p>)}
   </>
 );

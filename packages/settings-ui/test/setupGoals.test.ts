@@ -20,6 +20,7 @@ const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {})
   const facts = await import('../src/ui/setupPathFacts.ts');
   const { state } = await import('../src/ui/state.ts');
   state.devicesLoaded = true;
+  state.deferredObjectiveSettingsReadState = 'ready';
   respondToPrices(facts, true);
   return { goals, facts, state };
 };

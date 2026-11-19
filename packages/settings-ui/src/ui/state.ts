@@ -141,6 +141,7 @@ export type UiState = {
   evChargerCurrentLimits: EvChargerCurrentLimits;
   evChargerCurrentLimitsLoaded: boolean;
   deferredObjectiveSettings: DeferredObjectiveRoster;
+  deferredObjectiveSettingsReadState: 'loading' | 'ready' | 'unavailable';
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
   // Whether `priceOptimizationSettings` holds a read: it starts empty, which
@@ -246,6 +247,7 @@ export const state: UiState = {
   evChargerCurrentLimits: {},
   evChargerCurrentLimitsLoaded: false,
   deferredObjectiveSettings: createEmptyDeferredObjectiveRoster(),
+  deferredObjectiveSettingsReadState: 'loading',
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
   priceOptimizationSettingsLoaded: false,

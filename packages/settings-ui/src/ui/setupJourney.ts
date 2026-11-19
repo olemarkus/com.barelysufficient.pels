@@ -38,8 +38,12 @@ import {
 import { flushDebouncedSettingSaves } from './utils.ts';
 import { resolveSolarSetupAction, retrySetupDeviceReads } from './setupDevices.ts';
 import { getPowerReadModel } from './power.ts';
-import { getApiReadModel } from './homey.ts';
-import { SETTINGS_UI_PLAN_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { getApiReadModel, invalidateApiCache } from './homey.ts';
+import {
+  SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH, SETTINGS_UI_PLAN_PATH,
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { loadDeferredObjectiveSettings, waitForDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
+import { logSettingsError } from './logging.ts';
 import { type SettingsUiPlanPayload } from '../../../contracts/src/settingsUi/plan.ts';
 import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
@@ -146,6 +150,7 @@ const continueSetup = (): void => {
 
 const startManaging = (): void => {
   void runAction(async () => {
+    await waitForDeferredObjectiveSettings();
     const review = readSetupReview();
     if (!review || nextSetupStep(review)) {
       throw new Error('Complete the remaining setup steps first.');
@@ -235,6 +240,8 @@ const paintReview = (): void => {
   if (!root) return;
   const path = readSetupReview();
   const devices = readReviewDevices();
+  const retryAvailable = state.devicesReadState === 'unavailable'
+    || state.deferredObjectiveSettingsReadState === 'unavailable';
   render(h(SetupReview, {
     path,
     devices,
@@ -243,7 +250,7 @@ const paintReview = (): void => {
     busy: actionBusy || setupSavePending(),
     error,
     solarNote: resolveReviewSolarNote(devices),
-    onRetryDevices: state.devicesReadState === 'unavailable' ? retrySetupDeviceReads : undefined,
+    onRetry: retryAvailable ? () => { void runAction(retrySetupReview); } : undefined,
     onStart: startManaging,
     onContinue: continueSetup,
     onChooseGoals: offersSetupGoals() ? openSetupGoals : null,
@@ -418,7 +425,19 @@ const refreshLivePreview = async (): Promise<void> => {
 };
 
 export const retrySetupPathReads = async (): Promise<void> => {
-  await Promise.all([loadStaleDataStatus(), retrySetupBatteryPlans()]);
+  const reads = [loadStaleDataStatus(), retrySetupBatteryPlans()];
+  if (state.deferredObjectiveSettingsReadState === 'unavailable') {
+    invalidateApiCache(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
+    reads.push(loadDeferredObjectiveSettings().catch((error) => (
+      logSettingsError('Failed to reload the Smart Task roster', error, 'setup')
+    )));
+  }
+  await Promise.all(reads);
+};
+
+const retrySetupReview = async (): Promise<void> => {
+  if (state.devicesReadState === 'unavailable') retrySetupDeviceReads();
+  await retrySetupPathReads();
 };
 
 export const initSetupJourney = (): void => {

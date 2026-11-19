@@ -258,9 +258,10 @@ const countUnchosenBesideBattery = (knownIds: ReadonlySet<string>, actionableIds
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const membership = readHomeMembership();
-  if (state.devicesReadState === 'unavailable') return { state: 'unavailable' };
+  const roster = state.deferredObjectiveSettingsReadState;
+  if (state.devicesReadState === 'unavailable' || roster === 'unavailable') return { state: 'unavailable' };
   if (power.state === 'loading' || hardCap.state === 'loading' || prices.state === 'loading'
-    || !state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
+    || !state.devicesLoaded || membership.state === 'loading' || roster === 'loading') return { state: 'loading' };
   if (power.state === 'unavailable' || hardCap.state === 'unavailable'
     || membership.state === 'unavailable') return { state: 'unavailable' };
   const knownIds = new Set(state.latestDevices
