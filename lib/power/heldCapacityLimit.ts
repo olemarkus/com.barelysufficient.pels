@@ -92,7 +92,10 @@ export function planningCeilingSchedule(limits: ScheduledPowerLimits): {
   changesAtMs: number | null;
   at: (atMs: number) => number | null;
 } {
-  const { monthPeak } = limits;
+  const { monthPeak, monthlyCapacityChoice: choice } = limits;
+  if (choice) {
+    return { changesAtMs: choice.endsAtMs, at: (atMs) => resolvePlanningCeilingKw(powerLimitsAt(limits, atMs), atMs) };
+  }
   const configuredKw = resolvePlanningCeilingKw(limits);
   if (!monthPeak) return { changesAtMs: null, at: () => configuredKw };
   const heldKw = resolvePlanningCeilingKw({ ...limits, limitKw: monthPeak.limitKw });
