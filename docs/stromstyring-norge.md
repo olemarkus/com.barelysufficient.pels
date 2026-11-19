@@ -35,9 +35,9 @@ Du trenger Homey Pro med PELS installert, en løpende måling av effekten for he
 
 ## Kom i gang med én enhet
 
-1. Åpne **Mer > Apper > PELS > Innstillinger** i Homey. Velg **Set up PELS**.
+1. Åpne **Mer > Apper > PELS > Innstillinger** i Homey. På oversikten velger du **Power meter** under **Set up PELS**.
 2. Sjekk at PELS viser målingen fra strømmåleren din. Skal du velge måleren selv, åpner du **Power source > Power meter** og velger den under **Whole-home meter**. Bruker du en Flow, sender kortet **Report power usage** effekten i watt.
-3. Velg for eksempel en varmtvannsbereder eller elbillader som allerede finnes i Homey. Slå på **Managed by PELS** for enheten.
+3. Gå videre med **Continue**, eller velg **Devices** under **Set up PELS** på oversikten. Velg for eksempel en varmtvannsbereder eller elbillader som allerede finnes i Homey. Slå på **Managed by PELS** for enheten.
 4. Vil du holde deg under et bestemt kapasitetstrinn i nettleien, setter du **Hard cap** til den øvre grensen for trinnet. Prisoppsettet trengs når du velger en funksjon som bruker strømpriser.
 5. Åpne **Review setup** og les hva PELS vil gjøre med enheten. Velg **Start managing** for å slå på styringen. Velg **Keep simulating** hvis du først vil se hvordan PELS ville styrt enheten. Du kan starte styringen senere med **Review and start** på oversikten.
 
