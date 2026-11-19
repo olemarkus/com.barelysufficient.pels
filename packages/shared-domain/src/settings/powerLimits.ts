@@ -1,5 +1,6 @@
 import type { PowerLimitCeiling, PowerLimitSettings } from '../../../contracts/src/capacitySettings';
 import { usableCapacityKw } from '../capacityAllowance';
+import { getDateKeyInTimeZone } from '../utils/dateUtils';
 import { isFiniteNumber } from '../numberGuards';
 
 /**
@@ -64,9 +65,7 @@ const lowerLimit = (capacityKw: number | null, gridKw: number | null): PowerLimi
 export function capacityLimitKwAt(settings: PowerLimitSettings, atMs: number): number {
   const choice = settings.monthlyCapacityChoice;
   if (!choice) return settings.limitKw;
-  const monthKey = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit',
-  }).format(atMs);
+  const monthKey = getDateKeyInTimeZone(new Date(atMs), 'Europe/Oslo').slice(0, 7);
   return monthKey === choice.monthKey ? choice.limitKw : settings.limitKw;
 }
 
