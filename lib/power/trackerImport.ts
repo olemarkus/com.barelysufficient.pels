@@ -11,8 +11,6 @@ export type SampleImportAccrual = {
   heldFromMs: number;
   /** W the meter's counter vouches for from the previous sample up to `heldFromMs`; 0 when nothing was recovered. */
   recoveredW: number;
-  /** Up to when the hourly usage is as the meter measured it; a wait after it is judged for reliability. */
-  measuredUntilMs: number;
   importCounter: ImportCounterAnchor | undefined;
   capacityQuarter: CapacityQuarterTracking['quarter'];
   capacityMonthlyPeak: CapacityQuarterTracking['monthlyPeak'];
@@ -24,6 +22,10 @@ export type SampleImportAccrual = {
  * interval, except that across a gap the meter's import counter, where it can
  * be trusted, says what the home imported, and the held reading fills only
  * what the counter does not reach (`lib/power/importCounter.ts`).
+ *
+ * Recovery changes what the gap books, never whether it is reliable: the
+ * counter gives the gap's total, not how it split across an hour boundary, so
+ * a gap that crosses one stays flagged with its estimate booked.
  */
 export function accrueSampleImport(
   params: RecordPowerSampleParams,
@@ -64,9 +66,6 @@ export function accrueSampleImport(
   return {
     heldFromMs,
     recoveredW,
-    // The split of a gap's energy over more than an hour is not measured, so
-    // such a gap stays flagged even when its total is the counter's.
-    measuredUntilMs: nowMs - previousTs <= HOUR_MS ? heldFromMs : previousTs,
     importCounter: resolveNextImportCounter(state.importCounter, params.importCounter, {
       importKWh, heldFromMs, endMs: nowMs, heldPowerW,
     }),
