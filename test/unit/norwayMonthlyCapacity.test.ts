@@ -214,6 +214,17 @@ describe('Norway monthly capacity', () => {
     expect(resolveNorwayMonthlyCapacity(history, tariff, settings, 5, lastDay))
       .toMatchObject({ targetLost: false, remainingMonthCap: { state: 'bounded', limitKw: 3.9 } });
   });
+  it('withholds a Hard cap at or below the safety margin and keeps the evidence', () => {
+    const lastDay = Date.parse('2026-11-30T12:00:00+01:00');
+    const history: NorwayMonthHistory = { monthKey: '2026-11', coverage: 'complete', peaks: [
+      { dateKey: '2026-11-28', hourStartMs: Date.parse('2026-11-28T10:00:00+01:00'), kw: 7.4 },
+      { dateKey: '2026-11-29', hourStartMs: Date.parse('2026-11-29T10:00:00+01:00'), kw: 7.3 },
+      { dateKey: '2026-11-30', hourStartMs: Date.parse('2026-11-30T10:00:00+01:00'), kw: 0.1 },
+    ] };
+    expect(resolveNorwayMonthlyCapacity(history, tariff, { ...settings, marginKw: 0.3 }, 5, lastDay))
+      .toMatchObject({ targetLost: false, remainingMonthCap: { state: 'bounded', limitKw: 0.2 },
+        hardCapRecommendation: { state: 'none' }, advice: { state: 'none' } });
+  });
   it('keeps evidence when the normal target is the unbounded highest tier', () => {
     expect(resolveNorwayMonthlyCapacity(monthWith([22, 21, 20]), tariff, { ...settings, limitKw: 25 }, 25, now))
       .toMatchObject({ state: 'ready', targetBoundaryKw: null, advice: { state: 'none' },

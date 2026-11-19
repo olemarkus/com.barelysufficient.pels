@@ -128,6 +128,9 @@ const CapacitySummary = ({ read, choice }: { read: ReadyRead; choice?: NorwayCap
   return <>
     <p class="monthly-capacity-copy">{peakEvidence(read)}{' '}{capReason(read)}</p>
     {cap.state === 'bounded' && <RemainingMonthCap limitKw={cap.limitKw} />}
+    {cap.state === 'bounded' && recommendation.state === 'none' && <p class="monthly-capacity-copy">
+      This cap leaves no room for the safety margin, so PELS does not suggest it as a Hard cap.
+    </p>}
     {cap.state === 'keep_current' && <p class="monthly-capacity-copy">Keep the current Hard cap of {kw(cap.limitKw)} while the average is close to the tier boundary.</p>}
     {cap.state === 'no_positive_limit' && <p class="monthly-capacity-copy">The recorded peaks leave no positive hourly cap for this target.</p>}
     {recommendation.state === 'keep' && choice?.state !== 'active'
