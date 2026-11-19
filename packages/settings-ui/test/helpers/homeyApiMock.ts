@@ -1,6 +1,7 @@
 import { taskPricePeriodsFixture } from './taskPricePeriodsFixture.ts';
 import type { Mock } from 'vitest';
 import type { ContinuousBatteryPlanRead } from '../../../contracts/src/continuousBatteryPlan.ts';
+import { BATTERY_RECOVERY_PATH } from '../../../contracts/src/batteryRecovery.ts';
 import { CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
   parseContinuousBatteryPlanConfigs } from '../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
@@ -439,6 +440,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', CHARGING_CURRENT_PATH)]: () => async () => [],
   [buildRouteKey('PUT', `${CHARGING_CURRENT_PATH}/:deviceId`)]: () => async () => {
     throw new Error('Unknown charging device');
+  },
+  [buildRouteKey('POST', `${BATTERY_RECOVERY_PATH}/:deviceId`)]: () => async () => {
+    throw new Error('Configure a battery recovery handler to test restoring a claim');
   },
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
