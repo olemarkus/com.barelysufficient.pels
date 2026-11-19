@@ -107,7 +107,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   ) => { previous: string; resolved: string };
   protected abstract readonly reloadHomeModeCatalog: () => void;
   /** The target the device's governing mode holds for it, or `null` (`readGoverningModeDeviceTargetC`). */
-  protected abstract readonly readGoverningModeTargetC: (deviceId: string) => number | null;
+  public abstract readonly readGoverningModeTargetC: (deviceId: string) => number | null;
   protected abstract readonly resolveHomeModeName: (mode: string) => string;
   protected abstract readonly getHomeModeNames: () => Set<string>;
   protected abstract readonly listDeviceTargetModes: FlowCardDeps['listDeviceTargetModes'];

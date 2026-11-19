@@ -84,6 +84,7 @@ const PREVIEW_PAYLOADS: Record<string, DeviceWidgetPayload> = {
         factText: 'Charging · 58 % · level 16 A', reading: { kind: 'battery', percent: 58 } }),
     },
     task: { kind: 'active', row: evTaskRow, nextRunLabel: 'Next run 02:00' },
+    override: null,
     createDevice: null,
   },
   heater: {
@@ -95,6 +96,10 @@ const PREVIEW_PAYLOADS: Record<string, DeviceWidgetPayload> = {
         reason: { text: 'Waiting to resume — 0.8 kW more needed' }, limited: true, canEaseOff: false }),
     },
     task: { kind: 'none' },
+    override: {
+      active: null, range: { min: 20, max: 85 }, defaultTemperatureC: 65,
+      timeZone: 'Europe/Oslo', taskDeadlineAtMs: null,
+    },
     createDevice: heaterCandidate,
   },
   ended: {
@@ -105,6 +110,7 @@ const PREVIEW_PAYLOADS: Record<string, DeviceWidgetPayload> = {
         reading: { kind: 'temperature', currentC: 63, targetC: 65 } }),
     },
     task: { kind: 'ended', row: heaterEndedRow },
+    override: null,
     createDevice: heaterCandidate,
   },
   nocar: {
@@ -114,6 +120,7 @@ const PREVIEW_PAYLOADS: Record<string, DeviceWidgetPayload> = {
       status: status({ kind: 'idle', tone: 'idle', label: 'Idle', factText: 'Unplugged', canEaseOff: false }),
     },
     task: { kind: 'none' },
+    override: null,
     createDevice: chargerCandidate,
   },
   plain: {
@@ -123,6 +130,7 @@ const PREVIEW_PAYLOADS: Record<string, DeviceWidgetPayload> = {
       status: status({ powerText: '1.1 kW' }),
     },
     task: { kind: 'none' },
+    override: null,
     createDevice: null,
   },
   not_managed: { state: 'not_managed' },

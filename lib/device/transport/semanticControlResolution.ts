@@ -1,5 +1,7 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/src/targetCapabilities';
+import {
+  getTemperatureTargetCapability, normalizeTargetCapabilityValue,
+} from '../../../packages/shared-domain/src/targetCapabilities';
 import type { NativeRelayBinding, NativeRelayOffResult } from '../../ports/nativeRelay';
 import type { EvCarLinkProducer } from '../evCarLinkProducer';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
@@ -15,8 +17,8 @@ export function resolveTemperatureTarget(
     deviceId: string,
     desired: number,
 ): number {
-    const target = snapshot.find((entry) => entry.id === deviceId)
-        ?.targets.find((entry) => entry.id.startsWith('target_temperature'));
+    const device = snapshot.find((entry) => entry.id === deviceId);
+    const target = device && getTemperatureTargetCapability(device.targets);
     if (!target) throw new Error(`No temperature target binding for device ${deviceId}`);
     return normalizeTargetCapabilityValue({ target, value: desired });
 }

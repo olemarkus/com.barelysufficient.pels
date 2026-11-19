@@ -4,6 +4,13 @@ import {
 } from '../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { formatLocalHHMM } from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { buildSmartTaskCandidateDevices } from '../../../lib/objectives/deferredObjectives';
+import { readActiveDeviceOverride } from '../../../lib/overrides/deviceOverrides';
+import type { SettingsPort } from '../../../lib/ports/homeyRuntime';
+import type { SettingsUiPlanDeviceSnapshot } from '../../../packages/contracts/src/settingsUi/plan';
+import type { TargetCapabilitySnapshot } from '../../../packages/contracts/src/types';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
+import type { OverrideTemperatureRange } from '../../../packages/shared-domain/src/settings/deviceOverrideDraft';
+import { getTemperatureTargetCapability } from '../../../packages/shared-domain/src/targetCapabilities';
 import type { PelsHost } from '../../../lib/app/pelsHost';
 import {
   buildSmartTaskDeviceView,
@@ -11,7 +18,7 @@ import {
   type SmartTaskDeviceView,
   type SmartTaskRunTiming,
 } from '../../smart_tasks/src/smartTasksWidgetPayload';
-import type { DeviceWidgetPayload, DeviceWidgetTask } from './deviceWidgetTypes';
+import type { DeviceWidgetOverride, DeviceWidgetPayload, DeviceWidgetTask } from './deviceWidgetTypes';
 
 // The Device insight widget's read for one device. It runs no planner: it reads the
 // plan snapshot published for the UI (with each device's resolved status) and
@@ -33,18 +40,66 @@ const toTask = (view: SmartTaskDeviceView, timeZone: string | null): DeviceWidge
   return view.endedToday ? { kind: 'ended', row: view.endedToday } : { kind: 'none' };
 };
 
+/** Resolve the same temperature-command authority for widget reads and commands. */
+export const readDeviceWidgetOverrideTarget = (
+  host: PelsHost,
+  deviceId: string,
+): TargetCapabilitySnapshot | undefined => {
+  const device = host.getSettingsUiManagedDevices().find((entry) => entry.id === deviceId);
+  if (!device?.managed || device.deviceType !== 'temperature' || device.isBatteryOrSolar
+    || host.deviceControlSettings.isTemperatureControlDisabled(deviceId, device)) return undefined;
+  return getTemperatureTargetCapability(device.targets);
+};
+
+export const deviceWidgetOverrideRange = (target: TargetCapabilitySnapshot): OverrideTemperatureRange => ({
+  min: isFiniteNumber(target.min) ? target.min : null,
+  max: isFiniteNumber(target.max) ? target.max : null,
+});
+
+const buildOverride = (
+  host: PelsHost,
+  settings: Pick<SettingsPort, 'get'> | undefined,
+  planDevice: SettingsUiPlanDeviceSnapshot,
+  nowMs: number,
+  timeZone: string | null,
+  taskDeadlineAtMs: number | null,
+): DeviceWidgetOverride | null => {
+  if (!settings || timeZone === null || planDevice.status.cardKind !== 'temperature') return null;
+  const deviceId = planDevice.id;
+  const target = readDeviceWidgetOverrideTarget(host, deviceId);
+  if (!target) return null;
+  const observedTemperature = isFiniteNumber(target.value) ? target.value : null;
+  return {
+    active: readActiveDeviceOverride(settings, deviceId, nowMs),
+    range: deviceWidgetOverrideRange(target),
+    defaultTemperatureC: host.readGoverningModeTargetC(deviceId) ?? observedTemperature,
+    timeZone,
+    taskDeadlineAtMs,
+  };
+};
+
+const activeTaskDeadline = (
+  activePlans: ReturnType<PelsHost['getDeferredObjectiveActivePlansUiPayload']>,
+  deviceId: string,
+  task: DeviceWidgetTask,
+): number | null => (
+  task.kind === 'active' ? activePlans?.plansByDeviceId[deviceId]?.deadlineAtMs ?? null : null
+);
+
 export const buildDeviceWidgetPayload = (
   host: PelsHost,
   deviceId: string,
   nowMs: number,
   timeZone: string | null,
+  settings: Pick<SettingsPort, 'get'> | undefined,
 ): DeviceWidgetPayload => {
   const plan = host.getLatestPlanSnapshotForUi();
   if (plan === null) return { state: 'starting' };
   const planDevice = plan.devices?.find((device) => device.id === deviceId);
   if (!planDevice) return { state: 'not_managed' };
+  const activePlans = host.getDeferredObjectiveActivePlansUiPayload();
   const view = buildSmartTaskDeviceView({
-    activePlans: host.getDeferredObjectiveActivePlansUiPayload(),
+    activePlans,
     history: host.getDeferredObjectivePlanHistoryRecentUiPayload(nowMs - ENDED_WINDOW_MS),
     devices: host.getUiPickerDevices(),
     nowMs,
@@ -66,6 +121,9 @@ export const buildDeviceWidgetPayload = (
       carName: host.deviceManager?.getAssociatedCar(deviceId)?.carName ?? null,
     },
     task,
+    override: buildOverride(
+      host, settings, planDevice, nowMs, timeZone, activeTaskDeadline(activePlans, deviceId, task),
+    ),
     createDevice: createDevice ?? null,
   };
 };

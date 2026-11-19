@@ -188,3 +188,35 @@
   font-variant-numeric: var(--pw-numeric, tabular-nums);
   color: var(--pw-text-muted, #6d7680);
 }
+
+
+.override-summary {
+  margin-top: var(--pw-su-2, 8px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pw-su-2, 8px);
+}
+
+.override-summary button {
+  padding-inline: var(--pw-su-3, 12px);
+}
+
+.override-fields {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--pw-su-2, 8px);
+}
+
+.override-fields .time-input {
+  width: 100%;
+}
+
+.override-custom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pw-su-2, 8px);
+}
