@@ -159,7 +159,7 @@ describe('setup recommendations', () => {
       })]);
       expect(recommendations).toHaveLength(1);
       expect(recommendations[0]?.title).toBe(`Use built-in device control for ${name}`);
-      expect(recommendations[0]?.body).not.toContain('Your current Flow keeps working');
+      expect(recommendations[0]?.body).not.toContain('Your Flow keeps working');
       expect(recommendations[0]?.body).toContain('If you use a Flow');
     },
   );
@@ -388,7 +388,8 @@ describe('setup recommendations', () => {
       target: { kind: 'flow-conflict-check', deviceId: 'device-1' },
     });
     expect(recommendations[0]?.body).toContain('Limit water heater');
-    expect(recommendations[0]?.body).toContain('Your current Flow keeps working');
+    expect(recommendations[0]?.body).toContain('Your Flow keeps working until you switch');
+    expect(recommendations[0]?.body).toContain('read back what it does');
     expect(recommendations[0]?.body).toContain('disable the Flow');
     expect(recommendations[0]?.body).toContain('delete its device-control action');
     expect(recommendations[0]?.body).not.toContain('max_power_3000');
@@ -769,6 +770,20 @@ describe('level report recommendations', () => {
     expect(recommendations[0]?.body).not.toContain('—');
   });
 
+  it('shows one warning, not the built-in control advice too, while a Flow-routed level goes unanswered', () => {
+    const charger = device({
+      id: 'charger', name: 'Carport charger', levelUnconfirmed: true,
+      flowConflict: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Charge current' },
+    } as Partial<SettingsUiDeviceSnapshot>);
+    const ids = resolveSetupRecommendations([charger], [], {}, {}).map(({ id }) => id);
+    expect(ids).toContain('level-report:charger');
+    expect(ids).not.toContain('built-in-control:charger');
+    // Dismissing the advice earlier does not hide the warning.
+    const groups = groupSetupRecommendations(resolveSetupRecommendations([charger], [], {}, {}),
+      { 'built-in-control:charger': 1, 'level-report:charger': 1 });
+    expect(groups.active.map(({ id }) => id)).toEqual(['level-report:charger']);
+  });
+
   it('points a device whose built-in control a Flow holds back at built-in control', () => {
     const charger = device({
       id: 'charger', name: 'Carport charger', levelUnconfirmed: true,
@@ -778,6 +793,9 @@ describe('level report recommendations', () => {
       .filter(({ id }) => id.startsWith('level-report:'));
     expect(recommendation).toEqual(expect.objectContaining({
       id: 'level-report:charger',
+      // A warning, newer than any dismissal of the earlier advice, so it comes back once.
+      version: 2,
+      category: 'warning',
       actionLabel: 'Check again',
       target: { kind: 'flow-conflict-check', deviceId: 'charger' },
     }));
