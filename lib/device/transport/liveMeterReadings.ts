@@ -2,12 +2,14 @@
  * The meter readings one live energy report yields, for the meter-only poll
  * and the full snapshot refresh alike.
  */
-import type { LiveMeterReadings } from '../../ports/homeMeterReadings';
+import type { LiveMeterReadings, MeterImportCounter } from '../../ports/homeMeterReadings';
 import type { LiveMeterReport } from './managerFetch';
 
 export function resolveLiveMeterReadings(
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
     report: LiveMeterReport,
+    /** The requested meters' import counters, read beside the report (`readMeterImportCounters`). */
+    importCounters: Readonly<Record<string, MeterImportCounter>>,
 ): LiveMeterReadings | null {
     // A FAILED read is not a measurement and must not be published: this
     // snapshot path runs on flow homes too, where a thrown fetch would
@@ -32,7 +34,9 @@ export function resolveLiveMeterReadings(
     }
     // Generation rides with the meters it was read beside, so a whole-home
     // sample built from them stays co-temporal.
-    return generation.state === 'measured'
-        ? { meterPowerW, generationW: generation.watts }
-        : { meterPowerW };
+    return {
+        meterPowerW,
+        ...(generation.state === 'measured' ? { generationW: generation.watts } : {}),
+        ...(Object.keys(importCounters).length > 0 ? { importCounters } : {}),
+    };
 }

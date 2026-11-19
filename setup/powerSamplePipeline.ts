@@ -21,6 +21,7 @@ import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import { configuredPowerLimits, type HeldPowerLimitSettings } from '../lib/power/heldCapacityLimit';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
+import type { MeterImportCounter } from '../lib/ports/homeMeterReadings';
 import type { ThermalDirection } from '../packages/contracts/src/types';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
@@ -120,6 +121,8 @@ type PowerSampleOptions = {
    * sub-home-meter samples, which carry no identity semantics.
    */
   meterDeviceId?: string;
+  /** That meter's import counter, read beside the power; flow and sub-home samples carry none. */
+  importCounter?: MeterImportCounter;
 };
 
 // Declared with the queue that owns the ledger; re-exported so the existing
@@ -142,6 +145,7 @@ type PowerSampleRequest = {
   /** Production the readings observed up to `nowMs`; accrual's only generation input. */
   generationSegments: readonly GenerationSegment[];
   meterDeviceId?: string;
+  importCounter?: MeterImportCounter;
 };
 
 const buildPowerSampleRequest = (
@@ -177,6 +181,7 @@ const buildPowerSampleRequest = (
     ...(options.meterDeviceId !== undefined
       ? { meterDeviceId: options.meterDeviceId }
       : {}),
+    ...(options.importCounter !== undefined ? { importCounter: options.importCounter } : {}),
   };
 };
 
@@ -315,6 +320,7 @@ export class PowerSamplePipeline {
         currentPowerW,
         generationW,
         generationSegments,
+        ...(request.importCounter === undefined ? {} : { importCounter: request.importCounter }),
         nowMs,
         capacitySettings,
         timeZone: this.deps.getTimeZone(),

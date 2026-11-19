@@ -37,26 +37,26 @@ const measuredReport = (overrides: Partial<Omit<MeasuredReport, 'state'>>): Live
 describe('resolveLiveMeterReadings generation publication', () => {
   it('publishes generation from a measured report', () => {
     const { setGenerationW, dispatcher } = buildGenerationDispatcher();
-    resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'measured', watts: 4_200 } }));
+    resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'measured', watts: 4_200 } }), {});
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(4_200, expect.any(Number));
   });
 
   it('publishes "no generator" from a measured report — it is an observation', () => {
     const { setGenerationW, dispatcher } = buildGenerationDispatcher();
-    resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'none' } }));
+    resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'none' } }), {});
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(null, expect.any(Number));
   });
 
   it('publishes NOTHING for a malformed generation signal, but still yields the meter readings', () => {
     const { setGenerationW, dispatcher } = buildGenerationDispatcher();
-    const readings = resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'unavailable' } }));
+    const readings = resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'unavailable' } }), {});
     expect(dispatcher.setGenerationW).not.toHaveBeenCalled();
     expect(readings).toEqual({ meterPowerW: { 'meter-main': 1_200 } });
   });
 
   it('publishes NOTHING from a failed read, leaving the held value to age out', () => {
     const { setGenerationW, dispatcher } = buildGenerationDispatcher();
-    expect(resolveLiveMeterReadings(setGenerationW, { state: 'unavailable' })).toBeNull();
+    expect(resolveLiveMeterReadings(setGenerationW, { state: 'unavailable' }, {})).toBeNull();
     expect(dispatcher.setGenerationW).not.toHaveBeenCalled();
   });
 });
@@ -64,9 +64,9 @@ describe('resolveLiveMeterReadings generation publication', () => {
 describe('resolveLiveMeterReadings readings', () => {
   it('carries the meters with the generation read beside them', () => {
     const { setGenerationW } = buildGenerationDispatcher();
-    expect(resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'measured', watts: 300 } })))
+    expect(resolveLiveMeterReadings(setGenerationW, measuredReport({ generation: { state: 'measured', watts: 300 } }), {}))
       .toEqual({ meterPowerW: { 'meter-main': 1_200 }, generationW: 300 });
-    expect(resolveLiveMeterReadings(setGenerationW, measuredReport({})))
+    expect(resolveLiveMeterReadings(setGenerationW, measuredReport({}), {}))
       .toEqual({ meterPowerW: { 'meter-main': 1_200 } });
   });
 
@@ -75,8 +75,15 @@ describe('resolveLiveMeterReadings readings', () => {
     const readings = resolveLiveMeterReadings(setGenerationW, measuredReport({
       meterPowerW: {},
       generation: { state: 'measured', watts: 900 },
-    }));
+    }), {});
     expect(readings).toEqual({ meterPowerW: {}, generationW: 900 });
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(900, expect.any(Number));
+  });
+
+  it('carries the import counters read beside the report', () => {
+    const { setGenerationW } = buildGenerationDispatcher();
+    const importCounters = { 'meter-main': { meterDeviceId: 'meter-main', importedKWh: 12_345, observedAtMs: 1_000 } };
+    expect(resolveLiveMeterReadings(setGenerationW, measuredReport({}), importCounters))
+      .toEqual({ meterPowerW: { 'meter-main': 1_200 }, importCounters });
   });
 });

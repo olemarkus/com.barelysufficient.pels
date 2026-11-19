@@ -306,10 +306,22 @@ const isHeldReadingOnLatch = (value: unknown, lastPowerW: unknown, lastTimestamp
     && isOptionalReplacedSince(value.replacedSinceMs, sinceMs);
 };
 
-/** The records written beside the sample latch: the open quarter, the month's peak, the held reading. */
+const isImportCounterAnchor = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && typeof value.meterDeviceId === 'string'
+  && isFiniteNumber(value.importedKWh) && value.importedKWh >= 0
+  && isFiniteNumber(value.observedAtMs)
+  && isFiniteNumber(value.bookedSinceKWh) && value.bookedSinceKWh >= 0
+  && typeof value.verified === 'boolean'
+  && isFiniteNumber(value.pendingStepKWh) && value.pendingStepKWh >= 0
+  && isFiniteNumber(value.pendingBookedKWh) && value.pendingBookedKWh >= 0
+);
+
+/** The records written beside the sample latch: the open quarter, the month's peak, the held reading, the counter. */
 const hasPlausibleLatchRecords = (value: Record<string, unknown>): boolean => (
   isOptionalCapacityQuarterOnSamplingTimeline(value.capacityQuarter, value.lastTimestamp)
   && isOptionalCapacityMonthlyPeak(value.capacityMonthlyPeak)
+  && (value.importCounter === undefined || isImportCounterAnchor(value.importCounter))
   && (value.heldReading === undefined || isHeldReadingOnLatch(value.heldReading, value.lastPowerW, value.lastTimestamp))
 );
 
@@ -448,6 +460,7 @@ const SALVAGE_STEPS: readonly SalvageStep[] = [
   )),
   salvageCapacityQuarter,
   salvageScalar('capacityMonthlyPeak', isCapacityMonthlyPeak),
+  salvageScalar('importCounter', isImportCounterAnchor),
   salvageDeviceBuckets,
   salvageScalar('meterIdentity', isPowerTrackerMeterIdentity),
   salvageScalar('unreliablePeriods', isUnreliablePeriodList),

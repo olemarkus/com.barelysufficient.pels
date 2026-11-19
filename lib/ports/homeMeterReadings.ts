@@ -8,6 +8,20 @@
  * two.
  */
 
+/**
+ * A whole-home meter's cumulative import counter (`meter_power.imported`) as
+ * Homey last held it: the kWh, and when the meter last changed the value. Import
+ * only, never netted against export. Whether a step between two of these is
+ * energy PELS may book is `lib/power/importCounter.ts`'s answer.
+ */
+export type MeterImportCounter = {
+  readonly meterDeviceId: string;
+  /** kWh; finite and not negative. */
+  readonly importedKWh: number;
+  /** When the meter last changed the value (Homey's `lastUpdated`). */
+  readonly observedAtMs: number;
+};
+
 /** One live read of the requested meters. */
 export type LiveMeterReadings = {
   /**
@@ -17,6 +31,13 @@ export type LiveMeterReadings = {
   readonly meterPowerW: Readonly<Record<string, number>>;
   /** Gross PV generation from the same report, when it carries one. */
   readonly generationW?: number;
+  /**
+   * The import counter of each requested meter that reports a usable one, by
+   * meter device id. Left out when none does: a meter without the counter, and
+   * a read of it that failed, are the same to the consumer, which keeps the
+   * counter it last accepted.
+   */
+  readonly importCounters?: Readonly<Record<string, MeterImportCounter>>;
 };
 
 /** One whole-home power sample, carrying the meter it was read from. */
@@ -29,6 +50,8 @@ export type MeterPowerSample = {
    * one that discards it discards the identity with it.
    */
   meterDeviceId: string;
+  /** That meter's import counter, read beside the power; absent when the read carried none. */
+  importCounter?: MeterImportCounter;
 };
 
 /**

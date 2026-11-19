@@ -129,9 +129,13 @@ export function resolveMainMeterRead(selection: MainMeterSelection): MainMeterRe
 export function readMeterSample(readings: LiveMeterReadings, meterDeviceId: string): MeterPowerSample | null {
   const powerW = readings.meterPowerW[meterDeviceId];
   if (powerW === undefined) return null;
-  return readings.generationW === undefined
-    ? { powerW, meterDeviceId }
-    : { powerW, generationW: readings.generationW, meterDeviceId };
+  const importCounter = readings.importCounters?.[meterDeviceId];
+  return {
+    powerW,
+    ...(readings.generationW === undefined ? {} : { generationW: readings.generationW }),
+    meterDeviceId,
+    ...(importCounter === undefined ? {} : { importCounter }),
+  };
 }
 
 // A sub-home's routing failure must not cost Main its sample.
