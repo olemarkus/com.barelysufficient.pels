@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
 import { BATTERY_RELEASE_RETRY_BACKOFF_MS } from '../../lib/battery/pendingHandBacks';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
-import type { BatteryCommandKeepAlive, BatteryControlRead } from '../../lib/ports/batteryControlOwner';
+import type { BatteryCommandKeepAlive, BatteryControlRead, LegacyBatteryTargetRead } from '../../lib/ports/batteryControlOwner';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { StorageCommand, StorageControlBinding } from '../../lib/ports/storageCommand';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
@@ -68,6 +68,7 @@ const buildOwner = (params: {
   mainMember?: boolean;
   fenced?: boolean;
   dryRun?: boolean;
+  readLegacyTarget?: (deviceId: string) => LegacyBatteryTargetRead;
   apply?: (command: StorageCommand) => Promise<{ requested: boolean }>;
 } = {}) => {
   const settings = params.settings ?? settingsStore();
@@ -82,7 +83,16 @@ const buildOwner = (params: {
         return params.apply ? params.apply(command) : { requested: true };
       },
     },
-    (deviceId) => batteries[deviceId] ?? { kind: 'unobserved', cause: 'unknown' },
+    {
+      readBatteryControl: (deviceId) => batteries[deviceId] ?? { kind: 'unobserved', cause: 'unknown' },
+      batteryAppActions: {
+        readLegacyTarget: params.readLegacyTarget ?? ((deviceId) => {
+          const battery = batteries[deviceId];
+          return battery?.kind === 'app_actions' ? { kind: 'resolved', target: battery.target }
+            : { kind: 'unavailable', reasonCode: 'battery_unread' };
+        }),
+      },
+    },
     () => params.mainMember ?? true,
     () => params.fenced ?? false,
     () => params.dryRun ?? false,
@@ -672,7 +682,10 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       settings,
       new BatteryManagedSettings(settings),
       { apply: async (command: StorageCommand) => { commands.push(command); return { requested: true }; } },
-      () => setpointBattery('anti_feed'),
+      {
+        readBatteryControl: () => setpointBattery('anti_feed'),
+        batteryAppActions: { readLegacyTarget: () => ({ kind: 'unavailable', reasonCode: 'not_app_actions' }) },
+      },
       () => true,
       () => false,
       () => dryRun,
@@ -882,6 +895,32 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
     expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'legacy_app_actions' }]);
     expect(removeKey).toHaveBeenCalledTimes(1);
+  });
+
+  it('backs off an unavailable legacy target and retries hand-back when due', async () => {
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', claimedAtMs: T0 - 60_000 } });
+    const readLegacyTarget = vi.fn<() => LegacyBatteryTargetRead>()
+      .mockReturnValue({ kind: 'unavailable', reasonCode: 'target_unavailable' });
+    const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: appActions() }, readLegacyTarget });
+
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(readLegacyTarget).toHaveBeenCalledOnce();
+    expect(commands).toEqual([]);
+    expect(settings.get(CLAIM_KEY)).not.toBeNull();
+
+    readLegacyTarget.mockReturnValue({ kind: 'resolved', target: TARGET });
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('not_released');
+    vi.setSystemTime(T0 + BATTERY_RELEASE_RETRY_BACKOFF_MS[0] - 1);
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(readLegacyTarget).toHaveBeenCalledOnce();
+
+    vi.setSystemTime(T0 + BATTERY_RELEASE_RETRY_BACKOFF_MS[0]);
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'legacy_app_actions' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
   it('reports an unreadable claim list without claiming an EV-only home holds a battery', async () => {

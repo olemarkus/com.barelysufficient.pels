@@ -273,6 +273,7 @@ describe('settingsUiApi', () => {
         readControlCapability: (deviceId: string) => (deviceId.startsWith('batt') ? 'drivable' : 'not_battery'),
         wasTakenOver: () => false,
         usesHomeyApiKey: () => false,
+        readLegacyRecovery: () => undefined,
       },
       log,
       error,
@@ -889,6 +890,7 @@ describe('settingsUiApi', () => {
         readControlCapability: (deviceId: string) => (deviceId.startsWith('batt') ? 'drivable' : 'not_battery'),
         wasTakenOver: (deviceId: string) => deviceId === 'batt-main',
         usesHomeyApiKey: () => false,
+        readLegacyRecovery: () => undefined,
       },
     });
 
@@ -923,6 +925,7 @@ describe('settingsUiApi', () => {
         ),
         wasTakenOver: () => false,
         usesHomeyApiKey: () => false,
+        readLegacyRecovery: () => undefined,
       },
     });
 

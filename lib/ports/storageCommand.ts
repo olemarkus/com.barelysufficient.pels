@@ -35,13 +35,15 @@ export type StoragePowerCommand = {
  * owner's decision (it holds the claim time); transport writes
  * unconditionally. A claim-less battery driven through its app's actions
  * (`app_actions`) runs its integration's own hand-back actions on the exact
- * recorded target. A legacy claim has no target: the adapter resolves it
- * through its upgrade policy; an unresolved target remains pending.
+ * recorded target. An older claim may have no target. The adapter either
+ * resolves it automatically or requires the owner to confirm the original
+ * device from its current candidates.
  */
 export type StorageReleaseCommand =
   | { kind: 'storage_release'; deviceId: string; handBack: 'claim_capability'; restoreClaimValue: string }
   | { kind: 'storage_release'; deviceId: string; handBack: 'app_actions'; target: AppActionControlTarget }
-  | { kind: 'storage_release'; deviceId: string; handBack: 'legacy_app_actions' };
+  | { kind: 'storage_release'; deviceId: string; handBack: 'legacy_app_actions' }
+  | { kind: 'storage_release'; deviceId: string; handBack: 'confirmed_legacy_app_actions'; targetId: string };
 
 export type StorageCommand = StoragePowerCommand | StorageReleaseCommand;
 

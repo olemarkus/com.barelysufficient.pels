@@ -6,6 +6,7 @@ import type {
   HomeBatterySetpointRange,
 } from '../../packages/contracts/src/types';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
+import type { BatteryRecovery, BatteryRecoveryCandidate } from '../../packages/contracts/src/batteryRecovery';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import type { StorageReleaseReason } from '../planContract/storageDecision';
 import type { AppActionControlTarget, StorageControlBinding, StorageClaimRejected } from './storageCommand';
@@ -120,6 +121,18 @@ export type BatteryControlRead =
     pacing: BatteryCommandPacing;
     controlMode: HomeBatteryControlMode;
   };
+
+/** A vendor's policy for claims that predate durable app-action targets. */
+export type LegacyBatteryTargetRead =
+  | { kind: 'resolved'; target: AppActionControlTarget }
+  | { kind: 'unavailable'; reasonCode: string }
+  | { kind: 'confirmation_required'; candidates: readonly BatteryRecoveryCandidate[] };
+
+/** Device transport reads the two authorities the battery control owner needs from inventory. */
+export type BatteryControlDeviceReads = {
+  readBatteryControl(deviceId: string): BatteryControlRead;
+  batteryAppActions: { readLegacyTarget(deviceId: string): LegacyBatteryTargetRead };
+};
 
 /**
  * Why PELS may not claim a battery now:
@@ -433,6 +446,10 @@ export type BatteryControlOwner = {
    * `homey_api_key_missing`): where its device page offers that key.
    */
   usesHomeyApiKey(deviceId: string): boolean;
+  /** The visible recovery obligation, when the old app-action claim needs the owner to act. */
+  readLegacyRecovery(deviceId: string): BatteryRecovery | undefined;
+  /** Resolve the same outstanding claim through explicit hand-back or confirmation of manual restoration. */
+  resolveLegacyRecovery(deviceId: string, body: unknown): Promise<void>;
   /**
    * The owner's Homey API key is about to be removed: hand back every battery
    * PELS holds through its app's actions first, then call `removeKey`. A
