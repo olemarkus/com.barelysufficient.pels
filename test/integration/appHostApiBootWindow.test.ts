@@ -20,6 +20,7 @@ import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
 import type { BackgroundCollectors } from '../../setup/appInit/startBackgroundCollectors';
 import { MockSettings } from '../mocks/homey';
+import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 
 const createHostApi = (
@@ -42,6 +43,10 @@ const createHostApi = (
     protected readonly smartTaskApi = {} as never;
 
     protected readonly smartTaskPayloads = {} as never;
+
+    public readonly mainTracker = partialDouble<HomeTrackerPersistence>({});
+
+    protected readonly shutdown = { isStopped: () => false };
 
     protected capacityFollowMonthPeak = false;
 
