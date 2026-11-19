@@ -238,6 +238,19 @@ describe('simulation action previews', () => {
     expect(status.reason).toEqual({ text: 'Would set level to 6 A (simulation)' });
   });
 
+  it('offers a problem report for an unanswered live level change', () => {
+    const device = steppedHold();
+    const unanswered = { ...device, execution: { ...device.execution, stepCommandUnanswered: true } };
+    expect(buildDeviceStatus(unanswered, false, 0).reason).toMatchObject({
+      text: 'Level change not confirmed — check the Flow that reports the level back', offersProblemReport: true,
+    });
+    expect(buildDeviceStatus(unanswered, true, 0).reason).not.toHaveProperty('offersProblemReport');
+    expect(buildDeviceStatus(device, false, 0).reason).not.toHaveProperty('offersProblemReport');
+    const identifying = { ...unanswered, carIdentificationState: 'timed_out' as const };
+    expect(buildDeviceStatus(identifying, false, 0).reason).toHaveProperty('offersCarConfirmation', true);
+    expect(buildDeviceStatus(identifying, false, 0).reason).not.toHaveProperty('offersProblemReport');
+  });
+
   it('keeps a stepped thermostat target consistent with its simulated target command', () => {
     const device = steppedHold();
     const status = buildDeviceStatus({ ...device,

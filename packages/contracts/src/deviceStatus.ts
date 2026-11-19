@@ -44,6 +44,8 @@ export type DeviceStatus = {
     offersHomeyEnergySetup?: true;
     /** PELS will not identify the charger's car by itself: the card offers to confirm it. */
     offersCarConfirmation?: true;
+    /** The card can open a problem report about this reason. */
+    offersProblemReport?: true;
     text: string;
     tone?: 'neutral' | 'warning';
     detail?: string;

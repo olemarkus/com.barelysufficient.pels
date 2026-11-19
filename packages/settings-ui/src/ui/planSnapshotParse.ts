@@ -40,6 +40,7 @@ const isStatusReason = (value: unknown): boolean => {
     && isOptionalOffer(reason.offersPhaseSetting)
     && isOptionalOffer(reason.offersHomeyEnergySetup)
     && isOptionalOffer(reason.offersCarConfirmation)
+    && isOptionalOffer(reason.offersProblemReport)
     && isCountdown(reason.countdown);
 };
 

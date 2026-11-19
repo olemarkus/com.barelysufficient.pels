@@ -4,6 +4,7 @@ import type {
   SupportReportRequest,
   SupportReportSubject,
 } from '../../../contracts/src/supportReport.ts';
+import { SUPPORT_REPORT_PROBLEM_MAX_LENGTH } from '../../../shared-domain/src/supportReport.ts';
 import {
   draftFromRequest,
   isDeviceSupportRequest,
@@ -24,10 +25,26 @@ export type SupportReportApi = {
   send(id: string): Promise<SupportReportResponse>;
 };
 
+const sameSubject = (left: SupportReportSubject, right: SupportReportSubject): boolean => (
+  left.kind === right.kind && left.homeId === right.homeId
+  && ('deviceId' in left ? left.deviceId : undefined) === ('deviceId' in right ? right.deviceId : undefined)
+);
+
+const seedDescription = (message: string): string => {
+  const text = message.trim();
+  // Keep room for the owner to describe what they need help with.
+  const limit = Math.floor(SUPPORT_REPORT_PROBLEM_MAX_LENGTH / 2) - 2;
+  if (text.length <= limit) return `${text}\n\n`;
+  const prefix = text.slice(0, limit);
+  const boundary = prefix.search(/\s+\S*$/u);
+  return `${(boundary > 0 ? prefix.slice(0, boundary) : prefix).trimEnd()}\n\n`;
+};
+
 /** A page-session draft. Navigation never writes the user's text to settings or browser storage. */
 export class SupportReportController {
   private state: SupportReportViewState;
   private operationGeneration = 0;
+  private seededProblem: string | null = null;
 
   constructor(
     private readonly api: SupportReportApi, private readonly render: (state: SupportReportViewState) => void,
@@ -48,7 +65,7 @@ export class SupportReportController {
     this.show();
   }
 
-  selectContext(subject: SupportReportSubject, atMs?: number): void {
+  selectContext(subject: SupportReportSubject, atMs?: number, message?: string): void {
     if (reportIsLocked(this.state)) {
       this.state = {
         ...this.state, notice: 'Your previous report is still open. Finish it or start another report first.',
@@ -58,8 +75,16 @@ export class SupportReportController {
       // An unsent description follows the user to the new context; a sent one does not, and
       // neither does one written for the other kind of report (a problem, a device support request).
       const sameKind = isDeviceSupportRequest(this.state.draft.subject) === isDeviceSupportRequest(subject);
+      const previous = this.state.draft;
       const draft = this.state.report?.submission.state === 'sent' || !sameKind
-        ? context : { ...this.state.draft, subject, when: context.when, atMs: context.atMs };
+        ? context : { ...previous, subject, when: context.when, atMs: context.atMs };
+      if (message && (!draft.problem.trim() || draft.problem === this.seededProblem)) {
+        this.seededProblem = seedDescription(message);
+        draft.problem = this.seededProblem;
+      } else if (!sameSubject(previous.subject, subject) && draft.problem === this.seededProblem) {
+        draft.problem = '';
+        this.seededProblem = null;
+      }
       this.state = { ...this.state, report: null, notice: '', draft };
     }
     this.show();
@@ -67,7 +92,10 @@ export class SupportReportController {
 
   edit(draft: ReportDraft): void {
     if (reportIsLocked(this.state)) return;
-    this.state = { ...this.state, draft, report: null, notice: '' };
+    const changedSubject = !sameSubject(draft.subject, this.state.draft.subject);
+    const next = changedSubject && draft.problem === this.seededProblem ? { ...draft, problem: '' } : draft;
+    if (changedSubject) this.seededProblem = null;
+    this.state = { ...this.state, draft: next, report: null, notice: '' };
     this.show();
   }
 
@@ -82,6 +110,7 @@ export class SupportReportController {
           ? { report: null, draft: report ? draftFromRequest(report.document.request) : draft } : {}) };
       return;
     }
+    if (response.report.submission.state === 'sent') this.seededProblem = null;
     this.state = { ...this.state, report: response.report, notice: reportSubmissionMessage(response.report) };
   }
 
@@ -199,6 +228,7 @@ export class SupportReportController {
   startAnother(): void {
     if (this.state.operation !== 'idle' || this.state.report?.submission.state === 'sending') return;
     this.operationGeneration += 1;
+    this.seededProblem = null;
     this.state = {
       ...this.state, draft: newReportDraft(this.state.draft.subject), report: null, recoveryId: null, notice: '',
     };

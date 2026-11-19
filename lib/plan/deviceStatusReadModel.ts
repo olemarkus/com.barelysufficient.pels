@@ -165,8 +165,7 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
   const resolved = { ...device, stateKind: kind };
   const stepped = device.steppedLoad;
   if (stepped) {
-    return resolveUnansweredStepLine(device, dryRun)
-      ?? resolveBinarySurplusReasonLine(device, kind)
+    return resolveBinarySurplusReasonLine(device, kind)
       ?? resolveSteppedStatusLine(resolved, stepped.profile, 0, dryRun)
       // Settling at a reduced rung does not end the hold or change its cause.
       ?? (held ? resolveHeldCardReasonLine(
@@ -291,9 +290,27 @@ function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] 
   return device.hasPowerReading ? null : { text: NO_POWER_READING_REASON_TEXT };
 }
 
+function buildUnansweredStepReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
+  if (!device.steppedLoad) return null;
+  const text = resolveUnansweredStepLine(device, dryRun);
+  if (text === null) return null;
+  const phase = resolvePhaseSettingOffer(device);
+  const car = resolveCarConfirmationOffer(device);
+  const countdown = buildCountdown(device, text, nowMs);
+  return {
+    text,
+    ...(countdown ? { countdown } : {}),
+    ...phase,
+    ...car,
+    ...(!phase.offersPhaseSetting && !car.offersCarConfirmation ? { offersProblemReport: true } : {}),
+  };
+}
+
 function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
   if (kind === 'unavailable' || kind === 'manual') return resolveNotControlledReason(device, kind);
+  const unansweredStep = buildUnansweredStepReason(device, dryRun, nowMs);
+  if (unansweredStep) return unansweredStep;
   let text = resolveReason(device, dryRun);
   const identification = resolveCarIdentificationReason(device, text);
   if (identification) return identification;
@@ -304,7 +321,7 @@ function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: 
       targetTemperatureC: device.temperature?.currentTarget });
     text = idle.statusLine;
   }
-  if (text === null || text === '') return null;
+  if (!text) return null;
   // A fairness hold lasts until other devices resume, not until a timer runs out:
   // the shed cooldown the cycle may carry beside it is not this line's countdown.
   const fairnessLine = device.steppedFairnessHold !== undefined

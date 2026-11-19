@@ -47,6 +47,50 @@ describe('support report controller', () => {
     });
   });
 
+  it('replaces untouched warning text and clears it when the owner changes device', () => {
+    const { controller, current, api } = setup();
+    const heater = { kind: 'device', homeId: 'area-1', deviceId: 'heater' } as const;
+    const app = { kind: 'app', homeId: 'main' } as const;
+    controller.edit({ ...current().draft, problem: '' });
+    controller.selectContext(heater, undefined, 'Level change not confirmed');
+    expect(current().draft).toMatchObject({ subject: heater, problem: 'Level change not confirmed\n\n' });
+    controller.selectContext(app, undefined, 'Review your settings');
+    expect(current().draft).toMatchObject({ subject: app, problem: 'Review your settings\n\n' });
+    controller.edit({ ...current().draft, subject: heater });
+    expect(current().draft.problem).toBe('');
+    expect(api.prepare).not.toHaveBeenCalled();
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('leaves room for the owner’s question after a long recommendation', () => {
+    const { controller, current } = setup();
+    controller.edit({ ...current().draft, problem: '' });
+    controller.selectContext({ kind: 'app', homeId: 'main' }, undefined, 'Recommendation '.repeat(120));
+    const { problem } = current().draft;
+    expect(problem.length).toBeLessThanOrEqual(750);
+    expect(problem).toMatch(/Recommendation\n\n$/u);
+  });
+
+  it('keeps an edited description when opening the form from another warning', () => {
+    const { controller, current } = setup();
+    controller.edit({ ...current().draft, problem: '' });
+    controller.selectContext({ kind: 'app', homeId: 'main' }, undefined, 'Review your settings');
+    const problem = `${current().draft.problem}What should I change?`;
+    controller.edit({ ...current().draft, problem });
+    controller.selectContext({ kind: 'device', homeId: 'main', deviceId: 'heater' }, undefined, 'Other warning');
+    expect(current().draft.problem).toBe(problem);
+  });
+
+  it('keeps the subject and description while an earlier report is being sent', async () => {
+    const { controller, api, current } = setup();
+    const before = current().draft;
+    const sending = controller.submit();
+    controller.selectContext({ kind: 'device', homeId: 'main', deviceId: 'other-heater' }, undefined, 'Other warning');
+    expect(current().draft).toEqual(before);
+    await sending;
+    expect(api.prepare).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ subject: before.subject }));
+  });
+
   it('asks for a device description before sending a support request', async () => {
     const { controller, api, current } = setup();
     controller.selectContext({ kind: 'device_support', homeId: 'main', deviceId: 'relay' });

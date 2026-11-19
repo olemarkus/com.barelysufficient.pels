@@ -35,6 +35,7 @@ import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
 import { OverviewControlWarningIcon } from './OverviewControlWarning.tsx';
+import { openContextualProblemReport } from '../problemReportAction.ts';
 
 const stopActivation = (event: Event): void => {
   event.stopPropagation();
@@ -331,7 +332,7 @@ type PlanCardShellProps = {
 // The frame every plan card shares: the surface that opens device details and
 // the header with the title, the status chip and the smart-task chip.
 export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, children }: PlanCardShellProps) => {
-  const stateKind = dev.status.kind;
+  const { kind: stateKind, reason } = dev.status;
   const cardClasses = [
     `pels-surface-card device-row ${PLAN_CARD_KIND_CLASS[kind]} clickable`,
     isDimmedDisplayStateKind(stateKind) ? 'plan-card--dim' : '',
@@ -386,6 +387,20 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, 
           }}
         >
           Set phase
+        </button>
+      )}
+      {reason?.offersProblemReport === true && (
+        <button
+          type="button"
+          class="hy-nostyle plan-card__quiet-link"
+          onClick={(event) => {
+            event.stopPropagation();
+            openContextualProblemReport({ deviceId: dev.id, message: reason.text });
+          }}
+          onKeyDown={stopActivation}
+          onKeyUp={stopActivation}
+        >
+          Report a problem
         </button>
       )}
       {dev.status.reason?.offersCarConfirmation === true && (

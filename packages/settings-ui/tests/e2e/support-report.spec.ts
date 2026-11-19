@@ -1,10 +1,14 @@
+import type { DeviceStatus } from '../../../contracts/src/deviceStatus';
 import type { PreparedSupportReport, SupportReportRequest } from '../../../contracts/src/supportReport';
 import { supportReportFixture } from '../../test/helpers/supportReportFixture';
 import { expect, test, injectHomeyHostCss, type Page } from './fixtures/test';
 import { readMdSelectHeadlineText, readMdValue, setMdValue } from './fixtures/materialWeb';
 
 type ReportStubWindow = Window & {
-  __PELS_HOMEY_STUB__?: { apiHandlers: Record<string, (body: unknown) => unknown> };
+  __PELS_HOMEY_STUB__?: {
+    settings?: Record<string, unknown>;
+    apiHandlers: Record<string, (body: unknown) => unknown>;
+  };
   Homey: { __stub: { setApiHandler: (key: string, handler: (body: unknown) => unknown) => void } };
   reportRequests: SupportReportRequest[];
   reportSends: unknown[];
@@ -19,7 +23,7 @@ const installReportStub = async (page: Page, uncertain = false, expired = false)
     stub.reportSends = [];
     stub.reportChecks = 0;
     let report: PreparedSupportReport = template;
-    stub.__PELS_HOMEY_STUB__ = { apiHandlers: {
+    stub.__PELS_HOMEY_STUB__ = { settings: { setup_recommendation_dismissals: {} }, apiHandlers: {
       // The stored rows behind the report's activity: a report row leaves out the id, session and tone.
       'GET /ui_device_log': () => ({
         version: 2,
@@ -94,6 +98,84 @@ test('keeps a draft through Back, sends it in one step, and starts fresh after D
   await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('');
   await expect(panel.getByRole('heading', { name: 'Report sent' })).toHaveCount(0);
 });
+test('opens a contextual report from a level warning by keyboard or from the device page', async ({ page }, testInfo) => {
+  await injectHomeyHostCss(page);
+  await installReportStub(page);
+  await page.goto('/');
+  const card = page.locator('#plan-cards [data-device-id="dev_heatpump"]');
+  await expect(card).toBeVisible();
+  const reason = 'Level change not confirmed — check the Flow that reports the level back';
+  await page.evaluate((text) => {
+    type Plan = { devices: Array<{ id: string; status: DeviceStatus }> };
+    const { Homey } = window as unknown as { Homey: { __stub: {
+      getSetting: (key: string) => Plan;
+      setSetting: (key: string, value: boolean) => void;
+      setApiHandler: (key: string, handler: () => { plan: Plan }) => void;
+      emitHomeyEvent: (event: string, value: Plan) => void;
+    } } };
+    Homey.__stub.setSetting('capacity_dry_run', false);
+    const plan = Homey.__stub.getSetting('plan_snapshot');
+    const devices = plan.devices.map((device) => device.id === 'dev_heatpump'
+      ? { ...device, status: { ...device.status, reason: { text, offersProblemReport: true as const } } }
+      : device);
+    const updated = { ...plan, devices };
+    Homey.__stub.setApiHandler('GET /ui_plan', () => ({ plan: updated }));
+    Homey.__stub.emitHomeyEvent('plan_updated', updated);
+  }, reason);
+  const reportAction = card.getByRole('button', { name: 'Report a problem' });
+  await expect(card).toContainText(reason);
+  await expect(reportAction).toBeVisible();
+  await card.screenshot({ path: testInfo.outputPath('level-warning-card.png') });
+  const panel = page.locator('#report-problem-panel');
+  const overlay = page.locator('#device-detail-overlay');
+  await reportAction.press('Enter');
+  await expect(panel).toBeVisible();
+  await expect(overlay).toBeHidden();
+  await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe(`${reason}\n\n`);
+  await expect.poll(() => readMdSelectHeadlineText(page, '[data-report-field="device"]')).toBe('Living Room Heat Pump');
+  await expect(panel.locator('[data-report-stage]')).toBeFocused();
+  expect(await page.evaluate(() => (window as unknown as ReportStubWindow).reportRequests)).toHaveLength(0);
+  expect(new URL(page.url()).searchParams.get('reportDeviceId')).toBe('dev_heatpump');
+  expect(page.url()).not.toContain('Level');
+
+  await page.goBack();
+  await card.click();
+  await expect(overlay).toBeVisible();
+  const heroAction = overlay.locator('#device-detail-live-report');
+  await expect(heroAction).toBeVisible();
+  await overlay.locator('#device-detail-live-status').screenshot({ path: testInfo.outputPath('level-warning-hero.png') });
+  await heroAction.click();
+  await expect(panel).toBeVisible();
+  await expect(overlay).toBeHidden();
+  await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe(`${reason}\n\n`);
+});
+
+test('opens an editable app report from an actionable recommendation', async ({ page }, testInfo) => {
+  await injectHomeyHostCss(page);
+  await installReportStub(page);
+  await page.goto('/?page=settings/recommendations');
+  const card = page.locator('#setup-recommendations-root article').filter({ hasText: 'Set your export price' });
+  const ask = card.getByRole('button', { name: 'Ask about this' });
+  await expect(ask).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Dismiss' })).toBeVisible();
+  expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await card.screenshot({ path: testInfo.outputPath('contextual-recommendation.png') });
+  const message = await card.locator('.pels-card-supporting').innerText();
+  await ask.click();
+  const panel = page.locator('#report-problem-panel');
+  await expect(panel).toBeVisible();
+  const description = `Set your export price\n\n${message}\n\n`;
+  await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe(description);
+  await expect.poll(() => readMdSelectHeadlineText(page, '[data-report-field="device"]')).toBe('App or several devices');
+  expect(await page.evaluate(() => (window as unknown as ReportStubWindow).reportSends)).toHaveLength(0);
+  await setMdValue(page, '[data-report-field="problem"]', `${description}Where do I find this?`);
+  await panel.locator('[data-report-action="send"]').click();
+  await expect(panel.getByRole('heading', { name: 'Report sent' })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as ReportStubWindow).reportRequests)).toMatchObject([{
+    subject: { kind: 'app', homeId: 'main' }, problem: `${description}Where do I find this?`,
+  }]);
+});
+
 test('checks an uncertain send without another submission and restores status after reload', async ({ page }) => {
   await installReportStub(page, true);
   await page.goto('/?page=settings/report-problem');

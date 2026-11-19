@@ -12,6 +12,7 @@ import { renderSupportReportView, type SupportForumTopic } from './views/Support
 import { showToast } from './toast.ts';
 import { findHomeyDeviceName, loadHomeyDeviceList } from './homeyDeviceList.ts';
 import { readSetupMarket } from './setupPathFacts.ts';
+import { PROBLEM_REPORT_ACTION, type ProblemReportAction } from './problemReportAction.ts';
 
 const APP_FORUM_TOPIC = { url: 'https://community.homey.app/t/147496', label: 'PELS forum thread' };
 const NORWEGIAN_FORUM_TOPIC = { url: 'https://community.homey.app/t/153359', label: 'Norwegian PELS thread' };
@@ -96,15 +97,15 @@ const controller = new SupportReportController({
   focusReportStage(surface, previousStage);
 });
 
-const selectReportContext = (subject: SupportReportSubject, atMs?: number): void => {
+const selectReportContext = (subject: SupportReportSubject, atMs?: number, message?: string): void => {
   contextInitialized = true;
-  controller.selectContext(subject, atMs);
+  controller.selectContext(subject, atMs, message);
 };
 
 /** The subject a device page or Find a device chose for the report it opens. */
-const selectEntryContext = (subject: SupportReportSubject, atMs?: number): void => {
+const selectEntryContext = (subject: SupportReportSubject, atMs?: number, message?: string): void => {
   contextJustSelected = true;
-  selectReportContext(subject, atMs);
+  selectReportContext(subject, atMs, message);
 };
 
 // A device support request stays on screen only when Find a device just opened it or the URL
@@ -186,19 +187,21 @@ const refreshReportDevices = async (request: number): Promise<void> => {
   controller.setDevices([...devices.values()].sort((a, b) => a.name.localeCompare(b.name)), unavailable);
 };
 
+const readDeviceReportHome = async (deviceId: string): Promise<string | undefined> => {
+  await refreshHomeScope();
+  if (readHomeMembership().state !== 'resolved') {
+    void showToast('Could not identify this device’s home. Try opening the report again.', 'warn');
+    return undefined;
+  }
+  return getHomeIdForUiDevice(deviceId);
+};
+
 const openDeviceReport = async (button: HTMLElement, openPanel: (panel: string) => void,
   closeDeviceDetail: () => void): Promise<void> => {
   const deviceId = button.dataset.reportDeviceId;
   if (!deviceId) return;
-  let homeId = button.dataset.reportHomeId;
-  if (!homeId) {
-    await refreshHomeScope();
-    if (readHomeMembership().state !== 'resolved') {
-      void showToast('Could not identify this device’s home. Try opening the report again.', 'warn');
-      return;
-    }
-    homeId = getHomeIdForUiDevice(deviceId);
-  }
+  const homeId = button.dataset.reportHomeId || await readDeviceReportHome(deviceId);
+  if (!homeId) return;
   const atMs = button.dataset.reportAtMs === undefined ? undefined : Number(button.dataset.reportAtMs);
   selectEntryContext({ kind: 'device', homeId, deviceId },
     atMs !== undefined && Number.isFinite(atMs) ? atMs : undefined);
@@ -219,6 +222,23 @@ export const openDeviceSupportRequest = (deviceId: string, openPanel: (panel: st
 export const initSupportReportNavigation = (
   openPanel: (panel: string) => void, closeDeviceDetail: () => void,
 ): void => {
+  document.addEventListener(PROBLEM_REPORT_ACTION, (event) => {
+    const { deviceId, message } = (event as CustomEvent<ProblemReportAction>).detail;
+    const open = (subject: SupportReportSubject): void => {
+      selectEntryContext(subject, undefined, message);
+      closeDeviceDetail();
+      openPanel(SUPPORT_REPORT_PANEL);
+      document.querySelector<HTMLElement>('#support-report-root [data-report-stage]')?.focus();
+    };
+    if (!deviceId) {
+      // The Recommendations page is app-wide, independent of the Overview home selection.
+      open({ kind: 'app', homeId: MAIN_HOME_ID });
+      return;
+    }
+    void readDeviceReportHome(deviceId).then((homeId) => {
+      if (homeId) open({ kind: 'device', homeId, deviceId });
+    });
+  });
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
