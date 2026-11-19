@@ -4,7 +4,7 @@
  * to be taken, how its rows make the domain state, and its legacy import.
  *
  * `read` answers every row whose JSON parses and that `accept` takes, by key.
- * A row that does not is the store's own damage, regenerable by ruling: it is
+ * An explicit DROP_JSON_ROW requests routine deletion. A malformed row is
  * deleted as read and said once, so it neither costs the rows around it nor
  * lingers to be re-logged on every boot. `write` makes the table hold exactly
  * `next`, upserting the rows whose value differs from the diff base and
@@ -42,6 +42,9 @@ export const parseJsonRow = (json: string): unknown => {
 /** Equal by reference, or else by JSON: free for a value that was not replaced. */
 export const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
 
+/** Explicit deletion requested by the row owner, which owns the reason and its logging. */
+export const DROP_JSON_ROW = Symbol('dropJsonRow');
+
 export type JsonRowTable<T> = {
   /** The rows `accept` takes, by key, in key order; the rest are deleted. Throws only on I/O. */
   read(): Map<string, T>;
@@ -56,13 +59,13 @@ export type JsonRowTable<T> = {
 /**
  * The table `table` with a text primary key and a JSON column, named by
  * `columns`, created when absent. `accept` turns a parsed row into its value,
- * or answers `undefined` for a row that holds none.
+ * returns DROP_JSON_ROW for an expected deletion, or returns undefined for damage.
  */
 export const createJsonRowTable = <T>(
   db: UserdataDatabase,
   table: string,
   [keyColumn, jsonColumn]: readonly [key: string, json: string],
-  accept: (value: unknown, key: string) => T | undefined,
+  accept: (value: unknown, key: string) => T | typeof DROP_JSON_ROW | undefined,
 ): JsonRowTable<T> => {
   db.exec(`CREATE TABLE IF NOT EXISTS ${table} (
   ${keyColumn} TEXT PRIMARY KEY NOT NULL, ${jsonColumn} TEXT NOT NULL
@@ -78,12 +81,12 @@ export const createJsonRowTable = <T>(
     for (const row of load.all() as Array<{ key: string; json: string }>) {
       const parsed = parseJsonRow(row.json);
       const value = parsed === undefined ? undefined : accept(parsed, row.key);
-      if (value === undefined) {
-        storeLogger.error({ event: 'userdata_row_quarantined', table, key: row.key });
-        remove.run(row.key);
-      } else {
+      if (value !== undefined && value !== DROP_JSON_ROW) {
         rows.set(row.key, value);
+        continue;
       }
+      if (value === undefined) storeLogger.error({ event: 'userdata_row_quarantined', table, key: row.key });
+      remove.run(row.key);
     }
     base = { rows: new Map(rows), rollbacks: db.rollbacks() };
     return rows;

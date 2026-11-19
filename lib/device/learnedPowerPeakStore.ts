@@ -12,7 +12,7 @@
  */
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { createJsonRowTable } from '../store/jsonRowTable';
+import { createJsonRowTable, DROP_JSON_ROW } from '../store/jsonRowTable';
 import {
   hasLegacyImportMark,
   importListedLegacySettingsKey,
@@ -27,6 +27,8 @@ import { normalizeError } from '../utils/errorUtils';
 import { DEVICE_POWER_PEAKS } from '../utils/settingsKeys';
 import {
   adoptPersistedLearnedPeaks,
+  exceedsLearnedPeakCeiling,
+  parseLearnedPeakEntry,
   parseLearnedPeaks,
   type LearnedPeak,
   type LearnedPeaksByDeviceId,
@@ -46,10 +48,12 @@ export type LearnedPowerPeakRepository = MarkedLegacyImport<LearnedPeaksByDevice
   write(peaks: LearnedPeaksByDeviceId): void;
 };
 
-/** One stored row as a peak: the same entry rule the settings blob was read with. */
-const acceptPeakRow = (value: unknown, deviceId: string): LearnedPeak | undefined => (
-  parseLearnedPeaks({ [deviceId]: value })[deviceId]
-);
+const acceptPeakRow = (value: unknown, deviceId: string): LearnedPeak | typeof DROP_JSON_ROW | undefined => {
+  const peak = parseLearnedPeakEntry(value, deviceId);
+  if (!peak || !exceedsLearnedPeakCeiling(peak)) return peak;
+  moduleLogger.info({ event: 'device_power_peak_dropped', reason: 'above_plausible_ceiling', deviceId, kw: peak.kw });
+  return DROP_JSON_ROW;
+};
 
 export const createLearnedPowerPeakRepository = (db: UserdataDatabase): LearnedPowerPeakRepository => {
   const devices = createJsonRowTable<LearnedPeak>(db, 'device_power_peaks', ['device_id', 'peak_json'], acceptPeakRow);
