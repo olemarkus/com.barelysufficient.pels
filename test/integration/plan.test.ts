@@ -447,6 +447,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('limits overshoot-entry contributors to the largest positive deltas', async () => {
+    useOrdinaryCapacityClock();
     const devices = await Promise.all([
       buildOnOffLoad('dev-1', 'One', 500),
       buildOnOffLoad('dev-2', 'Two', 500),
@@ -1240,6 +1241,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('keeps device shed until headroom exceeds restore margin', async () => {
+    useOrdinaryCapacityClock();
     // This test verifies hysteresis behavior:
     // 1. Device gets shed during overshoot
     // 2. Device stays shed when headroom is positive but below restore margin
@@ -2744,6 +2746,7 @@ describe('Dry run mode', () => {
   afterEach(async () => {
     await cleanupApps();
     vi.clearAllTimers();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
   });
 
   it('defaults to dry run mode when capacity_dry_run setting is not configured', async () => {
@@ -3349,6 +3352,7 @@ describe('Dry run mode', () => {
 
 
   it('should not consider devices already at shed temperature as candidates', async () => {
+    useOrdinaryCapacityClock();
     const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 20); // Normal temp
     await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
