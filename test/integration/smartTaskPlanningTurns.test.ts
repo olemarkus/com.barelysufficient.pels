@@ -172,6 +172,51 @@ describe('bounded smart-task planning turns', () => {
       .toEqual(before?.hours.filter((hour) => hour.plannedKWh > 0));
   });
 
+  it.each([
+    { scenario: 'backfills a missing rank', savedRank: undefined },
+    { scenario: 'retains an existing rank until a real revision', savedRank: 4 },
+  ])('$scenario without holding a lower task', ({ savedRank }) => {
+    const laterIsCheaper = () => prices().map((period) => ({
+      ...period, price: 100 - period.price, moneyPrice: 100 - period.moneyPrice,
+    }));
+    const before = createHarness(2);
+    before.setPriceRead(laterIsCheaper);
+    before.tick(START_MS);
+    before.tick(START_MS + 30_000);
+    const saved = structuredClone(before.recorder.getActivePlansSnapshot());
+    for (const { latest, original } of Object.values(saved.plansByDeviceId)) {
+      if (latest === null) throw new Error('Expected a committed plan');
+      delete latest.allocationRank;
+      if (original) delete original.allocationRank;
+    }
+    const high = saved.plansByDeviceId['load-1'].latest;
+    if (high === null) throw new Error('Expected a committed higher plan');
+    if (savedRank !== undefined) high.allocationRank = savedRank;
+    const home = createHarness(2, () => saved);
+    home.setPriceRead(laterIsCheaper);
+    const settleAt = START_MS + HOUR_MS;
+    const reports = home.tick(settleAt);
+    expect(freshIds(reports)).toEqual(['load-1']);
+    expect(reports[0].diagnostic.allocationRank).toBe(1);
+    expect(home.recorder.getActivePlan('load-1')?.latest).toEqual({
+      ...high, allocationRank: savedRank ?? 1,
+    });
+    expect(home.recorder.getActivePlan('load-1')?.original).toEqual(saved.plansByDeviceId['load-1'].original);
+
+    const lower = home.evaluate(settleAt + 1_000, SERVING_LANE)
+      .find(({ evaluation }) => evaluation.deviceId === 'load-2');
+    expect(lower?.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { frozenRead: true } });
+    expect(lower?.diagnostic.reasonCode).not.toBe('objective_waiting_for_plan');
+
+    if (savedRank === undefined) expect(home.recorder.flushIfDirty()).toBe(true);
+    const persisted = structuredClone(home.recorder.getActivePlansSnapshot());
+    const restarted = createHarness(2, () => persisted);
+    restarted.setPriceRead(laterIsCheaper);
+    restarted.tick(settleAt + HOUR_MS);
+    expect(restarted.recorder.getActivePlan('load-1')?.latest)
+      .toEqual(persisted.plansByDeviceId['load-1'].latest);
+  });
+
   it('serves committed plans without price reads or building policy horizons', () => {
     const home = createHarness(2);
     home.tick(START_MS);
