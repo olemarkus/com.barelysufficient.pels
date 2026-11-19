@@ -3327,7 +3327,9 @@ describe('periodic snapshot refresh scheduling', () => {
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
       ]),
     });
-    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => ({
+      ...originalGetTriggerCard(cardId),
       trigger: (_tokens?: object, state?: object) => (
         (state as { deviceId?: string } | undefined)?.deviceId === 'dev-1'
           ? Promise.reject(new Error('boom'))
@@ -3416,7 +3418,9 @@ describe('periodic snapshot refresh scheduling', () => {
       ]),
     });
     const trigger = vi.fn().mockResolvedValue(true);
-    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => ({
+      ...originalGetTriggerCard(cardId),
       trigger,
       registerRunListener: vi.fn(),
       registerArgumentAutocompleteListener: vi.fn(),
@@ -3488,7 +3492,9 @@ describe('periodic snapshot refresh scheduling', () => {
       ]),
     });
     const trigger = vi.fn().mockResolvedValue(true);
-    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => ({
+      ...originalGetTriggerCard(cardId),
       trigger,
       registerRunListener: vi.fn(),
       registerArgumentAutocompleteListener: vi.fn(),
@@ -3558,7 +3564,9 @@ describe('periodic snapshot refresh scheduling', () => {
       ]),
     });
     const trigger = vi.fn().mockResolvedValue(true);
-    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => ({
+      ...originalGetTriggerCard(cardId),
       trigger,
       registerRunListener: vi.fn(),
       registerArgumentAutocompleteListener: vi.fn(),
