@@ -4,7 +4,7 @@ import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../cont
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
   formatPlanHistoryDeadlineLine,
-  formatPlanHistoryMissedReason,
+  formatPlanHistoryDeliveryReason,
   formatPlanHistoryObservedCoverage,
   formatPlanHistoryOvershootLine,
   formatPlanHistoryProgressLine,
@@ -36,15 +36,9 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   // the target by > 5 °C / > 10 %. Null on the other outcomes so the line is
   // suppressed cleanly — view never branches on `outcome` itself.
   const overshootLine = formatPlanHistoryOvershootLine(entry);
-  // Missed-row reason note: muted single-sentence "why" for Missed entries so
-  // the user sees the cause without tapping through to the detail hero. Rendered
-  // with a "Why:" lead-in (matching the detail hero) so it reads distinctly from
-  // the same-tone coverage line below it, and folded into the row aria-label so
-  // screen readers announce the cause. Sourced from the shared
-  // `formatPlanHistoryMissedReason` helper, which also feeds runtime log
-  // breadcrumbs — `feedback_ui_text_shared_with_logs.md`. Producer returns null
-  // on non-missed outcomes so the view never branches on `outcome` itself.
-  const missedReasonLine = formatPlanHistoryMissedReason(entry);
+  // Shared delivery evidence lets the archive explain a miss or confirmed
+  // device idle without having to open the run.
+  const reasonLine = formatPlanHistoryDeliveryReason(entry);
   // Muted "Cost ≈ X kr · Y kWh delivered" meta line from the persisted
   // delivery/cost totals, at WHOLE-kroner precision — the list-specific producer
   // matches the ISO-week divider heading directly above (whole-kr roll-up) and
@@ -65,8 +59,8 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
       class="pels-surface-card plan-history-card plan-history-card--link"
       data-tone={cardTone}
       aria-label={
-        missedReasonLine
-          ? `Past smart task ${deadlineLine}. Why: ${missedReasonLine}`
+        reasonLine
+          ? `Past smart task ${deadlineLine}. Why: ${reasonLine}`
           : `Past smart task ${deadlineLine}`
       }
       href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
@@ -92,9 +86,9 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
           {reachedAtLine && <span class="plan-history-card__reached">  ·  {reachedAtLine}</span>}
         </div>
       )}
-      {missedReasonLine && (
+      {reasonLine && (
         <div class="plan-history-card__reason">
-          <span class="plan-history-card__reason-label">Why:</span> {missedReasonLine}
+          <span class="plan-history-card__reason-label">Why:</span> {reasonLine}
         </div>
       )}
       {overshootLine && (

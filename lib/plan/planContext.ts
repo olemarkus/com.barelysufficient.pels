@@ -150,6 +150,8 @@ export type MeasuredPower = {
   drawKw: number;
   /** When the meter took this reading, ms. */
   sampledAtMs: number;
+  /** The phase sample's admission time, if Homey supplied trusted phase readings. */
+  phaseSampledAtMs: number | null;
   /**
    * The spare room before the BINDING pace (`limits.binding`), kW — negative
    * when above it. Drives shedding and the full restore pass's gate.
@@ -265,6 +267,7 @@ export function resolveMeasuredPower(
   return {
     drawKw,
     sampledAtMs: reading.lastPowerUpdateMs,
+    phaseSampledAtMs: reading.phaseReading.kind === 'healthy' ? reading.phaseReading.acceptedAtMs : null,
     headroom: binding.kind === 'none' ? { kind: 'off' } : { kind: 'on', kw: reading.headroomKw(binding.kw) },
     capacityHeadroom: capacity.kind === 'off'
       ? { kind: 'off' } : { kind: 'on', kw: reading.headroomKw(capacity.paceKw) },

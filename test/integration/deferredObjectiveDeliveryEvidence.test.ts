@@ -17,7 +17,10 @@ import {
 import { DeferredObjectivePlanHistoryRecorder, type PlanHistoryLoadResult } from '../../lib/objectives/deferredObjectives/planHistory';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
-import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
+import { buildFixtureDiagnosticsForLane } from '../helpers/taskEvaluationFixture';
+import {
+  LIVE_LANE, SERVING_LANE, type TaskEvaluationLane,
+} from '../../lib/objectives/deferredObjectives/taskEvaluationCoordinator';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -56,6 +59,7 @@ const relay = (id: string, drawKw: number, nowMs: number): Device => withBinaryD
   hasStandingDemand: true, surplusTracking: false, confirmedNotDrawing: false,
   targets: [], binaryCapabilityId: 'onoff', binaryControl: { on: true },
   control: fixtureControlPosture({ controllable: true }),
+  controlModel: 'binary_power',
   deviceType: 'onoff', lastFreshDataMs: nowMs, thermalDirection: 'heating',
 })) as unknown as Device;
 
@@ -109,7 +113,7 @@ const evSettings = (): DeferredObjectiveRoster => objectiveRosterFor({
 
 // Stores are the external persistence seam. Restart constructs fresh owners
 // against the same durable rows; no observation/time anchor is injected.
-const createScenario = (settings: DeferredObjectiveRoster) => {
+const createScenario = (settings: DeferredObjectiveRoster, provisionalIdle = false) => {
   const energyStore = createMemoryEnergyDeliveryStore();
   let persistedHistory: PlanHistoryLoadResult = {
     snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [],
@@ -195,6 +199,9 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
         resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
         hasObservedTask: () => false,
         getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
+        ...(provisionalIdle ? {
+          getEnergyIdleState: (deviceId, deadlineAtMs) => history.getDeliveryEvidence(deviceId, deadlineAtMs).energyIdle,
+        } : {}),
       },
       getDeferredObjectiveSettings: () => settings,
       getDevices: () => devices, getDailyBudgetSnapshot: () => null,
@@ -219,7 +226,7 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
     energy.flushIfDirty();
     return reported;
   };
-  const build = (nowMs: number) => buildFixtureDiagnostics({
+  const build = (nowMs: number, lane: TaskEvaluationLane = LIVE_LANE) => buildFixtureDiagnosticsForLane({
     hasSolarProduction: false,
     nowMs, timeZone: 'UTC', devices, settings, powerTracker,
     dailyBudgetSnapshot: null, buildPriceHorizon: priceHorizon,
@@ -228,13 +235,16 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
     resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
     hasObservedTask: () => false,
     getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
-  });
+    ...(provisionalIdle ? {
+      getEnergyIdleState: (deviceId, deadlineAtMs) => history.getDeliveryEvidence(deviceId, deadlineAtMs).energyIdle,
+    } : {}),
+  }, lane);
   return {
     tick, build, restart,
     setPlanDecision: (control: TaskDeliveryControl | null) => { planDecision = control; },
     revisionEvents: () => [...revisionEvents],
-    activePlan: () => {
-      const plan = active.getActivePlansSnapshot()?.plansByDeviceId[HIGH_ID];
+    activePlan: (deviceId = HIGH_ID) => {
+      const plan = active.getActivePlansSnapshot()?.plansByDeviceId[deviceId];
       if (!plan) throw new Error('Missing active plan');
       return plan;
     },
@@ -305,6 +315,33 @@ describe('task delivery evidence at the device boundary', () => {
     scenario.tick(nextSettle, observed(nextSettle, 2));
     expect(scenario.delivered()).toBeGreaterThan(beforeCount);
     expect(plannedKWh(task(scenario.build(nextSettle), LOW_ID))).toBeLessThan(freed);
+  });
+
+  it('rebooks a cycling relay around the lower task that used its released room', () => {
+    const scenario = createScenario(energySettings(), true);
+    const sample = (minute: number, drawKw: number) => {
+      const nowMs = START_MS + minute * MIN_MS;
+      return scenario.tick(nowMs, [relay(HIGH_ID, drawKw, nowMs), relay(LOW_ID, 0.02, nowMs)]);
+    };
+    for (let minute = 0; minute < 20; minute += 1) sample(minute, 2);
+    for (let minute = 20; minute < 70; minute += 1) sample(minute, 0);
+    expect(scenario.activePlan().liveCompletion.kind).toBe('device_idle');
+    expect(scenario.activePlan().latest?.hours.some((hour) => (
+      hour.endsAtMs > START_MS + 70 * MIN_MS && hour.plannedKWh > 0
+    ))).toBe(false);
+    for (let minute = 70; minute < 118; minute += 1) sample(minute, 2);
+    const lowerCommitment = scenario.activePlan(LOW_ID).latest;
+    expect(lowerCommitment?.hours.some((hour) => (
+      hour.endsAtMs > START_MS + 118 * MIN_MS && hour.plannedKWh > 0
+    ))).toBe(true);
+    const cycle = sample(118, 2);
+    expect(task(cycle, LOW_ID).evaluation.planning.kind).toBe('allocated');
+    expect(scenario.activePlan(LOW_ID).latest).toEqual(lowerCommitment);
+    const served = scenario.build(START_MS + 118 * MIN_MS, SERVING_LANE);
+    expect(task(served, LOW_ID).evaluation.planning.kind).toBe('allocated');
+    expect(scenario.activePlan().latest?.hours.some((hour) => (
+      hour.endsAtMs > START_MS + 118 * MIN_MS && hour.plannedKWh > 0
+    ))).toBe(true);
   });
 
   it('keeps a claimed hour on track through capacity shed and settle cycles, with no status event', () => {

@@ -8,6 +8,7 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { resolveRevisionReason } from './smartTaskCopy/revisionReasons';
 import { APPROX_GLYPH } from './smartTaskCopy/valueFormat';
+import { DEVICE_IDLE_HISTORY_REASON } from './smartTaskCopy/shortfallCauses';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
 import {
   resolveEntryCostDisplay,
@@ -130,6 +131,9 @@ export const formatPlanHistoryProgressLine = (
   const targetValue = entry.targetValue;
   const start = formatValue(startValue);
   const target = formatValue(targetValue);
+  if (entry.outcome === 'device_idle' && target && entry.finalProgressValue !== null) {
+    return `${formatValue(entry.finalProgressValue)} delivered · target ${target}`;
+  }
   if (!start || !target) return null;
   if (suppressArrow) return `${start}  ·  target ${target}`;
   const endValue = resolveDisplayedEndValue(
@@ -164,6 +168,7 @@ export const formatPlanHistoryReachedAtLine = (
 const OUTCOME_LABELS: Record<DeferredObjectivePlanOutcome, string> = {
   met: 'Succeeded',
   missed: 'Missed',
+  device_idle: 'Device idle',
   abandoned: 'Abandoned',
   replaced: 'Replaced',
   unknown: 'Unknown',
@@ -172,6 +177,7 @@ const OUTCOME_LABELS: Record<DeferredObjectivePlanOutcome, string> = {
 const OUTCOME_TONES: Record<DeferredObjectivePlanOutcome, DeferredPlanHistoryChipTone> = {
   met: 'ok',
   missed: 'warn',
+  device_idle: 'muted',
   abandoned: 'muted',
   replaced: 'muted',
   unknown: 'muted',
@@ -359,6 +365,12 @@ export const formatPlanHistoryMissedReason = (
   if (entry.outcome !== 'missed') return null;
   return formatRefinedMissCause(entry);
 };
+
+export const formatPlanHistoryDeliveryReason = (
+  entry: Parameters<typeof formatPlanHistoryMissedReason>[0],
+): string | null => (
+  entry.outcome === 'device_idle' ? DEVICE_IDLE_HISTORY_REASON : formatPlanHistoryMissedReason(entry)
+);
 
 // ─── Finalized-run postmortem sentence (extracted to a sibling) ─────────────
 //

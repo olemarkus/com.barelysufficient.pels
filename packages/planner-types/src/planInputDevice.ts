@@ -600,6 +600,8 @@ export type PlanInputDeviceBase = {
    * lowest active step, so it never constrains anyone while the device climbs afterwards.
    */
   reservesStartupPower?: boolean;
+  /** This task can use spare capacity and yields to committed demand. */
+  usesAvailablePower?: true;
   /**
    * Producer-resolved floor for the thermostat setpoint, °C: the task's target.
    * Stamped by `applyDeferredAdmissionToInput` for a temperature task on every

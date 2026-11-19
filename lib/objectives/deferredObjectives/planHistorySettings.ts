@@ -38,6 +38,7 @@ const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistory
 const isOutcome = (value: unknown): value is DeferredObjectivePlanOutcome => (
   value === 'met'
     || value === 'missed'
+    || value === 'device_idle'
     || value === 'abandoned'
     || value === 'replaced'
     || value === 'unknown'
@@ -341,16 +342,13 @@ const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHisto
     && hasValidTimestamps(v)
     && hasValidProgress(v)
     && hasValidOutcome(v)
+    && v.outcome !== 'device_idle'
     && hasValidCoverage(v)
     && typeof v.id === 'string'
     && v.id.length > 0
     && hasValidPlanSnapshots(v)
     && hasValidV4Extensions(v);
 };
-
-const isTerminalOutcome = (value: unknown): boolean => (
-  value === 'met' || value === 'missed' || value === 'abandoned' || value === 'replaced'
-);
 
 const hasValidRecordValues = (v: Record<string, unknown>): boolean => (
   typeof v.id === 'string'
@@ -384,14 +382,23 @@ const hasValidRecordExtensions = (v: Record<string, unknown>): boolean => (
     && hasValidHourStartBookings(v)
 );
 
+const hasValidDeviceIdleOutcome = (v: Record<string, unknown>): boolean => (
+  v.outcome !== 'device_idle' || (
+    v.objectiveKind === 'energy' && v.discoveredFrom === 'observation' && v.metAtMs === null
+      && isFiniteNumber(v.targetValue) && isFiniteNumber(v.finalProgressValue)
+      && v.finalProgressValue >= 0 && v.targetValue > v.finalProgressValue
+      && isTaskDeliveryExplanation(v.deliveryExplanation) && v.deliveryExplanation.kind === 'recorded'
+  )
+);
+
 const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHistoryRecord => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   if (!hasValidRecordValues(v)) return false;
   if (!hasValidTimestamps(v) || !hasValidRecordProgress(v)) return false;
-  if (!isTerminalOutcome(v.outcome) || !hasValidOutcome(v)) return false;
+  if (!hasValidOutcome(v) || v.outcome === 'unknown') return false;
   if (!hasValidCoverage(v) || !hasValidPlanSnapshots(v)) return false;
-  return hasValidRecordExtensions(v)
+  return hasValidRecordExtensions(v) && hasValidDeviceIdleOutcome(v)
     && (v.deliveryExplanation === undefined || isTaskDeliveryExplanation(v.deliveryExplanation));
 };
 

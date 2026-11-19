@@ -63,7 +63,7 @@ type RecordedDeliveryExplanation = Extract<
  * `control_pending` stretch: it cannot prove the settles were short and
  * disqualifies.
  */
-const hasOnlySettleControlPending = (explanation: RecordedDeliveryExplanation): boolean => {
+export const hasOnlySettleControlPending = (explanation: RecordedDeliveryExplanation): boolean => {
   if (!explanation.contributors.includes('control_pending')) return true;
   if (explanation.intervals.length >= MAX_DELIVERY_INTERVALS) return false;
   const settles = explanation.intervals.filter((interval) => interval.cause === 'control_pending');

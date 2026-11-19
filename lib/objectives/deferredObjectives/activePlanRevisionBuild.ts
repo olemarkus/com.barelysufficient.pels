@@ -35,7 +35,7 @@ import type {
   DeferredObjectivePlanRevisionEvent,
   DeferredObjectivePlanRevisionWrittenEvent,
 } from './planRevisionBus';
-import type { DeferredObjectiveActivePlanStatusV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveReportedStatus } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
   buildReservationSegmentsFromHorizonPlan,
@@ -87,9 +87,9 @@ export const resolvePublicRevisionWrittenEvent = (
    * misreports the transition's origin and can suppress a real one (a device
    * turned back on during the same cycle that settles looks like no change).
    */
-  previousEffectivePlanStatus: DeferredObjectiveActivePlanStatusV1 | null,
+  previousEffectivePlanStatus: DeferredObjectiveReportedStatus | null,
   /** The status it publicly has after this cycle. */
-  effectivePlanStatus: DeferredObjectiveActivePlanStatusV1,
+  effectivePlanStatus: DeferredObjectiveReportedStatus,
 ): DeferredObjectivePlanRevisionWrittenEvent | null => {
   const publicStatusChanged = previousEffectivePlanStatus !== effectivePlanStatus;
   if (!allocationChanged && !publicStatusChanged) return null;
@@ -188,6 +188,19 @@ const THERMAL_LEARNING_CAPACITY_REASON_CODES: ReadonlySet<string> = new Set([
 export const isFrozenServedDiagnostic = (diag: DeferredObjectiveDiagnostic): boolean => (
   diag.evaluation.planning.kind === 'allocated' && diag.evaluation.planning.plan.frozenRead === true
 );
+
+/** Keep already committed lower plans compatible with changes made around their reservations. */
+export const preserveLowerPriorityContext = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  latest: DeferredObjectiveActivePlanRevisionV1,
+): DeferredObjectiveActivePlanRevisionV1 => {
+  if (!diagnostic.releasesIdleBookings && !diagnostic.restoresIdleBookings) return revision;
+  return {
+    ...revision,
+    lowerPriorityContext: latest.lowerPriorityContext ?? { revision: latest.revision, revisedAtMs: latest.revisedAtMs },
+  };
+};
 
 /**
  * A queue turn that could not allocate keeps its revision and records the

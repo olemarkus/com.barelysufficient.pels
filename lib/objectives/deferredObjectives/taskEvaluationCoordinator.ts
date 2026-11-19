@@ -8,6 +8,9 @@ import {
 } from './completionDiagnostic';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { TaskReservationReader } from './taskDeliveryState';
+import {
+  preserveOtherTaskBookings, resolveEnergyIdlePlanning, resolveTaskAllocationDiagnostic, type EnergyTaskIdleReader,
+} from './energyIdlePlanning';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { PowerTrackerState } from '../../power/tracker';
 import type {
@@ -28,8 +31,6 @@ import type { DeliveredEnergyReader } from './energyDelivery';
 import { resolveHighestObjectiveAdmissionPowerKw, resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
-import { resolveHigherPriorityContentionEvaluation } from './contentionOverlay';
-import { reportHigherPriorityContention } from './contentionReporting';
 import {
   resolveObjectiveProgress,
   isObjectiveProgressSatisfied,
@@ -95,8 +96,11 @@ export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export type TaskEvaluationReport = { evaluation: TaskEvaluation; diagnostic: DeferredObjectiveDiagnostic };
 
-const shouldReplaceCommitment = (fresh: boolean, contextChanged: boolean, higherPriorityLoad: boolean): boolean => (
-  fresh && (contextChanged || higherPriorityLoad)
+const shouldReplaceCommitment = (
+  diagnostic: DeferredObjectiveDiagnostic, fresh: boolean, contextChanged: boolean, higherPriorityLoad: boolean,
+): boolean => (
+  fresh && (contextChanged || higherPriorityLoad
+    || diagnostic.restoresIdleBookings === true || diagnostic.releasesIdleBookings === true)
 );
 
 // Any higher-priority load, booked or held at a device's maximum step, can move
@@ -148,6 +152,7 @@ export type TaskEvaluationReaders = {
   resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
   getDeliveredEnergyKWh: DeliveredEnergyReader;
   isReservationSuppressed: TaskReservationReader;
+  getEnergyIdleState?: EnergyTaskIdleReader;
 };
 
 // Everything one home's task evaluations read, bound once by the wiring layer:
@@ -277,13 +282,15 @@ export const buildDeferredObjectiveTaskResults = (
   let higherTaskBootstrapped = false;
   const knownLoadHigherDeviceIds = new Set<string>();
   const higherLoad = new HigherRankedLoad(deviceById);
-  const results = ordered.map((orderedTask) => {
+  const results = ordered.map((orderedTask, taskIndex) => {
     const task: CoordinatedDeferredObjective = {
       ...orderedTask,
       ...higherLoad.advance(orderedTask, knownLoadHigherDeviceIds),
       rescuePermissions: taskPermissionsForObjective(orderedTask.objective),
     };
     const { deviceId, objective, device } = task;
+    const hasTurn = selected.has(deviceId);
+    const energyIdle = resolveEnergyIdlePlanning(task, snapshot, readers.getEnergyIdleState, hasTurn);
     // Lower-priority edits cannot churn an already-committed higher task.
     const { rosterSignature } = orderedTask;
     const allocationContextSignature = bounded
@@ -310,40 +317,39 @@ export const buildDeferredObjectiveTaskResults = (
       latestSignature === undefined && reservations.length > 0,
       isPreviewCandidate(lane, deviceId),
     );
-    const allocation = resolveTaskAllocationMode(
-      bounded, selected.has(deviceId), context.needsTurn, forceFreshAllocation,
+    const allocation = resolveTaskAllocationMode(bounded, hasTurn, context.needsTurn, forceFreshAllocation);
+    const diagnostic = resolveTaskAllocationDiagnostic(
+      task,
+      (allocationTask, claims, mode) => (
+        buildDeferredObjectiveDiagnostic(snapshot, readers, allocationTask, claims, mode)
+      ),
+      allocation, energyIdle, hasTurn, reservations,
+      () => preserveOtherTaskBookings(
+        snapshot, ordered.slice(taskIndex + 1), readers.isReservationSuppressed, readers.getEnergyIdleState,
+      ),
     );
-    const diagnostic = buildDeferredObjectiveDiagnostic(snapshot, readers, task, reservations, allocation);
-    const contentionEvaluation = resolveHigherPriorityContentionEvaluation(
-      diagnostic.evaluation,
-      reservations,
-      task.higherPriorityUnbookedPowerKw,
-      () => buildDeferredObjectiveDiagnostic(
-        snapshot, readers, { ...task, higherPriorityUnbookedPowerKw: 0 }, [], 'fresh',
-      ).evaluation,
-    );
-    const contentionResolved = reportHigherPriorityContention(diagnostic, contentionEvaluation);
-    const freshAllocation = isFreshTaskEvaluation(contentionEvaluation);
+    const { evaluation } = diagnostic;
+    const freshAllocation = isFreshTaskEvaluation(evaluation);
     const coordinated: DeferredObjectiveDiagnostic = {
-      ...contentionResolved,
+      ...diagnostic,
       ...resolveReportedContext(
-        bounded && !freshAllocation, isReviewedTurn(selected, allocationContextChanged, contentionEvaluation),
+        bounded && !freshAllocation, isReviewedTurn(selected, allocationContextChanged, evaluation),
         latestSignature, allocationContextSignature,
       ),
-      ...(isSelectedFreshTurn(lane, selected, contentionEvaluation)
+      ...(isSelectedFreshTurn(lane, selected, evaluation)
         ? { scheduledReplan: true as const } : {}),
       ...(shouldReplaceCommitment(
-        freshAllocation, allocationContextChanged, holdsHigherPriorityLoad(task, reservations),
+        diagnostic, freshAllocation, allocationContextChanged, holdsHigherPriorityLoad(task, reservations),
       )
         ? { replaceCommitment: true as const }
         : {}),
     };
-    const evaluation = coordinated.evaluation;
     const acceptedCompletion = completionFromEvaluation(
       evaluation, readers.getStallClassification, readers.hasObservedTask(deviceId, objective),
     );
     const evaluationResult = withAcceptedCompletion(evaluation, acceptedCompletion);
-    const reservationSuppressed = readers.isReservationSuppressed(deviceId, objective.deadlineAtMs);
+    const reservationSuppressed = evaluationResult.usesAvailablePower === true
+      || readers.isReservationSuppressed(deviceId, objective.deadlineAtMs);
     const holdsBookings = holdsItsBookings(task, acceptedCompletion, reservationSuppressed);
     const governs = holdsBookings && governsItsDevice(task, evaluationResult, nowMs);
     if (evaluationResult.planning.kind !== 'awaiting_plan' && reservesItsBookings(holdsBookings, governs, device)) {

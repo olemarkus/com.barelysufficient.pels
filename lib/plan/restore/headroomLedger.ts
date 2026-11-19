@@ -66,20 +66,24 @@ export type RestoreHeadroomLedger = {
   axes(): RestoreHeadroomAxes;
 };
 
+const availableKw = (...limits: LimitHeadroom[]): number | null => {
+  const headroom = minLimitHeadroom(...limits);
+  return headroom.kind === 'on' ? headroom.kw : null;
+};
+
+export const restoreHeadroomFor = (axes: RestoreHeadroomAxes, dev: LedgerDevice): number | null => availableKw(
+  axes.capacity, axes.grid, dev.budgetExempt ? { kind: 'off' } : axes.budget,
+  phaseRoomFor(axes.phase, dev.phaseFootprint),
+);
+
 export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHeadroomLedger {
   let capacity = axes.capacity;
   let grid = axes.grid;
   let budget = axes.budget;
   let phase = axes.phase;
-  const availableKw = (...limits: LimitHeadroom[]): number | null => {
-    const headroom = minLimitHeadroom(...limits);
-    return headroom.kind === 'on' ? headroom.kw : null;
-  };
   return {
     availableFor(dev) {
-      return availableKw(
-        capacity, grid, dev.budgetExempt ? { kind: 'off' } : budget, phaseRoomFor(phase, dev.phaseFootprint),
-      );
+      return restoreHeadroomFor({ capacity, grid, budget, phase }, dev);
     },
     commit(dev, spentKw) {
       // Negative swaps free no room until the next meter sample; keep the existing

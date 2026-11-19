@@ -156,6 +156,7 @@ export const RECEIPT_LAST_STATE_TARGET_REACHED = 'Last device state: target alre
 // notes/ui-terminology.md "Chip adjectives vs divider verbs"; the same
 // nouns back both surfaces so they can't drift.
 export const formatReceiptOutcomeSucceeded = (count: number): string => `${count} succeeded`;
+export const formatReceiptOutcomeDeviceIdle = (count: number): string => `${count} ended with the device idle`;
 export const formatReceiptOutcomeMissed = (count: number): string => `${count} missed`;
 export const formatReceiptOutcomeAbandoned = (count: number): string => `${count} abandoned`;
 export const formatReceiptOutcomeReplaced = (count: number): string => `${count} replaced`;

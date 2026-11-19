@@ -216,6 +216,13 @@ const hasValidRevisionDurationFields = (v: Record<string, unknown>): boolean => 
     && isOptionalSpeedMode(v.speedMode);
 };
 
+const isOptionalLowerPriorityContext = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.revision) && isFiniteNumber(v.revisedAtMs);
+};
+
 const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -229,6 +236,7 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isOptionalReservationSegments(v.reservationSegments)
     && isOptionalAllocationRank(v.allocationRank)
     && isOptionalNonEmptyString(v.allocationContextSignature)
+    && isOptionalLowerPriorityContext(v.lowerPriorityContext)
     && hasValidRevisionEnergyFields(v)
     && hasValidRevisionDurationFields(v);
 };
@@ -336,7 +344,7 @@ const readStoredTargetValue = (v: Record<string, unknown>): number | undefined =
 };
 
 const isOptionalPricePausePreviousStatus = (value: unknown): boolean => (
-  value === undefined || value === null || isPlanStatus(value)
+  value === undefined || value === null || value === 'device_idle' || isPlanStatus(value)
 );
 
 const isActivePlan = (value: unknown): value is StoredActivePlan => {

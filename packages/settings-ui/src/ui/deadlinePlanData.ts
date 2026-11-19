@@ -4,7 +4,7 @@ import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/defe
 import type { DeviceStatus } from '../../../contracts/src/deviceStatus.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
@@ -82,7 +82,7 @@ export type DeadlinePlanSchedule = {
   // per-cycle causes (`resolveEffectivePlanStatus`), including a car stopped at
   // its own charge limit. Without the overlay a row the list marks `At risk`
   // opens on a green on-track hero until the next settle.
-  planStatus: DeferredObjectiveActivePlanStatusV1;
+  planStatus: DeferredObjectiveReportedStatus;
   // Planned kWh per booked hour start (`buildChargeByStartMs`): the original
   // revision's (the latest's when there is none) and the latest's.
   originalChargeByStartMs: Map<number, number>;

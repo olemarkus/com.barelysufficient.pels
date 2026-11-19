@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import { isCostDisplay, isHourStartBooking } from './planHistorySettings';
+import { isDeviceIdleEvidence, type DeviceIdleEvidence } from './deviceIdleOutcome';
 
 /**
  * What the run set out to need, as saved with its in-progress delivery.
@@ -28,6 +29,7 @@ export type MeteredRunCommitment =
 export type PersistedMeteredDeliveryState = {
   version: 1;
   deliveryEvidence: TaskDeliveryEvidence;
+  deviceIdleEvidence?: DeviceIdleEvidence;
   commitment: MeteredRunCommitment;
   deviceId: string;
   deadlineAtMs: number;
@@ -115,14 +117,19 @@ const hasValidHourLists = (candidate: Record<string, unknown>): boolean => (
     && candidate.hourStartBookings.every(isHourStartBooking)
 );
 
+const hasValidDeliveryEvidence = (candidate: Record<string, unknown>): boolean => (
+  isTaskDeliveryEvidence(candidate.deliveryEvidence)
+    && (candidate.deviceIdleEvidence === undefined || isDeviceIdleEvidence(candidate.deviceIdleEvidence))
+    && isCommitment(candidate.commitment)
+);
+
 export const isPersistedMeteredDeliveryState = (
   value: unknown,
 ): value is PersistedMeteredDeliveryState => {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
   return candidate.version === 1
-    && isTaskDeliveryEvidence(candidate.deliveryEvidence)
-    && isCommitment(candidate.commitment)
+    && hasValidDeliveryEvidence(candidate)
     && typeof candidate.deviceId === 'string'
     && candidate.deviceId.length > 0
     && hasValidRunWindow(candidate)

@@ -31,6 +31,7 @@ const splitFixture = (
     hasObservedTask,
     getDeliveredEnergyKWh,
     isReservationSuppressed,
+    getEnergyIdleState,
     allocationRosterOwner,
     forceFreshDeviceId,
     ...snapshot
@@ -51,6 +52,7 @@ const splitFixture = (
       hasObservedTask,
       getDeliveredEnergyKWh,
       isReservationSuppressed,
+      getEnergyIdleState,
     },
     forceFreshDeviceId === undefined ? LIVE_LANE : { kind: 'preview', candidateDeviceId: forceFreshDeviceId },
   ];
