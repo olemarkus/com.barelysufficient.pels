@@ -3,10 +3,10 @@ import {
 } from '../../../shared-domain/src/settings/deviceOverrideDraft.ts';
 
 export {
-  CLOCK_ALLOWANCE_MS, changeOverrideDraft, formatActiveOverride, formatOverrideEnd, formatOverrideEndLine,
+  CLOCK_ALLOWANCE_MS, changeOverrideDraft, formatActiveOverride, formatOverrideEndLine,
   formatOverrideSmartTaskCreateNote, newOverrideDraft, OVERRIDE_END_OPTIONS,
   resolveOverrideDraft, resolveOverrideSmartTaskNote,
-  type OverrideDraft, type OverrideEndChoice, type OverrideTemperatureRange,
+  type OverrideDraft, type OverrideTemperatureRange,
 } from '../../../shared-domain/src/settings/deviceOverrideDraft.ts';
 
 export const OVERRIDE_COPY = {
