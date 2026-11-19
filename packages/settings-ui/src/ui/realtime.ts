@@ -228,6 +228,7 @@ export const initRealtimeListeners = () => {
 
   // The shared key changes battery availability from either setup page.
   document.addEventListener('homey-api-key-changed', () => { refreshDevicesForUi(); });
+  document.addEventListener('battery-recovery-updated', () => { refreshDevicesForUi(); });
   document.addEventListener('request-load-devices', () => {
     if (!state.devicesLoaded && !state.devicesLoading) {
       loadDevicesOnce();

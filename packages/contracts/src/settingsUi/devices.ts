@@ -1,4 +1,5 @@
 import type { BatteryEfficiencyMeasurement, ContinuousBatteryPlanRead } from '../continuousBatteryPlan.js';
+import type { BatteryRecovery } from '../batteryRecovery.js';
 import type { ControlContestDecoration } from '../controlContest.js';
 import type { DeviceOverviewStrings } from '../deviceOverview.js';
 import type { PowerFigureCheck } from '../powerFigureCheck.js';
@@ -49,7 +50,7 @@ export type SettingsUiPhaseFootprintRead = {
 
 /**
  * A listed device's home-battery facts, resolved from the battery control
- * owner (`readSettingsUiBatteryState`) for every device, so the UI
+ * owner (`readUiBatteryState`) for every device, so the UI
  * never guesses one.
  */
 export type SettingsUiBatteryState = {
@@ -66,6 +67,8 @@ export type SettingsUiBatteryState = {
    * every other device.
    */
   batteryUsesHomeyApiKey: boolean;
+  /** Present while an old app-action claim awaits confirmation of its original control target. */
+  batteryRecovery?: BatteryRecovery;
 };
 
 /**

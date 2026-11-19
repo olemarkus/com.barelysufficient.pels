@@ -1,8 +1,8 @@
 /**
  * The battery control owner's records still owed a hand-back that is not
  * running right now (`batteryControlOwner.ts`): due for an attempt after a
- * per-battery back-off, or stopped by a terminal failure until the battery's
- * control surface lifts it. Each failure is logged here, a terminal one once.
+ * per-battery back-off, stopped by a terminal failure until the control
+ * surface lifts it, or awaiting an explicit recovery from the owner.
  */
 import { getLogger } from '../logging/logger';
 import type { StorageReleaseReason } from '../ports/batteryControlOwner';
@@ -26,17 +26,19 @@ export type RetryableReleaseFailure =
   | { kind: 'unobserved' }
   | { kind: 'claim_contested' }
   | { kind: 'not_requested' }
+  | { kind: 'legacy_target_unavailable'; reasonCode: string }
   | { kind: 'write_failed'; error: unknown };
 
 /**
  * A record still owed a hand-back: due for an attempt, or stopped by a terminal
- * failure. `awaitingReport`: the hand-back was written to a battery that
+ * failure or an owner decision. `awaitingReport`: the hand-back was written to a battery that
  * confirms it only by reporting the restored mode, and the attempt is due if
  * that report has not come by `nextAttemptAtMs`.
  */
 export type PendingHandBack =
   | { state: 'due'; reason: ReleaseReason; failures: number; nextAttemptAtMs: number; awaitingReport: boolean }
-  | { state: 'terminal'; reason: ReleaseReason; failure: TerminalReleaseFailure };
+  | { state: 'terminal'; reason: ReleaseReason; failure: TerminalReleaseFailure }
+  | { state: 'awaiting_owner'; reason: ReleaseReason };
 
 export class PendingHandBacks {
   private readonly entries = new Map<string, PendingHandBack>();
@@ -71,7 +73,11 @@ export class PendingHandBacks {
    */
   isWaiting(deviceId: string, nowMs: number): boolean {
     const pending = this.entries.get(deviceId);
-    return pending !== undefined && (pending.state === 'terminal' || pending.nextAttemptAtMs > nowMs);
+    return pending !== undefined && (pending.state !== 'due' || pending.nextAttemptAtMs > nowMs);
+  }
+
+  awaitOwner(deviceId: string, reason: ReleaseReason): void {
+    this.entries.set(deviceId, { state: 'awaiting_owner', reason });
   }
 
   scheduleRetry(deviceId: string, reason: ReleaseReason, failure: RetryableReleaseFailure): void {
@@ -93,6 +99,7 @@ export class PendingHandBacks {
       terminal: false,
       nextAttemptAtMs,
       ...(failure.kind === 'write_failed' ? { err: normalizeError(failure.error) } : {}),
+      ...(failure.kind === 'legacy_target_unavailable' ? { reasonCode: failure.reasonCode } : {}),
     });
   }
 

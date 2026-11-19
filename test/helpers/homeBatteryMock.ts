@@ -171,6 +171,7 @@ export const buildMarstekBluetoothBatteryDevice = (params: { id: string }): Mock
 export const buildSigenergyDevices = (params: {
   batteryId: string;
   plantId: string;
+  plantName?: string;
   ratedChargingPower?: string;
   ratedDischargingPower?: string;
 }): { battery: MockDevice; plant: MockDevice } => {
@@ -179,7 +180,8 @@ export const buildSigenergyDevices = (params: {
   battery.setDriverIdentity({ driverId: 'homey:app:com.sigenergy:battery' });
   battery.setActualCapabilityValue('measure_battery', 55, quiet);
   battery.setActualCapabilityValue('measure_power', 0, quiet);
-  const plant = new MockDevice(params.plantId, 'Sigenergy plant', ['measure_power.battery', 'ems_work_mode'], 'other');
+  const plant = new MockDevice(params.plantId, params.plantName ?? 'Sigenergy plant',
+    ['measure_power.battery', 'ems_work_mode'], 'other');
   plant.setDriverIdentity({ driverId: 'homey:app:com.sigenergy:plant' });
   plant.setSettings({
     ratedChargingPower: params.ratedChargingPower ?? '5 kW',
