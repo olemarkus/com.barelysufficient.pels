@@ -420,6 +420,17 @@ describe('observer draw levels', () => {
     expect(observer.getLiveDrawFloorSince('charger', 2900)).toBeNull();
   });
 
+  it('does not join distinct drawing runs across a meter sampling bound', () => {
+    const observer = new ObservedDeviceStateProjection();
+    observe(observer, reading('relay', 2, 500), 500);
+    observe(observer, reading('relay', 0, 900), 900);
+    observe(observer, reading('relay', 2, 1200), 1200);
+
+    expect(observer.getLiveDrawFloorSince('relay', 400)).toBeNull();
+    expect(observer.getLiveDrawFloorSince('relay', 600)).toBe(0);
+    expect(observer.getLiveDrawFloorSince('relay', 1300)).toBe(2);
+  });
+
   it('adds no level for a reading within the active threshold of the last one', () => {
     const { observer } = steppedUp({ risenKw: 3.72 });
     expect(observer.hasDrawnAtLeastSince('charger', 1000, 10_000, 3.71)).toBe(false);

@@ -356,6 +356,10 @@ const buildRow = (
   };
 };
 
+const showActivePlan = (plan: ResolvedDeferredObjectiveActivePlanV1, nowMs: number): boolean => (
+  plan.liveCompletion.kind !== 'device_idle' || plan.deadlineAtMs > nowMs
+);
+
 const buildCandidate = (
   deviceId: string,
   plan: ResolvedDeferredObjectiveActivePlanV1,
@@ -363,7 +367,7 @@ const buildCandidate = (
   nowMs: number,
   timeZone: string | null,
 ): Candidate | null => {
-  if (plan.deadlineAtMs <= nowMs) return null;
+  if (!showActivePlan(plan, nowMs)) return null;
   const facts = resolveSmartTaskRowFacts(plan, device, nowMs);
   if (facts.statusId === 'satisfied') return null;
   const row = buildRow(deviceId, plan, device, facts, nowMs, timeZone);
@@ -521,7 +525,7 @@ export const buildSmartTaskDeviceView = (
   );
   const timeZone = input.timeZone ?? null;
   const savedPlan = input.activePlans?.plansByDeviceId?.[deviceId];
-  const plan = savedPlan && savedPlan.deadlineAtMs > input.nowMs ? savedPlan : null;
+  const plan = savedPlan && showActivePlan(savedPlan, input.nowMs) ? savedPlan : null;
   const device = devicesById.get(deviceId);
   const facts = plan ? resolveSmartTaskRowFacts(plan, device, input.nowMs) : null;
   const active: SmartTaskDeviceView['active'] = plan && facts

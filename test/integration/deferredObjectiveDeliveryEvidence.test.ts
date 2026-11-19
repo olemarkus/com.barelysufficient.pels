@@ -317,6 +317,20 @@ describe('task delivery evidence at the device boundary', () => {
     expect(plannedKWh(task(scenario.build(nextSettle), LOW_ID))).toBeLessThan(freed);
   });
 
+  it('keeps governing the idle relay after its last booked interval', () => {
+    const scenario = createScenario(claimedEnergySettings(), true);
+    for (let minute = 0; minute <= 181; minute += 1) {
+      const atMs = START_MS + minute * MIN_MS;
+      scenario.tick(atMs, [relay(HIGH_ID, minute < 10 ? 2 : 0, atMs)]);
+    }
+    const nowMs = START_MS + 181 * MIN_MS;
+    expect(scenario.activePlan().latest?.hours.every((hour) => hour.endsAtMs <= nowMs)).toBe(true);
+    const served = task(scenario.build(nowMs, SERVING_LANE), HIGH_ID);
+    expect(served.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { currentHourClaim: 'released' } });
+    const decisions = applyDeferredObjectiveAdmission([served.evaluation], [relay(HIGH_ID, 0, nowMs)]);
+    expect(decisions.get(HIGH_ID)).toMatchObject({ kind: 'idle' });
+  });
+
   it('rebooks a cycling relay around the lower task that used its released room', () => {
     const scenario = createScenario(energySettings(), true);
     const sample = (minute: number, drawKw: number) => {

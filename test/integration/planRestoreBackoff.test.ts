@@ -4365,6 +4365,27 @@ describe('stepped-load shed invariant', () => {
     expect(steppedDev?.desiredStepId).not.toBe('medium');
   });
 
+  it('gives an ordinary active step-up its turn before starting a relay on available power', () => {
+    const result = applyRestorePlan({
+      planDevices: [
+        buildBinarySteppedPlanDevice({
+          id: 'booked', priority: 1, currentState: 'on', binaryControl: { on: true }, currentDrawKw: 1.25,
+          selectedStepId: 'low', desiredStepId: undefined, boostActive: false,
+        }),
+        buildBinaryPlanDevice({
+          id: 'relay', priority: 5, currentState: 'off', binaryControl: { on: false },
+          expectedPowerKw: 1, currentDrawKw: 0, usesAvailablePower: true,
+        }),
+      ],
+      ...buildContext({ headroom: 1.5 }),
+      state: createPlanEngineState(),
+      sheddingActive: false,
+      deps: restoreDeps(123),
+    });
+    expect(result.planDevices.find(({ id }) => id === 'booked')).toMatchObject({ desiredStepId: 'medium' });
+    expect(result.planDevices.find(({ id }) => id === 'relay')).toMatchObject({ plannedState: 'shed' });
+  });
+
   it('allows an off stepped restore to swap out a lower-priority active device', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({

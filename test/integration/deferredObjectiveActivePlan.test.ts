@@ -4089,6 +4089,17 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       latest: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
     });
 
+    it('requires new evidence before publishing provisional idle after restart', () => {
+      const plan = {
+        ...basePlan(),
+        objectiveKind: 'energy',
+        liveCompletion: { kind: 'device_idle' },
+      };
+      const restored = normalizeDeferredObjectiveActivePlans({ version: 1, plansByDeviceId: { dev: plan } });
+      expect(restored.plansByDeviceId.dev?.liveCompletion).toEqual({ kind: 'unmet', status: 'at_risk' });
+      expect(restored.plansByDeviceId.dev?.latest?.hours).toEqual(baseRevision.hours);
+    });
+
     it.each([true, false, 'true', 1, null])('resolves continuity intent independently of the booking (%s)', (marker) => {
       const hours = [{ ...baseRevision.hours[0], keepCharging: marker }];
       const normalized = normalizeDeferredObjectiveActivePlans({

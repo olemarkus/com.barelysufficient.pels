@@ -1,7 +1,7 @@
 import type { PlanInputDevice } from './planTypes';
 import { PLAN_REASON_CODES, type PlanReasonCode } from '../../packages/shared-domain/src/planReasonSemantics';
 
-type FairnessDevice = Pick<PlanInputDevice, 'id' | 'priority'>;
+type FairnessDevice = Pick<PlanInputDevice, 'id' | 'priority' | 'usesAvailablePower'>;
 
 const POWER_HOLD_REASON_CODES: ReadonlySet<PlanReasonCode> = new Set([
   PLAN_REASON_CODES.capacity,
@@ -30,6 +30,6 @@ export function yieldsToLimitedDevice(
   boostActive: boolean,
   limitedDevice: FairnessDevice,
 ): boolean {
-  return limitedDevice.id !== device.id
+  return limitedDevice.id !== device.id && limitedDevice.usesAvailablePower !== true
     && (!boostActive || limitedDevice.priority < device.priority);
 }

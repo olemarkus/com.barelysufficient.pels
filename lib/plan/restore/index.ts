@@ -35,10 +35,7 @@ import {
   markRestoreCandidatesHeld,
   markRestoreCandidatesStayShedForShortfall,
 } from './marking';
-import {
-  applyActiveSteppedRestoreCandidates,
-  applyRestoreCandidates,
-} from './candidateLoop';
+import { applyRestoreLanes } from './candidateLoop';
 import type {
   RestoreCycle,
   RestoreDeps,
@@ -102,7 +99,7 @@ export function applyRestorePlan(
   const ledger = buildCycleHeadroomLedger(power, context);
   reservePendingChargingPhases(ledger, state, deviceMap);
   reserveAuthorizedPower(ledger, planDevices);
-  const availablePowerDevices = accountForAvailablePowerDevices(deviceMap, ledger, drawIncludedInMeter(deps, power));
+  const availablePowerDevices = accountForAvailablePowerDevices(deviceMap, ledger, drawIncludedInMeter(deps));
   let restoredOneThisCycle = false;
   const batchState = context.grid.kind === 'on' ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
@@ -233,7 +230,6 @@ function applyFullRestorePass(
   restoredOne: boolean,
 ): { restoredOneThisCycle: boolean } {
   const { deviceMap, deps } = cycle;
-  let restoredOneThisCycle = restoredOne;
   const snapshot = Array.from(deviceMap.values());
   // A battery PELS holds for the limit is handed back here, at its place in
   // the same priority order (`storageHandBack.ts`).
@@ -246,10 +242,7 @@ function applyFullRestorePass(
   const lane: RestoreLane = {
     onDevices: getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints),
   };
-  ({ restoredOneThisCycle } = applyRestoreCandidates(
-    cycle, lane, restoreCandidates, ledger, restoredOneThisCycle,
-  ));
-  return applyActiveSteppedRestoreCandidates(cycle, lane, ledger, restoredOneThisCycle);
+  return applyRestoreLanes(cycle, lane, restoreCandidates, ledger, restoredOne);
 }
 
 /**

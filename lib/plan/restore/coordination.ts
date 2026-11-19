@@ -51,7 +51,8 @@ function isDeviceBlockingSteppedRestore(
   // have to pass admission. Only a keep the previous plan made with command
   // authority can be waiting for its observation to confirm recovery here —
   // PELS decided it should run, so a device still off is about to draw.
-  return shedDecisions.lastPlannedKeptIds.has(device.id) && device.currentState === 'off';
+  return device.usesAvailablePower !== true
+    && shedDecisions.lastPlannedKeptIds.has(device.id) && device.currentState === 'off';
 }
 
 function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean {

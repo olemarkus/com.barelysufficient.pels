@@ -10,7 +10,7 @@ import { isPastHourSettleMark, SCHEDULE_SETTLE_OFFSET_MS } from './settleWindow'
 
 const HOUR_MS = 3_600_000;
 
-export type TaskAllocationMode = 'ordinary' | 'fresh' | 'serve' | 'wait';
+export type TaskAllocationMode = 'ordinary' | 'fresh' | 'serve' | 'serve_idle' | 'wait';
 
 export const resolveTaskAllocationMode = (
   bounded: boolean, selected: boolean, contextChanged: boolean, forceFresh: boolean,
