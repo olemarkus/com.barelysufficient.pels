@@ -19,7 +19,6 @@ Use this setup when you want to:
 - use peak shaving to keep short high-load periods below the hard cap
 - keep EV charging from competing blindly with heating or hot water
 - let higher-priority devices win when available power is limited
-- control an Easee, Alfen, Peblar, Enua, Zaptec, Futurehome, Wallbox, amina or go-e charger or a Tesla directly, or use a Homey Flow for another charger integration
 
 PELS plays the brain role and lets your charger app keep doing what it does best: PELS decides the desired charging current or available power based on price, total power, and priorities; the charger app delivers it to the charger.
 
@@ -30,7 +29,7 @@ PELS plays the brain role and lets your charger app keep doing what it does best
 3. PELS calculates how much power is available for managed devices.
 4. PELS sets the charging current or power through the charger's Homey app.
 
-PELS controls Easee, Zaptec, Alfen, Peblar, Enua, Futurehome, Wallbox, amina, go-e and Tesla charging directly, and starts and stops Smappee EV Wall and Zappi chargers. For any other charger with a current action in its Homey app, PELS exposes the desired current as a Flow tag and a Homey Flow passes it to the charger app.
+Check [how PELS controls your charger](../ev-charger.md#charging-current-setup). Most supported chargers accept current or power settings directly through their Homey app. Some support only start and stop. A current-control Flow is useful when the app exposes a current-setting action and PELS has no direct control for it.
 
 PELS handles planning, priorities, cheap hours, and power-limit protection.
 

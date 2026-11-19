@@ -14,10 +14,10 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 | Function | Best for | What PELS changes | Main constraint |
 | --- | --- | --- | --- |
 | **Power limiting** | Staying below a grid tariff step or quarter-hour peak | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Selected-period hard cap |
-| **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus selected-period hard cap |
+| **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget and any enabled house limits |
 | **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Works the device harder in cheap hours and lets it coast in expensive ones | Temperature comfort range |
-| **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, budget, and hard cap |
-| **Flow-booked hours** | Custom "run for X cheap hours before Y" automation | Your Flow enables power-limit control only during selected hours | Your Flow logic plus hard cap |
+| **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, and any enabled limits or budget |
+| **Flow-booked hours** | Custom "run for X cheap hours before Y" automation | Your Flow enables power-limit control only during selected hours | Your Flow logic and any enabled limits |
 
 ![PELS overview showing live power, safe pace, and managed devices](/screenshots/landing-overview.png)
 *Figure 1. The Overview shows current power, safe pace, and which managed devices are running or limited.*
@@ -48,7 +48,7 @@ Daily budget is a whole-home pacing layer. It spreads a daily kWh budget across 
 Use it when:
 
 - You want to spend less by letting cheap hours carry more of the day's load.
-- You want to hold the whole home under a daily energy ceiling — to cap cost, cut waste, or stay disciplined.
+- You want to pace whole-home usage toward a daily target in kWh.
 - You do not care which device uses a cheap hour, as long as total usage shifts.
 
 This is useful when a water heater, room heating, or an EV charger may all take advantage of the same cheap window. Daily budget does not reserve cheap hours for a specific device. It creates a better whole-home pace.
@@ -92,21 +92,11 @@ See [Smart Tasks](/smart-tasks) for the full guide, or [Deadline Charging With S
 
 Flow-booked hours are useful when you want a simple "run for X cheap hours before Y" rule instead of a target-based task.
 
-The pattern is:
-
-1. Keep the device managed by PELS.
-2. Turn **Power-limit control** off by default, so PELS does not start it just because there is available power.
-3. Use the **Current price is one of the lowest before a time** card to pick the cheapest hours in a window.
-4. Enable **Power-limit control** during those hours.
-5. Disable **Power-limit control** outside those hours.
-
-This lets your Flow choose the time window while PELS still protects the hard cap during the hours when the device is allowed to run.
-
-See [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
+Keep the device managed. The opening Flow enables **Power-limit control** during a selected hour. The closing Flow disables it and tells the device to stop. If **Leave off until turned on again** is on, the opening Flow must also turn the device on at the start of the next booked window. Follow [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) for the cards and conditions.
 
 ## Which One Should I Use?
 
-Start with power limiting. It protects the selected capacity period and gives the rest of the setup a safe base.
+Use **Capacity limit** to protect an hourly or 15-minute average, or **Grid import limit** to limit current grid import. You can also use price-based control or Smart tasks with both limits off.
 
 Add daily budget if you want whole-home pacing across the day.
 

@@ -112,7 +112,7 @@ works up; when room returns it resumes in the opposite order.
 
 ### Mode
 A saved profile — such as **Home**, **Away**, or **Night** — holding its own set
-of priorities and target temperatures. Switch modes from Homey Flows. See
+of priorities and target temperatures. Switch modes from Settings, use a PELS schedule for fixed times, or use a Homey Flow for events. See
 [Configuration → Modes](/configuration#settings-modes).
 
 ### Device states (Limited, Resuming, Idle, Off, Manual)

@@ -24,17 +24,15 @@ PELS shines on loads that can move in time — water heaters, floor heating loop
 
 > **Safety:** Use equipment rated for the load and have any fixed electrical work done by qualified professionals. PELS schedules the load on top of the same safe hot-water and heating controls you already use.
 
-## Price shifting still needs a hard cap
+<span id="price-shifting-still-needs-a-hard-cap"></span>
 
-A common mistake is to turn on every flexible device when the price is low.
+## Using a capacity limit with price shifting
 
-That can backfire. If hot water, floor heating, ventilation boost and EV charging all start in the same cheap hour, the home may cross the hard cap or move into a more expensive capacity tariff step.
-
-PELS treats the hard cap as the boundary. Price shifting happens inside that boundary.
+You can use price shifting on its own. If your grid bill depends on measured peaks, starting several devices in the same cheap hour can move you into a higher tariff step. Enable **Capacity limit** to have PELS limit devices under power-limit control when their combined demand puts the average at risk.
 
 <figure class="docs-figure">
   <img class="docs-diagram" src="/diagrams/cheap-hours-hard-cap.svg" alt="Diagram comparing two low-price hours: one where house load is already high and PELS waits or limits devices, and one where house load is below the hard cap and hot water or heating is a good candidate." />
-  <figcaption>PELS prefers cheap hours only when there is room under the hard cap. The hard cap wins over price shifting.</figcaption>
+  <figcaption>With Capacity limit on, PELS can hold a device back in a cheap hour to protect the hard cap.</figcaption>
 </figure>
 
 ## Typical priority setup
@@ -102,10 +100,9 @@ You normally need:
 - whole-home power measurement through Homey Energy, Tibber Pulse, AMS/HAN/P1 or Flow data
 - a price source if you want cheap-hour shifting with dynamic prices or spot price
 - one or more controllable devices in Homey
-- configured priorities in PELS
 - sensible comfort limits for heating and hot water
 
-Reliable whole-home power data plus controllable devices in Homey is everything PELS needs to start moving load and saving money.
+PELS assigns priorities automatically. If you use power limiting, review the order under **Settings > Modes** when some devices should take precedence.
 
 ## Which PELS feature should you use?
 

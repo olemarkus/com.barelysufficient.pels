@@ -39,9 +39,7 @@ lowered, paused, or turned off, three things must all be true:
    and it can be simulating while Simulation mode is off.
 
 A device with **Power-limit control** turned off stays under PELS's planning but
-is never limited to protect the hard cap. If a device also has no usable power
-estimate, PELS cannot use power-limit control for it — set an accurate load under
-the device's Energy settings in Homey. See [Configuration → Devices](/configuration#settings-devices).
+is never limited to protect the hard cap. To limit a device for power, PELS needs a live reading from that device or from Homey Energy for it. Check whether its power changes in Homey when it runs. A value entered under **Power when running** changes the estimated load. A temperature device can still follow mode targets and prices while waiting for its first power reading. See [Configuration → Devices](/configuration#settings-devices).
 
 ## Manual action needed
 
@@ -107,7 +105,7 @@ buttons that tell you what to investigate:
   the car: raise its charge limit, or turn off its own schedule.
 
 If a task is **At risk** before the deadline and the timing matters, grant it
-extra leeway with **Set what a smart task may do** — *go over today's budget*,
+extra leeway from the task’s **Review power guarantee** action (or **Edit task** if no plan inputs are available) — *go over today's budget*,
 *limit lower-priority devices*, or *reserve power so this task can start
 sooner*. All three stay inside the hard cap. See
 [Letting a Task Push Harder](/smart-tasks#letting-a-task-push-harder).
@@ -134,7 +132,7 @@ planning failure.
   device's Overview card says *Turned off elsewhere — turn it on to resume*,
   PELS is honouring an off action that did not come from it. Turn the device on in Homey or on the
   device to hand it back, or turn off **Leave off until turned on again** in the
-  device's **Setup** section. Note PELS only sees an off action your device's
+  device's **Power limiting** section. Note PELS only sees an off action your device's
   Homey integration reports — a physical switch that stays silent is invisible.
 
 See [Plan States](/plan-states) for what each Overview state word (Limited,

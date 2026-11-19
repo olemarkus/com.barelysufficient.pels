@@ -7,21 +7,15 @@ description: What each PELS Homey Flow card does and which ones matter most for 
 
 Flow cards are how PELS connects to the rest of your Homey setup.
 
-If you only build one Flow, make it **Report power usage**. Everything else depends on having current load data unless you use the **Power meter** power source (read through Homey Energy).
+Start with the meter reading on **Overview**. If it is missing, check **Settings > Limits & safety > Power source**. Choose **Power meter** and select your **Whole-home meter** when it is available. [Connect your meter](/homey-energy#power-metering-via-homey-energy).
 
-Internal planner reasons may still mention older terms like "headroom" or "shed" in diagnostics and logs. In these docs and the visible UI, **headroom** is **available power** (how much more load PELS can fit before the current safe pace) and **shed** appears as **limited**. Legacy flow-card filenames such as `has_headroom_for_device` keep their stable internal ids; their visible titles use the current vocabulary.
+<span id="required-starter-flow"></span>
 
-## Required Starter Flow
+## When your meter needs a Flow
 
 ### Report power usage
 
-Use the **Report power usage** action whenever your power meter updates.
-
-- Input is current power in **watts**.
-- This is the data PELS uses to track hourly usage, calculate available power, and decide whether devices should be limited or resumed.
-- You do not need this Flow when **Settings > Limits & safety > Power source** is set to **Power meter**.
-
-Whole-home power data is what unlocks every other planner feature — the meter Flow is the one card to wire first.
+If your meter is unavailable in the picker or you calculate net import yourself, set **Power source** to **Flow card**. Whenever the meter updates, use **Report power usage** to send current whole-home power in **watts**. For a home with solar, send net grid import, with negative values while exporting. Check **Overview** for the new reading.
 
 ## Triggers
 
@@ -89,17 +83,17 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **End temporary temperature for device** | Returns the device to its mode target now, with price and solar adjustments. |
 | **Set price adjustment for device** | Saves a device's **Cheap-hour boost** or **Expensive-hour reduction** (0 to 20 °C), the same settings as its **Price response** section. Use `0` to stop that adjustment. The device needs **Price-based control** turned on, and the adjustment applies only while **Respond to prices** is on under **Price-aware devices**. Not applied while the device is set to **Keep the new temperature** or **Save as current mode target**. |
 | **Set what happens when a device's temperature changes outside PELS** | Sets the device's **When the temperature changes outside PELS** choice: **Return to mode target**, **Keep the new temperature**, or **Save as current mode target**. **Keep the new temperature** stops PELS setting the temperature at all: mode targets, price and solar adjustments, and power limiting by lowering the temperature. **Save as current mode target** stops price and solar adjustments; power limiting continues. While a Smart task is active on the device, only **Return to mode target** is accepted. |
-| **Set expected power for device** | Legacy card, kept for Flows that already use it; it is not offered for new Flows. Sets a device's expected draw in watts — the same **Power when running** figure as the device's Setup section, for when you would rather set it from a Flow. Outranks every other source, including a configured load and a higher measured reading. Fails only for a stepped-load device, which is sized per configured step. |
+| **Set expected power for device** | Existing Flows can still set the expected draw in watts with this card. For new setups, open the device’s **Setup > Power when running**. Stepped loads use the planning power configured for each step. |
 | **Set external prices (today)** | Stores today's hourly prices from a Flow tag payload. |
 | **Set external prices (tomorrow)** | Stores tomorrow's hourly prices from a Flow tag payload. |
 | **Report stepped load** as **step** | Reports the selected stepped-load level directly, usually after a vendor-specific action card. |
 | **Report stepped load** matching **power** | Reports a power value and lets PELS match it to the configured stepped-load planning power. Accepts values such as `1750` or `1750 W`. |
-| **Report battery level for charger** | Stores battery percentage for a managed charger when the car or charger app exposes that value. Used by charge boost and charging Smart tasks. |
+| **Report battery level for charger** | Supplies battery percentage from a Flow when the charger’s **Car** selection is empty. Used by charge boost and charging Smart tasks. |
 | **Set EV charging phase** | Tells PELS the charger or car is now in **1-phase** or **3-phase** mode so power calculations match reality. Use it after the phase has already switched — this card does not switch the charger hardware. |
 | **Associate a car with a charger for this connection** | Matches the chosen car to the charger for the current connection and uses that car's battery level, even if the car's app has not reported it plugged in. The car must already be selected in the charger's **Car** section. |
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
-| **Add energy task** | Stores an amount of energy (kWh) and ready-by time for an on/off device with a live power reading, such as a water heater switched by a relay. PELS delivers that energy in the cheapest hours before the ready-by time. See [Energy tasks](/smart-tasks#energy-tasks). |
+| **Add energy task** | Stores an amount of energy (kWh) and ready-by time for an eligible EV charger or an on/off device with a live power reading, such as a water heater switched by a relay. PELS delivers that energy in the cheapest hours before the ready-by time. See [Energy tasks](/smart-tasks#energy-tasks). |
 | **Clear smart task** | Removes any active Smart task for a device. |
 | **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **reserve power so this task can start sooner**. Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
 
@@ -107,7 +101,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 
 ### Mode switching
 
-Use **Set operating mode** from schedules or presence events to move between comfort profiles without changing every device manually.
+For a fixed time, choose **Settings > Schedules > New schedule > Mode**. Use **Set operating mode** in a Flow for a presence change, a button press or another Homey event.
 
 ### Temperature changes from a Flow
 
@@ -116,7 +110,6 @@ For a step-by-step temporary change with screenshots, see [Temporarily change on
 Let your Flows change PELS's settings for a thermostat instead of writing to the thermostat directly. With the device on **Return to mode target**, PELS then keeps adjusting for price, solar and power on top of what the Flow chose.
 
 - **Lower a room while a door is open:** when the door opens, **Set mode temperature for device** in **Active mode** to 17 °C; when it closes, set it back to 21 °C.
-- **Hold one temperature for a session, without price adjustments:** at the start, set the temperature for **Active mode** and set both price adjustments to `0`. At the end, put the temperature and adjustments back.
 - **Warm a room for a while:** run **Set temporary temperature for device** with the temperature and the number of minutes. PELS returns the device to its mode target when the time is up, or earlier when a Flow runs **End temporary temperature for device**.
 - **Hand a thermostat to another Flow for a while:** at the start, set **When the temperature changes outside PELS** to **Keep the new temperature**, then set the thermostat with its own card. Until you switch back, PELS does not set its temperature at all, so it neither adjusts for price nor lowers it to limit power. At the end, set it back to **Return to mode target**, and PELS returns the device to its mode target with price and solar adjustments.
 
@@ -140,7 +133,7 @@ Use the device-state conditions to avoid duplicate actions:
 
 ### Stepped load control
 
-For water heaters and similar non-EV devices using the built-in stepped-load model:
+Check **Setup** on the device first. If PELS offers built-in level control, use it. For a device whose levels can only be set through vendor Flow cards:
 
 1. Configure the step list in the PELS device settings.
 2. Use **Stepped device target changed** for the device to map PELS intent to vendor actions.
@@ -152,11 +145,11 @@ Most supported EV chargers need neither card: PELS sets and reads their current 
 
 ### EV battery reporting
 
-Use **Report battery level for charger** when a car or charger app reports battery percentage. This is optional for basic current control, but it is needed for charge boost and charging Smart tasks that depend on battery progress.
+Open **Car** on the charger and select the supported cars that charge there. PELS uses the matched car’s battery level. With the selection empty, PELS can read a battery level exposed on the charging device itself or use **Report battery level for charger** with the car app’s percentage tag. [Set up battery reporting](/how-to-deadline-charging-soc#step-2-give-pels-the-battery-percentage).
 
 ### Smart tasks
 
-Use Smart task cards when one device should reach a target by a ready-by time.
+For a one-off goal, open **Smart tasks > New smart task**. For a regular departure or heating deadline, use **Settings > Schedules**. Use the cards below when a Homey event should create or change the task.
 
 | Goal | Action card |
 | --- | --- |
@@ -200,7 +193,7 @@ See [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
 
 ### Price feed import
 
-If you use an external price provider:
+Check **Settings > Electricity prices** first. If your tariff is available from a built-in source, select it there. To supply prices from another provider by Flow:
 
 1. Send the full-day JSON for today to **Set external prices (today)**.
 2. Send tomorrow's full-day JSON to **Set external prices (tomorrow)**.

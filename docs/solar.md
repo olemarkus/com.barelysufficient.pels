@@ -9,14 +9,10 @@ If you have rooftop solar (PV), this page explains what PELS does with it today.
 
 **Short version:** your solar protects your capacity for free, and PELS puts your surplus to work: it raises a heater's target, runs an on/off load such as a pool pump only while you export, or matches an EV charger's current to your surplus, instead of sending it to the grid. With a home battery, your surplus goes down your priority order, the battery included, and when your home nears its limit the battery discharges on its turn. Left last in the list, the default, your devices get the sun first and the battery covers your whole home before any device is limited. PELS also shows what your solar did: production, self-consumption, export, and the grid cost it avoided.
 
-::: warning Needs a signal that you export
-The solar features below need a signal that you are exporting — either a solar device that reports production, or a meter that shows your solar export.
+::: tip Check the whole-home meter
+Check that **Overview** shows net grid import and that the reading goes negative when your home exports. With the **Flow card** power source, send that signed reading in watts to **Report power usage**. If the meter reports import and export separately, send `import − export`.
 
-On the **Power meter** power source (read through Homey Energy) both signals are available, and every feature on this page works.
-
-On the **Flow** power source, send your meter's reading to the "Report power usage" card exactly as your meter gives it: if it reports a signed value, a negative reading means you are exporting, and PELS reads it as export. If your meter is published as two separate devices — one for import, one for export — send `import − export` so the number you report can go negative. Everything on this page works here too: capacity protection, the export accounting below, your panels' production, the heating surplus boost, and running an on/off device on surplus.
-
-Two things follow from PELS only knowing what you send it. The surplus controls — the heating boost and running an on/off device on surplus — stay hidden until PELS has actually seen your home export, and appear on their own once it has; a reading that never goes negative simply leaves those devices running as usual. And the Solar card says so: while production is measured but export never has been, it shows a note asking you to check that the reading turns negative while you export. The one thing that stays Power-meter-only is the estimate PELS makes for a **zero-export inverter** (described below), which needs your production and your meter reading to be taken at the same instant.
+PELS offers surplus controls once it has seen export. If your inverter prevents export, use **Power meter** and check that Homey Energy shows your solar production. With those readings PELS can also offer surplus controls when it detects that the inverter is holding back production. [Zero-export setup](#zero-export-setup).
 :::
 
 ## What to do today
@@ -25,7 +21,7 @@ To use more of your own solar with PELS:
 
 1. **Confirm PELS can see your export** — on the Power meter source, that your solar device's production shows up in Homey Energy; on the Flow source, that the reading you send goes negative while exporting. Capacity protection then works automatically — there is nothing else to turn on.
 2. **Optionally turn on "Use solar surplus"** on a managed heating device (a water tank, floor heating, or a room heater) so surplus warms your home instead of going to the grid.
-3. **Keep an EV charger managed with current control.** While the sun is up, a charging car naturally uses the freed-up power, so much of that charge comes from your own solar. To go further and charge *only* on the sun, turn on **"Charge on solar surplus"** on the charger.
+3. **Keep an EV charger managed with current control.** While the sun is up, a charging car naturally uses the freed-up power, so much of that charge comes from your own solar. To match charging current to export, turn on **Charge on solar surplus** on the charger. Choose **Turn off** under **Power limiting** if it should stop when surplus is too low.
 
 How much this helps depends on your home and the weather.
 
@@ -39,7 +35,7 @@ Where exported solar earns roughly the spot price, self-consumption is a modest 
 
 ### Use solar surplus to heat your home
 
-On a managed heating device you can turn on **"Use solar surplus"** (the toggle appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export, which covers a string inverter with no separate solar device). When you are exporting enough to cover that device's own draw, PELS raises its target by the **"Solar-surplus boost"** amount (in °C, default +2), so the surplus warms your home or water instead of going to the grid. A small or short-lived export may not be enough to engage it.
+On a managed heating device you can turn on **"Use solar surplus"**. When you are exporting enough to cover that device's own draw, PELS raises its target by the **"Solar-surplus boost"** amount (in °C, default +2), so the surplus warms your home or water instead of going to the grid. A small or short-lived export may not be enough to engage it.
 
 ![The "Use solar surplus" toggle in a managed device's detail page](/screenshots/device-detail/solar-surplus-toggle.png)
 *Figure 1. Turn on "Use solar surplus" on a managed heating device.*
@@ -55,11 +51,15 @@ This boost:
 
 PELS waits for the surplus to settle before engaging, and — to avoid flapping on passing clouds — it briefly holds the raised target for a few minutes after export stops before easing back. While the boost is engaged it takes precedence over any price-based lowering (your own solar is free); the rest of the time your normal price-based targets apply. It is a gentle "use a bit more of my own solar" nudge, not a precise export-to-zero controller.
 
-**If your inverter is set to zero export** (it throttles production so nothing is sent to the grid), the meter never shows a surplus — so PELS estimates one instead. This estimate needs the **Power meter** power source: it compares your production against your meter reading, and only that source takes the two at the same instant. It learns your panels' potential in the current weather from your own production history and verifies it against real production: when actual production sits clearly below that potential, the same boost can engage to soak up the hidden surplus, and your inverter naturally produces more to cover it. If production does not follow — your home starts drawing from the grid instead — PELS eases the boost back promptly and waits a while before trying again. This estimate needs some weeks of production history before it can engage, it stays cautious (it backs off whenever your home draws meaningfully from the grid — only the small standing draw of a couple hundred watts that zero-export setups normally show is tolerated — and your hard cap and daily budget still come first), and it is disabled when a home battery is present, since PELS cannot tell a throttled inverter from a charging battery.
+<span id="zero-export-setup"></span>
+
+**If your inverter is set to zero export**, choose the **Power meter** source so PELS can compare production and grid import measured at the same instant. Under **Settings > Electricity prices > Solar forecast**, **Automatic** uses Homey’s solar forecast when available. Otherwise, PELS uses the forecast it learns over several weeks of production history.
+
+When actual production is below the forecast and the home is drawing little from the grid, PELS can raise the heating target to use the available solar power. If grid import rises, PELS backs off and waits before trying again. The enabled limits still apply. This estimate is disabled in homes with a battery, where charging the battery can look like the inverter holding back production.
 
 ### Run an on/off device only on solar surplus
 
-On a managed **on/off** device you can turn on **"Run on solar surplus"** (the toggle appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export). PELS then keeps the device **off** and turns it on only while your export comfortably covers its draw — the same settle-and-hold behaviour as the heating boost, so passing clouds don't flap it. When the surplus is gone, PELS turns it off again.
+On a managed **on/off** device you can turn on **"Run on solar surplus"**. PELS then keeps the device **off** and turns it on only while your export comfortably covers its draw — the same settle-and-hold behaviour as the heating boost, so passing clouds don't flap it. When the surplus is gone, PELS turns it off again.
 
 Before you use it:
 
@@ -77,9 +77,7 @@ The device shows **"Waiting for solar surplus"** on its card while PELS keeps it
 
 On a managed device with **levels** (an EV charger with an **Automatic** or EV control model, or any device you configured as a stepped load) you can turn on **"Charge on solar surplus"** (a charger) or **"Match solar surplus"** (anything else). PELS then picks the level your export covers and moves it up and down as the sun changes, instead of running the device as hard as your hard cap allows.
 
-For an EV charger this is the "leave it plugged in all week" setting: the car charges on the sun, and stops when the sun stops.
-
-There is a floor to this: a charger's lowest usable current is **6 A** — about **1.4 kW** on one phase, about **4.1 kW** on three — and below that there is nothing to select. When your surplus cannot cover even that, PELS stops the device, exactly as it would if it needed the power back for your capacity. Where it stops is whatever you chose under **Power limiting** on that device, so the answer is the same one PELS already uses everywhere else.
+The surplus must cover the lowest usable charging current. The default minimum of **6 A** takes about **1.4 kW** on one phase or **4.1 kW** on three phases with a 400 V supply. A higher minimum for the charger or connected car needs more surplus. Under **Power limiting**, choose **Turn off** if charging should stop when surplus falls below that minimum. With **Set to step**, the charger can keep running at the selected step and draw the difference from the grid.
 
 Some things to know:
 

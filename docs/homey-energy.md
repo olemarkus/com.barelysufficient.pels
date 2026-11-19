@@ -29,7 +29,7 @@ Read more: [Configuration — Settings > Electricity prices](/configuration#sett
 
 ### Modes and priorities
 
-Set up profiles like Home, Away, Night, or Vacation with different target temperatures and priorities. PELS switches between them automatically via Flow cards, so your comfort settings adapt to your schedule.
+Set up profiles like Home, Away, Night, or Vacation with different target temperatures and priorities. Use **Settings > Schedules** to switch modes at fixed times, or a Homey Flow when someone arrives or leaves.
 
 Read more: [Configuration — Settings > Modes](/configuration#settings-modes)
 
@@ -53,10 +53,7 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 
 1. Open **More > Apps > PELS > Settings**.
 2. Go to **Settings > Limits & safety**.
-3. Change **Power source** to **Power meter**.
-4. Pick your meter under **Whole-home meter**, just below **Power source**.
-
-If you never chose the Flow source or sent readings through one, and your meter is marked **Tracks total home energy consumption** and is the only whole-home meter Homey lists, PELS sets both of these for you shortly after starting; you only need to check them here.
+3. Check the selected meter and its reading. If you need to select a meter, choose **Power meter** under **Power source**, then pick the meter under **Whole-home meter**.
 
 ![Power source set to Power meter](images/power-source-homey-energy.png)
 
@@ -102,7 +99,7 @@ You can switch between the two sources at any time. The change takes effect imme
 
 If your Homey has dynamic electricity prices configured, PELS can read them directly instead of fetching prices from its own sources.
 
-This is the recommended path **outside Norway**. PELS ships a built-in Norwegian spot price source with full grid-tariff and electricity-support calculation, and outside Norway, Homey Energy delivers the same all-in hourly prices straight into PELS — every supported country, no extra configuration.
+Choose the source that reflects your electricity contract. In Norway the built-in price source can include the grid tariff and electricity support. Outside Norway, Homey Energy can supply the prices you have configured in Homey, and PELS can also read prices and markups directly from Power by the Hour.
 
 Until you choose a price source yourself, PELS uses Homey Energy on a Homey outside Norway, going by the country Homey reports for its location. If you run the Power by the Hour app and it can price your home (its only price device, or the one you picked), PELS uses that instead, with the markups you set there, as long as no device follows prices yet. A source you choose always takes over.
 
@@ -110,7 +107,7 @@ Until you choose a price source yourself, PELS uses Homey Energy on a Homey outs
 
 1. Open **More > Apps > PELS > Settings**.
 2. Go to **Settings > Electricity prices**.
-3. Change **Price source** to **Homey Energy (dynamic prices)**.
+3. Check the source and the prices it supplies. To use the tariff you configured in Homey, select **Homey Energy (dynamic prices)**.
 
 ![Price source set to Homey Energy](images/price-source-homey-energy.png)
 
@@ -162,7 +159,7 @@ You can use Homey Energy for both power metering and electricity prices at the s
 - **Power source** is in **Settings > Limits & safety**.
 - **Price source** is in **Settings > Electricity prices**.
 
-A typical setup for someone outside Norway: set both to Homey Energy and you are done — no Flows needed for basic operation. From there, configure your [limits](/getting-started#step-2-set-your-limits), [pick which devices to control](/getting-started#step-3-choose-which-devices-pels-controls), and set up [price response](/configuration#settings-price-aware-devices).
+Follow [Getting Started](/getting-started) to confirm the detected meter, choose a device, preview and start managing. If you enable a price feature, check that **Settings > Electricity prices** shows prices for your contract. A meter read through Homey Energy works with any PELS price source.
 
 ## Next steps
 

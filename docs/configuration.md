@@ -191,7 +191,7 @@ A smart task wins over this setting. In the hours the task books, PELS can turn
 the device on for it when there is available power, and once the device is on, the
 hold has ended: it is back under normal PELS control. In the hours the task does not book, the device stays off.
 Turning the device off during a booked hour does not stop the task; PELS can turn it
-back on. To keep the device off, remove the task with the **Clear smart task** Flow card.
+back on. To keep the device off, open the task and choose **Clear task**. In an automation, use the **Clear smart task** Flow card.
 
 A Flow that turns the device off counts as turning it off elsewhere. That
 matters if you book hours with Flows: when the Flow that ends a booked hour turns
@@ -394,11 +394,4 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 
 ## Suggested setup order
 
-1. Connect your power meter (**Power meter** or **Flow card**).
-2. Enable management on a small set of obvious devices.
-3. Tune priorities and limits.
-4. Add price-aware devices.
-5. Add daily budget pacing if you want whole-day guidance.
-6. Add Smart tasks for devices that must reach a target by a ready-by time.
-
-For EV charging, add [EV charger current control](/ev-charger) after the power meter and capacity settings are working.
+Follow [Getting Started](/getting-started) to confirm your meter, choose one device, review the settings for your home, then preview and start managing. Setup offers the controls your device supports. You can add more devices, change priorities or enable a [daily budget](/daily-budget) later.

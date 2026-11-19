@@ -93,7 +93,7 @@ running ahead of its daily budget, resumes wait a little longer.
 | An optional daily budget and price source | Shifting flexible load into cheaper hours |
 | Smart tasks for things that must be ready | Bringing devices back as power returns |
 
-Set it up once, switch modes from Flows, and let the loop run. When something
+Use a schedule to change modes at fixed times or a Homey Flow to change them on events such as arriving home. When something
 looks off, the [Troubleshooting guide](/troubleshooting) maps symptoms to fixes.
 
 ## Where to go next
