@@ -8,7 +8,7 @@ Med Smart tasks kan bilen være ladet til 80 % innen klokka 07, stua varm ved hj
 
 Med priskilden Norway (spot + grid tariff) regner PELS ut strømprisen med nettleien fra nettselskapet ditt og strømstøtte eller Norgespris. Du kan også bruke priser fra Homey Energy, Power by the Hour eller Flows. Tidsavhengige priser og nettleie som er lagt inn i den valgte priskilden, tas med i planleggingen. I et Enova-støttet anlegg kan PELS stå for pris- og effektstyringen.
 
-Har du solceller eller hjemmebatteri, bruker PELS soloverskuddet til varmtvann, oppvarming og elbillading, og batteriet til å holde forbruket under effektgrensen.
+Har du solceller eller hjemmebatteri, bruker PELS soloverskuddet til varmtvann, oppvarming og elbillading, og batteriet til å holde forbruket under effektgrensen. PELS styrer blant annet hjemmebatterier som Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy og Anker SOLIX.
 
 Moduser som Home, Away og Night har egne temperaturer og prioriteringer. Flows kan bytte modus når du drar hjemmefra eller legger deg.
 
