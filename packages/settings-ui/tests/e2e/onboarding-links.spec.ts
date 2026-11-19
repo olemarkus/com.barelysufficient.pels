@@ -510,6 +510,35 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#devices-panel')).toBeVisible();
   });
 
+  test('Review waits for the Smart Task roster and still requires Prices after retry', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { price_optimization_settings: {}, daily_budget_enabled: false, capacity_dry_run: true },
+        unsetSettings: ['nettleie_orgnr'],
+        apiHandlers: {
+          'GET /ui_bootstrap': () => { throw new Error('Bootstrap unavailable'); },
+          'GET /ui_deferred_objective_settings': () => { throw new Error('Smart Task roster unavailable'); },
+        },
+      };
+    });
+    await page.goto('/?page=settings/setup-review&setup=review');
+    const review = page.locator('#setup-review-root');
+    const retry = review.getByRole('button', { name: 'Try again' });
+    const start = review.getByRole('button', { name: 'Start managing' });
+    await expect(retry).toBeVisible();
+    await expect(start).toHaveCount(0);
+    await expect(review).not.toContainText('Not needed for your devices');
+
+    await page.evaluate(() => {
+      const { Homey } = window as unknown as { Homey: { __stub: { clearApiHandler: (id: string) => void } } };
+      Homey.__stub.clearApiHandler('GET /ui_deferred_objective_settings');
+    });
+    await retry.click();
+    await expect(review).toContainText('Norway, without your grid tariff.');
+    await expect(review.getByRole('button', { name: 'Continue setup' })).toBeVisible();
+    await expect(start).toHaveCount(0);
+  });
+
   for (const [route, surface, recovered] of [
     ['settings/recommendations', '#setup-recommendations-root', 'Set your export price'],
     ['settings/devices&setup=devices', '#device-card-list', 'Living Room Heat Pump'],

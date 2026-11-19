@@ -19,6 +19,7 @@ const loadUnpublished = async (membershipByDeviceId: Readonly<Record<string, str
   }));
   const facts = await import('../src/ui/setupPathFacts.ts');
   const { state } = await import('../src/ui/state.ts');
+  state.deferredObjectiveSettingsReadState = 'ready';
   return { facts, state };
 };
 
@@ -112,6 +113,25 @@ describe('setup path facts', () => {
       const read = facts.readSetupPath();
       return read.state === 'open' ? read.path.steps.find((step) => step.id === 'prices') : undefined;
     };
+
+    it('waits for the Smart Task roster before deciding whether Prices is required', async () => {
+      const { facts, state } = await configuredHome();
+      facts.publishSetupPrices({ respondToPrices: true, budgetShapesByPrice: false, status: OPEN_NORWAY });
+      state.deferredObjectiveSettingsReadState = 'loading';
+      expect(facts.readSetupPath()).toEqual({ state: 'loading' });
+      expect(facts.readSetupReview()).toBeNull();
+
+      state.deferredObjectiveSettingsReadState = 'unavailable';
+      expect(facts.readSetupPath()).toEqual({ state: 'unavailable' });
+      expect(facts.readSetupReview()).toBeNull();
+
+      state.deferredObjectiveSettings = { objectivesByDeviceId: { heater: {
+        enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 65,
+        deadlineAtMs: Date.now() + 3_600_000,
+      } } };
+      state.deferredObjectiveSettingsReadState = 'ready';
+      expect(pricesStep(facts)).toMatchObject({ status: 'next', detail: OPEN_NORWAY.summary });
+    });
 
     it('asks for prices once a managed device responds to them', async () => {
       const { facts, state } = await configuredHome();

@@ -135,6 +135,7 @@ describe('Belgian battery-only setup', () => {
     const { resolveAfterSetupRecommendations } = await import('../src/ui/afterSetupRecommendations.ts');
     const { state } = await import('../src/ui/state.ts');
     state.devicesLoaded = true;
+    state.deferredObjectiveSettingsReadState = 'ready';
     state.latestDevices = [{
       id: 'battery', deviceClass: 'battery', batteryControl: 'drivable', powerCapable: true,
     }] as typeof state.latestDevices;
