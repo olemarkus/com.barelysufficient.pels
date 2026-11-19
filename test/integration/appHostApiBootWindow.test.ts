@@ -34,7 +34,7 @@ const createHostApi = (
     protected readonly getHomeOperatingMode = () => 'Home';
     protected readonly setHomeOperatingMode = (mode: string) => ({ previous: 'Home', resolved: mode });
     protected readonly reloadHomeModeCatalog = () => {};
-    protected readonly readGoverningModeTargetC = () => null;
+    public readonly readGoverningModeTargetC = () => null;
     protected readonly resolveHomeModeName = (mode: string) => mode;
     protected readonly getHomeModeNames = () => new Set(['Home']);
     protected readonly listDeviceTargetModes = () => null;
