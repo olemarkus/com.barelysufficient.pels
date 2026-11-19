@@ -34,7 +34,7 @@ import { InverterCurtailmentSettings, type InverterCurtailmentSettingsProps } fr
 import { AppBar } from './AppBar.tsx';
 import { ExpandMoreIcon } from './icons.tsx';
 import {
-  NORWAY_PRICE_MODEL_NAMES,
+  NORWAY_PRICE_MODEL_NAMES, norgesprisTargetText,
   type NorwayChoices,
   type PriceSourceAssumption,
 } from '../priceSetupStatus.ts';
@@ -700,7 +700,7 @@ const NorwaySection = ({
       </div>
       {config.norwayPriceModel === 'norgespris' && (
         <p class="muted">
-          Official Norgespris rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT.
+          {norgesprisTargetText(norwayChoices)}{' '}
           Monthly cap: household 5000 kWh, cabin 1000 kWh.
         </p>
       )}
@@ -970,7 +970,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
         {!(props.showSetupGoals && isNorway) && sourceStatus.hint}
       </div>
       {sourceStatus.followUp}
-      {props.showSetupGoals && !isNorway && (
+      {props.showSetupGoals && (
         <>
           <p class="pels-card-supporting">
             You can use power limits and solar control without prices. Return to your device choices

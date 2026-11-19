@@ -3,11 +3,11 @@ import {
   getDateKeyInTimeZone,
   getZonedParts,
 } from '../../packages/shared-domain/src/utils/dateUtils';
+import { getNorgesprisTarget } from '../../packages/shared-domain/src/price/norwayPrice';
 import { NORWAY_PRICE_MODEL } from '../utils/settingsKeys';
 import {
   DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH,
   getNorgesprisMonthlyCapForTariffGroup,
-  NORGESPRIS_TARGET_EX_VAT,
 } from './norwayPriceDefaults';
 import {
   getCurrentMonthUsageKwh,
@@ -278,7 +278,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
   const validHourlyUsageEstimateKwh = Number.isFinite(hourlyUsageEstimateKwh) && hourlyUsageEstimateKwh > 0
     ? hourlyUsageEstimateKwh
     : DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH;
-  const norgesprisTargetIncVat = NORGESPRIS_TARGET_EX_VAT * vatMultiplier;
+  const norgesprisTargetIncVat = getNorgesprisTarget(vatMultiplier);
 
   const normalizedSpotList = normalizeSpotList(spotPrices, normalizedTimeZone);
   const gridTariffByDay = buildGridTariffByDay({

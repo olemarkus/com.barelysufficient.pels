@@ -22,21 +22,6 @@ export type PowerReadingsBannerContent = { text: string; actionLabel: string };
 type BannerPowerSource = 'homey_energy' | 'flow';
 
 const NONE_YET_LEAD = 'No power readings yet.';
-// "New", because the stamp this ages is when the reading last CHANGED: a meter
-// whose driver keeps repeating one frozen value still shows that value in
-// Homey, so "no readings" would contradict what the owner can see there.
-const STALE_LEAD = 'No new power readings in the last minute.';
-// The plan behind the page was built without a measurement: the meter has been
-// silent past the 10-minute shed timeout and PELS ran its one fail-closed pass.
-// The hero draws nothing for that cycle (owner ruling 2026-09-02), so this is
-// the only line on the page that connects the cause (no readings) to what the
-// owner sees below it (every managed device `Limited`). "Limited" is the
-// canonical word (`notes/ui-terminology.md`); "stay" says nothing will change
-// until a new reading arrives, which is exactly the silence block's rule.
-const UNMEASURED_LEAD = 'No new power readings for over 10 minutes. '
-  + 'Managed devices stay limited until a new reading arrives.';
-const ACTION_LABEL = 'Check power source';
-
 // Meter first: it is the path with nothing to build, and most homes have one.
 const HINT_FLOW_NONE_YET = 'Pick a whole-home meter under Limits & safety, or set up a Flow '
   + 'with the Report power usage action.';
@@ -62,9 +47,12 @@ const resolveHint = (input: BannerHintInput): string => {
   return input.neverReceived ? HINT_FLOW_NONE_YET : HINT_FLOW_STALE;
 };
 
-const resolveLead = (input: { neverReceived: boolean; planUnmeasured: boolean }): string => {
-  if (input.neverReceived) return NONE_YET_LEAD;
-  return input.planUnmeasured ? UNMEASURED_LEAD : STALE_LEAD;
+// The power owner also ages a reading that repeats while the load changes.
+const readingAge = (elapsedMs: number): string => {
+  const minutes = Math.floor(elapsedMs / 60_000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`;
 };
 
 /**
@@ -99,6 +87,8 @@ export type PowerReadingsBannerInput = {
   readings: PowerReadingsFact;
   nowMs: number;
   source: BannerPowerSource;
+  /** Display name from Homey when available for the selected meter. */
+  meterName: string | null;
   /** Homey Energy only: whether a whole-home meter is chosen yet. */
   meterChosen: boolean;
   /**
@@ -114,14 +104,21 @@ export type PowerReadingsBannerInput = {
 export const resolvePowerReadingsBannerContent = (
   input: PowerReadingsBannerInput,
 ): PowerReadingsBannerContent | null => {
-  const neverReceived = input.readings.state === 'never';
-  if (
-    input.readings.state === 'received'
-    && (input.nowMs - input.readings.lastPowerUpdateMs) <= POWER_SAMPLE_STALE_THRESHOLD_MS
-  ) {
-    return null;
+  const { readings, source, meterChosen } = input;
+  if (readings.state === 'never') {
+    const hint = resolveHint({ source, meterChosen, neverReceived: true });
+    return { text: `${NONE_YET_LEAD} ${hint}`, actionLabel: 'Check power source' };
   }
-  const lead = resolveLead({ neverReceived, planUnmeasured: input.planUnmeasured });
-  const hint = resolveHint({ source: input.source, meterChosen: input.meterChosen, neverReceived });
-  return { text: `${lead} ${hint}`, actionLabel: ACTION_LABEL };
+  const elapsed = input.nowMs - readings.lastPowerUpdateMs;
+  if (elapsed <= POWER_SAMPLE_STALE_THRESHOLD_MS) return null;
+  const consequence = input.planUnmeasured
+    ? 'PELS plans to keep managed devices limited until a new reading arrives.'
+    : 'PELS uses the last reading for its power plan.';
+  const hint = source === 'homey_energy' && meterChosen && input.meterName
+    ? `Check that ${input.meterName} is available in Homey Energy and its reading is changing.`
+    : resolveHint({ source, meterChosen, neverReceived: false });
+  return {
+    text: `Last new power reading ${readingAge(elapsed)} ago. ${consequence} ${hint}`,
+    actionLabel: 'Check meter',
+  };
 };

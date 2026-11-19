@@ -1,3 +1,9 @@
+import { getVatMultiplier, VAT_MULTIPLIER_EXEMPT } from '../../packages/shared-domain/src/price/norwayPrice';
+
+export {
+  getVatMultiplier, VAT_MULTIPLIER_EXEMPT, VAT_MULTIPLIER_STANDARD,
+} from '../../packages/shared-domain/src/price/norwayPrice';
+
 export type RegionalPricingRules = {
   vatMultiplier: number;
   consumptionTaxExVat: number;
@@ -7,9 +13,6 @@ export type RegionalPricingRules = {
   usesReducedConsumptionTax: boolean;
 };
 
-export const VAT_MULTIPLIER_STANDARD = 1.25;
-export const VAT_MULTIPLIER_EXEMPT = 1.0;
-
 export const CONSUMPTION_TAX_STANDARD_EX_VAT = 7.13;
 export const CONSUMPTION_TAX_REDUCED_EX_VAT = 0.48;
 
@@ -17,10 +20,6 @@ export const ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT = 77;
 export const ELECTRICITY_SUPPORT_COVERAGE = 0.90;
 
 const REDUCED_CONSUMPTION_TAX_COUNTIES = new Set(['55', '56']);
-
-export const getVatMultiplier = (priceArea: string): number => (
-  priceArea === 'NO4' ? VAT_MULTIPLIER_EXEMPT : VAT_MULTIPLIER_STANDARD
-);
 
 export const getConsumptionTaxRate = (countyCode: string): number => (
   REDUCED_CONSUMPTION_TAX_COUNTIES.has(countyCode)

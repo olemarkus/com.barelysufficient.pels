@@ -31,14 +31,17 @@ Appen er særlig nyttig når høyt samtidig forbruk kan gi et dyrere kapasitetst
 
 ## Hva du trenger
 
-Du trenger:
+Du trenger Homey Pro med PELS installert, en løpende måling av effekten for hele boligen og én enhet Homey kan styre. Målingen kan komme fra Homey Energy, en strømmåler i Homey (for eksempel en HAN-leser) eller en Flow.
 
-1. Homey Pro.
-2. PELS installert fra Homey App Store.
-3. En HAN-sensor koblet opp mot Homey.
-4. En eller flere enheter Homey kan styre, for eksempel lader, termostat, av/på-bryter eller enhet med trinnvis effekt.
+## Kom i gang med én enhet
 
-Begynn enkelt. Koble til totalforbruket, velg en realistisk grense og la PELS styre én eller to tydelige enheter først. Legg heller til mer styring når du ser at grunnoppsettet fungerer.
+1. Åpne **Mer > Apper > PELS > Innstillinger** i Homey. Velg **Set up PELS**.
+2. Sjekk at PELS viser målingen fra strømmåleren din. Skal du velge måleren selv, åpner du **Power source > Power meter** og velger den under **Whole-home meter**. Bruker du en Flow, sender kortet **Report power usage** effekten i watt.
+3. Velg for eksempel en varmtvannsbereder eller elbillader som allerede finnes i Homey. Slå på **Managed by PELS** for enheten.
+4. Vil du holde deg under et bestemt kapasitetstrinn i nettleien, setter du **Hard cap** til den øvre grensen for trinnet. Prisoppsettet trengs når du velger en funksjon som bruker strømpriser.
+5. Åpne **Review setup** og les hva PELS vil gjøre med enheten. Velg **Start managing** for å slå på styringen. Velg **Keep simulating** hvis du først vil se hvordan PELS ville styrt enheten. Du kan starte styringen senere med **Review and start** på oversikten.
+
+**PELS Insights** er en valgfri enhet som viser status i Homey.
 
 ## Effektledd, kapasitetsledd og effektgrense
 

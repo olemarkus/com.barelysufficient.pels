@@ -285,5 +285,13 @@ test.describe('Power source setting', () => {
     });
 
     await expect(banner).toContainText('Pick a whole-home meter');
+
+    await setMaterialSelectValue(page, '#settings-homey-energy-meter', 'dev_han');
+    await page.getByRole('tab', { name: 'Overview' }).click();
+    await expect(banner).toContainText('Last new power reading 2 min ago');
+    await expect(banner).toContainText('PELS uses the last reading for its power plan');
+    await expect(banner).toContainText('HAN power meter');
+    await banner.getByRole('button', { name: 'Check meter' }).click();
+    await expect(page.locator('#settings-homey-energy-meter')).toBeInViewport();
   });
 });

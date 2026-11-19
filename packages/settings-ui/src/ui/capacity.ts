@@ -21,9 +21,6 @@ import {
   dryRunBannerText,
   simulationDisableButton,
   type MdSwitchElement,
-  staleDataBanner,
-  staleDataBannerText,
-  staleDataBannerAction,
 } from './dom.ts';
 import { isValidGridImportLimitKw } from '../../../shared-domain/src/settings/powerLimits.ts';
 import { getSetting } from './homey.ts';
@@ -45,7 +42,7 @@ import {
   POWER_SOURCE,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
-  hasChosenWholeHomeMeter,
+  WHOLE_HOME_METER_CHANGED,
   syncHomeyEnergyMeterSelection,
   syncHomeyEnergyMeterVisibility,
 } from './homeyEnergyMeter.ts';
@@ -56,6 +53,7 @@ import {
   normalizeDebugLoggingTopics,
   topicsToScenarioIds,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
+import { renderPowerReadingsBanner } from './powerReadingsBanner.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { DEFAULT_CAPACITY_PERIOD_MINUTES } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type {
@@ -71,7 +69,6 @@ import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import {
   classifyPowerReadingsFact,
-  resolvePowerReadingsBannerContent,
   type PowerReadingsFact,
 } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { logSettingsError } from './logging.ts';
@@ -88,14 +85,12 @@ import {
 } from './capacitySettingsPersistence.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST, followMonthPeakSavedToast } from './homeLimitsCopy.ts';
-import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
+import { onPlanMeasurementChange } from './planMeasurementSignal.ts';
 import {
-  isNoReadingsCarriedBySetupPath,
   isSimulationCarriedBySetupPath,
   onSetupPathChange,
   publishSetupHardCapRead,
   publishSetupHardCapUnavailable,
-  publishSetupPower,
   publishSetupPowerUnavailable,
 } from './setupPathFacts.ts';
 
@@ -233,7 +228,7 @@ export const refreshDryRunBannerHomeScope = async (): Promise<void> => {
     // areas or nothing (`resolveHasMeterAreas`), so only a RESOLVED roster
     // claims this install has none.
     hasMeterAreas = resolveHasMeterAreas(scopeRead);
-    syncDryRunBannerVisibility();
+    refreshSetupBanners();
     return;
   }
   const flags = await Promise.all(
@@ -244,7 +239,7 @@ export const refreshDryRunBannerHomeScope = async (): Promise<void> => {
   if (generation !== postureRefreshGeneration) return;
   hasMeterAreas = resolveHasMeterAreas(scopeRead);
   state.meterAreaSimulation = mergeMeterAreaSimulation(rosterRead.areas, flags, state.meterAreaSimulation);
-  syncDryRunBannerVisibility();
+  refreshSetupBanners();
 };
 
 /**
@@ -314,8 +309,6 @@ const readCapacityPowerModel = async (): Promise<CapacityPowerRead> => {
 // AFTER the first power read can re-render the copy without refetching power.
 // undefined = the banner has never rendered.
 let lastBannerReadings: PowerReadingsFact | undefined;
-// A never-received fact always resolves banner content; this only keeps the type honest.
-const NO_READINGS_YET_FALLBACK = 'No power readings yet.';
 // Newer loads supersede the entire older snapshot. Power-source saves have a
 // narrower generation: they fence stale source-dependent paint without
 // discarding unrelated capacity values read from a realtime refresh.
@@ -344,25 +337,7 @@ const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
 
 const updateStaleDataBanner = (readings: PowerReadingsFact) => {
   lastBannerReadings = readings;
-  const content = resolvePowerReadingsBannerContent({
-    readings,
-    nowMs: Date.now(),
-    planUnmeasured: isPlanUnmeasured(),
-    // The select mirrors the persisted source (and a drafted Homey Energy
-    // switch, where the picker hint is exactly right).
-    source: normalizePowerSource(settingsPowerSourceSelect?.value),
-    meterChosen: hasChosenWholeHomeMeter(),
-  });
-  // The setup path's Power meter step says this same sentence where it stands
-  // in for the banner, so it is handed the banner's words rather than its own.
-  publishSetupPower(readings.state === 'never'
-    ? { state: 'never', remedy: content?.text ?? NO_READINGS_YET_FALLBACK }
-    : { state: 'received' });
-  if (!staleDataBanner) return;
-  staleDataBanner.hidden = content === null || isNoReadingsCarriedBySetupPath(hasMeterAreas === false);
-  if (content === null) return;
-  if (staleDataBannerText) staleDataBannerText.textContent = content.text;
-  if (staleDataBannerAction) staleDataBannerAction.textContent = content.actionLabel;
+  renderPowerReadingsBanner(readings, normalizePowerSource(settingsPowerSourceSelect?.value), hasMeterAreas === false);
 };
 
 export const refreshStaleDataBanner = (): void => {
@@ -371,13 +346,15 @@ export const refreshStaleDataBanner = (): void => {
 // The plan render reports whether the current plan was measured; a flip
 // re-renders the banner at once rather than on the next refresh tick.
 onPlanMeasurementChange(refreshStaleDataBanner);
+document.addEventListener(WHOLE_HOME_METER_CHANGED, refreshStaleDataBanner);
 // Both global banners stand down where the setup path card speaks for them, and
 // the facts that decide it (the device list above all) land after the first
 // banner sync, so re-judge whenever the path moves.
-onSetupPathChange(() => {
+const refreshSetupBanners = (): void => {
   syncDryRunBannerVisibility();
   refreshStaleDataBanner();
-});
+};
+onSetupPathChange(refreshSetupBanners);
 
 export const loadStaleDataStatus = async () => {
   const read = await readCapacityPowerModel();

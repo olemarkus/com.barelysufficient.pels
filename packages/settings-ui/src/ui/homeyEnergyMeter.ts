@@ -31,6 +31,8 @@ import {
 } from './homeAreaConfigRulesCopy.ts';
 import { POWER_SOURCE } from '../../../shared-domain/src/settings/settingsKeys.ts';
 
+export const WHOLE_HOME_METER_CHANGED = 'pels:whole-home-meter-changed';
+
 export type MeterSelectEntry = { value: string; label: string };
 
 /**
@@ -95,6 +97,7 @@ export const buildMeterSelectEntries = (
 let pickerDevices: MeterSelectEntry[] | null = null;
 let pickerDevicesLoading = false;
 let selectedMeterId: string | null = null;
+let selectedMeterName: string | null = null;
 let lastRenderSignature: string | null = null;
 let deferredRenderPending = false;
 // One selection write at a time. The Material picker is disabled while the
@@ -114,10 +117,17 @@ export const hasChosenWholeHomeMeter = (): boolean => selectedMeterId !== null;
 /** The chosen whole-home meter id; `null` while none is chosen yet. */
 export const getChosenWholeHomeMeterId = (): string | null => selectedMeterId;
 
-/** Display name from the same accepted meter inventory that owns the picker. */
-export const getChosenWholeHomeMeterName = (): string | null => (
-  pickerDevices?.find((meter) => meter.value === selectedMeterId)?.label ?? null
-);
+/** Keep the last known name for this selection if the silent meter drops out of the live report. */
+export const getChosenWholeHomeMeterName = (): string | null => selectedMeterName;
+
+const updateSelectedMeter = (id: string | null): void => {
+  const name = pickerDevices?.find((meter) => meter.value === id)?.label
+    ?? (selectedMeterId === id ? selectedMeterName : null);
+  const changed = selectedMeterId !== id || selectedMeterName !== name;
+  selectedMeterId = id;
+  selectedMeterName = name;
+  if (changed) document.dispatchEvent(new Event(WHOLE_HOME_METER_CHANGED));
+};
 
 const renderMeterOptions = (): void => {
   const select = settingsHomeyEnergyMeterSelect;
@@ -175,6 +185,7 @@ const refreshPickerDevices = async (): Promise<void> => {
     pickerDevices = toMeterDeviceOptions(
       await callApi<HomeyEnergyMeterEntry[]>('GET', HOMEY_ENERGY_METERS_PATH),
     );
+    updateSelectedMeter(selectedMeterId);
     renderMeterOptions();
   } catch (error) {
     await logSettingsError('Failed to load meters for the whole-home meter picker', error, 'homeyEnergyMeter');
@@ -185,7 +196,7 @@ const refreshPickerDevices = async (): Promise<void> => {
 
 /** Adopt a freshly read selection without changing source-owned visibility. */
 export const syncHomeyEnergyMeterSelection = (selectedId: string | null): void => {
-  selectedMeterId = selectedId;
+  updateSelectedMeter(selectedId);
   if (settingsHomeyEnergyMeterField?.hidden === false) renderMeterOptions();
 };
 
@@ -264,7 +275,7 @@ const handleMeterSelectionChange = async (): Promise<void> => {
       );
       return;
     }
-    selectedMeterId = next;
+    updateSelectedMeter(next);
     applySettingsPatch({ [HOMEY_ENERGY_METER_DEVICE_ID]: next, [POWER_SOURCE]: 'homey_energy' });
     releaseWriteLock();
     forceRenderMeterOptions();
@@ -272,7 +283,7 @@ const handleMeterSelectionChange = async (): Promise<void> => {
   } catch (error) {
     // Roll the select back so the screen never shows an unsaved choice as
     // current alongside the failure toast.
-    selectedMeterId = previous;
+    updateSelectedMeter(previous);
     // Same release-before-dwell as the refusal branch: the failed write is
     // over, so the failure toast must not keep the picker locked either.
     releaseWriteLock();

@@ -1254,6 +1254,32 @@ describe('ElectricityPricesView, focused setup', () => {
     expect(onUsePriceSetupOffer).toHaveBeenCalledWith(offer);
   });
 
+  it.each([
+    ['NO4', true, '40 øre/kWh (VAT exempt)'],
+    ['NO1', true, '50 øre/kWh (including VAT)'],
+    ['NO1', false,
+      'Until you choose your price area, PELS uses NO1, where the fixed spot price is 50 øre/kWh (including VAT).'],
+  ] as const)('shows the runtime Norgespris rate for %s and whether the area is chosen (%s)', (area, chosen, expected) => {
+    const mount = mountSetup({
+      config: buildConfig({ norwayPriceModel: 'norgespris', priceArea: area }),
+      norwayChoices: {
+        kind: 'resolved',
+        choices: { ...unchosen.choices, priceArea: { value: area, chosen } },
+      },
+    });
+    expect(mount.textContent).toContain(expected);
+    if (!chosen) expect(mount.textContent).not.toContain('PELS uses NO3');
+  });
+
+  it('quotes no rate when the effective area is unread, even with a stored area and a location offer', () => {
+    const mount = mountSetup({
+      config: buildConfig({ norwayPriceModel: 'norgespris', priceArea: 'NO4' }),
+      norwayChoices: { kind: 'unknown' },
+    });
+    expect(mount.textContent).toContain('Your price area determines whether VAT applies to the fixed spot price.');
+    expect(mount.textContent).not.toMatch(/(?:40|50) øre\/kWh/);
+  });
+
   it('puts the pricing model before a compact location disclosure and leaves normal settings in their original order', () => {
     const mount = mountSetup();
     const model = mount.querySelector('[aria-labelledby="electricity-prices-norway-model-label"]')!;

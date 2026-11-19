@@ -1,5 +1,5 @@
 import type { ContinuousBatteryPlanConfigs } from '../../../contracts/src/continuousBatteryPlan.ts';
-import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
+import { getChosenWholeHomeMeterName, WHOLE_HOME_METER_CHANGED } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
 import { CHARGING_SETUP_UPDATED, FINISH_CHARGING_SETUP, VEHICLE_CHARGING_SETUP_HINT,
@@ -423,6 +423,7 @@ export const retrySetupPathReads = async (): Promise<void> => {
 
 export const initSetupJourney = (): void => {
   document.addEventListener(CHARGING_SETUP_UPDATED, repaintJourney);
+  document.addEventListener(WHOLE_HOME_METER_CHANGED, paintJourney);
   void loadSetupBatteryPlans();
   document.addEventListener('pels:tab-shown', () => {
     error = null;
