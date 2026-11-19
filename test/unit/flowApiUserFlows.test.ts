@@ -14,9 +14,9 @@ import {
 //  - flat flows  → { [flowId]: { trigger, conditions, actions } }
 //  - advanced    → { [flowId]: { cards: { [cardId]: { ownerUri, id, args, type } } } }
 
-const zaptecId = 'f6af914f-7aef-4b2a-b46f-691450f91431';
-const easeeId = '30686557-7e69-4b1b-95b0-dfd0faa2d31e';
-const lampId = '216f1324-482e-4409-9843-8ced7813f895';
+const zaptecId = '00000001-0000-4000-8000-000000000001';
+const easeeId = '00000002-0000-4000-8000-000000000002';
+const lampId = '00000003-0000-4000-8000-000000000003';
 
 // The write map is deviceId → capabilityId → (flowId → flowName). Most tests
 // only care which capabilities a device carries; this collapses to that set.
