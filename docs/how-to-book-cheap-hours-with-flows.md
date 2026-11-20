@@ -30,7 +30,8 @@ You will create two Flows:
 1. A Flow that enables **Power-limit control** in a selected hour. If the device uses **Leave off until turned on again**, the Flow also needs to turn it on when the booked window opens.
 2. A Flow that disables **Power-limit control** outside those selected hours and tells the device app to stop or turn off.
 
-The device stays managed by PELS. Your Flow decides when it may run. During allowed hours, PELS still manages available power and protects the hard cap.
+The device stays managed by PELS. Your Flow decides when it may run. During
+allowed hours, PELS can limit its power to help protect the hard cap.
 
 This pattern does not create a Smart task plan or history entry. The Flow owns the schedule; PELS owns power-limit decisions while the device is allowed to run.
 
@@ -82,7 +83,11 @@ One common shape is:
 
 Use the same **Hours**, **Lowest count**, and **End hour** values as the enabling Flow.
 
-Disabling PELS control keeps the device from starting outside the booked hours just because there is available power. The device app action stops a device that is already running when the booked hour ends.
+Disabling **Power-limit control** stops PELS from starting the device when
+power is available. The separate stop action ends a run when the booked hour
+ends. If the device keeps running or starts again while **Power-limit control**
+is off, its draw still counts toward the hard cap and PELS cannot limit it
+to protect that cap.
 
 ## Example: EV Charging 5 Cheap Hours Before 07:00
 
@@ -101,7 +106,9 @@ Flows:
 | Start a charger held off by **Leave off until turned on again** | At the start of the booked window, use the charger app’s start action. |
 | Stop allowing charging outside selected hours | Hourly trigger + same lowest-price condition is false -> **Disable power-limit control for device** -> charger app: stop charging |
 
-During selected hours, PELS can start or increase charging only when the hard cap and priority rules allow it. Outside selected hours, PELS does not try to run the charger as part of power limiting.
+During selected hours, PELS can start or increase charging only when the hard
+cap and priority rules allow it. Outside those hours, the closing Flow stops
+the charger and Power-limit control stays off.
 
 ## Example: Water Heater 3 Cheap Hours Before 06:00
 

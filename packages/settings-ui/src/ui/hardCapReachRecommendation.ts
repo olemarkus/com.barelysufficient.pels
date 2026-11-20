@@ -98,8 +98,8 @@ export const resolveHardCapReachRecommendations = (
     version: Math.round(hardCapKw * 1000),
     category: 'recommendation',
     title: `The ${formatKw(hardCapKw)} hard cap is often out of reach`,
-    body: `On ${dayCount} of the last ${WINDOW_DAYS} days, PELS had eased off every device it controls `
-      + `and the home was still on pace to exceed the hard cap.${uncontrolled} `
+    body: `On ${dayCount} of the last ${WINDOW_DAYS} days, the home was on pace to exceed the hard cap `
+      + `and PELS had nothing left it could turn down.${uncontrolled} `
       + 'To stay under it, let PELS control more of the load: add devices, '
       + 'or turn Power-limit control back on for a device.',
     actionLabel: 'Review devices',
