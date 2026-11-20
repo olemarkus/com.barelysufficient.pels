@@ -472,9 +472,9 @@ a dormant zero setpoint does not mean that production should stop.
 `lib/overrides/deviceOverrides.ts` owns `device_override.<deviceId>`: one
 setting PELS holds on that device until a stored end time (`{ untilMs, setting }`,
 parsed by `packages/shared-domain/src/settings/deviceOverrides.ts`). The settings
-UI writes the key through the settings bridge; the temporary-temperature Flow
-cards go through the owner. An end time of now ends it early, and the owner
-removes a key a day after its override ended. A missing, unreadable or malformed
+UI writes the key through the settings bridge. The temporary-temperature Flow
+cards and Device insight widget go through the owner. An end time of now ends
+it early, and the owner removes a key a day after its override ended. A missing, unreadable or malformed
 key means no override. `temporary_temperature_targets` is the older single map,
 read until its entries have ended and never written.
 

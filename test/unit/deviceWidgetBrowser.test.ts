@@ -196,6 +196,113 @@ describe('Device insight widget browser', () => {
     }
   });
 
+  test('can start and end an override independently of the tile’s Smart task action', async () => {
+    const payload = resolveDeviceWidgetPreviewPayload('heater');
+    const calls: unknown[] = [];
+    const active = { setting: { type: 'temperature', targetC: 65 }, untilMs: Date.now() + 7_200_000 };
+    const homey: WidgetHomey = {
+      getSettings: () => ({ device: { id: 'heater', name: 'Water heater' } }),
+      ready: () => undefined,
+      api: async (_method, path, body) => {
+        if (path === '/device') return payload;
+        calls.push(body);
+        return { ok: true, active: calls.length === 1 ? active : null };
+      },
+    };
+    const controller = installWidget(window as WidgetWindow, document);
+    (window as WidgetWindow).onHomeyReady?.(homey as never);
+    await flushPromises();
+    const open = document.querySelector<HTMLButtonElement>('[data-override-open]')!;
+    const field = document.querySelector<HTMLSelectElement>('[name="end"]')!;
+    expect(tap()?.contains(open)).toBe(false);
+    open.click();
+    expect(view()).toBe('override');
+    expect(document.activeElement).toBe(document.querySelector('[data-override-back]'));
+    field.value = 'custom';
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(shown('[data-override-custom]')).toBe(true);
+    field.value = 'two_hours';
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(shown('[data-override-custom]')).toBe(false);
+
+    document.querySelector<HTMLButtonElement>('[data-override-save]')!.click();
+    await flushPromises();
+    expect(calls[0]).toMatchObject({ deviceId: 'heater', expected: null, action: 'save',
+      draft: { temperature: '65', end: 'two_hours' } });
+    expect(view()).toBe('tile');
+    expect(document.activeElement).toBe(open);
+    expect(text('[data-override-line]')).toMatch(/^Override · 65° until /);
+    expect(text('[data-override-message]')).toBe('Override started.');
+
+    open.click();
+    document.querySelector<HTMLButtonElement>('[data-override-end]')!.click();
+    await flushPromises();
+    expect(calls[1]).toEqual({ deviceId: 'heater', expected: active, action: 'end' });
+    expect(view()).toBe('tile');
+    expect(shown('[data-override-line]')).toBe(false);
+    expect(text('[data-override-message]')).toBe('Override ended.');
+    expect(text('[data-tile-action-text]')).toBe(DEVICE_WIDGET_COPY.startTaskAction);
+    controller?.destroy();
+  });
+
+  test('warns that a new Smart task gives way to an override', async () => {
+    const heater = resolveDeviceWidgetPreviewPayload('heater');
+    if (heater.state !== 'ready' || !heater.override) throw new Error('Expected a thermostat fixture');
+    const active = { setting: { type: 'temperature' as const, targetC: 65 }, untilMs: Date.now() + 7_200_000 };
+    await connect({ ...heater, override: { ...heater.override, active } });
+    expect(shown('[data-override-create-note]')).toBe(false);
+    tap()?.click();
+    await flushPromises();
+    expect(view()).toBe('compose');
+    expect(text('[data-override-create-note]')).toContain('A Smart task waits until it ends');
+    document.querySelector<HTMLElement>('[data-compose-back]')!.click();
+    expect(shown('[data-override-create-note]')).toBe(false);
+  });
+
+  test('shows when an active override lasts past an open task’s ready-by time', async () => {
+    const heater = resolveDeviceWidgetPreviewPayload('heater');
+    const taskFixture = resolveDeviceWidgetPreviewPayload('ev');
+    if (heater.state !== 'ready' || !heater.override
+      || taskFixture.state !== 'ready' || taskFixture.task.kind !== 'active') {
+      throw new Error('Expected a thermostat fixture and an active task');
+    }
+    const nowMs = Date.now();
+    const active = { setting: { type: 'temperature' as const, targetC: 65 }, untilMs: nowMs + 7_200_000 };
+    const task = { ...taskFixture.task, row: {
+      ...taskFixture.task.row, kind: 'temperature' as const, unitSymbol: '°C' as const, targetActionVerb: 'Heat to',
+    } };
+    await connect({ ...heater, task, override: { ...heater.override, active, taskDeadlineAtMs: nowMs + 3_600_000 } });
+    expect(text('[data-tile-task-why]')).toContain('ends without running');
+    expect(shown('[data-tile-task-next]')).toBe(false);
+  });
+
+  test('keeps a successful override when a background read was already in flight', async () => {
+    const payload = resolveDeviceWidgetPreviewPayload('heater');
+    const active = { setting: { type: 'temperature', targetC: 65 }, untilMs: Date.now() + 7_200_000 };
+    let reads = 0;
+    const pending = { resolve: (_payload: DeviceWidgetPayload) => undefined as void };
+    const homey: WidgetHomey = {
+      getSettings: () => ({ device: { id: 'heater', name: 'Water heater' } }),
+      ready: () => undefined,
+      api: async (_method, path) => {
+        if (path === '/override') return { ok: true, active };
+        if (reads++ === 0) return payload;
+        return new Promise<DeviceWidgetPayload>((resolve) => { pending.resolve = resolve; });
+      },
+    };
+    const controller = installWidget(window as WidgetWindow, document);
+    (window as WidgetWindow).onHomeyReady?.(homey as never);
+    await flushPromises();
+    const read = controller?.loadAndRender();
+    document.querySelector<HTMLButtonElement>('[data-override-open]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-override-save]')!.click();
+    await flushPromises();
+    pending.resolve(payload);
+    await read;
+    expect(text('[data-override-line]')).toMatch(/^Override · 65° until /);
+    controller?.destroy();
+  });
+
   test('asks for a device until one is chosen, and names a device PELS no longer manages', async () => {
     await connect(resolveDeviceWidgetPreviewPayload('heater'), [], {});
     expect(text('[data-tile-message]')).toBe(DEVICE_WIDGET_COPY.chooseDevice);

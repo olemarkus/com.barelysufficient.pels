@@ -1,3 +1,7 @@
+import type { DeviceOverride } from '../../../packages/shared-domain/src/settings/deviceOverrides';
+import type {
+  OverrideDraft, OverrideTemperatureRange,
+} from '../../../packages/shared-domain/src/settings/deviceOverrideDraft';
 import type { DeviceStatus } from '../../../packages/contracts/src/deviceStatus';
 import type { CreateSmartTaskDevice } from '../../_shared/smartTaskCreate/types';
 import type {
@@ -24,6 +28,23 @@ export type DeviceWidgetTask =
     row: SmartTasksWidgetEndedRow;
   };
 
+export type DeviceWidgetOverride = {
+  active: DeviceOverride | null;
+  range: OverrideTemperatureRange;
+  defaultTemperatureC: number | null;
+  timeZone: string;
+  taskDeadlineAtMs: number | null;
+};
+
+export type DeviceWidgetOverrideCommand = { deviceId: string } & (
+  | { action: 'save'; expected: DeviceOverride | null; draft: OverrideDraft }
+  | { action: 'end'; expected: DeviceOverride }
+);
+
+export type DeviceWidgetOverrideResponse =
+  | { ok: true; active: DeviceOverride | null }
+  | { ok: false; error: string; refresh?: true };
+
 export type DeviceWidgetPayload =
   | {
     state: 'ready';
@@ -35,6 +56,7 @@ export type DeviceWidgetPayload =
       carName: string | null;
     };
     task: DeviceWidgetTask;
+    override: DeviceWidgetOverride | null;
     // The device as the creation flow takes it, when a new task can be started
     // on it now (no task running, and the device takes one).
     createDevice: CreateSmartTaskDevice | null;

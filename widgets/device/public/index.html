@@ -11,7 +11,7 @@
     <main id="widget-root" class="widget-root" data-view="tile" aria-label="Device insight">
       <!-- The device tile: status and smart task. The whole tile is the tap
            target (the task's detail, or the creation flow) when it has one. -->
-      <section class="tile-view" data-tile-view>
+      <section class="tile-view" data-tile-view tabindex="-1">
         <div class="tile-tap" data-tile-tap>
           <div class="tile-head">
             <p class="tile-name" data-tile-name></p>
@@ -39,6 +39,51 @@
           <p class="tile-message" data-tile-message hidden></p>
           <span class="visually-hidden" data-tile-action-text></span>
         </div>
+        <div class="override-summary" data-override-summary hidden>
+          <p class="tile-fact" data-override-line></p>
+          <button type="button" class="secondary-btn" data-override-open>Set an override</button>
+        </div>
+        <p class="tile-fact" role="status" data-override-message></p>
+      </section>
+
+      <section class="compose-view" data-override-view hidden>
+        <header class="step-header">
+          <button type="button" class="back-btn" data-override-back aria-label="Cancel">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name">Override</span>
+          </button>
+        </header>
+        <form data-override-form novalidate>
+          <fieldset class="override-fields" data-override-fields>
+            <legend class="visually-hidden">Override settings</legend>
+            <label class="field">
+              <span class="field__label">Temperature (°C)</span>
+              <input class="time-input" type="number" name="temperature" step="any" inputmode="decimal" required>
+            </label>
+            <label class="field">
+              <span class="field__label">Ends</span>
+              <select class="time-input" name="end"></select>
+            </label>
+            <div class="override-custom" data-override-custom hidden>
+              <label class="field">
+                <span class="field__label">Date</span>
+                <input class="time-input" type="date" name="date">
+              </label>
+              <label class="field">
+                <span class="field__label">Time</span>
+                <input class="time-input" type="time" name="at">
+              </label>
+            </div>
+            <p class="ready-by-echo" data-override-until hidden></p>
+            <p class="goal-context">Then back to the mode target. Power limits still apply.</p>
+            <p class="goal-context" data-override-task-note hidden></p>
+            <p class="compose-error" data-override-error role="alert" hidden></p>
+            <div class="preview-actions">
+              <button type="button" class="secondary-btn" data-override-end hidden>End now</button>
+              <button type="submit" class="primary-btn" data-override-save>Start override</button>
+            </div>
+          </fieldset>
+        </form>
       </section>
 
       <!-- smart-task-create-flow:start (shared by Create smart task and Device insight; keep identical) -->
@@ -157,6 +202,7 @@
         <p class="created-msg" data-created-msg></p>
       </section>
       <!-- smart-task-create-flow:end -->
+      <p class="goal-context" data-override-create-note hidden></p>
 
       <!-- smart-task-detail:start (shared by Smart task list and Device insight; keep identical) -->
       <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">

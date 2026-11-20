@@ -3141,6 +3141,10 @@
           "method": "POST",
           "path": "/device"
         },
+        "changeDeviceWidgetOverride": {
+          "method": "POST",
+          "path": "/override"
+        },
         "getCreateSmartTaskQuickTargets": {
           "method": "POST",
           "path": "/quick_targets"
