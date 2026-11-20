@@ -868,5 +868,8 @@
   },
   "3.44.0": {
     "en": "New for Norway: Usage > Monthly capacity shows your estimated capacity tier from the three highest daily hours this month, and suggests a Hard cap for the rest of the month that keeps you in the tier. You can apply it for this month, and your normal Hard cap returns on the first of the next month. Settings > Advanced > Data management can recover missing hours of the last 14 days from your whole-home meter's Insights. After a restart, PELS fills the gap from the meter's import counter, so an hour is no longer recorded too low. Setup & recommendations asks you to check a device's power when the home meter shows it draws much more than PELS assumes.\n\nFixed: Report power usage no longer fails while Power source is Power meter; it is ignored, and Setup & recommendations names the Flow so you can remove it. A charger PELS can control is no longer treated as Flow-controlled, and Flow users see what built-in control gains them. A device could be turned on at startup before the first fresh meter reading."
+  },
+  "3.45.0": {
+    "en": "Report a problem now opens from a device warning, and Ask about this opens it from a recommendation, with the device or home already selected and the warning filled in for you to edit. A device whose levels you control through Flows now needs both Flow cards, “Stepped device target changed” and “Report stepped load”. Its device page names a missing card, and PELS uses its default control for the device until both are in place. PELS uses less memory in large homes."
   }
 }
