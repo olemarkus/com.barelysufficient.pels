@@ -871,5 +871,8 @@
   },
   "3.45.0": {
     "en": "Report a problem now opens from a device warning, and Ask about this opens it from a recommendation, with the device or home already selected and the warning filled in for you to edit. A device whose levels you control through Flows now needs both Flow cards, “Stepped device target changed” and “Report stepped load”. Its device page names a missing card, and PELS uses its default control for the device until both are in place. PELS uses less memory in large homes."
+  },
+  "3.45.1": {
+    "en": "Fixed: When the whole-home meter is deleted from Homey, PELS stops waiting for it and picks up a replacement meter on its own when it is the only one. A meter assigned to another area is never picked for the main home. Recover missing hours from Insights now keeps the hours it can read when some readings are missing, and hours where the home exported power no longer stop the recovery. Clearer wording for the hard cap recommendation and for switching from a Flow to built-in control."
   }
 }
