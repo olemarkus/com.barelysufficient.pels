@@ -389,8 +389,10 @@ describe('setup recommendations', () => {
       target: { kind: 'flow-conflict-check', deviceId: 'device-1' },
     });
     expect(recommendations[0]?.body).toContain('Limit water heater');
-    expect(recommendations[0]?.body).toContain('Your Flow keeps working until you switch');
-    expect(recommendations[0]?.body).toContain('read back what it does');
+    expect(recommendations[0]?.body).toContain(
+      'PELS can control this device directly and read back what it does, so no Flow has to report it. '
+      + 'Your Flow keeps working until you switch.',
+    );
     expect(recommendations[0]?.body).toContain('disable the Flow');
     expect(recommendations[0]?.body).toContain('delete its device-control action');
     expect(recommendations[0]?.body).not.toContain('max_power_3000');

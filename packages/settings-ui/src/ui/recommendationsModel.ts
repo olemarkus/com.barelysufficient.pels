@@ -170,7 +170,7 @@ export const resolveNativeControlRecommendations = (
     if (hasConflict && device.levelUnconfirmed === true) return [];
     const body = hasConflict
       ? 'PELS can control this device directly and read back what it does, so no Flow has to '
-        + 'report it and there is no Flow to keep working. Your Flow keeps working until you switch. '
+        + 'report it. Your Flow keeps working until you switch. '
         + `To switch, ${flowConflictHandoffStep(conflict.flowName)}, `
         + 'and turn on built-in device control on the device page.'
       : 'PELS can control this device directly. If you use a Flow to control the same setting, '
