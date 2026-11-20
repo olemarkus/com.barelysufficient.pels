@@ -3,6 +3,7 @@ import {
   resolveDeviceRead,
   withholdInvalidModelCapabilities,
   withAcceptedCapabilityReport,
+  retainDeviceReadLogs,
 } from '../../lib/device/transport/deviceReadContract';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import { isTargetPowerControlActive } from '../../lib/device/nativeSteppedLoadWiring';
@@ -406,15 +407,90 @@ describe('independent capability resolution', () => {
     expect(resolved?.capabilitiesObj?.measure_power).toEqual(entry(900));
   });
 
-  it('logs recovery and deduplicates an unchanged rejected field', () => {
-    const owner = {};
-    const said = emitter();
-    const bad = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: entry(null) } });
-    resolveDeviceRead(owner, bad, 'device_update', said);
-    resolveDeviceRead(owner, bad, 'device_update', said);
-    expect(said.info).toHaveBeenCalledTimes(1);
-    expect(resolveDeviceRead(owner, heater(), 'device_update', said)).toBeDefined();
-    expect(said.info).toHaveBeenLastCalledWith(expect.objectContaining({ event: 'device_read_conforming_again' }));
+  describe('capability read gap logs', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['performance'] }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('times each recovery independently and deduplicates repeated retained readings', () => {
+      const owner = {};
+      const said = emitter();
+      const bad = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: entry(null), onoff: entry(null) } });
+      resolveDeviceRead(owner, bad, 'device_fetch', said, heater());
+      vi.advanceTimersByTime(30_000);
+      resolveDeviceRead(owner, bad, 'device_update', said, heater());
+      expect(said.info).toHaveBeenCalledTimes(1);
+      expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'device_capabilities_withheld', retainedCapabilityIds: ['measure_power'],
+      }));
+
+      vi.advanceTimersByTime(90_000);
+      const switchStillBad = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
+      resolveDeviceRead(owner, switchStillBad, 'device_update', said, heater());
+      expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'device_capability_read_recovered', capabilityId: 'measure_power', startedWith: 'retained',
+        startedFrom: 'device_fetch', source: 'device_update', observedGapMs: 120_000,
+      }));
+      expect(said.info).not.toHaveBeenCalledWith(expect.objectContaining({
+        event: 'device_capability_read_recovered', capabilityId: 'onoff',
+      }));
+
+      vi.advanceTimersByTime(5_000);
+      resolveDeviceRead(owner, heater(), 'device_fetch', said);
+      expect(said.info).toHaveBeenLastCalledWith(expect.objectContaining({
+        event: 'device_capability_read_recovered', capabilityId: 'onoff', startedWith: 'withheld',
+        observedGapMs: 125_000,
+      }));
+
+      said.info.mockClear();
+      resolveDeviceRead(owner, bad, 'device_fetch', said);
+      vi.advanceTimersByTime(1_000);
+      resolveDeviceRead(owner, heater(), 'device_fetch', said);
+      expect(said.info.mock.calls.map(([fields]) => fields)).toEqual([
+        expect.objectContaining({ event: 'device_capabilities_withheld' }),
+        expect.objectContaining({ event: 'device_capability_read_recovered', capabilityId: 'onoff', observedGapMs: 1_000 }),
+        expect.objectContaining({
+          event: 'device_capability_read_recovered', capabilityId: 'measure_power', observedGapMs: 1_000,
+        }),
+      ]);
+    });
+
+    it.each(['removed', 'withheld'] as const)('closes a gap that starts as %s only when the switch returns valid', startedWith => {
+      const owner = {};
+      const said = emitter();
+      const valid = heater();
+      const { onoff: _onoff, ...siblings } = HEATER_VALUES;
+      const absent = heater({ capabilities: valid.capabilities.filter(id => id !== 'onoff'), capabilitiesObj: siblings });
+      const empty = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
+      const firstBad = startedWith === 'removed' ? absent : empty;
+      const secondBad = startedWith === 'removed' ? empty : absent;
+      const startEvent = startedWith === 'removed' ? 'device_control_capability_removed' : 'device_capabilities_withheld';
+
+      resolveDeviceRead(owner, firstBad, 'device_update', said, valid);
+      expect(said.info).toHaveBeenLastCalledWith(expect.objectContaining({ event: startEvent }));
+      vi.advanceTimersByTime(60_000);
+      resolveDeviceRead(owner, secondBad, 'device_fetch', said, valid);
+      resolveDeviceRead(owner, absent, 'device_update', said, valid);
+      expect(said.info).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'device_capability_read_recovered' }));
+      expect(said.info.mock.calls.filter(([fields]) => fields.event === 'device_control_capability_removed'))
+        .toHaveLength(startedWith === 'removed' ? 1 : 0);
+
+      vi.advanceTimersByTime(60_000);
+      resolveDeviceRead(owner, valid, 'device_fetch', said);
+      expect(said.info).toHaveBeenLastCalledWith(expect.objectContaining({
+        event: 'device_capability_read_recovered', capabilityId: 'onoff', startedWith,
+        startedFrom: 'device_update', source: 'device_fetch', observedGapMs: 120_000,
+      }));
+    });
+
+    it('clears open gaps when a complete inventory no longer contains the device', () => {
+      const owner = {};
+      const said = emitter();
+      const bad = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
+      resolveDeviceRead(owner, bad, 'device_fetch', said);
+      retainDeviceReadLogs(owner, []);
+      resolveDeviceRead(owner, heater(), 'device_fetch', said);
+      expect(said.info).toHaveBeenCalledTimes(1);
+    });
   });
 
   it.each([null, 'true', undefined])('never falls back to a charger disabling switch after rejecting charging=%s', (value) => {

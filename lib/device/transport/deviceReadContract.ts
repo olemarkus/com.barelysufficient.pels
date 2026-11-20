@@ -184,19 +184,16 @@ export function withAcceptedCapabilityReport(
 }
 
 /** The raw source fields this device's model and adapter actually read. */
-function findRawCapabilityViolations(device: HomeyDeviceLike): CapabilityViolation[] {
-    const capabilities = device.capabilities;
-    const values = device.capabilitiesObj;
+function resolveRawReadTypes(device: HomeyDeviceLike): ReadonlyMap<string, ModelValueType> {
+    const { capabilities, capabilitiesObj } = device;
     const integrationTypes = getDeviceAdapter(device).readRules(device);
     const types = { ...resolveModelCapabilityTypes(device, capabilities), ...integrationTypes };
     const readIds = new Set([...capabilities,
-        ...Object.keys(integrationTypes).filter((id) => Object.hasOwn(values, id))]);
-    return [...readIds].flatMap((capabilityId) => {
-        const type = types[capabilityId];
-        if (type === undefined) return [];
-        const violation = findEntryViolation(capabilityId, values[capabilityId], type);
-        return violation ? [violation] : [];
-    });
+        ...Object.keys(integrationTypes).filter((id) => Object.hasOwn(capabilitiesObj, id))]);
+    return new Map([...readIds].flatMap((id) => {
+        const type = types[id];
+        return type === undefined ? [] : [[id, type] as const];
+    }));
 }
 
 export type DeviceCapabilityResolution = {
@@ -231,7 +228,18 @@ export function withholdInvalidModelCapabilities(
     device: HomeyDeviceLike,
     previousRead?: HomeyDeviceLike,
 ): DeviceCapabilityResolution {
-    const violations = findRawCapabilityViolations(device);
+    return resolveModelCapabilities(device, resolveRawReadTypes(device), previousRead);
+}
+
+function resolveModelCapabilities(
+    device: HomeyDeviceLike,
+    readTypes: ReadonlyMap<string, ModelValueType>,
+    previousRead?: HomeyDeviceLike,
+): DeviceCapabilityResolution {
+    const violations = [...readTypes].flatMap(([id, type]) => {
+        const violation = findEntryViolation(id, device.capabilitiesObj[id], type);
+        return violation ? [violation] : [];
+    });
     const types = {
         ...resolveModelCapabilityTypes(device, device.capabilities),
         ...getDeviceAdapter(device).readRules(device),
@@ -332,22 +340,37 @@ export type DeviceReadContractEmitter = {
     info: (payload: Record<string, unknown>) => void;
 };
 
-// The last violation or withheld set said per device, per transport, so a
-// device that stays non-conforming is named once rather than on every refresh
-// and update. Cleared when it conforms again, which is said too: a withheld
-// capability is a gap in what PELS knows, and the log is
-// where an owner's support session finds its start and end. Keyed by the
-// transport's owner so two transports (and two tests) never share what was
-// said.
-const lastViolationSignatureByOwner = new WeakMap<object, Map<string, string>>();
-
-const violationSignatures = (owner: object): Map<string, string> => {
-    const existing = lastViolationSignatureByOwner.get(owner);
-    if (existing) return existing;
-    const created = new Map<string, string>();
-    lastViolationSignatureByOwner.set(owner, created);
-    return created;
+type CapabilityReadGap = {
+    startedAt: number;
+    startedFrom: DeviceReadSource;
+    startedWith: 'withheld' | 'retained' | 'removed';
 };
+
+type DeviceReadLog = {
+    signature: string | undefined;
+    gaps: Map<string, CapabilityReadGap>;
+};
+
+// Only devices with outstanding gaps are kept, scoped to the owner shared by fetch and live updates.
+const readLogsByOwner = new WeakMap<object, Map<string, DeviceReadLog>>();
+const CONTROL_CAPABILITIES = ['onoff', 'evcharger_charging', 'target_temperature', 'target_power'];
+
+function deviceReadLogs(owner: object): Map<string, DeviceReadLog> {
+    const existing = readLogsByOwner.get(owner);
+    if (existing) return existing;
+    const logs = new Map<string, DeviceReadLog>();
+    readLogsByOwner.set(owner, logs);
+    return logs;
+}
+
+export function retainDeviceReadLogs(owner: object, devices: readonly HomeyDeviceLike[]): void {
+    const logs = readLogsByOwner.get(owner);
+    if (!logs?.size) return;
+    const presentIds = new Set(devices.map(({ id }) => id));
+    for (const id of logs.keys()) {
+        if (!presentIds.has(id)) logs.delete(id);
+    }
+}
 
 /**
  * Resolve one Homey device read into the views PELS reads from it
@@ -376,28 +399,85 @@ export function resolveDeviceRead(
     emitter: DeviceReadContractEmitter,
     previousRead?: HomeyDeviceLike,
 ): HomeyDeviceLike {
-    const deviceId = device.id;
-    const signatures = violationSignatures(owner);
-    const resolution = withholdInvalidModelCapabilities(device, previousRead);
+    const readTypes = resolveRawReadTypes(device);
+    const resolution = resolveModelCapabilities(device, readTypes, previousRead);
+    const logs = deviceReadLogs(owner);
+    const existing = logs.get(device.id);
+    const removed = findRemovedControls(device, existing, previousRead);
+    if (!existing && resolution.violations.length === 0 && removed.length === 0) return resolution.device;
+
+    const log = existing ?? { signature: undefined, gaps: new Map<string, CapabilityReadGap>() };
     const { violations, retainedCapabilityIds, withheldCapabilityIds } = resolution;
-    if (violations.length === 0) {
-        if (signatures.delete(deviceId)) {
-            emitter.info({ event: 'device_read_conforming_again', deviceId, deviceName: device.name, source });
-        }
-    } else if (claimSignature(signatures, deviceId, { violations, retainedCapabilityIds, withheldCapabilityIds })) {
+    const rejectedIds = new Set(violations.map(({ capabilityId }) => capabilityId));
+    const now = performance.now();
+    const { id: deviceId, name: deviceName } = device;
+
+    for (const capabilityId of removed) {
+        log.gaps.set(capabilityId, { startedAt: now, startedFrom: source, startedWith: 'removed' });
+        emitter.info({ event: 'device_control_capability_removed', deviceId, deviceName, source, capabilityId });
+    }
+    for (const capabilityId of rejectedIds) {
+        if (log.gaps.has(capabilityId)) continue;
+        const startedWith = retainedCapabilityIds.includes(capabilityId) ? 'retained' : 'withheld';
+        log.gaps.set(capabilityId, { startedAt: now, startedFrom: source, startedWith });
+    }
+    for (const [capabilityId, gap] of takeRecoveredGaps(device, readTypes, rejectedIds, log.gaps)) {
         emitter.info({
-            event: 'device_capabilities_withheld', deviceId, deviceName: device.name, source,
-            capabilityIds: violations.map(({ capabilityId }) => capabilityId),
+            event: 'device_capability_read_recovered', deviceId, deviceName, source, capabilityId,
+            startedFrom: gap.startedFrom, startedWith: gap.startedWith,
+            observedGapMs: Math.round(now - gap.startedAt),
+        });
+    }
+
+    const signature = violations.length > 0 ? JSON.stringify({
+        violations, retainedCapabilityIds, withheldCapabilityIds,
+    }) : undefined;
+    if (signature !== undefined && signature !== log.signature) {
+        emitter.info({
+            event: 'device_capabilities_withheld', deviceId, deviceName, source, capabilityIds: [...rejectedIds],
             violations, retainedCapabilityIds, withheldCapabilityIds,
         });
     }
+    if (log.gaps.size > 0) logs.set(device.id, { ...log, signature });
+    else logs.delete(device.id);
     return resolution.device;
 }
 
-/** Record what is said about a device; true when it differs from what was said last. */
-function claimSignature(signatures: Map<string, string>, deviceId: string, said: object): boolean {
-    const signature = JSON.stringify(said);
-    if (signatures.get(deviceId) === signature) return false;
-    signatures.set(deviceId, signature);
-    return true;
+function* takeRecoveredGaps(
+    device: HomeyDeviceLike,
+    readTypes: ReadonlyMap<string, ModelValueType>,
+    rejectedIds: ReadonlySet<string>,
+    gaps: Map<string, CapabilityReadGap>,
+): Iterable<[string, CapabilityReadGap]> {
+    for (const [id, gap] of gaps) {
+        if (rejectedIds.has(id)) continue;
+        if (readTypes.has(id)) {
+            gaps.delete(id);
+            yield [id, gap];
+        } else if (isCapabilityPresent(device, id)) {
+            // The field is present but outside the model's current validation scope.
+            gaps.delete(id);
+        }
+        // A removed field can still return. Keep timing until a valid read or inventory removal.
+    }
+}
+
+function isCapabilityPresent(device: HomeyDeviceLike, capabilityId: string): boolean {
+    return device.capabilities.includes(capabilityId) || Object.hasOwn(device.capabilitiesObj, capabilityId);
+}
+
+function findRemovedControls(
+    device: HomeyDeviceLike,
+    existing: DeviceReadLog | undefined,
+    previousRead?: HomeyDeviceLike,
+): string[] {
+    if (!previousRead) return [];
+    const candidates = CONTROL_CAPABILITIES.filter((id) => previousRead.capabilities.includes(id)
+        && !existing?.gaps.has(id) && !isCapabilityPresent(device, id));
+    if (candidates.length === 0) return [];
+    const previousTypes = resolveRawReadTypes(previousRead);
+    return candidates.filter((id) => {
+        const type = previousTypes.get(id);
+        return type !== undefined && findEntryViolation(id, previousRead.capabilitiesObj[id], type) === null;
+    });
 }

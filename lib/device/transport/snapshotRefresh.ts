@@ -14,7 +14,7 @@ export { readMeterPhases } from './meterPhasesRead';
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import { observeBatteryStateFromList, observeEvCarLinkAndResubscribe } from './refreshProducers';
-import { resolveDeviceViews } from './deviceReadContract';
+import { resolveDeviceViews, retainDeviceReadLogs } from './deviceReadContract';
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
@@ -599,6 +599,9 @@ export class SnapshotRefreshService {
         this.reader.chargingCurrentControl.retainDevices(
             acceptedRawDevices, inventoryTrustEpoch, fetchResult.rejectedPayloads,
         );
+        if (fetchResult.rejectedPayloads === 0) {
+            retainDeviceReadLogs(this.reader.snapshotStore, acceptedRawDevices);
+        }
     }
     const effectiveList = observeBatteryStateFromList(
         this.observationProducers.battery,
