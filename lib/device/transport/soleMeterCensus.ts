@@ -25,14 +25,16 @@ const holdsDeviceRecords = (rawDevices: Record<string, unknown> | unknown[]): bo
  * `resolveSoleMeterAdoptionCandidate`'s own.
  */
 export async function censusSoleMeterAdoptionCandidate(
-  excluded: ReadonlySet<string> | null,
+  readExcluded: () => ReadonlySet<string> | null,
 ): Promise<SoleMeterAdoptionCensus> {
-  if (excluded === null) return { state: 'unavailable' };
   try {
     const report = await getEnergyLiveReport();
     if (report === null) return { state: 'unavailable' };
     const devices = await getRawDevices(DEVICES_API_PATH);
     if (!holdsDeviceRecords(devices)) return { state: 'unavailable' };
+    // Area ownership may have changed while the Homey reads were in flight.
+    const excluded = readExcluded();
+    if (excluded === null) return { state: 'unavailable' };
     return resolveSoleMeterAdoptionCandidate(report, devices, excluded);
   } catch (error) {
     moduleLogger.error({ event: 'sole_meter_census_read_failed', err: normalizeError(error) });

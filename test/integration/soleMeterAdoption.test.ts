@@ -430,6 +430,34 @@ describe('runSoleMeterAdoption', () => {
     expect(timers.has('soleMeterAdoption')).toBe(false);
   });
 
+  it('keeps Main unassigned when an area releases a second meter during the confirming census', async () => {
+    vi.useFakeTimers();
+    const homey = makeHomey({
+      power_source: 'homey_energy',
+      homes_config: {
+        subHomes: [{ homeId: 'area-1', name: 'Rental', rootZoneId: 'zone-1', meterDeviceId: OTHER_METER_ID }],
+      },
+    });
+    const registry = registryOf(METER_ID, OTHER_METER_ID);
+    let confirmRegistry: (value: ApiGetResult) => void = () => {};
+    const pendingConfirmation = new Promise<ApiGetResult>((resolve) => { confirmRegistry = resolve; });
+    const getRegistry = vi.fn()
+      .mockResolvedValueOnce(registry)
+      .mockReturnValueOnce(pendingConfirmation);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => (
+      path === 'manager/devices/device' ? getRegistry() : multiMeterReport
+    ));
+
+    run(homey);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getRegistry).toHaveBeenCalledTimes(2);
+    homey.settings.set('homes_config', { subHomes: [] });
+    confirmRegistry(registry);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(homey.settings.getKeys()).not.toContain('homey_energy_meter_device_id');
+  });
+
   it('finishes a half-applied save with the stored meter, without a census', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(otherSoleMeterReport, registryOf(OTHER_METER_ID));

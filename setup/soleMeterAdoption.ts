@@ -37,7 +37,7 @@ export const startSoleMeterAdoption = (
 ): void => {
   new SoleMeterAdoption({
     classifyEligibility: () => classifySoleMeterAdoptionEligibility(homey.settings),
-    census: () => censusSoleMeterAdoptionCandidate(readAssignedAreaMeters(homey.settings)),
+    census: () => censusSoleMeterAdoptionCandidate(() => readAssignedAreaMeters(homey.settings)),
     adopt: (meterDeviceId) => adoptThroughSaveSeam(homey, meterDeviceId),
     readingsAdmittedSince: (sinceMs) => readingsAdmittedSince(trackerStore, getInMemoryLastSampleMs(), sinceMs),
     timers,
