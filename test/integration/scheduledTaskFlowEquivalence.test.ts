@@ -125,7 +125,11 @@ function fixture(kind: DeferredObjectiveSettingsKind, existing?: DeferredObjecti
     registerRunListener: (listener) => { actions.set(id, listener); },
     registerArgumentAutocompleteListener: () => {},
   });
-  const homey: FlowHomeyLike = { settings, flow: { getActionCard: card, getTriggerCard: card, getConditionCard: card } };
+  const homey: FlowHomeyLike = { settings, flow: {
+    getActionCard: card,
+    getTriggerCard: (id) => ({ ...card(id), on: vi.fn(), getArgumentValues: vi.fn(), trigger: vi.fn() }),
+    getConditionCard: card,
+  } };
   const flowDeps = partialDouble<FlowCardDeps>({
     ...host, homey, getSnapshot: async () => [snapshot], getNow: () => new Date(),
     getTimeZone: CLOCK.getTimezone,

@@ -14,4 +14,6 @@ way (`routeReport`). Only a read that declares all three is renamed. The meter
 phase read takes the same view, so the main fuse sees the phases like any other
 meter's and the phase tracker checks them against `measure_power`. The values
 are apparent power in VA, which is what the Linky compares with the subscribed
-power. The device's other capabilities are read as Homey reports them.
+power. The phase read identifies this quantity as apparent power so directional
+Flow cards only use phase readings with import and export evidence. The device's
+other capabilities are read as Homey reports them.

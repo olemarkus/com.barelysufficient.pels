@@ -1,0 +1,77 @@
+{
+  "title": {
+    "en": "Phase current is above a limit"
+  },
+  "titleFormatted": {
+    "en": "[[phase]] [[direction]] current !{{is|is not}} above [[amps]] A"
+  },
+  "hint": {
+    "en": "Checks the latest phase reading. Any phase matches if one or more phases are above the limit. Requires a fresh phase meter reading with import and export direction."
+  },
+  "args": [
+    {
+      "name": "phase",
+      "type": "dropdown",
+      "title": {
+        "en": "Phase"
+      },
+      "values": [
+        {
+          "id": "any",
+          "label": {
+            "en": "Any phase"
+          }
+        },
+        {
+          "id": "L1",
+          "label": {
+            "en": "L1"
+          }
+        },
+        {
+          "id": "L2",
+          "label": {
+            "en": "L2"
+          }
+        },
+        {
+          "id": "L3",
+          "label": {
+            "en": "L3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "direction",
+      "type": "dropdown",
+      "title": {
+        "en": "Direction"
+      },
+      "values": [
+        {
+          "id": "import",
+          "label": {
+            "en": "import"
+          }
+        },
+        {
+          "id": "export",
+          "label": {
+            "en": "export"
+          }
+        }
+      ]
+    },
+    {
+      "name": "amps",
+      "type": "range",
+      "title": {
+        "en": "Current limit (A)"
+      },
+      "min": 1,
+      "max": 250,
+      "step": 1
+    }
+  ]
+}

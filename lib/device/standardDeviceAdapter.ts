@@ -1,5 +1,6 @@
 import type { DeviceAdapter, DeviceAdapterSession, SwitchWrite } from './deviceAdapter';
 import { STANDARD_HOME_BATTERY_BINDING } from './homeBatteryBinding';
+import { resolveMeterPhases } from './meterPhases';
 
 const unrestrictedSession: DeviceAdapterSession = {
   observeDevice() {}, observeCapability() {}, retainDevices() {}, withheldCapabilities: () => [], setTrustEpoch() {},
@@ -30,6 +31,10 @@ export const standardDeviceAdapter: DeviceAdapter = {
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [], phaseBindings: () => [],
   nativeCurrentControls: [], nativeLevelControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
   meterMonthlyPeak: () => ({ state: 'none' }),
+  meterPhases(device, ownerChoice) {
+    const [view] = this.projectRead(device);
+    return view === undefined ? { state: 'unavailable' } : resolveMeterPhases(view, ownerChoice);
+  },
   readBackAfterWrite: true, supportsProductionLimits: true,
   projectRead: (device) => [device],
   routeReport: (device, capabilityId) => ({ deviceId: device.id, capabilityId }),

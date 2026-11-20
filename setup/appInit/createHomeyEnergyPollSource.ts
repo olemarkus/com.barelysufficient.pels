@@ -1,4 +1,4 @@
-import { readMainFusePhaseSource } from '../../lib/power/mainFusePhaseSource';
+import { readMainFusePhaseSource, type PhaseMeter } from '../../lib/power/mainFusePhaseSource';
 import type { MainFusePhaseCapabilities } from '../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
@@ -15,6 +15,7 @@ import type { MainMeterSelectionSettings } from '../../lib/home/mainMeterSelecti
 import type { LiveMeterReadings, MeterMonthlyPeakRead, MeterPhasesRead } from '../../lib/ports/homeMeterReadings';
 import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 import type { PhaseReadingTracker } from '../../lib/power/phaseReading';
+import { readMainPhaseMeter } from '../phaseSourceFeed';
 
 /**
  * The slice of the app this factory reads. Structural rather than `PelsApp` so
@@ -24,6 +25,7 @@ export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
   readonly homey: { readonly settings: MainMeterSelectionSettings };
   getPowerSource(): PowerSource;
+  getNow(): Date;
   readonly deviceManager?: {
     readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null>;
     readMeterPhases(meterDeviceId: string, ownerChoice: MainFusePhaseCapabilities | null): Promise<MeterPhasesRead>;
@@ -59,9 +61,17 @@ export const createHomeyEnergyPollSource = (
     },
     () => host.getSubHomeMeters(),
     async (sample) => {
-      const { capabilities } = readMainFusePhaseSource(host.homey.settings);
-      const read = await host.deviceManager?.readMeterPhases(sample.meterDeviceId, capabilities);
-      if (read) host.capacityGuard?.phaseReadings.admit(read, sample.powerW, Date.now());
+      const { settings } = host.homey;
+      const { capabilities } = readMainFusePhaseSource(settings);
+      const meter: PhaseMeter = { powerSource: 'homey_energy', meterDeviceId: sample.meterDeviceId, capabilities };
+      const sampledAtMs = host.getNow().getTime();
+      const read = await host.deviceManager?.readMeterPhases(meter.meterDeviceId, meter.capabilities);
+      if (read) {
+        const currentMeter = readMainPhaseMeter(settings, () => host.getPowerSource());
+        host.capacityGuard?.phaseReadings.admitCurrent(
+          meter, currentMeter, read, sample.powerW, sampledAtMs, host.getNow().getTime(),
+        );
+      }
     },
     (meterDeviceIds, mainMeterDeviceId) => {
       const manager = host.deviceManager;

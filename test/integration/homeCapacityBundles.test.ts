@@ -1312,6 +1312,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const getTriggerCard = vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => (
       cardId === 'capacity_shortfall'
         ? {
+          ...originalGetTriggerCard(cardId),
           registerRunListener: vi.fn(),
           registerArgumentAutocompleteListener: vi.fn(),
           trigger: capacityShortfallTrigger,
@@ -1383,6 +1384,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => (
       cardId === 'capacity_shortfall'
         ? {
+          ...originalGetTriggerCard(cardId),
           registerRunListener: vi.fn(),
           registerArgumentAutocompleteListener: vi.fn(),
           trigger: capacityShortfallTrigger,

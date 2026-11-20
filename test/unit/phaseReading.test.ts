@@ -3,6 +3,8 @@ import type { MeterPhasesRead, PhaseTriple } from '../../lib/ports/homeMeterRead
 import { PhaseReadingTracker, projectPhaseLoadForUi, type PhaseReading } from '../../lib/power/phaseReading';
 import { resolveMeterPhases } from '../../lib/device/meterPhases';
 
+const METER = { powerSource: 'homey_energy', meterDeviceId: 'meter-main', capabilities: null } as const;
+
 const power = (powerW: PhaseTriple): MeterPhasesRead => ({ state: 'read', capabilityIds: [], powerW });
 const caps = (entries: Record<string, unknown>) => ({
   capabilitiesObj: Object.fromEntries(Object.entries(entries).map(([id, value]) => [id, { value }])),
@@ -59,39 +61,39 @@ describe('resolveMeterPhases', () => {
 describe('PhaseReadingTracker', () => {
   it('accepts phases that agree with net, even when import and export cancel', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit(power([6000, -3000, -3000]), 0, 1);
-    expect(tracker.current()).toMatchObject({ kind: 'healthy', signed: true });
+    tracker.admit(METER, power([6000, -3000, -3000]), 0, 1);
+    expect(tracker.current()).toMatchObject({ kind: 'healthy', basis: 'active_power' });
   });
 
   it('keeps the last accepted set through a rejection, then degrades', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit(power([1000, 1000, 1000]), 3000, 1);
-    for (let i = 0; i < 5; i += 1) tracker.admit(power([9000, 9000, 9000 + i]), 3000, 2);
+    tracker.admit(METER, power([1000, 1000, 1000]), 3000, 1);
+    for (let i = 0; i < 5; i += 1) tracker.admit(METER, power([9000, 9000, 9000 + i]), 3000, 2);
     expect(tracker.current()).toMatchObject({ kind: 'healthy', acceptedAtMs: 1 });
-    tracker.admit(power([9000, 9000, 9100]), 3000, 3);
+    tracker.admit(METER, power([9000, 9000, 9100]), 3000, 3);
     expect(tracker.current()).toEqual({ kind: 'degraded' });
   });
 
   it('rejects a frozen set while net moves', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit(power([1000, 1000, 1000]), 3000, 1);
-    tracker.admit(power([1000, 1000, 1000]), 3300, 2);
+    tracker.admit(METER, power([1000, 1000, 1000]), 3000, 1);
+    tracker.admit(METER, power([1000, 1000, 1000]), 3300, 2);
     expect(tracker.current()).toMatchObject({ acceptedAtMs: 1 });
   });
 
   it('leaves the picture alone on a failed read', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit(power([1000, 1000, 1000]), 3000, 1);
-    tracker.admit({ state: 'unavailable' }, 3000, 2);
+    tracker.admit(METER, power([1000, 1000, 1000]), 3000, 1);
+    tracker.admit(METER, { state: 'unavailable' }, 3000, 2);
     expect(tracker.current()).toMatchObject({ kind: 'healthy', acceptedAtMs: 1 });
   });
 
   it('stops trusting the picture when reads keep failing, and clears it when no meter feeds it', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit(power([1000, 1000, 1000]), 3000, 1);
-    for (let index = 0; index < 5; index += 1) tracker.admit({ state: 'unavailable' }, 3000, 2 + index);
+    tracker.admit(METER, power([1000, 1000, 1000]), 3000, 1);
+    for (let index = 0; index < 5; index += 1) tracker.admit(METER, { state: 'unavailable' }, 3000, 2 + index);
     expect(tracker.current().kind).toBe('healthy');
-    tracker.admit({ state: 'unavailable' }, 3000, 10);
+    tracker.admit(METER, { state: 'unavailable' }, 3000, 10);
     expect(tracker.current().kind).toBe('degraded');
     tracker.reset();
     expect(tracker.current()).toEqual({ kind: 'none' });
@@ -109,10 +111,10 @@ describe('PhaseReadingTracker', () => {
 
   it('checks a current-only meter one-sidedly and marks it unsigned', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit({ state: 'read', capabilityIds: [], currentA: [10, 5, 5] }, 2000, 1);
-    expect(tracker.current()).toMatchObject({ kind: 'healthy', signed: false });
+    tracker.admit(METER, { state: 'read', capabilityIds: [], currentA: [10, 5, 5] }, 2000, 1);
+    expect(tracker.current()).toMatchObject({ kind: 'healthy', basis: 'current' });
     const impossible = new PhaseReadingTracker();
-    impossible.admit({ state: 'read', capabilityIds: [], currentA: [1, 1, 1] }, 9000, 1);
+    impossible.admit(METER, { state: 'read', capabilityIds: [], currentA: [1, 1, 1] }, 9000, 1);
     expect(impossible.current()).toEqual({ kind: 'degraded' });
   });
 });
@@ -121,7 +123,7 @@ describe('projectPhaseLoadForUi', () => {
   const fuse = { kind: 'on', supply: 'three_phase_neutral', amps: 25 } as const;
   const healthy = (): PhaseReading => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit({ state: 'read', capabilityIds: [], powerW: [4600, -2300, 0], currentA: [20, 10, 0] }, 2300, 1);
+    tracker.admit(METER, { state: 'read', capabilityIds: [], powerW: [4600, -2300, 0], currentA: [20, 10, 0] }, 2300, 1);
     return tracker.current();
   };
 
@@ -135,7 +137,7 @@ describe('projectPhaseLoadForUi', () => {
 
   it('marks exporting phases on signed meters and says when there is no current', () => {
     const tracker = new PhaseReadingTracker();
-    tracker.admit({ state: 'read', capabilityIds: [], powerW: [3000, -1000, 0] }, 2000, 1);
+    tracker.admit(METER, { state: 'read', capabilityIds: [], powerW: [3000, -1000, 0] }, 2000, 1);
     expect(projectPhaseLoadForUi(tracker.current(), fuse, [])).toMatchObject({
       powerOnly: true, phases: [{ phase: 'L1' }, { phase: 'L2', exporting: true }, { phase: 'L3' }],
     });
@@ -147,7 +149,7 @@ describe('projectPhaseLoadForUi', () => {
     });
     expect(projectPhaseLoadForUi(healthy(), { kind: 'off' }, ['measure_power.a'])).toMatchObject({ phasesRecognised: true });
     const powerOnly = new PhaseReadingTracker();
-    powerOnly.admit({ state: 'read', capabilityIds: [], powerW: [1000, 500, 500] }, 2000, 1);
+    powerOnly.admit(METER, { state: 'read', capabilityIds: [], powerW: [1000, 500, 500] }, 2000, 1);
     expect(projectPhaseLoadForUi(powerOnly.current(), { kind: 'off' }, ['measure_power.a'])).toMatchObject({ powerOnly: true });
   });
 
