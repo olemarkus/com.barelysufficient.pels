@@ -44,7 +44,7 @@ is never limited to protect the hard cap. To limit a device for power, PELS need
 ## Manual action needed
 
 The **"Manual action needed"** notification (Flow trigger *Hard cap breach
-imminent — manual action needed*) fires only when PELS projects the **selected-period hard cap**
+imminent: manual action needed*) fires only when PELS projects the **selected-period hard cap**
 will be exceeded **and it has run out of managed load it is allowed to turn down**.
 It is the one urgent, safety-level alert in PELS — everything else is soft pacing.
 
