@@ -220,12 +220,18 @@ const buildPlannedReleaseCommand = (
 export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
   const commands = buildExecutablePlan(plan);
   return {
-    devices: plan.devices.map((device, index) => ({
-      commands: commands.devices[index]!,
-      stableOperations: qualifyStableOperations(device, commands.devices[index]!),
-      stepBaseline: resolveSteppedLoadCurrentFallback(device),
-      nonCapacityHoldShed: device.nonCapacityHoldShed === true,
-    })),
+    devices: plan.devices.map((device, index) => {
+      const intent = commands.devices[index]!;
+      const stepDownToRetire = device.stepDownToRetire;
+      const stillRequested = hasPlannedStep(intent) && intent.steppedLoad.desired.stepId === stepDownToRetire?.stepId;
+      return {
+        commands: intent,
+        ...(stepDownToRetire && !stillRequested ? { stepDownToRetire } : {}),
+        stableOperations: qualifyStableOperations(device, intent),
+        stepBaseline: resolveSteppedLoadCurrentFallback(device),
+        nonCapacityHoldShed: device.nonCapacityHoldShed === true,
+      };
+    }),
     hasShedDevices: hasExecutableShedDevices(plan, commands),
     droppedSteppedSheds: findDroppedSteppedShedIntents(plan, commands),
     storageDevices: plan.devices.filter(hasStorageDecision).map(({ id, name, storageDecision }) => (

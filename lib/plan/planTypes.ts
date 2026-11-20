@@ -1,6 +1,7 @@
 import type { PhasePower } from './phase/phasePower';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { PlannedTargetCommand } from '../planContract/targetCommand';
+import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { CapacityPeriodMinutes, HardCapSource } from '../../packages/contracts/src/capacitySettings';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
@@ -585,6 +586,7 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   desiredStepId?: string;
   /** The step the device was last commanded to, as the plan input reported it. */
   lastDesiredStepId?: string;
+  stepDownToRetire?: StepDownRetirement;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;

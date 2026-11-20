@@ -98,7 +98,10 @@ export type PlannedStepBaseline = {
 /** Qualified operations whose remaining suppression depends on execution-owned command state. */
 export type StableExecutionOperation = 'uncontrolled_restore' | 'binary_release' | 'step_change'
   | 'initialize_step' | 'binary_restore';
+/** Identity of the unresolved descent this plan no longer needs. */
+export type StepDownRetirement = { stepId: string; issuedAtMs: number };
 export type PlannedDeviceExecution = {
+  stepDownToRetire?: StepDownRetirement;
   commands: PlannedDeviceCommands;
   stableOperations: StableExecutionOperation[];
   /** Historical fallback used only where the old dispatch lacked a current step observation. */

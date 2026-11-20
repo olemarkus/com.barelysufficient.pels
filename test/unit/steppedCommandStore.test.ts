@@ -22,6 +22,24 @@ describe('SteppedCommandStore', () => {
     expect(store.hasPriorStepCommand('dev-2')).toBe(false);
   });
 
+  it('retires only the unresolved attempt named by the plan', () => {
+    const { store } = steppedStoresForTest();
+    const retirement = { stepId: 'low', issuedAtMs: 1_000 };
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 2_000 });
+    store.retireStepDown('dev-1', retirement);
+    expect(store.isStepCommandPending('dev-1')).toBe(true);
+
+    const newer = { ...retirement, issuedAtMs: 2_000 };
+    store.noteReportedStep('dev-1', 'low', 2_001);
+    store.retireStepDown('dev-1', newer);
+    expect(store.getDesired('dev-1')?.status).toBe('success');
+
+    store.markDesiredStepIssued({ deviceId: 'dev-2', desiredStepId: 'low', issuedAtMs: 1_000 });
+    store.retireStepDown('dev-2', retirement);
+    expect(store.getDesired('dev-2')).toBeUndefined();
+    expect(store.hasPriorStepCommand('dev-2')).toBe(true);
+  });
+
   it('goes stale only once the pending window has elapsed', () => {
     const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
