@@ -75,6 +75,12 @@ export class BatteryManagedSettings implements BatteryManagedRead {
     return readBatteryControlSettings(this.settings);
   }
 
+  setManaged(deviceId: string, enabled: boolean): void {
+    const control = this.reload();
+    if (control.status !== 'resolved') throw new Error('Battery control settings could not be read. Try again.');
+    this.settings.set(BATTERY_CONTROL_DEVICES, { ...control.devices, [deviceId]: enabled });
+  }
+
   /** The held map, read first if no read has resolved yet. */
   read(): BatteryControlDevicesRead {
     return this.last.status === 'resolved' ? this.last : this.reload();

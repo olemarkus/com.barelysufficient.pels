@@ -83,6 +83,8 @@ const buildLane = () => {
     isWatchOnly: vi.fn(() => false),
     readControlCapability: vi.fn(() => 'drivable' as const),
     usesHomeyApiKey: vi.fn(() => false),
+    readLegacyRecovery: vi.fn(() => undefined),
+    resolveLegacyRecovery: vi.fn(async () => undefined),
     handBackBeforeHomeyApiKeyRemoval: vi.fn(async (removeKey: () => void) => { removeKey(); return 'removed' as const; }),
   };
   const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => (

@@ -9,7 +9,7 @@ import Homey from 'homey';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
-import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
+import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import {
@@ -109,7 +109,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
   });
   const owner = new HomeBatteryControlOwner(
     settings, new BatteryManagedSettings(settings), actuator,
-    (id) => transport.readBatteryControl(id), () => true, () => false, () => false,
+    transport, () => true, () => false, () => false,
   );
   return { owner, actuator };
 };
@@ -119,7 +119,9 @@ describe('home battery app actions', () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set(HOMEY_FLOW_API_KEY, 'saved-key');
     mockHomeyInstance.settings.unset(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`);
+    mockHomeyInstance.settings.unset(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}second-battery`);
     mockHomeyInstance.settings.unset(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}venus`);
+    mockHomeyInstance.settings.unset(BATTERY_CONTROL_DEVICES);
   });
 
   afterEach(() => {
@@ -471,88 +473,185 @@ describe('home battery app actions', () => {
     expect(removeKey).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['plant', 'replacement'])('recovers a v3.30.0 claim at boot using the sole current plant %s', async (plantId) => {
+  it.each(['plant', 'replacement'])('does not hand back a legacy claim automatically to current plant %s', async (plantId) => {
     const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId });
     const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
-    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
-    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
-    const { owner } = claimOwner(transport);
-    owner.onSnapshotCommitted({ entries: [] });
-
-    await vi.waitFor(() => expect(mockHomeyInstance.settings.get(key)).toBeNull());
-
-    expect(runs().map(([, action]) => action)).toEqual([
-      { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`, args: { device: { id: plantId }, state: 'off' } },
-      { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:remove_ess_charge_limit`, args: { device: { id: plantId } } },
-      { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:remove_ess_discharge_limit`, args: { device: { id: plantId } } },
-    ]);
-    expect(owner.admitClaim('sigen')).toEqual({ status: 'admitted' });
-    expect(mockHomeyInstance.settings.get(key)).toMatchObject({
-      handBack: 'app_actions', target: { appUri: SIGENERGY_APP, deviceId: plantId },
-    });
-  });
-
-  it('hands back a v3.30.0 Sigenergy claim before removing the shared key', async () => {
-    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
-    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
-    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
-    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
-    const { owner } = claimOwner(transport);
-    const removeKey = vi.fn(() => { expect(runs()).toHaveLength(3); });
-
-    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
-
-    expect(removeKey).toHaveBeenCalledOnce();
-    expect(mockHomeyInstance.settings.get(key)).toBeNull();
-  });
-
-  it.each(['missing', 'multiple_plants', 'multiple_batteries'] as const)(
-    'retains the legacy claim and shared key with %s', async (inventory) => {
-    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
-    const devices = inventory === 'missing' ? [battery] : [battery, plant];
-    const second = buildSigenergyDevices({ batteryId: 'second-battery', plantId: 'second-plant' });
-    if (inventory === 'multiple_plants') devices.push(second.plant);
-    if (inventory === 'multiple_batteries') devices.push(second.battery);
-    const { transport, runs } = await setup(devices, SIGENERGY_CARDS);
-    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
-    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
-    const { owner } = claimOwner(transport);
-    const removeKey = vi.fn();
-
-    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
-
-    expect(runs()).toEqual([]);
-    expect(removeKey).not.toHaveBeenCalled();
-    expect(mockHomeyInstance.settings.get(key)).toEqual({ handBack: 'app_actions', claimedAtMs: 1 });
-  });
-
-  it('turns remote EMS off for a legacy claim without rated powers and retains failed cleanup', async () => {
-    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
-    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
-    await seedTransportDevices(transport, [
-      battery.toHomeyApiDevice() as HomeyDeviceLike,
-      { ...plant.toHomeyApiDevice(), settings: {} } as unknown as HomeyDeviceLike,
-    ]);
-    vi.mocked(transport.chargingAccess.runAction).mockImplementation(async (_id, action) => {
-      if (action.cardId.endsWith(':remove_ess_charge_limit')) throw new Error('Rated charging power not known yet');
-    });
     const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
     const legacy = { handBack: 'app_actions', claimedAtMs: 1 };
     mockHomeyInstance.settings.set(key, legacy);
     const { owner } = claimOwner(transport);
+    owner.onSnapshotCommitted({ entries: [] });
     const removeKey = vi.fn();
-
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
+    await expect(owner.releaseClaim('sigen', 'idle')).resolves.toBe('not_released');
+    owner.setControlEnabled('sigen', false);
 
+    expect(owner.readLegacyRecovery('sigen')).toMatchObject({
+      claimedAtMs: 1, candidates: [{ id: plantId }],
+    });
+    expect(owner.readControlCapability('sigen')).toBe('recovery_required');
+    expect(runs()).toEqual([]);
+    expect(removeKey).not.toHaveBeenCalled();
+    expect(mockHomeyInstance.settings.get(key)).toEqual(legacy);
+  });
+
+  it('only hands back to the explicitly confirmed original plant when there are two plants', async () => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'original-plant' });
+    const { plant: replacement } = buildSigenergyDevices({
+      batteryId: 'second-battery', plantId: 'replacement', plantName: 'Replacement plant',
+    });
+    const { transport, runs } = await setup([battery, plant, replacement], SIGENERGY_CARDS);
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
+    const { owner, actuator } = claimOwner(transport);
+    owner.setControlEnabled('sigen', false);
+
+    const recovery = owner.readLegacyRecovery('sigen');
+    expect(recovery?.candidates.map(({ id }) => id)).toEqual(['original-plant', 'replacement']);
+    await expect(actuator.apply({ kind: 'storage_release', deviceId: 'sigen', handBack: 'legacy_app_actions' }))
+      .rejects.toThrow();
+    const readLegacyTarget = vi.spyOn(transport.batteryAppActions, 'readLegacyTarget');
+    vi.mocked(transport.chargingAccess.runAction).mockImplementation(async (_id, action) => {
+      if (action.cardId.endsWith(':remove_ess_discharge_limit')) {
+        readLegacyTarget.mockReturnValue({ kind: 'unavailable', reasonCode: 'battery_unread' });
+      }
+    });
+    await owner.resolveLegacyRecovery('sigen', { action: 'hand_back', claimedAtMs: 1, targetId: 'original-plant' });
+
+    expect(runs().map(([, action]) => action)).toEqual([
+      { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
+        args: { device: { id: 'original-plant' }, state: 'off' } },
+      { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:remove_ess_charge_limit`,
+        args: { device: { id: 'original-plant' } } },
+      { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:remove_ess_discharge_limit`,
+        args: { device: { id: 'original-plant' } } },
+    ]);
+    expect(mockHomeyInstance.settings.get(key)).toBeNull();
+    expect(owner.isManaged('sigen')).toBe(false);
+    const removeKey = vi.fn();
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+    expect(removeKey).toHaveBeenCalledOnce();
+  });
+
+  it.each(['indistinguishable plants', 'multiple batteries'])('offers manual recovery with %s', async (obstacle) => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'original-plant' });
+    const { battery: other, plant: replacement } = buildSigenergyDevices({
+      batteryId: 'second-battery', plantId: 'replacement',
+    });
+    const { transport } = await setup(
+      [battery, plant, obstacle === 'multiple batteries' ? other : replacement], SIGENERGY_CARDS,
+    );
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
+    const { owner } = claimOwner(transport);
+
+    expect(owner.readLegacyRecovery('sigen')).toEqual({ claimedAtMs: 1, candidates: [] });
+  });
+
+  it('refuses hand-back to a plant held by another current claim', async () => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
+    const settings = mockHomeyInstance.settings;
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    const otherKey = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}second-battery`;
+    const oldClaim = { handBack: 'app_actions', claimedAtMs: 1 };
+    const currentClaim = { handBack: 'app_actions', claimedAtMs: 2, target: SIGENERGY_CONTROL.target };
+    settings.set(key, oldClaim);
+    settings.set(otherKey, currentClaim);
+    const { owner } = claimOwner(transport);
+    owner.setControlEnabled('sigen', false);
+
+    await expect(owner.resolveLegacyRecovery('sigen', { action: 'hand_back', claimedAtMs: 1, targetId: 'plant' }))
+      .rejects.toThrow('Another battery claim still holds this plant');
+    expect(runs()).toEqual([]);
+    expect(settings.get(key)).toEqual(oldClaim);
+    expect(settings.get(otherKey)).toEqual(currentClaim);
+  });
+
+  it('only acknowledges a legacy claim without a plant using its current timestamp and persisted Managed off', async () => {
+    const { battery } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const { transport, runs } = await setup([battery], SIGENERGY_CARDS);
+    const settings = mockHomeyInstance.settings;
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    const legacy = { handBack: 'app_actions', claimedAtMs: 1 };
+    settings.set(key, legacy);
+    const { owner } = claimOwner(transport);
+    const acknowledge = { action: 'acknowledge', claimedAtMs: 1 };
+    const removeKey = vi.fn();
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
+    expect(owner.readLegacyRecovery('sigen')).toEqual({ claimedAtMs: 1, candidates: [] });
+    await expect(owner.resolveLegacyRecovery('sigen', acknowledge)).rejects.toThrow('Turn off Managed by PELS');
+
+    owner.setControlEnabled('sigen', false);
+    settings.set(BATTERY_CONTROL_DEVICES, { sigen: true });
+    await expect(owner.resolveLegacyRecovery('sigen', acknowledge)).rejects.toThrow('Turn off Managed by PELS');
+    settings.set(BATTERY_CONTROL_DEVICES, { sigen: false });
+    await expect(owner.resolveLegacyRecovery('sigen', { ...acknowledge, claimedAtMs: 2 })).rejects.toThrow('changed');
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('storage unavailable'); });
+    await expect(owner.resolveLegacyRecovery('sigen', acknowledge)).rejects.toThrow('could not save');
+    expect(settings.get(key)).toEqual(legacy);
+    expect(owner.readLegacyRecovery('sigen')).toEqual({ claimedAtMs: 1, candidates: [] });
+    expect(removeKey).not.toHaveBeenCalled();
+
+    unset.mockRestore();
+    await owner.resolveLegacyRecovery('sigen', acknowledge);
+    expect(runs()).toHaveLength(0);
+    expect(settings.get(key)).toBeNull();
+    expect(settings.get(BATTERY_CONTROL_DEVICES)).toEqual({ sigen: false });
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+  });
+
+  it('keeps the recovery obligation when the selected plant disappears or its cleanup fails', async () => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
+    const batteryRaw = battery.toHomeyApiDevice() as HomeyDeviceLike;
+    const plantRaw = plant.toHomeyApiDevice() as HomeyDeviceLike;
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    const legacy = { handBack: 'app_actions', claimedAtMs: 1 };
+    mockHomeyInstance.settings.set(key, legacy);
+    const { owner } = claimOwner(transport);
+    owner.setControlEnabled('sigen', false);
+    const confirm = { action: 'hand_back', claimedAtMs: 1, targetId: 'plant' };
+    expect(owner.readLegacyRecovery('sigen')?.candidates).toHaveLength(1);
+
+    await seedTransportDevices(transport, [batteryRaw]);
+    await expect(owner.resolveLegacyRecovery('sigen', confirm)).rejects.toThrow('selected plant is unavailable');
+    expect(runs()).toEqual([]);
+
+    await seedTransportDevices(transport, [batteryRaw, { ...plantRaw, settings: {} }]);
+    vi.mocked(transport.chargingAccess.runAction).mockImplementation(async (_id, action) => {
+      if (action.cardId.endsWith(':remove_ess_charge_limit')) throw new Error('Rated charging power not known yet');
+    });
+    await expect(owner.resolveLegacyRecovery('sigen', confirm)).rejects.toThrow('Rated charging power not known yet');
     expect(runs()[0]?.[1]).toEqual({
       ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
       args: { device: { id: 'plant' }, state: 'off' },
     });
     expect(mockHomeyInstance.settings.get(key)).toEqual(legacy);
-    expect(removeKey).not.toHaveBeenCalled();
     vi.mocked(transport.chargingAccess.runAction).mockResolvedValue(undefined);
-    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+    await owner.resolveLegacyRecovery('sigen', confirm);
     expect(mockHomeyInstance.settings.get(key)).toBeNull();
+    owner.setControlEnabled('sigen', true);
+    expect(owner.admitClaim('sigen')).toEqual({ status: 'refused', reason: 'not_drivable' });
+    await seedTransportDevices(transport, [batteryRaw, plantRaw]);
+    expect(owner.admitClaim('sigen')).toEqual({ status: 'admitted' });
+  });
+
+  it('does not clear recovery when the adapter policy is unavailable again', async () => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
+    const settings = mockHomeyInstance.settings;
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    const legacy = { handBack: 'app_actions', claimedAtMs: 1 };
+    settings.set(key, legacy);
+    const { owner } = claimOwner(transport);
+    owner.setControlEnabled('sigen', false);
+    expect(owner.readLegacyRecovery('sigen')?.claimedAtMs).toBe(1);
+    vi.spyOn(transport.batteryAppActions, 'readLegacyTarget')
+      .mockReturnValue({ kind: 'unavailable', reasonCode: 'battery_unread' });
+    await expect(owner.resolveLegacyRecovery('sigen', { action: 'acknowledge', claimedAtMs: 1 })).rejects.toThrow('changed');
+    expect(settings.get(key)).toEqual(legacy);
+    expect(runs()).toHaveLength(0);
   });
 
   it('hands back a legacy self-target claim through the adapter explicit legacy resolution', async () => {

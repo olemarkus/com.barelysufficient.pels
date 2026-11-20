@@ -4,7 +4,7 @@ import { API_STARTING_MESSAGE, defineRoutes, type ApiContext } from './defineRou
 
 /** Why the key was kept: a battery PELS drives with it could not be handed back to its app first. */
 export const HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE
-  = 'PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.';
+  = 'PELS kept the key because a battery still needs it. Check the battery’s device page and try again.';
 
 export const HOMEY_API_KEY_CLAIMS_UNREADABLE_MESSAGE
   = 'PELS could not check whether any batteries still need the key, so it was kept. Try again in a minute.';

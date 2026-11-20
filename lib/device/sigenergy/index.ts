@@ -98,13 +98,17 @@ const sigenergyActions = (plantId: string, range: HomeBatterySetpointRange): Hom
   };
 };
 
+const findPlants = (devices: readonly HomeyDeviceLike[]): HomeyDeviceLike[] => (
+  devices.filter((device) => isDeviceOfAppDriver(device, SIGENERGY_APP_ID, PLANT_DRIVER_ID))
+);
+
 const resolveSigenergy = (
   device: HomeyDeviceLike,
   devices: readonly HomeyDeviceLike[],
 ): HomeBatteryActionsResolution => {
   const batteries = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, BATTERY_DRIVER_ID));
   if (batteries.some((other) => other.id !== device.id)) return { kind: 'unavailable', reasonCode: 'shared_plant' };
-  const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
+  const plants = findPlants(devices);
   const [plant] = plants;
   if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
   if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
@@ -118,7 +122,7 @@ const resolveSigenergy = (
 };
 
 const resolvePlantTarget = (devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution => {
-  const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
+  const plants = findPlants(devices);
   const [plant] = plants;
   if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
   if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
@@ -132,13 +136,22 @@ const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   commandLifetime: () => ({ kind: 'persistent' }),
   commandPacing: { kind: 'unpaced' },
   resolve: resolveSigenergy,
-  // Releases before target identities were persisted used the sole plant in
-  // the inventory. Retain that upgrade policy for those records only, including
-  // a replacement sole plant; current-schema claims keep their recorded target.
+  // The only remaining plant may be a replacement. The owner's selection is
+  // what identifies the original plant when its ID was never recorded.
   resolveLegacyTarget: (device, devices) => {
-    const batteries = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, BATTERY_DRIVER_ID));
-    if (batteries.some((other) => other.id !== device.id)) return { kind: 'unavailable', reasonCode: 'shared_plant' };
-    return resolvePlantTarget(devices);
+    const otherBattery = devices.some((other) => (
+      other.id !== device.id && isDeviceOfAppDriver(other, SIGENERGY_APP_ID, BATTERY_DRIVER_ID)
+    ));
+    if (otherBattery) {
+      return { kind: 'confirmation_required', candidates: [] };
+    }
+    const plants = findPlants(devices);
+    return {
+      kind: 'confirmation_required',
+      candidates: plants
+        .filter((plant) => !plants.some((other) => other.id !== plant.id && other.name === plant.name))
+        .map(({ id, name }) => ({ id, name })),
+    };
   },
   handBack: (target) => [
     { deviceId: target.deviceId, actionId: 'set_remote_ems', args: { state: 'off' } },

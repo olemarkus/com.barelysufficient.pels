@@ -462,6 +462,10 @@ export class DeviceWriteService {
    */
   async releaseStorageControl(command: StorageReleaseCommand): Promise<void> {
     const { deviceId } = command;
+    if (command.handBack === 'confirmed_legacy_app_actions') {
+      await this.batteryAppActions.handBackConfirmedLegacy(deviceId, command.targetId);
+      return;
+    }
     const surface = requireDrivableSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
     if (command.handBack === 'app_actions' && surface.kind === 'app_actions') {
       await this.batteryAppActions.handBack(deviceId, command.target);
@@ -474,17 +478,16 @@ export class DeviceWriteService {
     if (command.handBack !== 'claim_capability' || surface.kind !== 'setpoint') {
       throw new Error(`Home battery ${deviceId} hand-back does not match its control binding`);
     }
-    const { restoreClaimValue } = command;
     // A meter-following battery has no setpoint to zero: restoring its mode is the whole hand-back.
     if (surface.response.kind === 'follows_meter') {
-      await this.setCapability(deviceId, surface.claim.capabilityId, restoreClaimValue);
+      await this.setCapability(deviceId, surface.claim.capabilityId, command.restoreClaimValue);
       return;
     }
     const zeroed = await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0).then(
       () => ({ failed: false as const }),
       (error: unknown) => ({ failed: true as const, error }),
     );
-    await this.setCapability(deviceId, surface.claim.capabilityId, restoreClaimValue);
+    await this.setCapability(deviceId, surface.claim.capabilityId, command.restoreClaimValue);
     if (zeroed.failed) throw zeroed.error;
   }
 

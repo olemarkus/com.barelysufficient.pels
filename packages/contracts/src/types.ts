@@ -1148,7 +1148,7 @@ export type HomeBatteryControlSurface =
  */
 export type HomeBatteryControlCapability =
   | 'drivable' | 'watch_only' | 'observe_only' | 'not_reporting' | 'needs_local_api'
-  | 'controlled_through_local_device' | 'needs_homey_api_key';
+  | 'controlled_through_local_device' | 'needs_homey_api_key' | 'recovery_required';
 
 /**
  * Home-battery descriptor cluster. Present exactly on a device whose class key

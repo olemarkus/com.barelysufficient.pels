@@ -4,7 +4,9 @@ import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packa
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
   HomeBatteryMeterModes, HomeBatteryObserveOnlyReason, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
-import type { BatteryCommandPacing, BatteryUnobservedCause } from '../ports/batteryControlOwner';
+import type {
+  BatteryCommandPacing, BatteryUnobservedCause, LegacyBatteryTargetRead,
+} from '../ports/batteryControlOwner';
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -211,7 +213,7 @@ export type HomeBatteryActionBinding = {
   /** Hand-back is independent of the command range and admission gates. */
   resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
   /** The adapter's upgrade policy for claims written before target identities were persisted. */
-  resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
+  resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): LegacyBatteryTargetRead;
   /**
    * The cards that return the recorded `target` to its own mode. `devices` is
    * the same inventory as `resolve`'s, for an app whose card depends on which

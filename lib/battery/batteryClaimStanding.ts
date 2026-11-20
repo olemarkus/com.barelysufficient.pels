@@ -5,7 +5,9 @@
  * admission, takeovers and hand-backs on, and the log of PELS's own claim
  * writes they are read against.
  */
-import type { HomeBatteryClaimCapabilityId, HomeBatteryClaimObservation } from '../../packages/contracts/src/types';
+import type {
+  HomeBatteryClaimCapabilityId, HomeBatteryClaimObservation, HomeBatteryControlCapability,
+} from '../../packages/contracts/src/types';
 import type {
   BatteryClaimAdmission, BatteryClaimRefusal, BatteryControlRead, BatteryLeverRead, BatteryLeverResponse,
 } from '../ports/batteryControlOwner';
@@ -40,6 +42,21 @@ export const isDrivableBattery = (battery: BatteryControlRead): battery is Driva
 export const runsOnHomeyApiKey = (battery: BatteryControlRead): boolean => (
   battery.kind === 'app_actions' || battery.kind === 'hand_back_only' || battery.kind === 'homey_api_key_missing'
 );
+
+/** A battery's usable control, as the owner reports it to settings and Flow cards. */
+export const describeBatteryControl = (
+  battery: BatteryControlRead, isWatchOnly: (battery: SetpointBatteryRead) => boolean,
+): HomeBatteryControlCapability | 'not_battery' => {
+  if (battery.kind === 'not_battery') return 'not_battery';
+  if (battery.kind === 'homey_api_key_missing') return 'needs_homey_api_key';
+  if (battery.kind === 'unobserved' && battery.cause === 'no_readings') return 'not_reporting';
+  if (battery.kind === 'unobserved' && battery.cause === 'local_api_off') return 'needs_local_api';
+  if (battery.kind === 'observe_only' && battery.cause === 'controlled_through_local_device') {
+    return 'controlled_through_local_device';
+  }
+  if (battery.kind !== 'setpoint') return battery.kind === 'app_actions' ? 'drivable' : 'observe_only';
+  return isWatchOnly(battery) ? 'watch_only' : 'drivable';
+};
 
 /**
  * Why a hand-back can never succeed against the battery as it is now. An
@@ -206,6 +223,15 @@ export const resolveTerminalFailure = (
   if (battery.kind === 'app_actions' || record.kind !== 'claim_capability') return undefined;
   return battery.surface.claim.values.includes(record.previousValue) ? undefined : 'restore_value_undeclared';
 };
+
+/** Whether the battery's control surface no longer stops the hand-back for the reason it stopped. */
+export const isTerminalFailureLifted = (
+  record: BatteryClaimRecord | undefined,
+  battery: BatteryControlRead,
+  failure: TerminalReleaseFailure,
+): boolean => (
+  record !== undefined && battery.kind !== 'unobserved' && resolveTerminalFailure(record, battery) !== failure
+);
 
 /** The value a record hands the battery back to, for the log: the recorded claim value, or its app's own mode. */
 export const describeHandBack = (record: BatteryClaimRecord): string => (

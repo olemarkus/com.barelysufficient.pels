@@ -510,6 +510,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       isWatchOnly: vi.fn(() => false),
       readControlCapability: vi.fn(() => 'observe_only' as const),
       usesHomeyApiKey: vi.fn(() => false),
+      readLegacyRecovery: vi.fn(() => undefined),
+      resolveLegacyRecovery: vi.fn(async () => undefined),
       handBackBeforeHomeyApiKeyRemoval: vi.fn(async (removeKey: () => void) => { removeKey(); return 'removed' as const; }),
     },
     priceCoordinator: partialDouble<PriceCoordinator>({
