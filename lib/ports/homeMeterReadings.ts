@@ -29,6 +29,8 @@ export type LiveMeterReadings = {
    * meter with none is simply not a key.
    */
   readonly meterPowerW: Readonly<Record<string, number>>;
+  /** Device IDs whose targeted Homey device lookup returned 404 during this poll. */
+  readonly removedMeterDeviceIds?: readonly string[];
   /** Gross PV generation from the same report, when it carries one. */
   readonly generationW?: number;
   /**

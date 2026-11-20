@@ -24,13 +24,16 @@ const holdsDeviceRecords = (rawDevices: Record<string, unknown> | unknown[]): bo
  * transient, never evidence that no other meter exists. The census arms are
  * `resolveSoleMeterAdoptionCandidate`'s own.
  */
-export async function censusSoleMeterAdoptionCandidate(): Promise<SoleMeterAdoptionCensus> {
+export async function censusSoleMeterAdoptionCandidate(
+  excluded: ReadonlySet<string> | null,
+): Promise<SoleMeterAdoptionCensus> {
+  if (excluded === null) return { state: 'unavailable' };
   try {
     const report = await getEnergyLiveReport();
     if (report === null) return { state: 'unavailable' };
     const devices = await getRawDevices(DEVICES_API_PATH);
     if (!holdsDeviceRecords(devices)) return { state: 'unavailable' };
-    return resolveSoleMeterAdoptionCandidate(report, devices);
+    return resolveSoleMeterAdoptionCandidate(report, devices, excluded);
   } catch (error) {
     moduleLogger.error({ event: 'sole_meter_census_read_failed', err: normalizeError(error) });
     return { state: 'unavailable' };

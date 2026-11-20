@@ -37,7 +37,10 @@ const resolveCumulativeMeterRow = (item: UnknownRecord): CumulativeMeterRow | nu
  * that meter's reading, so a warming first row never hides a later one.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterRow[] => {
+const collectCumulativeMeterRows = (
+  items: readonly unknown[],
+  excluded: ReadonlySet<string>,
+): CumulativeMeterRow[] => {
   const byDeviceId = new Map<string, CumulativeMeterRow>();
   const unnamed: CumulativeMeterRow[] = [];
   for (const rawItem of items) {
@@ -49,6 +52,7 @@ const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterR
       unnamed.push(row);
       continue;
     }
+    if (excluded.has(row.deviceId)) continue;
     const seen = byDeviceId.get(row.deviceId);
     if (seen === undefined || (seen.watts === null && row.watts !== null)) byDeviceId.set(row.deviceId, row);
   }
@@ -68,12 +72,13 @@ const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterR
  */
 export const resolveSoleCumulativeMeter = (
   liveReport: unknown,
+  excluded: ReadonlySet<string> = new Set(),
 ): SoleCumulativeMeterResolution => {
   const report = asUnknownRecord(liveReport);
   if (!report || !Array.isArray(report.items)) {
     return { state: 'unresolvable', reason: 'none_found' };
   }
-  const [sole, ...further] = collectCumulativeMeterRows(report.items);
+  const [sole, ...further] = collectCumulativeMeterRows(report.items, excluded);
   if (sole === undefined) return { state: 'unresolvable', reason: 'none_found' };
   if (further.length > 0) return { state: 'unresolvable', reason: 'ambiguous' };
   if (sole.deviceId === null) return { state: 'unresolvable', reason: 'idless_sole' };
@@ -117,10 +122,11 @@ export const resolveRegistryMeterCandidates = (rawDevices: unknown): string[] =>
 export const resolveSoleMeterAdoptionCandidate = (
   liveReport: unknown,
   rawDevices: unknown,
+  excluded: ReadonlySet<string> = new Set(),
 ): SoleCumulativeMeterResolution => {
-  const live = resolveSoleCumulativeMeter(liveReport);
+  const live = resolveSoleCumulativeMeter(liveReport, excluded);
   if (live.state !== 'resolved') return live;
-  const registry = resolveRegistryMeterCandidates(rawDevices);
+  const registry = resolveRegistryMeterCandidates(rawDevices).filter((id) => !excluded.has(id));
   if (registry.some((id) => id !== live.meterDeviceId)) return { state: 'unresolvable', reason: 'ambiguous' };
   if (!registry.includes(live.meterDeviceId)) return { state: 'unresolvable', reason: 'registry_mismatch' };
   return live;

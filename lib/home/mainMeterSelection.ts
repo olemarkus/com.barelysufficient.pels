@@ -1,5 +1,6 @@
 import { resolveExplicitMainMeterDeviceId } from './homeConfig';
-import { HOMEY_ENERGY_METER_DEVICE_ID } from '../utils/settingsKeys';
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../utils/settingsKeys';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 
@@ -77,6 +78,18 @@ export const readMainMeterSelection = (
   const classified = classifyMainMeterSelection(settings);
   return classified === 'listed_empty' ? { state: 'unavailable' } : classified;
 };
+
+/** Compare the current settings before clearing a selection found missing by the poll. */
+export function clearRemovedMainMeter(
+  settings: MainMeterSelectionSettings & Pick<SettingsPort, 'unset'>,
+  removedId: string,
+): boolean {
+  const current = readMainMeterSelection(settings);
+  if (current.state !== 'resolved' || current.meterDeviceId !== removedId
+    || settings.get(POWER_SOURCE) !== 'homey_energy') return false;
+  settings.unset(HOMEY_ENERGY_METER_DEVICE_ID);
+  return true;
+}
 
 export type MainMeterSelectionReader = { read: () => MainMeterSelection };
 
