@@ -13,6 +13,7 @@ import type { PendingBinaryCommandStore, PendingBinaryConfirmation } from '../ob
 import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { ExecutorCommandContext } from './executorCommandContext';
+import type { SteppedCommandStore } from './steppedCommandStore';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
 import {
@@ -70,6 +71,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
   actuator: Actuator;
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
+  retireStepDown: SteppedCommandStore['retireStepDown'];
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
@@ -399,7 +401,8 @@ export class PlanExecutor {
    */
   public hasExecutionWorkOutstanding(plan: ExecutionPlan, observationRevisionAtBuild: number): boolean {
     if (this.getObservationRevision() !== observationRevisionAtBuild) return false;
-    return this.deps.inverterLane.hasWork(plan.inverterDecisions)
+    return plan.devices.some((device) => device.stepDownToRetire !== undefined)
+      || this.deps.inverterLane.hasWork(plan.inverterDecisions)
       || plan.chargingPhaseDecisions.length > 0
       || hasPlanExecutionDriftAgainstIntent(plan, this.driftObservationDeps());
   }
@@ -431,6 +434,9 @@ export class PlanExecutor {
         pendingInverterReleaseCount: release.pendingInverterReleaseCount };
     }
 
+    for (const device of plan.devices) {
+      if (device.stepDownToRetire) this.deps.retireStepDown(device.commands.id, device.stepDownToRetire);
+    }
     this.nonCapacityHoldShedIds = new Set(
       plan.devices.filter((device) => device.nonCapacityHoldShed).map((device) => device.commands.id),
     );

@@ -23,12 +23,14 @@ import {
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import {
+  isPlanDeviceObservedOn,
   isSteppedLoadDevice,
   isSteppedLoadStepBelow,
   resolveSteppedKeepDesiredStepIdFor,
   resolveSteppedLoadInitialDesiredStepId,
 } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { SheddingPlan } from './shedding/types';
 import {
   getSteppedLoadLowestActiveStep,
@@ -90,6 +92,7 @@ function resolveSteppedExpectedPowerKw(
 type PlannedDeviceDecision = {
   plannedState: 'shed' | 'keep';
   effectiveDesiredStepId: string | undefined;
+  stepDownToRetire?: StepDownRetirement;
   shedDesiredStepId: string | undefined;
   baseReason: DeviceReason;
   shedAction: ShedAction;
@@ -100,7 +103,7 @@ type PlannedDeviceDecision = {
 
 function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDeviceDecision {
   const {
-    dev, recentlyRestored, boostActive, surplusCeilingStepId,
+    dev, recentlyRestored,
   } = inputs;
   // The whole posture: this builder asks BOTH questions of it, and they have
   // different answers for a managed device with power limiting off.
@@ -116,11 +119,6 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
   // materializer read that active rung as the decided end state, and the device
   // parked at 6 A under a switch promising PELS turns it off.
   const shedBehavior = resolveEffectiveShedBehavior(dev, shouldShed, inputs.shedBehavior, shedReasons);
-  // A command from the previous configuration can sit outside this cycle's
-  // allowed ladder. Keep it as command history, not as a new planner target.
-  const runtimeDesiredStepId = isSteppedLoadDevice(dev)
-    ? getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId)?.id ?? resolveSteppedLoadInitialDesiredStepId(dev)
-    : dev.desiredStepId;
   const shedDesiredStepId = resolveSteppedLoadDirectShedStepId(
     dev, shedBehavior, shouldShed, shedStepTargets.get(dev.id),
   );
@@ -131,15 +129,7 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
   const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction(dev, shouldShed, shedBehavior);
   return {
     plannedState,
-    // A Manual device keeps its current rung. Neither another device's shed nor
-    // an old command grants authority to change it. Explicit lifecycle releases
-    // are attached separately after the ordinary plan has been built.
-    effectiveDesiredStepId: control.commandAuthority
-      ? resolveSteppedKeepDesiredStepIdFor(
-        dev, plannedState, shedDesiredStepId ?? runtimeDesiredStepId,
-        inputs.fairnessLimited, boostActive, surplusCeilingStepId,
-      )
-      : resolveSteppedLoadInitialDesiredStepId(dev),
+    ...resolvePlannedStepDecision(inputs, plannedState, shedDesiredStepId),
     shedDesiredStepId,
     // Keyed on AUTHORITY, not on power limiting. `capacityControlOff` says "PELS is
     // not controlling this device" — false the moment a smart task has contributed
@@ -159,6 +149,42 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
       ? shedTemperature
       : inputs.plannedTarget,
   };
+}
+
+function resolvePlannedStepDecision(
+  inputs: BasePlanDeviceInputs, plannedState: PlannedDeviceDecision['plannedState'],
+  shedDesiredStepId: string | undefined,
+): Pick<PlannedDeviceDecision, 'effectiveDesiredStepId' | 'stepDownToRetire'> {
+  const { dev, sheddingPlan, fairnessLimited, boostActive, surplusCeilingStepId } = inputs;
+  // A manual device keeps its observed rung. Lifecycle release is decided separately.
+  if (!dev.control.commandAuthority) return { effectiveDesiredStepId: resolveSteppedLoadInitialDesiredStepId(dev) };
+  // A command from the previous configuration can sit outside this cycle's
+  // allowed ladder. Keep it as command history, not as a new planner target.
+  const runtimeDesiredStepId = isSteppedLoadDevice(dev)
+    ? getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId)?.id ?? resolveSteppedLoadInitialDesiredStepId(dev)
+    : dev.desiredStepId;
+  const obsoleteStep = plannedState === 'keep' && !sheddingPlan.sheddingActive
+    ? resolveUnneededStepDown(dev)
+    : undefined;
+  const step = shedDesiredStepId ?? (obsoleteStep ? dev.reportedStepId : runtimeDesiredStepId);
+  const keepStep = resolveSteppedKeepDesiredStepIdFor(
+    dev, plannedState, step, fairnessLimited, boostActive, surplusCeilingStepId,
+  );
+  // Leave the step axis undriven. A late lower report must be priced by a
+  // subsequent restore decision, even if it arrives before this plan applies.
+  const stepDownToRetire = keepStep === dev.reportedStepId ? obsoleteStep : undefined;
+  return { effectiveDesiredStepId: stepDownToRetire ? undefined : keepStep, stepDownToRetire };
+}
+
+function resolveUnneededStepDown(dev: PlanInputDevice): StepDownRetirement | undefined {
+  if (!isSteppedLoadDevice(dev) || !isPlanDeviceObservedOn(dev)) return undefined;
+  if (!dev.stepCommandPending && dev.stepCommandStatus !== 'stale') return undefined;
+  const issuedAtMs = dev.lastStepCommandIssuedAt;
+  const requested = getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId);
+  const reported = getSteppedLoadStep(dev.steppedLoadProfile, dev.reportedStepId);
+  return issuedAtMs !== undefined && requested && reported && reported.planningPowerW > requested.planningPowerW
+    ? { stepId: requested.id, issuedAtMs }
+    : undefined;
 }
 
 /**
@@ -306,6 +332,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   if (dev.targetPowerClaimNeeded === true) loose.targetPowerClaimNeeded = true;
   if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
 
+  if (decision.stepDownToRetire) loose.stepDownToRetire = decision.stepDownToRetire;
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));
 }
 /* eslint-enable functional/immutable-data */

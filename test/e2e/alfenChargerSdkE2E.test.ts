@@ -36,6 +36,7 @@ function plugState(plugged: boolean, charging: boolean): string {
  */
 function simulateAlfen(charger: MockDevice, phases: Phases, initialAmps: number, plugged = true) {
   let backgroundW = 1000;
+  let suppressStepFeedback = false;
   let ampsPerPhase = initialAmps;
   const startWrites: boolean[] = [];
   const chargingW = (): number => (plugged && ampsPerPhase >= 6 ? Math.round(ampsPerPhase * phases * 230) : 0);
@@ -53,6 +54,7 @@ function simulateAlfen(charger: MockDevice, phases: Phases, initialAmps: number,
   setInterval(publish, 30_000);
   const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
   const putSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path, body) => {
+    if (suppressStepFeedback && path === pathFor('target_power')) return;
     await originalPut(path, body);
     const value: unknown = body && typeof body === 'object' && 'value' in body ? body.value : undefined;
     if (path === pathFor('target_power') && typeof value === 'number') setProfileW(value);
@@ -72,6 +74,7 @@ function simulateAlfen(charger: MockDevice, phases: Phases, initialAmps: number,
   });
   return {
     startWrites,
+    withholdStepFeedback: () => { suppressStepFeedback = true; },
     ampsPerPhase: () => ampsPerPhase,
     chargingW,
     powerWrites: () => putSpy.mock.calls.filter(([path]) => path === pathFor('target_power'))
@@ -159,6 +162,43 @@ describe.each([1, 3] as const)('Alfen (com.alfen) on %i phase(s) at the SDK boun
     vi.clearAllTimers();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it.runIf(phases === 1)('retires an unanswered step-down when grid pressure clears', async () => {
+    const charger = await buildAlfen(phases, 32);
+    const simulation = simulateAlfen(charger, phases, 32);
+    simulation.withholdStepFeedback();
+    configureRuntime(1000 + 32 * wattsPerAmp);
+    mockHomeyInstance.settings.set('capacity_enabled', false);
+    mockHomeyInstance.settings.set('grid_import_enabled', true);
+    mockHomeyInstance.settings.set('grid_import_limit_kw', (2000 + 32 * wattsPerAmp) / 1000);
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(simulation.powerWrites()).toEqual([]);
+    simulation.setBackground(2000 + 5 * wattsPerAmp);
+    for (let i = 0; i < 8 && simulation.powerWrites().length === 0; i += 1) {
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    const firstWrites = simulation.powerWrites();
+    expect(firstWrites).toHaveLength(1);
+    const first = await readCharger();
+    expect(first.selectedStepId).toBeDefined();
+    expect(first.desiredStepId).not.toBe(first.selectedStepId);
+    simulation.setBackground(1000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const clear = await api.ui_plan({ homey: mockHomeyInstance as never });
+    const card = clear.plan?.devices?.find((device) => device.id === ID)?.status;
+    const afterClear = await readCharger();
+    expect(card?.limited).toBe(false);
+    expect(afterClear.selectedStepId).toBe(first.selectedStepId);
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(simulation.powerWrites()).toEqual(firstWrites);
+    expect((await readCharger()).desiredStepId).toBeUndefined();
+
+    simulation.setBackground(2000 + 5 * wattsPerAmp);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(simulation.powerWrites()[firstWrites.length]).toBe(firstWrites[0]);
   });
 
   it('offers whole-amp levels from 6 A to the station limit in the station\'s phase watts', async () => {

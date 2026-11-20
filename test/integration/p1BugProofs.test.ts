@@ -98,6 +98,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     getShortfallThresholdKw: () => 0,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
+    retireStepDown: vi.fn(),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({

@@ -320,6 +320,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     // helper's runtime state, decoration surfaces it as
     // stepCommandPending/stepCommandStatus, and the flow report has to confirm
     // it — the loop under test.
+    retireStepDown: vi.fn(),
     markSteppedLoadDesiredStepIssued: (params) => helpers.markSteppedLoadDesiredStepIssued(params),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),

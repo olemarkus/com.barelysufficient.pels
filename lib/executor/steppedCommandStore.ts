@@ -45,6 +45,7 @@ import {
 } from './steppedCommandState';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
+import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { ControlContestRecording } from '../ports/controlContest';
 
 export class SteppedCommandStore {
@@ -213,6 +214,12 @@ export class SteppedCommandStore {
     this.state.steppedLoadDesiredByDeviceId.delete(deviceId);
     this.state.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
     this.contests.commandReleased(deviceId, 'level');
+  }
+
+  retireStepDown(deviceId: string, retirement: StepDownRetirement): void {
+    const tracked = this.getDesired(deviceId);
+    if (tracked?.stepId !== retirement.stepId || tracked.lastIssuedAtMs !== retirement.issuedAtMs) return;
+    if (isSteppedLoadCommandInFlight(tracked.status) || tracked.status === 'stale') this.deleteDesired(deviceId);
   }
 
   // --- Lifecycle ------------------------------------------------------------
