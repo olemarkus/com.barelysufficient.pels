@@ -910,8 +910,8 @@ Toasts: `Override started.`, `Override changed.`, `Override ended.`, `Could not
 save the override.` On a device PELS holds off, the card's fact line names the
 setpoint the device was left at and the override it will be set to on resume
 (`21.8 °C · set to 28 °C → planned 22 °C`). The overview card carries an `Override` chip beside its state
-chip while one is in force, limited or not, and no reason line for it. The two
-Flow cards that start and end one are still titled "temporary temperature".
+chip while one is in force, limited or not, and no reason line for it. The Flow cards are titled
+`Start temperature override for device` and `End temperature override for device`.
 
 An override outranks a Smart task on the device, and three places say so. The
 form, when the device has an open task: `The Smart task on this device waits
