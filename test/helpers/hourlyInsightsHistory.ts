@@ -11,8 +11,8 @@ export const buildHourlyInsightsHistory = () => {
     const hour = current - (168 - i) * 3_600_000;
     return { t: new Date(hour).toISOString(), v: wattsAt(hour) };
   });
-  const buckets = Object.fromEntries(Array.from({ length: 34 }, (_, i) => {
-    const hour = current - (33 - i) * 3_600_000;
+  const buckets = Object.fromEntries(Array.from({ length: 36 }, (_, i) => {
+    const hour = current - (35 - i) * 3_600_000;
     return [new Date(hour).toISOString(), wattsAt(hour) / 1000];
   }));
   const tracker: PowerTrackerState = {
