@@ -8,7 +8,7 @@ import type { LiveMeterReport } from './managerFetch';
 export function resolveLiveMeterReadings(
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
     report: LiveMeterReport,
-    /** The requested meters' import counters, read beside the report (`readMeterImportCounters`). */
+    /** The requested meters' import counters, read beside the report (`readPolledMeterDevices`). */
     importCounters: Readonly<Record<string, MeterImportCounter>>,
 ): LiveMeterReadings | null {
     // A FAILED read is not a measurement and must not be published: this

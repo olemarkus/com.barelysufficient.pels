@@ -2,6 +2,7 @@ import type { SettingsHandler } from './settingsHandlers';
 import {
   CAPACITY_PRIORITIES,
   DEVICE_EXPECTED_POWER_OVERRIDES,
+  HOMEY_ENERGY_METER_DEVICE_ID,
   MAIN_HOME_ID,
   MODE_ALIASES,
   MODE_CATALOG_INITIALIZED,
@@ -31,9 +32,8 @@ const MODE_CATALOG_KEYS: ReadonlySet<string> = new Set([
  * - A `set` the observer recorded itself (`consumeObservedSettingChange`) is
  *   consumed before the handler sees it; an operating-mode write is announced
  *   (`onOperatingModeHandled`) once the handler has applied it.
- * - An `unset` reaches the handler only for the manual expected-power figures
- *   and for a meter area's own mode-catalog keys: Main's catalog and every
- *   other key keep their last value when unset.
+ * - An `unset` reaches the handler for a removed Main meter, manual
+ *   expected-power figures, and a meter area's own mode-catalog keys.
  */
 export function attachSettingsHandler(
   settings: SettingsEventsPort,
@@ -47,7 +47,7 @@ export function attachSettingsHandler(
     if (key === OPERATING_MODE_SETTING) onOperatingModeHandled();
   };
   const onUnset = async (key: string): Promise<void> => {
-    if (key === DEVICE_EXPECTED_POWER_OVERRIDES) {
+    if (key === DEVICE_EXPECTED_POWER_OVERRIDES || key === HOMEY_ENERGY_METER_DEVICE_ID) {
       await handler(key);
       return;
     }

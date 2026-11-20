@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomeMeters, readMeterSample, resolveMainMeterRead, type SubHomeMeters } from '../../lib/home/homeMeters';
-import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../lib/utils/settingsKeys';
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import { captureLogger } from '../utils/loggerCapture';
 
 // A settings store holding (or not holding) Main's meter selection.
 const settingsWith = (values: Record<string, unknown>) => ({
   get: (key: string): unknown => (key in values ? values[key] : null),
   getKeys: (): string[] => Object.keys(values),
+  unset: (key: string): void => { Reflect.deleteProperty(values, key); },
 });
 const mainSelected = settingsWith({ [HOMEY_ENERGY_METER_DEVICE_ID]: 'meter-main', other: true });
 const noMainSelected = settingsWith({ other: true });
@@ -46,6 +47,19 @@ describe('HomeMeters', () => {
     await request.record({ meterPowerW: {} });
 
     expect(recordMainSample).not.toHaveBeenCalled();
+  });
+
+  it('keeps an owner selection changed while the removed-device poll was in flight', async () => {
+    const values = { [HOMEY_ENERGY_METER_DEVICE_ID]: 'meter-main', [POWER_SOURCE]: 'homey_energy' };
+    const settings = settingsWith(values);
+    const areas = subHomes(['m-area']);
+    const request = new HomeMeters(settings, vi.fn(), () => areas, vi.fn(), vi.fn()).request();
+    values[HOMEY_ENERGY_METER_DEVICE_ID] = 'meter-new';
+
+    await request.record({ meterPowerW: { 'm-area': 600 }, removedMeterDeviceIds: ['meter-main'] });
+
+    expect(settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('meter-new');
+    expect(areas.routeMeterReadings).toHaveBeenCalledWith({ 'm-area': 600 }, expect.any(Number));
   });
 
   it('keeps Main\'s sample when a sub-home\'s routing throws', async () => {

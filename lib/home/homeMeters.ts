@@ -11,12 +11,14 @@ import type {
   MainMeterRead,
   MeterPowerSample,
 } from '../ports/homeMeterReadings';
-import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
+import { getDebugEmitter, getLogger, isDebugTopicEnabled } from '../logging/logger';
 import { shouldEmitOnChange, type LogDedupeEntry } from '../logging/logDedupe';
 import { normalizeError } from '../utils/errorUtils';
-import { readMainMeterSelection, type MainMeterSelectionSettings } from './mainMeterSelection';
+import { clearRemovedMainMeter, readMainMeterSelection, type MainMeterSelectionSettings } from './mainMeterSelection';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 
+const meterLogger = getLogger('home/meter');
 const emitDebug = getDebugEmitter('devices', 'devices');
 
 // Main's meter is read on every poll and every snapshot refresh, so a lasting
@@ -48,7 +50,7 @@ export type SubHomeMeters = {
 export class HomeMeters {
   constructor(
     /** Where Main's meter selection is stored; read once per request. */
-    private readonly settings: MainMeterSelectionSettings,
+    private readonly settings: MainMeterSelectionSettings & Pick<SettingsPort, 'unset'>,
     /** Main's power pipeline. */
     private readonly recordMainSample: (sample: MeterPowerSample) => Promise<void>,
     /** The sub-homes, once their registry exists; none before that or after teardown. */
@@ -83,9 +85,15 @@ export class HomeMeters {
     return {
       meterDeviceIds,
       record: async (readings) => {
-        this.observeMeterMonthlyPeaks(meterDeviceIds, main.meterDeviceIds[0] ?? null);
         routeSubHomeReadings(subHomes, readings);
         const sample = main.sampleFrom(readings);
+        const [mainId] = main.meterDeviceIds;
+        if (sample === null && mainId !== undefined && readings.removedMeterDeviceIds?.includes(mainId)
+          && clearRemovedMainMeter(this.settings, mainId)) {
+          meterLogger.info({ event: 'main_meter_removed', meterDeviceId: mainId });
+          return;
+        }
+        this.observeMeterMonthlyPeaks(meterDeviceIds, mainId ?? null);
         if (sample === null) return;
         await this.observeMainPhases(sample);
         await this.recordMainSample(sample);

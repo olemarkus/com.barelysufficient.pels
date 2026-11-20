@@ -171,3 +171,12 @@ export const createDeviceHomeAssignmentsStore = (
     );
   },
 });
+
+/** Meter-area assignments are excluded from automatic selection for Main. */
+export const readAssignedAreaMeters = (settings: SettingsPort): ReadonlySet<string> | null => {
+  const read = createHomesStore(settings).read();
+  if (read.state === 'suspect') return null;
+  return new Set(read.state === 'present'
+    ? read.value.subHomes.flatMap(({ meterDeviceId }) => meterDeviceId === null ? [] : [meterDeviceId])
+    : []);
+};

@@ -16,6 +16,7 @@ const TIMER_NAME = 'soleMeterAdoption';
 const ATTEMPT_INTERVAL_MS = 30_000;
 /** ~5 minutes per boot. A meter that is not there by then is found on the next boot. */
 const MAX_ATTEMPTS = 10;
+const RECOVERY_RETRY_INTERVAL_MS = 5 * 60_000;
 /**
  * A LISTED meter key answering `null` is either the legacy stored-null
  * Automatic selection or a transient miss of an explicitly stored id, and the
@@ -92,6 +93,10 @@ const isListedNull = (eligibility: SoleMeterAdoptionEligibility): boolean => (
   eligibility.kind === 'eligible' && eligibility.meterKey === 'listed_null'
 );
 
+const waitsForReplacement = (eligibility: Extract<SoleMeterAdoptionEligibility, { kind: 'eligible' }>): boolean => (
+  eligibility.detail === 'no_meter_chosen' && eligibility.meterKey === 'unwritten'
+);
+
 /** What one attempt found. The write itself happens only behind the teardown fence. */
 type AttemptResult =
   | { result: 'confirm'; meterDeviceId: string }
@@ -111,15 +116,16 @@ type AttemptResult =
   | { result: 'retry'; reasonCode: string; transient: boolean };
 
 /**
- * Once per boot: if the owner has not chosen a source (or chose the Power
+ * If the owner has not chosen a source (or chose the Power
  * meter source and never picked a meter) and Homey lists exactly one
  * id-bearing whole-home meter — in the live report and in the device
  * registry — persist that meter and the Power meter source, the same write
  * the owner's pick would make.
  *
- * Bounded on purpose. No marker: the condition clears itself once a meter is
- * stored, and an owner who pairs a meter later gets it on the next boot
- * instead of never. Never writes Flow: Flow is the owner's choice or the
+ * Discovery of an unset source or a legacy Automatic selection is bounded
+ * per boot. An explicit Power meter source with no stored meter key keeps
+ * trying at a slower cadence, including after a confirmed removal.
+ * Never writes Flow: Flow is the owner's choice or the
  * unset default the runtime already resolves. Reads no persisted key beyond
  * the two the seam writes (its predecessor keyed "fresh install" on
  * `power_tracker_state` and lost to the tracker's first prune on every boot);
@@ -127,8 +133,7 @@ type AttemptResult =
  * a suspect answer decides nothing. A
  * write needs two consecutive reads `ATTEMPT_INTERVAL_MS` apart naming the
  * same sole meter (three, when the meter key is listed and answers `null`:
- * `LISTED_NULL_GRACE_READS`); several meters or an id-less aggregate end the boot's run
- * with nothing written, and a warming-up report retries up to `MAX_ATTEMPTS`.
+ * `LISTED_NULL_GRACE_READS`). An ambiguous census never selects a meter.
  * The write happens only behind the teardown fence.
  */
 export class SoleMeterAdoption {
@@ -136,6 +141,7 @@ export class SoleMeterAdoption {
   private pendingMeterDeviceId: string | null = null;
   private listedNullReads = 0;
   private startedAtMs = 0;
+  private waitingForReplacement = false;
   private eligibleDetail: 'unset_source' | 'no_meter_chosen' | 'source_missing' | 'deferred' = 'deferred';
   /**
    * Whether a reading EVER arrived, read once at start: the tracker's first
@@ -148,6 +154,7 @@ export class SoleMeterAdoption {
   constructor(private readonly deps: SoleMeterAdoptionDeps) {}
 
   start(): void {
+    if (this.deps.timers.has(TIMER_NAME)) return;
     const eligibility = this.deps.classifyEligibility();
     if (eligibility.kind === 'settled') return;
     this.startedAtMs = this.deps.now();
@@ -156,6 +163,7 @@ export class SoleMeterAdoption {
     // re-classifies before deciding anything, so the ladder still runs.
     if (eligibility.kind === 'eligible') {
       this.eligibleDetail = eligibility.detail;
+      this.waitingForReplacement = waitsForReplacement(eligibility);
       adoptionLogger.info({ event: 'sole_meter_adoption_started', detail: eligibility.detail });
     } else if (eligibility.kind === 'complete') {
       this.eligibleDetail = 'source_missing';
@@ -170,14 +178,18 @@ export class SoleMeterAdoption {
     this.deps.timers.clear(TIMER_NAME);
   }
 
-  private schedule(): void {
+  private schedule(delayMs = ATTEMPT_INTERVAL_MS): void {
     this.attempt += 1;
     this.deps.timers.registerTimeout(TIMER_NAME, setTimeout(() => {
       this.runAttempt();
-    }, ATTEMPT_INTERVAL_MS));
+    }, delayMs));
   }
 
   private scheduleOrGiveUp(reasonCode: string): void {
+    if (this.attempt >= MAX_ATTEMPTS && this.waitingForReplacement) {
+      this.schedule(RECOVERY_RETRY_INTERVAL_MS);
+      return;
+    }
     if (this.attempt >= MAX_ATTEMPTS) {
       adoptionLogger.info({ event: 'sole_meter_adoption_gave_up_this_boot', reasonCode, attempts: this.attempt });
       this.finish();
@@ -228,17 +240,19 @@ export class SoleMeterAdoption {
       return { result: 'retry', reasonCode: 'reclassify_unexpected', transient: true };
     }
     this.eligibleDetail = eligibility.detail;
+    this.waitingForReplacement = waitsForReplacement(eligibility);
     if (census.state === 'unavailable') return { result: 'retry', reasonCode: 'census_unavailable', transient: true };
     if (census.state === 'unresolvable') {
       // A registry that could not corroborate is a read that said nothing; a
       // report listing no meter is an answer that disagrees with a pending
-      // one; several meters or nothing nameable end the run.
+      // one; ambiguity ends a bounded boot run.
       if (census.reason === 'registry_mismatch') {
         return { result: 'retry', reasonCode: 'census_registry_mismatch', transient: true };
       }
-      return census.reason === 'none_found'
-        ? { result: 'retry', reasonCode: 'census_none_found', transient: false }
-        : { result: 'not_applicable', reasonCode: `census_${census.reason}` };
+      const reasonCode = `census_${census.reason}`;
+      return census.reason === 'none_found' || this.waitingForReplacement
+        ? { result: 'retry', reasonCode, transient: false }
+        : { result: 'not_applicable', reasonCode };
     }
     if (census.meterDeviceId !== this.pendingMeterDeviceId) {
       return { result: 'propose', meterDeviceId: census.meterDeviceId };
@@ -299,14 +313,7 @@ export class SoleMeterAdoption {
       return;
     }
     if (step.result === 'propose' || step.result === 'hold') {
-      emitAdoptionDebug({
-        event: 'sole_meter_adoption_confirmation_pending',
-        meterDeviceId: step.meterDeviceId,
-        attempt: this.attempt,
-        ...(step.result === 'hold' ? { listedNullReads: this.listedNullReads } : {}),
-      });
-      this.pendingMeterDeviceId = step.meterDeviceId;
-      this.scheduleOrGiveUp(step.result === 'hold' ? 'listed_null_grace' : 'confirmation_pending');
+      this.awaitConfirmation(step);
       return;
     }
     emitAdoptionDebug({
@@ -319,6 +326,18 @@ export class SoleMeterAdoption {
     // naming it is a disagreement, and only consecutive agreeing reads confirm.
     if (!step.transient) this.pendingMeterDeviceId = null;
     this.scheduleOrGiveUp(step.reasonCode);
+  }
+
+  private awaitConfirmation(step: Extract<AttemptResult, { result: 'propose' | 'hold' }>): void {
+    emitAdoptionDebug({
+      event: 'sole_meter_adoption_confirmation_pending',
+      meterDeviceId: step.meterDeviceId,
+      attempt: this.attempt,
+      ...(step.result === 'hold' ? { listedNullReads: this.listedNullReads } : {}),
+    });
+    this.pendingMeterDeviceId = step.meterDeviceId;
+    if (this.waitingForReplacement) this.schedule();
+    else this.scheduleOrGiveUp(step.result === 'hold' ? 'listed_null_grace' : 'confirmation_pending');
   }
 
   private confirm(meterDeviceId: string): void {
@@ -363,6 +382,11 @@ export class SoleMeterAdoption {
       return;
     }
     if (outcome.result === 'not_applicable') {
+      if (this.waitingForReplacement && outcome.reasonCode === 'save_meter_in_use') {
+        this.pendingMeterDeviceId = null;
+        this.schedule(RECOVERY_RETRY_INTERVAL_MS);
+        return;
+      }
       this.concludeNotApplicable(outcome.reasonCode);
       return;
     }

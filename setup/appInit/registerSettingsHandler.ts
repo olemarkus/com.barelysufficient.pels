@@ -11,6 +11,7 @@ import {
   requirePriceCoordinator,
 } from './contextGuards';
 import { buildHomeRuntimeSettingsHooks } from './wireHomeRuntimeRegistry';
+import { startSoleMeterAdoption } from '../soleMeterAdoption';
 
 /**
  * Listen for settings writes and dispatch them to their handlers. Home-runtime
@@ -45,6 +46,7 @@ export const registerSettingsHandler = (
       // be joined to the new meter, and a failed safety write retries in-place.
       ctx.resetMainPowerTrackerFreshness();
       ctx.homeyEnergyHelpers.invalidate();
+      startSoleMeterAdoption(ctx.homey, ctx.timers, ctx.getTrackerStore(), () => ctx.powerTracker.lastTimestamp);
     },
     onPvForecastSourceObserved,
     onMainMeterSelectionObserved: () => requestMainAuthorityRecovery(),

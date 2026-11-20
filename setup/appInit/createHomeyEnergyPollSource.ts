@@ -11,7 +11,7 @@ export { resolveMainMeterRead } from '../../lib/home/homeMeters';
 // Re-exported so `app.ts` constructs the store this poll fills without another
 // module dependency (its `import-x/max-dependencies` ceiling is a ratchet).
 export { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
-import type { MainMeterSelectionSettings } from '../../lib/home/mainMeterSelection';
+import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { LiveMeterReadings, MeterMonthlyPeakRead, MeterPhasesRead } from '../../lib/ports/homeMeterReadings';
 import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 import type { PhaseReadingTracker } from '../../lib/power/phaseReading';
@@ -22,7 +22,7 @@ import type { PhaseReadingTracker } from '../../lib/power/phaseReading';
  */
 export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
-  readonly homey: { readonly settings: MainMeterSelectionSettings };
+  readonly homey: { readonly settings: SettingsPort };
   getPowerSource(): PowerSource;
   readonly deviceManager?: {
     readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null>;

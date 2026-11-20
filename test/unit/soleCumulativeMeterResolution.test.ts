@@ -167,4 +167,17 @@ describe('resolveRegistryMeterCandidates', () => {
     expect(resolveSoleMeterAdoptionCandidate({ items: [] }, { pulse: sensorMeter('pulse') }))
       .toEqual({ state: 'unresolvable', reason: 'none_found' });
   });
+  it('selects the sole Main candidate while leaving meter-area devices out of the census', () => {
+    const live = { items: [
+      { type: 'cumulative', id: 'pulse', values: { W: 1200 } },
+      { type: 'cumulative', id: 'area', values: { W: 600 } },
+    ] };
+    const registry = { pulse: sensorMeter('pulse'), area: sensorMeter('area') };
+
+    expect(resolveSoleMeterAdoptionCandidate(live, registry, new Set(['area'])))
+      .toEqual({ state: 'resolved', meterDeviceId: 'pulse' });
+    expect(resolveSoleMeterAdoptionCandidate(live, { ...registry, em: sensorMeter('em') }, new Set(['area'])))
+      .toEqual({ state: 'unresolvable', reason: 'ambiguous' });
+  });
+
 });

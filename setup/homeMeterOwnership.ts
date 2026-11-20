@@ -6,6 +6,7 @@ import type {
 import { findMainMeterCollision } from '../lib/home/homeConfig';
 import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../lib/utils/settingsKeys';
 import { createHomesStore } from '../lib/home/homeRegistryStore';
+export { readAssignedAreaMeters } from '../lib/home/homeRegistryStore';
 
 type PowerSourceSaveRequest = Extract<SettingsUiHomesSaveRequest, { op: 'set_power_source' }>;
 
@@ -44,8 +45,8 @@ export const savePowerSourceSelection = (
   }
   // Homey Energy switches atomically with the meter it will read: validate
   // the meter against area ownership, then write the meter key FIRST and the
-  // source second — so `power_source = homey_energy` never exists persisted
-  // without a meter id, even across a crash between the two writes.
+  // source second, so a source switch persists its selection before polling
+  // starts. A subsequently removed meter can leave the source waiting for a pick.
   const collision = findMainMeterCollision(request.meterDeviceId, config.subHomes);
   if (collision !== null) {
     return { ok: false, reason: 'meter_in_use', otherName: collision.name };

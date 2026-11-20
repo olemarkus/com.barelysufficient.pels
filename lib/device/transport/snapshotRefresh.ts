@@ -23,7 +23,7 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 export { SnapshotRefreshState } from './snapshotRefreshState';
 import { resolveLiveMeterReadings } from './liveMeterReadings';
-import { readMeterImportCounters, resolveMeterImportCounters } from './meterImportCounterRead';
+import { readPolledMeterDevices, resolveMeterImportCounters } from './meterImportCounterRead';
 import type { Logger } from '../../utils/types';
 import type { LiveMeterReadings } from '../../ports/homeMeterReadings';
 import {
@@ -424,11 +424,14 @@ export async function readLiveMeters(
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
     meterDeviceIds: readonly string[],
 ): Promise<LiveMeterReadings | null> {
-    const [report, importCounters] = await Promise.all([
+    const [report, devices] = await Promise.all([
         fetchLiveMeterReport(logger, meterDeviceIds),
-        readMeterImportCounters(meterDeviceIds),
+        readPolledMeterDevices(meterDeviceIds),
     ]);
-    return resolveLiveMeterReadings(setGenerationW, report, importCounters);
+    const readings = resolveLiveMeterReadings(setGenerationW, report, devices.importCounters);
+    return readings === null || devices.removedMeterDeviceIds.length === 0
+        ? readings
+        : { ...readings, removedMeterDeviceIds: devices.removedMeterDeviceIds };
 }
 
 async function resolveLivePowerForRefresh(

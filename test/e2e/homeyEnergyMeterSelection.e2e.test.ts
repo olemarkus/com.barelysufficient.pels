@@ -20,6 +20,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = (deviceId: string, capability: string) =>
@@ -150,4 +151,60 @@ describe('Whole-home meter selection (SDK-boundary e2e)', () => {
 
     expect(tempWrites(putSpy)).toHaveLength(0);
   });
+  it('clears a Main meter returning 404 and later adopts a sole replacement', async () => {
+    const oldId = 'old-meter';
+    const replacementId = 'replacement-meter';
+    enableCapacityWithMeter(oldId);
+    const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    let availableMeter: { id: string; watts: number } | null = { id: oldId, watts: 100 };
+    let oldMeterStatus = 200;
+    const meter = (id: string) => ({ ...HOMEY_DEVICE_FIELDS, id, name: id, class: 'sensor', capabilities: ['measure_power'] });
+    const get = vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
+      switch (path) {
+        case 'manager/energy/live':
+          return {
+            items: availableMeter === null ? [] : [
+              { type: 'cumulative', id: availableMeter.id, values: { W: availableMeter.watts } },
+            ],
+          };
+        case 'manager/devices/device':
+          return {
+            'airtreatment-1': buildAirtreatmentApiDevice(),
+            ...(availableMeter === null ? {} : { [availableMeter.id]: meter(availableMeter.id) }),
+          };
+        case 'manager/devices/device/old-meter':
+          if (oldMeterStatus !== 200) throw new HomeyHttpStatusError(oldMeterStatus, 'Device lookup failed');
+          return meter(oldId);
+        case 'manager/devices/device/replacement-meter':
+          return meter(replacementId);
+        default:
+          return originalGet(path);
+      }
+    });
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    await createApp().onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    availableMeter = null;
+    oldMeterStatus = 503;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(oldId);
+
+    oldMeterStatus = 404;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMEY_ENERGY_METER_DEVICE_ID);
+    expect(mockHomeyInstance.settings.get('power_source')).toBe('homey_energy');
+    const oldReads = get.mock.calls.filter(([path]) => path === 'manager/devices/device/old-meter').length;
+
+    // Pair the replacement after the ordinary startup adoption window.
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    expect(tempWrites(putSpy)).toHaveLength(0);
+    expect(get.mock.calls.filter(([path]) => path === 'manager/devices/device/old-meter')).toHaveLength(oldReads);
+    availableMeter = { id: replacementId, watts: 5000 };
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+
+    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(replacementId);
+    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
+  });
+
 });

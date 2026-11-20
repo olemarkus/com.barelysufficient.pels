@@ -2,6 +2,7 @@ import type { MeterImportCounter } from '../../ports/homeMeterReadings';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDebugEmitter } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
+import { resolveHomeyHttpStatusCode } from '../../utils/homeyHttpStatusError';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { getRawDevice } from './managerHomeyApi';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
@@ -47,7 +48,7 @@ export function resolveMeterImportCounters(
  */
 const IMPORT_COUNTER_READ_DEADLINE_MS = 2_000;
 
-async function readMeterImportCounter(meterDeviceId: string): Promise<MeterImportCounter | null> {
+async function readPolledMeterDevice(meterDeviceId: string): Promise<MeterImportCounter | 'removed' | null> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<null>((resolve) => {
         timer = setTimeout(() => {
@@ -59,6 +60,7 @@ async function readMeterImportCounter(meterDeviceId: string): Promise<MeterImpor
         const device = parseHomeyDevicePayload(raw);
         return device === null ? null : resolveMeterImportCounter(device);
     }).catch((error: unknown) => {
+        if (resolveHomeyHttpStatusCode(error) === 404) return 'removed' as const;
         emitDeviceDebug({
             event: 'meter_import_counter_read_failed', meterDeviceId, error: normalizeError(error).message,
         });
@@ -72,16 +74,18 @@ async function readMeterImportCounter(meterDeviceId: string): Promise<MeterImpor
 }
 
 /**
- * The requested meters' import counters, by meter device id, read beside the
- * live energy report (which carries power only) for the poll, which fetches
- * no devices of its own. A meter whose read failed or
- * that reports no usable counter is simply not a key.
+ * Use the same targeted device reads for import counters and deletion
+ * evidence. A timeout, malformed payload or device without a counter
+ * contributes neither. Only a device lookup's 404 proves absence.
  */
-export async function readMeterImportCounters(
-    meterDeviceIds: readonly string[],
-): Promise<Record<string, MeterImportCounter>> {
-    const counters = await Promise.all(meterDeviceIds.map(readMeterImportCounter));
-    return Object.fromEntries(counters.flatMap((counter) => (
-        counter === null ? [] : [[counter.meterDeviceId, counter] as const]
-    )));
+export async function readPolledMeterDevices(meterDeviceIds: readonly string[]) {
+    const reads = await Promise.all(meterDeviceIds.map(async (id) => ({
+        id, result: await readPolledMeterDevice(id),
+    })));
+    return {
+        importCounters: Object.fromEntries(reads.flatMap(({ result }) => (
+            result === null || result === 'removed' ? [] : [[result.meterDeviceId, result] as const]
+        ))),
+        removedMeterDeviceIds: reads.flatMap(({ id, result }) => result === 'removed' ? [id] : []),
+    };
 }
