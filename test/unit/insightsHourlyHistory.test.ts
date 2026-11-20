@@ -1,5 +1,6 @@
 import { readHourlyInsightsLogs, resolveHourlyInsightsHistory } from '../../lib/power/insightsHourlyHistory';
 import { buildHourlyInsightsHistory } from '../helpers/hourlyInsightsHistory';
+import { captureLogger } from '../utils/loggerCapture';
 
 describe('Insights hourly usage admission', () => {
   it('accepts raw manager metadata lists and rejects a conflicting owner', () => {
@@ -15,8 +16,7 @@ describe('Insights hourly usage admission', () => {
     const fixture = buildHourlyInsightsHistory();
     const logs = readHourlyInsightsLogs(fixture.metadata, 'meter-a');
     const hours = resolveHourlyInsightsHistory(fixture.power, fixture.exported, logs, fixture.tracker, fixture.nowMs);
-    expect(Object.keys(hours)).toHaveLength(168);
-    expect(hours[fixture.power.values[0].t]).toBe(fixture.power.values[0].v / 1000);
+    expect(hours).toEqual(Object.fromEntries(fixture.power.values.slice(1, -1).map(({ t, v }) => [t, v / 1000])));
   });
 
   it('skips a genuine null power gap without inventing an hourly value', () => {
@@ -26,7 +26,7 @@ describe('Insights hourly usage admission', () => {
     const power = { ...fixture.power,
       values: fixture.power.values.map((point) => point.t === missing ? { ...point, v: null } : point) };
     const hours = resolveHourlyInsightsHistory(power, fixture.exported, logs, fixture.tracker, fixture.nowMs);
-    expect(Object.keys(hours)).toHaveLength(167);
+    expect(Object.keys(hours)).toHaveLength(165);
     expect(Object.hasOwn(hours, missing)).toBe(false);
     const invalid = { ...power, values: [{ t: 'broken', v: null }, ...power.values] };
     expect(() => resolveHourlyInsightsHistory(
@@ -34,7 +34,34 @@ describe('Insights hourly usage admission', () => {
     )).toThrow();
   });
 
-  it('rejects another meter, wrong units, coarse data, and invalid points', () => {
+  it.each([NaN, false])('recovers other hours when one reading is %s and one hour is net export', (badReading) => {
+    const fixture = buildHourlyInsightsHistory();
+    const logs = readHourlyInsightsLogs(fixture.metadata, 'meter-a');
+    const netExport = fixture.power.values[12].t;
+    const missing = fixture.power.values[150].t; // Remove a retained hour and exercise the overlap minimum.
+    const power = { ...fixture.power, values: fixture.power.values.map((point) => {
+      if (point.t === netExport) return { ...point, v: -700 };
+      if (point.t === missing) return badReading === false ? badReading : { ...point, v: badReading };
+      return point;
+    }) };
+    const capture = captureLogger();
+    try {
+      const hours = resolveHourlyInsightsHistory(power, fixture.exported, logs, fixture.tracker, fixture.nowMs);
+      expect(hours).toEqual(Object.fromEntries(fixture.power.values.slice(1, -1).flatMap(({ t, v }) => (
+        t === missing ? [] : [[t, t === netExport ? 0 : v / 1000]]
+      ))));
+      expect(capture.findEvents('power_history_recovery_point_skipped')).toEqual([
+        expect.objectContaining({
+          module: 'power/history-recovery', logId: logs.power.id, index: 150,
+          ...(badReading === false ? { reason: 'non_record' } : { reason: 'invalid_value', hour: missing }),
+        }),
+      ]);
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it('rejects another meter, wrong units, coarse data, and invalid timestamps', () => {
     const fixture = buildHourlyInsightsHistory();
     expect(() => readHourlyInsightsLogs(fixture.metadata, 'meter-b')).toThrow();
     expect(() => readHourlyInsightsLogs({ ...fixture.metadata,
@@ -42,20 +69,30 @@ describe('Insights hourly usage admission', () => {
     const logs = readHourlyInsightsLogs(fixture.metadata, 'meter-a');
     for (const power of [
       { ...fixture.power, step: 21_600_000 },
-      { ...fixture.power, values: [{ ...fixture.power.values[0], v: NaN }] },
+      { ...fixture.power, id: 'wrong-log' },
+      { ...fixture.power, values: undefined },
+      { ...fixture.power, values: [{ v: 1200 }, ...fixture.power.values] },
+      { ...fixture.power, values: [fixture.power.values[0], ...fixture.power.values] },
       { ...fixture.power, values: [{ ...fixture.power.values[0], t: '2026-11-11T16:01:00Z' }] },
     ]) expect(() => resolveHourlyInsightsHistory(power, fixture.exported, logs, fixture.tracker, fixture.nowMs)).toThrow();
   });
 
-  it('rejects export changes, gaps and resets', () => {
+  it('uses the surrounding export readings to admit hours independently', () => {
     const fixture = buildHourlyInsightsHistory();
     const logs = readHourlyInsightsLogs(fixture.metadata, 'meter-a');
-    for (const values of [
-      fixture.exported.values.filter((_, i) => i !== 12),
-      fixture.exported.values.map((point, i) => ({ ...point, v: i > 12 ? 1 : 0 })),
-      fixture.exported.values.map((point, i) => ({ ...point, v: i > 12 ? 0 : 1 })),
-    ]) expect(() => resolveHourlyInsightsHistory(fixture.power, { ...fixture.exported, values }, logs,
-      fixture.tracker, fixture.nowMs)).toThrow();
+    const power = { ...fixture.power, values: fixture.power.values.map((point, i) => {
+      if (i === 12) return { ...point, v: -700 };
+      if (i === 13) return { ...point, v: 0 };
+      return point;
+    }) };
+    const exported = { ...fixture.exported, values: fixture.exported.values.map((point, i) => {
+      if (i === 8) return { ...point, v: null };
+      return { ...point, v: i >= 13 && i < 19 ? 1 : 0 };
+    }) };
+    const hours = resolveHourlyInsightsHistory(power, exported, logs, fixture.tracker, fixture.nowMs);
+    expect(hours).toEqual(Object.fromEntries(power.values.flatMap(({ t, v }, i) => (
+      [0, 13, 18, 19, power.values.length - 1].includes(i) ? [] : [[t, Math.max(0, v) / 1000]]
+    ))));
   });
 
   it('rejects a shifted, mismatched, flat or insufficient overlap', () => {
