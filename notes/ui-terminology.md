@@ -2797,16 +2797,16 @@ has closed for most homes that reach this state.
 
 ### A hard cap the home keeps running into
 
-When PELS has eased off every device it controls and the home is still on pace
-to exceed the hard cap on 3 or more of the last 7 local days, under the hard cap
+When the home is on pace to exceed the hard cap and PELS has nothing left it
+can turn down on 3 or more of the last 7 local days, under the hard cap
 in force now, Setup & recommendations shows a recommendation
 (`resolveHardCapReachRecommendations` in
 `packages/settings-ui/src/ui/hardCapReachRecommendation.ts`, from the Main home's
 `hard_cap_shortfalls` log served on the power payload).
 
 - Title: `The {5.0 kW} hard cap is often out of reach`.
-- Body: `On {N} of the last 7 days, PELS had eased off every device it controls and
-  the home was still on pace to exceed the hard cap. Devices PELS does not control
+- Body: `On {N} of the last 7 days, the home was on pace to exceed the hard cap and
+  PELS had nothing left it could turn down. Devices PELS does not control
   drew about {2.7 kW} at those times. To stay under it, let PELS control more of the
   load: add devices, or turn Power-limit control back on for a device.` The
   uncontrolled-load sentence is left out when that load averaged under 0.05 kW.

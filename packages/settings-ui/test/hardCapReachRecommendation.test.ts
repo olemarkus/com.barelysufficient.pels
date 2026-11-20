@@ -56,8 +56,8 @@ describe('resolveHardCapReachRecommendations', () => {
       version: 5000,
       category: 'recommendation',
       title: 'The 5.0 kW hard cap is often out of reach',
-      body: 'On 3 of the last 7 days, PELS had eased off every device it controls and the home was still on '
-        + 'pace to exceed the hard cap. Devices PELS does not control drew about 2.7 kW at those times. '
+      body: 'On 3 of the last 7 days, the home was on pace to exceed the hard cap and PELS had nothing '
+        + 'left it could turn down. Devices PELS does not control drew about 2.7 kW at those times. '
         + 'To stay under it, let PELS control more of the load: add devices, or turn Power-limit control back '
         + 'on for a device.',
       actionLabel: 'Review devices',

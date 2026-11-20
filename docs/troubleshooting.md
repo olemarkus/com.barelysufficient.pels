@@ -43,10 +43,11 @@ is never limited to protect the hard cap. To limit a device for power, PELS need
 
 ## Manual action needed
 
-The **"Manual action needed"** notification (Flow trigger *Hard cap breach
-imminent — manual action needed*) fires only when PELS projects the **selected-period hard cap**
-will be exceeded **and it has run out of managed load it is allowed to turn down**.
-It is the one urgent, safety-level alert in PELS — everything else is soft pacing.
+PELS shows **Manual action needed** when the home is on pace to exceed the
+**hard cap** for the current hour or quarter-hour and PELS has nothing left it
+can turn down. To get a Homey notification, use **Hard cap breach imminent —
+manual action needed** as a Flow trigger and add a notification action. Include
+the **Home** tag to see which part of the home needs attention.
 
 What to do, in order:
 
