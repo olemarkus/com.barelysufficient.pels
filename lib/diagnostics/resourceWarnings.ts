@@ -7,6 +7,7 @@ import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { reclaimHeapPages } from './heapReclaim';
 import { type AppMemoryUsageSampler, captureAppMemorySnapshot } from './appMemoryFootprint';
+import './v8MemoryFlags';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
 const emitPerfDebug = getDebugEmitter('perf', 'perf');
