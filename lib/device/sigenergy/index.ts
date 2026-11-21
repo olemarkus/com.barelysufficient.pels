@@ -1,4 +1,6 @@
 import type { HomeBatterySetpointRange } from '../../../packages/contracts/src/types';
+import type { HomeBatteryControlMode } from '../../ports/batteryControlOwner';
+import type { AppActionControlTarget } from '../../ports/storageCommand';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type {
   DeviceAdapter, HomeBatteryActionBinding, HomeBatteryActions, HomeBatteryActionsResolution,
@@ -43,6 +45,12 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * Remote EMS stays on until it is turned off, so a command lasts until the
  * next (`persistent`).
  *
+ * Control mode: the plant's read-only `ems_work_mode` names the EMS running
+ * it, "Remote EMS" while Homey controls it and otherwise the mode chosen in
+ * mySigen ("AI mode", "Max self consumption", "TOU" and others). A plant that
+ * does not follow PELS's command while it reads one of those is run by its
+ * own EMS, not by PELS's commands.
+ *
  * Range: the plant's rated charging and discharging power, which the app
  * shows as its `ratedChargingPower` and `ratedDischargingPower` settings
  * (`"<n> kW"`). While either is unknown the plant also refuses to remove a
@@ -57,6 +65,9 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
 const SIGENERGY_APP_ID = 'com.sigenergy';
 const BATTERY_DRIVER_ID = 'battery';
 const PLANT_DRIVER_ID = 'plant';
+
+const EMS_WORK_MODE_CAPABILITY = 'ems_work_mode';
+const EMS_WORK_MODE_REMOTE = 'Remote EMS';
 
 const REMOTE_EMS_STANDBY = '1';
 const REMOTE_EMS_DISCHARGE_BATTERY_FIRST = '6';
@@ -125,6 +136,18 @@ const resolvePlantTarget = (devices: readonly HomeyDeviceLike[]): HomeBatteryTar
   return { kind: 'resolved', target: { appUri: `homey:app:${SIGENERGY_APP_ID}`, deviceId: plant.id } };
 };
 
+/** The plant's `ems_work_mode` (`HomeBatteryControlMode`); a missing or blank value is unreported. */
+const readPlantControlMode = (
+  target: AppActionControlTarget,
+  devices: readonly HomeyDeviceLike[],
+): HomeBatteryControlMode => {
+  const plant = devices.find((other) => other.id === target.deviceId);
+  const value: unknown = plant?.capabilitiesObj[EMS_WORK_MODE_CAPABILITY]?.value;
+  const mode = typeof value === 'string' ? value.trim() : '';
+  if (mode === '') return { kind: 'unreported' };
+  return mode === EMS_WORK_MODE_REMOTE ? { kind: 'homey' } : { kind: 'own', mode };
+};
+
 const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   noReadingsCause: 'no_readings',
@@ -146,6 +169,7 @@ const SIGENERGY_BINDING: HomeBatteryActionBinding = {
     { deviceId: target.deviceId, actionId: 'remove_ess_discharge_limit', args: {} },
   ],
   resolveTarget: (_device, devices) => resolvePlantTarget(devices),
+  readControlMode: readPlantControlMode,
 };
 
 export const sigenergyAdapter: DeviceAdapter = {

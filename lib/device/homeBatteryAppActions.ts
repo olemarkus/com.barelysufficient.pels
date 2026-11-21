@@ -37,7 +37,9 @@
  */
 import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { AppActionControlTarget } from '../ports/storageCommand';
-import type { BatteryCommandKeepAlive, BatteryControlRead, BatteryUnobservedCause } from '../ports/batteryControlOwner';
+import type {
+  BatteryCommandKeepAlive, BatteryControlRead, BatteryUnobservedCause, HomeBatteryControlMode,
+} from '../ports/batteryControlOwner';
 import { normalizeError } from '../utils/errorUtils';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
@@ -54,6 +56,8 @@ import {
 } from './flowActionCards';
 import type { HomeyActionAccess, HomeyFlowAction } from './transport/homeyActionAccess';
 import { getRawFromHomeyApi } from './transport/managerHomeyApi';
+
+const UNREPORTED_CONTROL_MODE: HomeBatteryControlMode = { kind: 'unreported' };
 
 /** How long an inventory read stands before the next full device read reads it again. */
 export const CARD_INVENTORY_MAX_AGE_MS = 60 * 60_000;
@@ -142,6 +146,8 @@ export class HomeBatteryAppActions {
   private readonly unavailable = new Map<string, string>();
   /** When each battery was first seen missing a card, until an inventory read started after it confirms the miss. */
   private readonly cardMissSinceMs = new Map<string, number>();
+  /** The control mode each battery's app last reported, so each change is logged once. */
+  private readonly controlModes = new Map<string, string>();
 
   /**
    * @param access The owner's Homey API key and the one action runner.
@@ -206,7 +212,32 @@ export class HomeBatteryAppActions {
         binding.commandLifetime(toTargetPowerCapabilityValue(setpointW, actions.range)),
       ),
       pacing: binding.commandPacing,
+      controlMode: this.readControlMode(deviceId, binding, actions.target),
     };
+  }
+
+  /**
+   * The control mode the battery's app reports (`HomeBatteryControlMode`),
+   * logged once per change so a diagnostics timeline shows who ran the
+   * battery when a setpoint went unanswered.
+   */
+  private readControlMode(
+    deviceId: string,
+    binding: HomeBatteryActionBinding,
+    target: HomeBatteryActions['target'],
+  ): HomeBatteryControlMode {
+    const controlMode = binding.readControlMode?.(target, this.getDevices()) ?? UNREPORTED_CONTROL_MODE;
+    const label = controlMode.kind === 'own' ? controlMode.mode : controlMode.kind;
+    if (this.controlModes.get(deviceId) !== label) {
+      if (this.controlModes.has(deviceId) || controlMode.kind !== 'unreported') {
+        this.logger.structuredLog.info({
+          event: 'home_battery_control_mode_changed', deviceId, controlMode: label,
+          previousControlMode: this.controlModes.get(deviceId) ?? null,
+        });
+      }
+      this.controlModes.set(deviceId, label);
+    }
+    return controlMode;
   }
 
   /**

@@ -22,6 +22,7 @@ const { PlanGenericCard } = await import('../src/ui/views/PlanDeviceCards.tsx');
 const battery = (signedW: number, percent: number): HomeBatteryCard => ({
   kind: 'battery',
   control: 'drivable',
+  delivery: { kind: 'following' },
   power: { kind: 'observed', signedW },
   level: { kind: 'observed', percent },
 });

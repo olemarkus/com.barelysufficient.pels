@@ -4,7 +4,9 @@ import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packa
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
   HomeBatteryMeterModes, HomeBatteryObserveOnlyReason, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
-import type { BatteryCommandPacing, BatteryUnobservedCause } from '../ports/batteryControlOwner';
+import type {
+  BatteryCommandPacing, BatteryUnobservedCause, HomeBatteryControlMode,
+} from '../ports/batteryControlOwner';
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -196,6 +198,9 @@ export type HomeBatteryActionsResolution =
  * - `resolve`: the actions for `device`, from the host's last full device
  *   inventory (`devices`, every device Homey lists, for an app whose control
  *   sits on a sibling device), or why there are none.
+ * - `readControlMode`: who the app reports running the battery's `target`
+ *   (`HomeBatteryControlMode`), for an app that reports it; without one the
+ *   mode reads `unreported`.
  */
 export type HomeBatteryActionBinding = {
   kind: 'app_actions';
@@ -212,6 +217,7 @@ export type HomeBatteryActionBinding = {
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
   /** Hand-back is independent of the command range and admission gates. */
   resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
+  readControlMode?(target: AppActionControlTarget, devices: readonly HomeyDeviceLike[]): HomeBatteryControlMode;
   /** The adapter's upgrade policy for claims written before target identities were persisted. */
   resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
   /**

@@ -74,6 +74,31 @@ export type BatteryUnobservedCause = 'no_readings' | 'local_api_off' | 'unknown'
  */
 export type BatteryObserveOnlyCause = 'controlled_through_local_device' | 'other';
 
+/**
+ * Who a battery's own app reports running it, where the app reports it
+ * (`HomeBatteryActionBinding.readControlMode`): `homey` while it runs under
+ * Homey's control, the state PELS's commands put it in; `own` while it runs a
+ * mode of its own app, named as the app names it; `unreported` for an app that
+ * reports neither, or a read without a value. The owner's copy names it when
+ * a battery did not follow PELS; control never decides on it.
+ */
+export type HomeBatteryControlMode =
+  | { kind: 'unreported' }
+  | { kind: 'homey' }
+  | { kind: 'own'; mode: string };
+
+/**
+ * Whether a battery follows PELS's setpoints, as the owner's verification
+ * judged it (`BatteryVerificationLedger`): `not_following` from an unanswered
+ * setpoint until the battery answers one, through the back-off and the
+ * re-probe after it, with the control mode its app reports now. Every other
+ * verdict reads `following`: not judged yet, answered, or turned off for an
+ * inverted sign, which the planner already treats as a battery it never holds.
+ */
+export type HomeBatteryDelivery =
+  | { kind: 'following' }
+  | { kind: 'not_following'; controlMode: HomeBatteryControlMode };
+
 export type BatteryControlRead =
   | { kind: 'unobserved'; cause: BatteryUnobservedCause }
   | { kind: 'not_battery' }
@@ -93,6 +118,7 @@ export type BatteryControlRead =
     range: HomeBatterySetpointRange;
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
     pacing: BatteryCommandPacing;
+    controlMode: HomeBatteryControlMode;
   };
 
 /**
@@ -396,6 +422,11 @@ export type BatteryControlOwner = {
    * offering a battery's Power-limit control.
    */
   readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery';
+  /**
+   * Whether the battery follows PELS's setpoints, as verification judged it
+   * (`HomeBatteryDelivery`), for its card.
+   */
+  readDelivery(deviceId: string): HomeBatteryDelivery;
   /**
    * Whether PELS drives this battery through its app's Flow actions, which
    * run with the owner's Homey API key (`app_actions`, `hand_back_only` or

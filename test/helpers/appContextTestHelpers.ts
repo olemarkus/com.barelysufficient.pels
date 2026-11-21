@@ -509,6 +509,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       wasTakenOver: vi.fn(() => false),
       isWatchOnly: vi.fn(() => false),
       readControlCapability: vi.fn(() => 'observe_only' as const),
+      readDelivery: vi.fn(() => ({ kind: 'following' as const })),
       usesHomeyApiKey: vi.fn(() => false),
       handBackBeforeHomeyApiKeyRemoval: vi.fn(async (removeKey: () => void) => { removeKey(); return 'removed' as const; }),
     },

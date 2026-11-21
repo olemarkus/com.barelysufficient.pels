@@ -1132,6 +1132,8 @@ keeps the word for what PELS holds it to do.
 | Device page, selling opt-in under Plan charging with PELS | `Sell stored energy when profitable`; its limit field `Export limit at your meter (kW)` |
 | Device page, selling decided | `Selling is planned. Estimated 0.43 EUR lower electricity cost than keeping the energy for your home over this plan.` / `Selling would not lower your cost in this plan, so PELS keeps the energy for your home.` / `Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.` |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
+| Reason while a battery PELS can drive left a setpoint unanswered, through the back-off and the re-probe, until it answers one (any hold) | `Did not follow PELS's request: trying again later` |
+| The same, while its app reports running a mode of its own (a Sigenergy plant in its own EMS) | `Did not follow PELS's request: its app runs AI mode` (the mode as its app names it) |
 | Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
 | Reason in its own mode, a battery PELS cannot claim (no usable signed power setpoint, or no Homey/API mode to switch to) | `PELS can only watch it: its app does not give Homey control` |

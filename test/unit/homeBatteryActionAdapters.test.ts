@@ -139,6 +139,23 @@ describe('Sigenergy binding', () => {
   ])('is unavailable with $name', ({ devices, reasonCode }) => {
     expect(actionBinding(battery).resolve(battery, devices)).toEqual({ kind: 'unavailable', reasonCode });
   });
+
+  it.each([
+    { value: 'Remote EMS', mode: { kind: 'homey' } },
+    { value: 'AI mode', mode: { kind: 'own', mode: 'AI mode' } },
+    { value: 'Max self consumption', mode: { kind: 'own', mode: 'Max self consumption' } },
+    { value: '', mode: { kind: 'unreported' } },
+    { value: null, mode: { kind: 'unreported' } },
+  ])('reads the plant\'s EMS mode $value as $mode.kind', ({ value, mode }) => {
+    const reporting = { ...plant, capabilitiesObj: { ems_work_mode: { id: 'ems_work_mode', value } } };
+    const { target } = resolved(battery, [battery, reporting]);
+    expect(actionBinding(battery).readControlMode?.(target, [battery, reporting])).toEqual(mode);
+  });
+
+  it('reads a plant without an EMS mode capability as unreported', () => {
+    const { target } = resolved(battery, [battery, plant]);
+    expect(actionBinding(battery).readControlMode?.(target, [battery, plant])).toEqual({ kind: 'unreported' });
+  });
 });
 
 describe('Zendure local binding', () => {

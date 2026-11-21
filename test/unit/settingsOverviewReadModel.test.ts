@@ -13,6 +13,7 @@ import type {
   AdapterUnavailableStatus, DeviceControlAdapterSnapshot, SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceStateProjection';
+import type { HomeBatteryDelivery } from '../../lib/ports/batteryControlOwner';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import { formatStarvationDurationLabel } from '../../packages/shared-domain/src/planStarvation';
 
@@ -938,12 +939,15 @@ describe('settingsOverviewReadModel', () => {
 });
 
 describe('settingsOverviewReadModel home battery card', () => {
-  const battery = (overrides: { signedW?: number | null; percent?: number; control?: HomeBatteryCardControl } = {}) => ({
+  const battery = (overrides: {
+    signedW?: number | null; percent?: number; control?: HomeBatteryCardControl; delivery?: HomeBatteryDelivery;
+  } = {}) => ({
     ...absentTemperature,
     getHomeBatteryCard: (deviceId: string) => (deviceId === 'battery-1'
       ? {
         kind: 'battery' as const,
         control: overrides.control ?? 'drivable',
+        delivery: overrides.delivery ?? { kind: 'following' as const },
         power: overrides.signedW === null
           ? { kind: 'absent' as const }
           : { kind: 'observed' as const, signedW: overrides.signedW ?? -2400 },
@@ -1091,6 +1095,30 @@ describe('settingsOverviewReadModel home battery card', () => {
       });
     },
   );
+
+  it('says a battery that left PELS\'s setpoint unanswered did not follow, through the back-off', () => {
+    const card = buildDeviceCard(batteryDevice({ kind: 'none' }), battery({
+      signedW: 0, delivery: { kind: 'not_following', controlMode: { kind: 'unreported' } },
+    }));
+    expect(card.status).toMatchObject({
+      label: 'Own mode',
+      reason: { text: "Did not follow PELS's request: trying again later" },
+    });
+  });
+
+  it('names the mode its app runs while a re-probed battery still does not follow', () => {
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief', supplyKw: 2.4 }), battery({
+      signedW: 0, delivery: { kind: 'not_following', controlMode: { kind: 'own', mode: 'AI mode' } },
+    }));
+    expect(card.status).toMatchObject({ reason: { text: "Did not follow PELS's request: its app runs AI mode" } });
+  });
+
+  it('keeps the watch-only line over a not-following one', () => {
+    const card = buildDeviceCard(batteryDevice({ kind: 'none' }), battery({
+      control: 'watch_only', delivery: { kind: 'not_following', controlMode: { kind: 'unreported' } },
+    }));
+    expect(card.status).toMatchObject({ reason: { text: 'PELS can only watch it: its app does not accept control' } });
+  });
 
   it('shows a managed battery on the overview and never a solar device', () => {
     const readModel = buildSettingsOverviewReadModel({

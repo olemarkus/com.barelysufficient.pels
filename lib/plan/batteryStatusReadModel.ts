@@ -17,6 +17,11 @@
  *   Solar export alone never produces it, a discharging battery the house still
  *   uses up reads Supplying, and an unread selling hold has stepped to 0 W
  *   (`plan_wait`), so it never reads as selling.
+ * - **Not following**: a battery PELS can drive that left a setpoint
+ *   unanswered says so in its reason line, whatever its hold, until it answers
+ *   one: through the back-off, where PELS holds nothing and its word is Own
+ *   mode, and the re-probe after it. Where its app reports running a mode of
+ *   its own, the line names it (`HomeBatteryControlMode`).
  * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
  *   control off, the reason line says so: PELS never takes it over, and its
  *   own app is in charge. One PELS cannot drive says PELS can only watch it,
@@ -125,6 +130,22 @@ export const BATTERY_SIMULATED_REASON_LINES = {
 
 const SIMULATION_TAG = ' (simulation)';
 
+/** The reason line of a battery that left PELS's last setpoint unanswered (`HomeBatteryDelivery`). */
+export const BATTERY_NOT_FOLLOWING_REASON_LINE = "Did not follow PELS's request: trying again later";
+
+/** The same, while its app reports running a mode of its own, named as the app names it. */
+export const batteryOwnControlModeReasonLine = (mode: string): string => (
+  `Did not follow PELS's request: its app runs ${mode}`
+);
+
+const resolveNotFollowingLine = (battery: HomeBatteryCard): string | null => {
+  if (battery.delivery.kind !== 'not_following') return null;
+  const { controlMode } = battery.delivery;
+  return controlMode.kind === 'own'
+    ? batteryOwnControlModeReasonLine(controlMode.mode)
+    : BATTERY_NOT_FOLLOWING_REASON_LINE;
+};
+
 /** Below this, the charge a cap holds back is not worth naming, kW. */
 const HELD_BACK_MIN_KW = 0.05;
 
@@ -207,12 +228,15 @@ const resolveFactText = (battery: HomeBatteryCard, hold: StorageHold): string | 
 };
 
 const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: boolean): DeviceStatus['reason'] => {
+  // A battery PELS cannot drive says why: its app refused control, or gives
+  // Homey no power setting. The same line its device page and device-list
+  // row show in place of a Power-limit control.
+  const undrivableLine = isOwnModeHold(hold) ? resolveBatteryUndrivableLine(battery.control) : null;
+  if (undrivableLine !== null) return { text: undrivableLine };
+  // Simulation sends nothing, so nothing goes unanswered.
+  const notFollowingLine = dryRun ? null : resolveNotFollowingLine(battery);
+  if (notFollowingLine !== null) return { text: notFollowingLine };
   if (isOwnModeHold(hold)) {
-    // A battery PELS cannot drive says why: its app refused control, or gives
-    // Homey no power setting. The same line its device page and device-list
-    // row show in place of a Power-limit control.
-    const undrivableLine = resolveBatteryUndrivableLine(battery.control);
-    if (undrivableLine !== null) return { text: undrivableLine };
     // One PELS is only simulating has nothing more to say than its own reading.
     if (dryRun) return null;
   } else if (dryRun) {
