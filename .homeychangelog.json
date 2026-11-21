@@ -874,5 +874,8 @@
   },
   "3.45.1": {
     "en": "Fixed: When the whole-home meter is deleted from Homey, PELS stops waiting for it and picks up a replacement meter on its own when it is the only one. A meter assigned to another area is never picked for the main home. Recover missing hours from Insights now keeps the hours it can read when some readings are missing, and hours where the home exported power no longer stop the recovery. Clearer wording for the hard cap recommendation and for switching from a Flow to built-in control."
+  },
+  "3.46.0": {
+    "en": "Zaptec chargers now use the Zaptec app's own current control, so built-in control no longer needs a Homey API key. With an older Zaptec app that cannot set the current, PELS pauses and resumes charging instead, and the charger's card on Overview asks you to update the app. When a Z-Wave switch does not confirm that it turned off, PELS covers the difference with other devices and tries the switch again at a steady pace. Overview marks a power reading that was taken before a device switched off.\n\nFixed: A device whose Flow sets its level but does not report it back now says so on its card, and PELS waits longer before asking such a Flow again. Devices that come back while PELS reads a few of them are kept. PELS reads all devices less often for heaters and plugs that report a temperature but have no setpoint."
   }
 }
