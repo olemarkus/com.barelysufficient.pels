@@ -32,6 +32,7 @@ import type {
 import type { ShedBehavior } from '../../packages/planner-types/src/shedBehavior';
 import type {
   PriceTargetShift,
+  PreparedModeTarget,
   ResolveTemperatureSetpoints,
   ResolvedShedBehavior,
   TemperatureSetpoints,
@@ -70,6 +71,7 @@ export type TemperatureIntentReads = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
   /** A temperature override while it is in force (`lib/overrides/deviceOverrides.ts`), or `null`. */
   getTemporaryTemperatureC: (deviceId: string) => number | null;
+  getPreparedModeTargets: (devices: readonly PlanInputDevice[]) => ReadonlyMap<string, PreparedModeTarget>;
 };
 
 // The tolerance for "the target is short of what the owner wants" — as before.
@@ -88,6 +90,7 @@ const isTemperatureInputDevice = (device: PlanInputDevice): device is Temperatur
 /** The build's shared inputs: one mode, one settings map, one price level. */
 type BuildIntent = {
   modeTargets: Readonly<Record<string, number>>;
+  preparedTargets: ReadonlyMap<string, PreparedModeTarget>;
   settings: Readonly<Record<string, PriceOptimizationSettings>>;
   priceShiftActive: boolean;
   priceLevel: PriceLevel;
@@ -114,6 +117,7 @@ function resolveBuildIntent(reads: TemperatureIntentReads, devices: readonly Tem
     && devices.some((device) => resolvePriceOptimizationConfig(settings, device.id).enabled);
   return {
     modeTargets,
+    preparedTargets: reads.getPreparedModeTargets(devices),
     settings,
     priceShiftActive,
     priceLevel: priceShiftActive ? reads.getCurrentHourPriceLevel() : PriceLevel.UNKNOWN,
@@ -172,7 +176,8 @@ function resolveDeviceSetpoints(
     ? null : normalizeTargetCapabilityValue({ target, value: storedTemporaryC });
   const storedIntendedC = intent.modeTargets[device.id];
   const modeIntendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;
-  const intendedC = temporaryC ?? modeIntendedC;
+  const modePreparation = temporaryC === null ? intent.preparedTargets.get(device.id) : undefined;
+  const intendedC = temporaryC ?? modePreparation?.targetC ?? modeIntendedC;
   const config = resolvePriceOptimizationConfig(intent.settings, device.id);
   const desiredC = temporaryC === null && intent.priceShiftActive && config.enabled
     ? applyPriceShift(intendedC, config, intent.priceLevel, direction)
@@ -209,6 +214,7 @@ function resolveDeviceSetpoints(
     : configured;
   return {
     intendedC,
+    ...(modePreparation ? { modePreparation } : {}),
     desiredC,
     keepC,
     keepPriceShift,

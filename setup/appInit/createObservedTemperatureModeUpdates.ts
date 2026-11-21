@@ -9,6 +9,7 @@ export function createObservedTemperatureModeUpdates(
   resolveOperatingModeForDevice: ResolveOperatingModeForDevice,
   getAreaCatalogs: () => ReturnType<HomeRuntimeRegistry['getLiveBundles']>,
   isDeviceLimited: (deviceId: string) => boolean,
+  readPreparedTemperatureC: (deviceId: string) => number | null,
 ): ObservedTemperatureModeUpdates {
   return new ObservedTemperatureModeUpdates(
     ctx.homey.settings,
@@ -20,5 +21,6 @@ export function createObservedTemperatureModeUpdates(
     isDeviceLimited,
     (deviceId) => ctx.getShedLimitTemperaturesC(deviceId),
     bindTemporaryTemperatureRead(ctx),
+    readPreparedTemperatureC,
   );
 }

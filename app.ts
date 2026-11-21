@@ -1,5 +1,5 @@
-import { ScheduleService, createScheduleReceiptStore, ScheduleActionExecutor } from './lib/schedules';
-import { registerScheduleFlowCards } from './flowCards/scheduleCards';
+import type { ScheduleService } from './lib/schedules';
+import { bindModePreparationResolver } from './setup/appInit/temperatureSetpointsSeam';
 import type { SchedulesResponse } from './packages/contracts/src/schedules';
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import { readDeviceDiagnosticConfiguration } from './lib/diagnostics/deviceDiagnosticConfiguration';
@@ -26,7 +26,8 @@ import type { PriceCoordinator } from './lib/price/priceCoordinator';
 import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import {
-  buildSmartTaskCandidateDevices,
+  readSmartTaskOpen,
+  resolveModePreparationLeadMs,
   createDeferredObjectiveEndedBus,
   createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectiveHoursRemainingTracker,
@@ -72,7 +73,8 @@ import { createHomeyEnergyPollSource, MeterMonthlyPeaks, resolveMainMeterRead }
 import type { SubHomeMeters } from './lib/home/homeMeters';
 import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './setup/appSnapshotHelpers';
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
-import { createAppSmartTaskApi, createScheduledSmartTaskHost } from './setup/appSmartTaskApi';
+import { createAppSmartTaskApi } from './setup/appSmartTaskApi';
+import { createAppSchedules } from './setup/appSchedules';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import { createHomeRebuildRuntime } from './lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { BuiltInControlFlowConflicts } from './lib/device/builtInControlFlowConflicts';
@@ -592,6 +594,14 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     return this.runtime.homeRuntimeRegistry;
   }
 
+  private readonly modePreparation = bindModePreparationResolver(
+    this.ctx, { currentMode: this.getHomeOperatingMode, modeTargets: this.homeModeCatalog.getModeDeviceTargets },
+    () => this.scheduleService?.readModePreparation(),
+    (deviceId) => this.getRuntimeDevice(deviceId), {
+      smartTaskState: (deviceId) => readSmartTaskOpen(this.homey.settings, deviceId, this.getNow().getTime()),
+      leadMs: (device, fromC, targetC) => resolveModePreparationLeadMs(this.powerTracker, device, fromC, targetC),
+    },
+  );
   // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
@@ -599,6 +609,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getHomeOperatingMode: this.getHomeOperatingMode,
     getPrioritiesForDevices: (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
     getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),
+    getPreparedModeTargets: this.modePreparation.getPreparedModeTargets,
+    readPreparedTemperatureC: this.modePreparation.readPreparedTemperatureC,
     resolveOperatingModeForDevice: (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId),
     createHomeRuntimeRegistry: (membership) => createHomeRuntimeRegistryForApp(
       this.ctx, this.homeModeCatalog, membership, this.controlContests, this.meterMonthlyPeaks,
@@ -638,27 +650,12 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   private readonly scheduleSettingsChanged = (key: string): void => { this.scheduleService?.onSettingsChanged(key); };
 
   protected startSchedules(): void {
-    const listTaskDevices = () => {
-      const read = this.getCreateSmartTaskCandidateDevices();
-      if (read.state !== 'ready') throw new Error('Smart-task devices are temporarily unavailable.');
-      return buildSmartTaskCandidateDevices(read.devices);
-    };
-    const executor = new ScheduleActionExecutor(createScheduledSmartTaskHost(this, listTaskDevices), this.homey.clock);
-    const schedules = new ScheduleService({
-      settings: this.homey.settings, clock: this.homey.clock, timers: this.timers,
-      receipts: createScheduleReceiptStore(this.getUserdataDatabase()),
-      getNowMs: () => this.getNow().getTime(),
-      listModes: () => Array.from(this.getHomeModeNames()),
-      resolveModeName: this.resolveHomeModeName,
-      currentMode: this.getHomeOperatingMode,
-      listTaskDevices,
-      execute: (schedule, at) => executor.execute(schedule, at),
-    });
+    const schedules = createAppSchedules(this, this.homeModeCatalog,
+      (occurrence) => this.modePreparation.result(this.planService.getPlanDevices(), occurrence));
     this.scheduleService = schedules;
     for (const owner of [this.norwayMonthlyCapacity, this.powerHistoryRecovery]) owner.attach(this.homey.settings);
     this.homey.settings.on('set', this.scheduleSettingsChanged);
     this.homey.settings.on('unset', this.scheduleSettingsChanged);
-    registerScheduleFlowCards(this.homey, schedules, listTaskDevices);
     schedules.start();
   }
 

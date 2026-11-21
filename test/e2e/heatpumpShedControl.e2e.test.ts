@@ -114,6 +114,50 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     expect(turnedOff).toBe(false);
   });
 
+  it('prepares a scheduled mode on meter readings and keeps the target through the handoff', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 9, 59));
+    const device = await buildHeatpumpDevice(17, 500);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    enableCapacity(10);
+    mockHomeyInstance.settings.set('operating_mode', 'Night');
+    mockHomeyInstance.settings.set('temperature_control_modes', { 'heatpump-a': 'update_mode' });
+    mockHomeyInstance.settings.set('mode_device_targets', { Night: { 'heatpump-a': 17 }, Home: { 'heatpump-a': 22 } });
+    mockHomeyInstance.settings.set('schedule.morning', {
+      id: 'morning', name: 'Morning', enabled: true, at: '13:00',
+      repeat: { type: 'once', date: '2026-01-15' }, condition: { type: 'include', modes: ['Night'] },
+      action: { type: 'mode', mode: 'Home', prepare: true },
+    });
+    reportHomePower(500);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const targetPath = cap('heatpump-a', 'target_temperature');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(putSpy).not.toHaveBeenCalledWith(targetPath, pelsCapabilityWrite(22));
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    await drainUntilCalledWith(putSpy, targetPath, pelsCapabilityWrite(22));
+    expect(putSpy).toHaveBeenCalledWith(targetPath, pelsCapabilityWrite(22));
+    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Night');
+    const reason = () => app.planService?.getLatestPlanSnapshotForUi()?.devices
+      ?.find((candidate) => candidate.id === 'heatpump-a')?.status.reason?.text;
+    expect(reason()).toBe('Getting ready for Home at 13:00');
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
+      Night: { 'heatpump-a': 17 }, Home: { 'heatpump-a': 22 },
+    });
+    putSpy.mockClear();
+
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 11, 59, 55));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Home');
+    expect(reason()).not.toBe('Getting ready for Home at 13:00');
+    expect(putSpy).not.toHaveBeenCalledWith(targetPath, pelsCapabilityWrite(17));
+    expect(app.readSchedules()).toMatchObject({
+      ok: true, data: { entries: [{ lastResult: 'Mode changed. The device was below its target.' }] },
+    });
+  });
+
   it('limits a cooling unit by RAISING its target to the cooling limit, and resumes it back down', async () => {
     // Handing a cooling unit its heating limit (16) would make the compressor
     // work harder. While it reports that it is cooling, PELS raises it to the

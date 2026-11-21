@@ -1,8 +1,15 @@
-import { createTemperatureSetpointResolver } from '../../lib/thermostat/temperatureSetpoints';
+import { ModePreparationResolver, type ModePreparationReads } from '../../lib/thermostat/modePreparation';
+import {
+  createTemperatureSetpointResolver, type TemperatureIntentReads,
+} from '../../lib/thermostat/temperatureSetpoints';
 import { readActiveTemperatureOverride } from '../../lib/overrides/deviceOverrides';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
+import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
+import type { PlanInputSnapshotDevice } from '../../lib/planInput/runtimeDeviceRead';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { toPlanDevice } from './toPlanDevice';
 
 /**
  * Bind `lib/thermostat`'s setpoint resolver to one home's reads, for that home's
@@ -21,7 +28,11 @@ export const bindTemporaryTemperatureRead = (ctx: AppContext) => (deviceId: stri
   readActiveTemperatureOverride(ctx.homey.settings, deviceId, ctx.getNow().getTime())?.targetC ?? null
 );
 
-export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): ResolveTemperatureSetpoints => (
+export const bindTemperatureSetpoints = (
+  scope: HomeScope,
+  ctx: AppContext,
+  getPreparedModeTargets: TemperatureIntentReads['getPreparedModeTargets'],
+): ResolveTemperatureSetpoints => (
   createTemperatureSetpointResolver({
     getOperatingMode: scope.getOperatingMode,
     getModeDeviceTargets: scope.getModeDeviceTargets,
@@ -31,5 +42,27 @@ export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): Res
     getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getTemporaryTemperatureC: bindTemporaryTemperatureRead(ctx),
+    getPreparedModeTargets,
   })
 );
+
+export const bindModePreparationResolver = (
+  ctx: AppContext,
+  modes: Pick<ModePreparationReads, 'currentMode' | 'modeTargets'>,
+  occurrence: ModePreparationReads['occurrence'],
+  runtimeDevice: (deviceId: string) => PlanInputSnapshotDevice | undefined,
+  objectives: Pick<ModePreparationReads, 'smartTaskState' | 'leadMs'>,
+): ModePreparationResolver => new ModePreparationResolver({
+  ...modes,
+  ...objectives,
+  occurrence,
+  readDevice: (deviceId) => {
+    const device = runtimeDevice(deviceId);
+    const [mainDevice] = filterDevicesForHome(ctx.homeMembership, device ? [device] : [], MAIN_HOME_ID);
+    return mainDevice && toPlanDevice(ctx, mainDevice);
+  },
+  nowMs: () => ctx.getNow().getTime(),
+  thermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
+  canSetTemperature: (deviceId) => ctx.observedTemperatureModeUpdates.allowsLimiting(deviceId),
+  temporaryTemperatureC: bindTemporaryTemperatureRead(ctx),
+});

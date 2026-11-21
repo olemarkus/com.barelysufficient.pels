@@ -302,7 +302,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     );
   }
 
-  private getRuntimeDevice(deviceId: string): PlanInputSnapshotDevice | undefined {
+  protected getRuntimeDevice(deviceId: string): PlanInputSnapshotDevice | undefined {
     const device = readRuntimeDevice(
       this.context.deviceConfiguration.get(deviceId),
       this.context.observer.getObservedRecord(deviceId),

@@ -2,13 +2,13 @@ import { scheduleInstant } from '../../packages/shared-domain/src/scheduleTime';
 export { scheduleInstant };
 import { scheduleWeekday } from '../../packages/shared-domain/src/settings/schedules';
 import type { Schedule } from '../../packages/contracts/src/schedules';
+import { SCHEDULE_CATCH_UP_MS } from '../ports/modePreparation';
 import {
   getDateKeyInTimeZone,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 
 export type ScheduleOccurrence = { key: string; atMs: number };
-const MINUTE_MS = 60_000;
 
 const occursOn = (schedule: Schedule, date: string): boolean => schedule.repeat.type === 'once'
   ? schedule.repeat.date === date
@@ -45,7 +45,7 @@ export const dueScheduleOccurrence = (
   consumedKey = '',
 ): ScheduleOccurrence | undefined => {
   if (nowMs < afterMs) return undefined;
-  const since = Math.max(afterMs, nowMs - 2 * MINUTE_MS);
+  const since = Math.max(afterMs, nowMs - SCHEDULE_CATCH_UP_MS);
   const firstDate = getDateKeyInTimeZone(new Date(since), timeZone);
   const lastDate = getDateKeyInTimeZone(new Date(nowMs), timeZone);
   const dates = firstDate === lastDate ? [firstDate] : [firstDate, lastDate];

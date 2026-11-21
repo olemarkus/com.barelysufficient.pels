@@ -140,7 +140,7 @@ export function buildInitialPlanDevices(
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
       priceTargetShift: resolvePriceTargetShift(dev, context.temperatureSetpoints, plannedTarget),
-      temporaryTemperatureActive: hasTemperatureOverride(dev, context.temperatureSetpoints),
+      ...temperatureIntentFields(dev, context.temperatureSetpoints),
       surplusCeilingStepId,
     });
     baseMs += Date.now() - t1;
@@ -199,12 +199,6 @@ function resolvePriceTargetShift(
   return plannedTarget === setpoints.keepC ? setpoints.keepPriceShift : NO_PRICE_TARGET_SHIFT;
 }
 
-/** A temperature override is in force on the device, whether or not a limit sits on top of it. */
-function hasTemperatureOverride(dev: PlanInputDevice, temperatureSetpoints: TemperatureSetpointsByDevice): boolean {
-  if (!isTemperaturePlanDevice(dev)) return false;
-  return temperatureSetpointsFor(temperatureSetpoints, dev.id).temporaryTemperatureActive;
-}
-
 function isRecentlyRestored(lastRestoreMs: number | undefined, nowTs: number): boolean {
   if (!lastRestoreMs) return false;
   return nowTs - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
@@ -254,4 +248,10 @@ function isSurplusOnlyHoldShed(
   // stepped loads to their lowest step. A fresh capacity shed reason still wins
   // — that is a real decision this cycle, not a standing posture.
   return !shedReasons.has(dev.id) && isSurplusHeldDevice(dev, state);
+}
+
+function temperatureIntentFields(dev: PlanInputDevice, setpoints: TemperatureSetpointsByDevice) {
+  if (!isTemperaturePlanDevice(dev)) return { temporaryTemperatureActive: false };
+  const { temporaryTemperatureActive, modePreparation } = temperatureSetpointsFor(setpoints, dev.id);
+  return { temporaryTemperatureActive, modePreparation };
 }
