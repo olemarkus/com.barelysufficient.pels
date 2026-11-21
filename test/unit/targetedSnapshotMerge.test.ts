@@ -16,12 +16,14 @@ const raw = (id: string): HomeyDeviceLike => ({ id } as unknown as HomeyDeviceLi
 
 describe('mergeTargetedRefreshSnapshot', () => {
   const prev = [snap('a'), snap('b'), snap('c')];
+  const targetedViewIds = new Set(prev.map((device) => device.id));
 
   it('updates present devices and retains a NETWORK-missed device within grace', () => {
     const missByDeviceId = new Map<string, TargetedMissState>();
     const { snapshot, graceExceededIds } = mergeTargetedRefreshSnapshot({
       presentSnapshot: [snap('a'), snap('c')], // b absent
       previousSnapshot: prev,
+      targetedViewIds,
       failedIds: ['b'], // b's by-id read failed (network)
       missByDeviceId,
       nowMs: 1000,
@@ -37,6 +39,7 @@ describe('mergeTargetedRefreshSnapshot', () => {
     const { snapshot, graceExceededIds } = mergeTargetedRefreshSnapshot({
       presentSnapshot: [snap('a'), snap('c')], // b absent because PARSE dropped it
       previousSnapshot: prev,
+      targetedViewIds,
       failedIds: [], // b's read SUCCEEDED — it was parsed out, not a network miss
       missByDeviceId,
       nowMs: 1000,
@@ -52,6 +55,7 @@ describe('mergeTargetedRefreshSnapshot', () => {
     const { snapshot } = mergeTargetedRefreshSnapshot({
       presentSnapshot: [snap('a'), snap('c')], // b absent, now parsed out (succeeded)
       previousSnapshot: prev,
+      targetedViewIds,
       failedIds: [], // not a network miss
       missByDeviceId,
       nowMs: 5_000,
@@ -65,6 +69,7 @@ describe('mergeTargetedRefreshSnapshot', () => {
     mergeTargetedRefreshSnapshot({
       presentSnapshot: [snap('a'), snap('b'), snap('c')],
       previousSnapshot: prev,
+      targetedViewIds,
       failedIds: [],
       missByDeviceId,
       nowMs: 5_000,
@@ -81,7 +86,7 @@ describe('mergeTargetedRefreshSnapshot', () => {
     // retained (count met, clock not).
     let nowMs = 0;
     for (let i = 0; i < TARGETED_DEVICE_MISS_GRACE_READS + 2; i += 1) {
-      const r = mergeTargetedRefreshSnapshot({ presentSnapshot: present, previousSnapshot: prev, failedIds, missByDeviceId, nowMs });
+      const r = mergeTargetedRefreshSnapshot({ presentSnapshot: present, previousSnapshot: prev, targetedViewIds, failedIds, missByDeviceId, nowMs });
       expect(ids(r.snapshot)).toContain('b');
       expect(r.graceExceededIds).toEqual([]);
       nowMs += 1_000; // 1s apart — never crosses the floor
@@ -90,7 +95,7 @@ describe('mergeTargetedRefreshSnapshot', () => {
 
     // Now a miss past the wall-clock floor with the count already met → dropped.
     nowMs = TARGETED_DEVICE_MISS_GRACE_MS + 10_000;
-    const dropped = mergeTargetedRefreshSnapshot({ presentSnapshot: present, previousSnapshot: prev, failedIds, missByDeviceId, nowMs });
+    const dropped = mergeTargetedRefreshSnapshot({ presentSnapshot: present, previousSnapshot: prev, targetedViewIds, failedIds, missByDeviceId, nowMs });
     expect(ids(dropped.snapshot)).toEqual(['a', 'c']);
     expect(dropped.graceExceededIds).toEqual(['b']);
     expect(missByDeviceId.has('b')).toBe(false);
@@ -104,6 +109,7 @@ describe('mergeTargetedRefreshSnapshot', () => {
     const r = mergeTargetedRefreshSnapshot({
       presentSnapshot: [snap('a'), snap('c')],
       previousSnapshot: prev,
+      targetedViewIds,
       failedIds: ['b'],
       missByDeviceId,
       nowMs: TARGETED_DEVICE_MISS_GRACE_MS + 1,
@@ -118,7 +124,8 @@ describe('mergeTargetedRefreshSnapshot', () => {
     const missByDeviceId = new Map<string, TargetedMissState>([['gone', { misses: 1, firstMissMs: 0 }]]);
     mergeTargetedRefreshSnapshot({
       presentSnapshot: [snap('a')],
-      previousSnapshot: [snap('a'), snap('b')], // 'gone' not requested
+      previousSnapshot: [snap('a'), snap('b')],
+      targetedViewIds: new Set(['a', 'b']),
       failedIds: [],
       missByDeviceId,
       nowMs: 1_000,
