@@ -182,9 +182,24 @@ function resolveUnneededStepDown(dev: PlanInputDevice): StepDownRetirement | und
   const issuedAtMs = dev.lastStepCommandIssuedAt;
   const requested = getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId);
   const reported = getSteppedLoadStep(dev.steppedLoadProfile, dev.reportedStepId);
-  return issuedAtMs !== undefined && requested && reported && reported.planningPowerW > requested.planningPowerW
-    ? { stepId: requested.id, issuedAtMs }
-    : undefined;
+  if (issuedAtMs === undefined || !requested || !reported) return undefined;
+  if (reported.planningPowerW <= requested.planningPowerW) return undefined;
+  return drawShowsLowerStep(dev, requested.planningPowerW, reported.planningPowerW)
+    ? undefined
+    : { stepId: requested.id, issuedAtMs };
+}
+
+/**
+ * Whether the device's own reading already shows the lower step: its draw is
+ * nearer the requested step than the reported one. The step landed and only
+ * its report is missing (a Flow that applies the level but does not report it
+ * back). Retiring the request would hide that: the card would show the device
+ * running at the reported step with no word that its level change went
+ * unconfirmed. Kept, the request lets the card point the owner at the Flow
+ * that reports the level back.
+ */
+function drawShowsLowerStep(dev: PlanInputDevice, requestedW: number, reportedW: number): boolean {
+  return isMeteredPlanDevice(dev) && dev.currentDrawKw * 1000 <= (requestedW + reportedW) / 2;
 }
 
 /**
