@@ -54,7 +54,7 @@ test('the generic registry isolates two vehicle sessions and trust recovery', ()
   ]);
 });
 
-test('vendor action arguments and installation membership are resolved by the binding owner', () => {
+test('supported current actions and installation membership are resolved by the binding owner', () => {
   const car = vehicle('car')[0]!;
   const charger: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS, id: 'charger', name: 'Charger', driverId: 'homey:app:com.zaptec:go',
     data: { installationId: 'site' }, capabilities: ['available_installation_current'] };
@@ -62,8 +62,10 @@ test('vendor action arguments and installation membership are resolved by the bi
   const chargerBinding = getDeviceAdapter(charger).currentBindings(charger)[0]!;
   expect(resolveChargingCurrentAction(carBinding, [{ id: 'homey:device:car:charge_current' }], 10).args)
     .toEqual({ current: 10 });
-  expect(resolveChargingCurrentAction(chargerBinding, [{ id: 'homey:device:charger:installation_current_control' }], 10).args)
-    .toEqual({ current1: 10, current2: 10, current3: 10 });
+  expect(carBinding.supportsAppAction).toBe(true);
+  expect(chargerBinding.supportsAppAction).toBe(false);
+  expect(() => resolveChargingCurrentAction(chargerBinding, [{ id: 'homey:device:charger:installation_current_control' }], 10))
+    .toThrow('does not support built-in current actions');
   // Even a sibling without a supported current-control driver belongs to the installation.
   expect(hasSharedChargingInstallation(chargerBinding, [charger, { ...HOMEY_DEVICE_FIELDS,
     id: 'other', name: 'Other charger', class: 'evcharger', driverId: 'homey:app:com.zaptec:other',

@@ -152,6 +152,7 @@ export const aminaAdapter: DeviceAdapter = {
     actionId: 'set_charging_current',
     scope: { kind: 'charger' },
     sharesInstallation: () => false,
+    supportsAppAction: true,
     currentArguments: (currentA) => ({ max: currentA }),
   }] : [],
   createSession: () => new SettingCurrentLimitSession({ matches: isAminaCharger, readCurrentLimit }),

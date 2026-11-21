@@ -158,6 +158,7 @@ export const goeAdapter: DeviceAdapter = {
     actionId: 'change_current',
     scope: { kind: 'charger' },
     sharesInstallation: () => false,
+    supportsAppAction: true,
     currentArguments: (currentA) => ({ action_amps: currentA }),
   }] : [],
 };

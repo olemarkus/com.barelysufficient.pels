@@ -62,7 +62,7 @@ export function setChargingCurrentDevice(deviceId: string, showProgress: boolean
     render(<ChargingCurrentSetupView key={deviceId} device={device} access={access} busy={busy} error={error}
       onReady={consumeChargingControlFocus}
       onCheck={() => perform(async () => {
-        await callApi('POST', CHARGING_ACCESS_CHECK_PATH);
+        if (device.supportsAppAction) await callApi('POST', CHARGING_ACCESS_CHECK_PATH);
         // The same scan the periodic check runs, so a cleared Flow resumes built-in control now.
         await refreshFlowConflictFactsExplicit();
       })}

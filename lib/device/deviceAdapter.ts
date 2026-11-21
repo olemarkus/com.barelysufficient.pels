@@ -41,6 +41,8 @@ export type ChargingCurrentSurface =
 export type ChargingCurrentBinding = {
   deviceId: string;
   current: ChargingCurrentSurface;
+  /** Whether PELS supports executing the app action for this current binding. */
+  supportsAppAction: boolean;
   actionId: string;
   appUri: string;
   /** What one current command reaches: a car, a whole installation, or this charger alone. */

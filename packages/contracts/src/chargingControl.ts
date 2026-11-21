@@ -18,6 +18,8 @@ export type ChargingCurrentRead = {
   name: string;
   setup: ChargingCurrentSetup;
   capabilityWritable: boolean;
+  /** Whether built-in current control can use an app action through Homey access. */
+  supportsAppAction: boolean;
   scope: 'installation' | 'vehicle' | 'charger';
   sharedInstallation: boolean;
   flowCheck: 'clear' | 'conflict' | 'unavailable';

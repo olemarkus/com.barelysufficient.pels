@@ -9,7 +9,7 @@ vi.mock('../src/ui/homey.ts', () => ({
 const { setChargingCurrentDevice, requestChargingControlFocus, cancelChargingControlFocus } = await import('../src/ui/deviceDetail/chargingCurrent.tsx');
 const charger: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage',
   setup: { method: 'flow', confirmation: 'single_charger' }, scope: 'installation',
-  capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
+  supportsAppAction: true, capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="device-detail-charging-current"></div>';
@@ -319,4 +319,58 @@ test('keeps a request made during Check again until the switch becomes enabled',
   await vi.waitFor(() => expect((control as HTMLElement & { disabled: boolean }).disabled).toBe(false));
   expect(control.isConnected).toBe(true);
   await vi.waitFor(() => expect(focus).toHaveBeenCalledOnce());
+});
+
+test.each([false, true])('capability-only current control only offers key removal when saved (%s)', async (configured) => {
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [{ ...charger, supportsAppAction: false }]
+    : { configured, state: configured ? 'ready' : 'not_configured' });
+  await act(async () => setChargingCurrentDevice('charger', true));
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
+  expect(document.querySelector('md-filled-text-field')).toBeNull();
+  expect(document.body.textContent?.includes('Remove saved API key')).toBe(configured);
+  if (configured) {
+    await act(async () => button('Remove key').click());
+    await act(async () => button('Confirm removal').click());
+    expect(callApi).toHaveBeenCalledWith('DELETE', '/ui_charging_access');
+  }
+  expect(document.body.textContent).toContain('Update the charger’s app');
+  expect(button('Use built-in control').hasAttribute('disabled')).toBe(true);
+  await act(async () => button('Use a Flow').click());
+  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_current/charger', {
+    method: 'flow', confirmation: 'single_charger',
+  });
+});
+
+test('a retired read-only built-in route offers an app update and explicit Flow selection', async () => {
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [{ ...charger, supportsAppAction: false, setup: { method: 'built_in', confirmation: 'single_charger' },
+      currentRoute: 'built_in' }]
+    : { configured: true, state: 'ready' });
+  await act(async () => setChargingCurrentDevice('charger', true));
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
+  expect(document.body.textContent).toContain('Built-in current control is unavailable.');
+  expect(document.body.textContent).toContain('Update the charger’s app');
+  expect(document.body.textContent).not.toContain('Your key is ready');
+  expect(button('Use a Flow')).toBeTruthy();
+});
+
+test('writable capability-only current control ignores key status and refreshes Flow checks', async () => {
+  callApi.mockImplementation(async (_method: string, path: string) => {
+    if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [], ignoredPowerUsageFlows: { state: 'none' } };
+    return path === '/ui_charging_current'
+      ? [{ ...charger, supportsAppAction: false, capabilityWritable: true }]
+      : { configured: true, state: 'permission_denied' };
+  });
+  await act(async () => setChargingCurrentDevice('charger', true));
+  await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
+  expect(document.querySelector('md-filled-text-field')).toBeNull();
+  expect(button('Use built-in control').hasAttribute('disabled')).toBe(false);
+  await act(async () => button('Check again').click());
+  expect(callApi).toHaveBeenCalledWith('POST', '/ui_refresh_flow_conflicts', {});
+  expect(callApi).not.toHaveBeenCalledWith('POST', '/ui_charging_access/check');
+  await act(async () => button('Use built-in control').click());
+  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_current/charger', {
+    method: 'built_in', confirmation: 'single_charger',
+  });
 });

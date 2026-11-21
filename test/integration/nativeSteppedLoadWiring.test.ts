@@ -1121,10 +1121,9 @@ describe('native stepped-load wiring', () => {
 
   it('does not record an issued step or cooldown when charging action metadata times out', async () => {
     const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
-      id: 'charger', name: 'Zaptec', class: 'evcharger', driverId: 'homey:app:com.zaptec:go2',
-      data: { id: 'zaptec-id', installationId: 'installation' },
-      capabilities: ['available_installation_current'],
-      capabilitiesObj: { available_installation_current: { value: 16, setable: false } },
+      id: 'charger', name: 'Futurehome', class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger',
+      settings: { currentLimit: 16 },
+      capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
     };
     const values = new Map<string, unknown>();
     const settings = {
@@ -1144,7 +1143,7 @@ describe('native stepped-load wiring', () => {
     }));
     try {
       await control.access.save({ key: 'private-key' });
-      await control.save('charger', { method: 'built_in', confirmation: 'single_charger' });
+      await control.save('charger', { method: 'built_in', confirmation: 'none' });
       const timeout = new HomeyRequestTimeoutError('GET', '/api/manager/flow/flowcardaction');
       get.mockRejectedValue(timeout);
       const actionWrite = vi.spyOn(control.access, 'runAction');
@@ -1158,7 +1157,7 @@ describe('native stepped-load wiring', () => {
         return { requested: true, acknowledged: true, transport };
       });
       const action = buildSteppedAction({
-        id: 'charger', name: 'Zaptec', binaryControl: { on: true }, currentState: 'on', plannedState: 'shed',
+        id: 'charger', name: 'Futurehome', binaryControl: { on: true }, currentState: 'on', plannedState: 'shed',
         controlModel: 'stepped_load', steppedLoadProfile: steppedProfile, selectedStepId: 'max',
         desiredStepId: 'medium', plannedShedStepId: 'medium', reason: { code: 'capacity' },
       });
@@ -1271,10 +1270,9 @@ describe('native stepped-load wiring', () => {
 
   it('refuses a busy charger before reading its action metadata', async () => {
     const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
-      id: 'charger', name: 'Zaptec', class: 'evcharger', driverId: 'homey:app:com.zaptec:go2',
-      data: { id: 'zaptec-id', installationId: 'installation' },
-      capabilities: ['available_installation_current'],
-      capabilitiesObj: { available_installation_current: { value: 16, setable: false } },
+      id: 'charger', name: 'Futurehome', class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger',
+      settings: { currentLimit: 16 },
+      capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
     };
     const values = new Map<string, unknown>();
     const settings = {
@@ -1294,7 +1292,7 @@ describe('native stepped-load wiring', () => {
     }));
     try {
       await control.access.save({ key: 'private-key' });
-      await control.save('charger', { method: 'built_in', confirmation: 'single_charger' });
+      await control.save('charger', { method: 'built_in', confirmation: 'none' });
       vi.spyOn(control.access, 'isActionInFlight').mockReturnValue(true);
       const failure = await control.writeCurrent(device, 10, vi.fn()).catch((error: unknown) => error);
       expect(failure).toBeInstanceOf(SteppedLoadTransportError);

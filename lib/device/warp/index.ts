@@ -149,6 +149,7 @@ export const warpAdapter: DeviceAdapter = {
       actionId: 'wb_set_current',
       scope: { kind: 'charger' },
       sharesInstallation: () => false,
+      supportsAppAction: true,
       currentArguments: (currentA) => ({ current: currentA }),
     }] : [],
 };

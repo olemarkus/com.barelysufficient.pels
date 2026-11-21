@@ -7,7 +7,7 @@ const access: ChargingAccessStatus = { configured: true, state: 'ready' };
 const car: ChargingCurrentRead = {
   deviceId: 'car', name: 'Family car', scope: 'vehicle',
   setup: { method: 'built_in', confirmation: 'none' },
-  capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [],
+  supportsAppAction: true, capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [],
   currentRoute: 'built_in', missingCompanion: 'none',
 };
 const confirmed: ChargingCurrentRead = { ...car, setup: { ...car.setup, confirmation: 'vehicle' } };

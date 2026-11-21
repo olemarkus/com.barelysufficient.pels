@@ -16,6 +16,7 @@ export function resolveChargingCurrentAction(
   currentA: number,
 ): HomeyFlowAction {
   if (!Number.isInteger(currentA) || currentA < 6 || currentA > 32) throw new Error('Charging current must be 6–32 A.');
+  if (!adapter.supportsAppAction) throw new Error('The device does not support built-in current actions.');
   const action = resolveDeviceActionCard(readFlowActionCardIds(inventory), adapter.appUri, {
     deviceId: adapter.deviceId, actionId: adapter.actionId, args: adapter.currentArguments(currentA),
   });

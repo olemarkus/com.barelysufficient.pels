@@ -242,7 +242,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars());
     chargingApi.mockResolvedValue([{
       deviceId: charger.id, name: charger.name, setup: { method: 'flow', confirmation: 'none' },
-      capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+      supportsAppAction: true, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
       flowCheck: 'clear', flowNames: [], currentRoute: 'flow',
     }]);
     await recommendations.loadRecommendationData();
@@ -307,7 +307,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars());
     chargingApi.mockResolvedValue([{
       deviceId: charger.id, name: charger.name, setup: { method: 'flow', confirmation: 'none' },
-      capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+      supportsAppAction: true, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
       flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none',
     }]);
     await recommendations.loadRecommendationData();
@@ -379,7 +379,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars());
     chargingApi.mockResolvedValue([{
       deviceId: charger.id, name: charger.name, setup: { method: 'built_in', confirmation: 'single_charger' },
-      capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+      supportsAppAction: true, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
       flowCheck: 'conflict', flowNames: ['Existing charging Flow'], currentRoute: 'flow',
     }]);
     await recommendations.loadRecommendationData();
@@ -1753,7 +1753,7 @@ it.each(['failed_read', 'tab_revisit'] as const)('refreshes charging recommendat
     const callsBeforeRetry = chargingApi.mock.calls.length;
     chargingApi.mockResolvedValue([{ deviceId: 'device-1', name: 'Garage',
       setup: { method: 'built_in', confirmation: 'single_charger' },
-      scope: 'installation', capabilityWritable: true, sharedInstallation: false,
+      scope: 'installation', supportsAppAction: true, capabilityWritable: true, sharedInstallation: false,
       flowCheck: 'conflict', flowNames: ['Current bridge'], currentRoute: 'flow' }]);
     document.dispatchEvent(scenario === 'failed_read'
       ? new Event('devices-updated')

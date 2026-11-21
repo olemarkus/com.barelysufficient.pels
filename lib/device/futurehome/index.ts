@@ -50,6 +50,7 @@ export const futurehomeAdapter: DeviceAdapter = {
     actionId: 'currentLimit',
     scope: { kind: 'charger' },
     sharesInstallation: () => false,
+    supportsAppAction: true,
     currentArguments: (currentA) => ({ value: currentA }),
   }] : [],
   createSession: () => new FuturehomeChargerSession(),

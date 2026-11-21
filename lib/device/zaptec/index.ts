@@ -31,6 +31,7 @@ export const zaptecAdapter: DeviceAdapter = {
       actionId: match[1] === 'go' ? 'installation_current_control' : `${match[1]}_installation_current_control`,
       scope: { kind: 'installation', installationId },
       sharesInstallation: (other) => zaptecInstallationOf(other) === installationId,
+      supportsAppAction: false,
       currentArguments: (currentA) => ({ current1: currentA, current2: currentA, current3: currentA }),
     }];
   },

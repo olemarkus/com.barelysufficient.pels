@@ -321,6 +321,7 @@ export class ChargingCurrentControl {
         deviceId: device.id, name: device.name, setup: this.setup(device.id),
         scope: adapter.scope.kind,
         capabilityWritable: adapter.current.kind === 'capability' && adapter.current.writable,
+        supportsAppAction: adapter.supportsAppAction,
         sharedInstallation: hasSharedChargingInstallation(adapter, devices),
         flowCheck,
         flowNames: [...names.values()],
@@ -358,6 +359,9 @@ export class ChargingCurrentControl {
     if (device.scope === 'installation' && (setup.confirmation !== 'single_charger' || device.sharedInstallation)) {
       throw new Error('Built-in current control requires a single-charger installation.');
     }
+    if (!device.capabilityWritable && !device.supportsAppAction) {
+      throw new Error('Update the charger app or use a Flow to set charging current.');
+    }
     if (!device.capabilityWritable && this.access.status().state !== 'ready') {
       throw new Error('Check the Homey API key before enabling built-in control.');
     }
@@ -381,6 +385,9 @@ export class ChargingCurrentControl {
     if (adapter.current.kind === 'capability' && adapter.current.writable) {
       await setCapability(adapter.current.capabilityId, currentA);
       return 'native_capability';
+    }
+    if (!adapter.supportsAppAction) {
+      throw new Error('Update the charger app or use a Flow to set charging current.');
     }
     // Refuse a busy device before reading the action metadata: the next plan
     // rebuild asks again, and each ask must stay local until the earlier action answers.

@@ -2,7 +2,7 @@ import { chargingRecommendations } from '../src/ui/chargingRecommendations.ts';
 import type { ChargingCurrentRead } from '../../contracts/src/chargingControl.ts';
 const device: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage', setup: {
   method: 'flow', confirmation: 'none',
-}, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+}, supportsAppAction: true, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
 flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
 
 test('recommends a key and offers no Flow to a charger nothing controls', () => {
@@ -35,7 +35,7 @@ test('a selected built-in route held back by a Flow says it is paused without as
   expect(recommendation?.body).not.toContain('explicitly choose built-in control');
 });
 test('a writable capability does not prompt for a key', () => {
-  const [recommendation] = chargingRecommendations([{ ...device, capabilityWritable: true }], { configured: false, state: 'not_configured' });
+  const [recommendation] = chargingRecommendations([{ ...device, supportsAppAction: true, capabilityWritable: true }], { configured: false, state: 'not_configured' });
   expect(recommendation?.body).not.toContain('key');
 });
 test('shared installations retain Flow control without a built-in recommendation', () => {
@@ -63,4 +63,23 @@ test('missing vehicle consent links directly to its charging setup', () => {
     actionLabel: 'Finish charging setup',
     target: { kind: 'device', deviceId: car.deviceId, focus: 'charging-control' },
   });
+});
+
+test('a capability-only read-only charger gets update guidance even with a saved key', () => {
+  const [recommendation] = chargingRecommendations([{ ...device, supportsAppAction: false }], { configured: true, state: 'ready' });
+  expect(recommendation?.body).toContain('Update the charger’s app');
+  expect(recommendation?.body).toContain('use a Flow');
+  expect(recommendation?.body).not.toContain('key');
+});
+
+test('a retired read-only built-in route does not ask to remove its available Flow', () => {
+  const [recommendation] = chargingRecommendations([{ ...device, supportsAppAction: false,
+    setup: { method: 'built_in', confirmation: 'single_charger' }, flowCheck: 'conflict' }], { configured: true, state: 'ready' });
+  expect(recommendation?.body).toContain('Update the charger’s app');
+  expect(recommendation?.body).not.toContain('Remove');
+});
+
+test('a selected Flow on a capability-only charger needs no setup nudge', () => {
+  expect(chargingRecommendations([{ ...device, supportsAppAction: false, flowCheck: 'conflict' }],
+    { configured: true, state: 'ready' })).toEqual([]);
 });

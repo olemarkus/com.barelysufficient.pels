@@ -123,7 +123,7 @@ describe('Choose what PELS does', () => {
   it('keeps the saved solar choice while directing a car to its missing consent', async () => {
     let carSetup: ChargingCurrentRead = {
       deviceId: 'charger', name: 'Family car', scope: 'vehicle',
-      setup: { method: 'built_in', confirmation: 'none' }, capabilityWritable: false,
+      setup: { method: 'built_in', confirmation: 'none' }, supportsAppAction: true, capabilityWritable: false,
       sharedInstallation: false, flowCheck: 'clear', flowNames: [],
       currentRoute: 'built_in', missingCompanion: 'none',
     };

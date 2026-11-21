@@ -14,7 +14,7 @@ for (const width of [320, 480]) {
           let saveAttempts = 0;
           let conflict = true;
           const charger = { deviceId: 'charging-test', name: 'Garage charger', setup,
-            capabilityWritable: false, scope: 'installation',
+            supportsAppAction: true, capabilityWritable: false, scope: 'installation',
             sharedInstallation: false, flowCheck: 'conflict', flowNames: ['Current bridge'] };
           (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
             settings: {

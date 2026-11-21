@@ -92,6 +92,7 @@ export const wallboxAdapter: DeviceAdapter = {
     actionId: 'change_ampere',
     scope: { kind: 'charger' },
     sharesInstallation: () => false,
+    supportsAppAction: true,
     currentArguments: (currentA) => ({ ampere: currentA }),
   }] : [],
 };
