@@ -2,7 +2,7 @@ import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
 import type { SoleMeterAdoptionCensus } from '../../power/soleMeterAdoption';
-import { resolveSoleMeterAdoptionCandidate } from '../soleCumulativeMeter';
+import { resolveSoleCumulativeMeter, resolveSoleMeterAdoptionCandidate } from '../soleCumulativeMeter';
 import { DEVICES_API_PATH, getEnergyLiveReport, getRawDevices } from './managerHomeyApi';
 
 const moduleLogger = getLogger('device/sole-meter-census');
@@ -22,7 +22,9 @@ const holdsDeviceRecords = (rawDevices: Record<string, unknown> | unknown[]): bo
  * all (empty, or a keyed error body) — a home whose live report names a
  * meter has that meter as a device, so such a read is malformed or
  * transient, never evidence that no other meter exists. The census arms are
- * `resolveSoleMeterAdoptionCandidate`'s own.
+ * `resolveSoleMeterAdoptionCandidate`'s own. The registry only corroborates
+ * a sole live meter, so it is read only when the report names one: a census
+ * repeated while no meter is there reads the report alone.
  */
 export async function censusSoleMeterAdoptionCandidate(
   readExcluded: () => ReadonlySet<string> | null,
@@ -30,6 +32,10 @@ export async function censusSoleMeterAdoptionCandidate(
   try {
     const report = await getEnergyLiveReport();
     if (report === null) return { state: 'unavailable' };
+    const excludedForReport = readExcluded();
+    if (excludedForReport === null) return { state: 'unavailable' };
+    const live = resolveSoleCumulativeMeter(report, excludedForReport);
+    if (live.state !== 'resolved') return live;
     const devices = await getRawDevices(DEVICES_API_PATH);
     if (!holdsDeviceRecords(devices)) return { state: 'unavailable' };
     // Area ownership may have changed while the Homey reads were in flight.

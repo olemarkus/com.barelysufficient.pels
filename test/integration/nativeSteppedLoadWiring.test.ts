@@ -63,6 +63,7 @@ import { withFixtureResidualKw } from '../utils/planTestUtils';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { FlowActionCardInventory } from '../../lib/device/flowActionCardInventory';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -1136,7 +1137,7 @@ describe('native stepped-load wiring', () => {
     const logger = createLogger();
     const control = new ChargingCurrentControl(settings, new HomeyActionAccess({ settings,
       api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
-    }, logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
+    }, logger), new FlowActionCardInventory(logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
     createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
       headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),
@@ -1285,7 +1286,7 @@ describe('native stepped-load wiring', () => {
     const logger = createLogger();
     const control = new ChargingCurrentControl(settings, new HomeyActionAccess({ settings,
       api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
-    }, logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
+    }, logger), new FlowActionCardInventory(logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
     createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
       headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),

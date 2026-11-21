@@ -550,13 +550,13 @@ export class DeviceTransport {
         meterDeviceId: string,
         ownerChoice: MainFusePhaseCapabilities | null,
     ): Promise<MeterPhasesRead> {
-        const polledRead = this.snapshotStore.polledMeters.take(meterDeviceId, Date.now());
+        const polledRead = this.snapshotStore.polledMeters.take('phases', meterDeviceId, Date.now());
         const identify = (device: HomeyDeviceLike) => this.reader.applyDeviceDriverOverride(device);
         return readMeterPhases(meterDeviceId, ownerChoice, identify, polledRead);
     }
     /** The month peak a home's meter reports itself (`readMeterMonthlyPeak`). */
     readMeterMonthlyPeak = (id: string): Promise<MeterMonthlyPeakRead> =>
-        readMeterMonthlyPeak(id, (device) => this.reader.applyDeviceDriverOverride(device));
+        readMeterMonthlyPeak(id, (d) => this.reader.applyDeviceDriverOverride(d), this.snapshotStore.polledMeters);
     /**
      * Gross PV production for the flow source's companion poll
      * (`GenerationPollSource`) — a PURE READ that discriminates a missing

@@ -182,6 +182,26 @@ describe('zone tree fetch riding the snapshot refresh', () => {
     }
   });
 
+  it('reads the tree on a full refresh, not on a targeted one', async () => {
+    const heater = new MockDevice('dev1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
+    const get = vi.spyOn(mockHomeyInstance.api, 'get');
+    const zoneReads = (): number => get.mock.calls.filter(([path]) => path === 'manager/zones/zone').length;
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
+    await refreshAndSettleZones(transport);
+    expect(zoneReads()).toBe(1);
+
+    await transport.refreshSnapshot({ meterDeviceIds: [], targetedRefresh: true });
+    await settleDetachedZoneFetches();
+    expect(zoneReads()).toBe(1);
+    expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+
+    await refreshAndSettleZones(transport);
+    expect(zoneReads()).toBe(2);
+  });
+
   it('normalizes a good payload into the typed tree', async () => {
     setMockZones({
       z1: { id: 'z1', name: 'Home', parent: null },

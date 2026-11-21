@@ -10,6 +10,7 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { FlowActionCardInventory } from '../../lib/device/flowActionCardInventory';
 
 const selected: ChargingCurrentSetup = { method: 'built_in', confirmation: 'single_charger' };
 const zaptec = (writable = false): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'charger', name: 'Zaptec', class: 'evcharger',
@@ -28,7 +29,7 @@ function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesSt
   const logger = { structuredLog: getLogger('test') };
   const homeyAccess = new HomeyActionAccess({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
     cloud: { getHomeyId: async () => 'test' } }, logger);
-  const control = new ChargingCurrentControl(settings, homeyAccess, logger, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
+  const control = new ChargingCurrentControl(settings, homeyAccess, new FlowActionCardInventory(logger), logger, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
   deviceControlSettingsFixture({ devicePowerControlModes: { charger: 'automatic' } }));
   const access = control.access;
   return { inventory, control, access, get, values, flowWritesStore };
@@ -207,6 +208,36 @@ test('a Futurehome charger runs its own current-limit action with no capability 
   expect(capabilityWrite).not.toHaveBeenCalled();
   expect(String(fetchMock.mock.calls[1]![0])).toContain('homey%3Adevice%3Afuturehome%3AcurrentLimit');
   expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ args: { value: 10 } });
+});
+
+test('current actions reuse one card inventory read, and a missing card reads it once more after a minute', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    const { control, access, get } = fixture(futurehome());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
+      .mockResolvedValue(response({ error: null })));
+    await access.save({ key: 'private-key' });
+    await control.save('futurehome', { method: 'built_in', confirmation: 'none' });
+    const cardReads = () => get.mock.calls.filter(([path]) => path === 'manager/flow/flowcardaction').length;
+    // The app is still starting and has not registered its card yet.
+    get.mockResolvedValue([]);
+    await expect(control.writeCurrent(futurehome(), 10, vi.fn())).rejects.toThrow('unavailable in Homey');
+    expect(cardReads()).toBe(1);
+
+    get.mockResolvedValue([{ id: 'homey:device:futurehome:currentLimit' }]);
+    vi.setSystemTime(Date.now() + 30_000);
+    await expect(control.writeCurrent(futurehome(), 10, vi.fn())).rejects.toThrow('unavailable in Homey');
+    expect(cardReads()).toBe(1);
+    vi.setSystemTime(Date.now() + 30_000);
+    await expect(control.writeCurrent(futurehome(), 10, vi.fn())).resolves.toBe('homey_action');
+    expect(cardReads()).toBe(2);
+
+    await control.writeCurrent(futurehome(), 12, vi.fn());
+    await control.writeCurrent(futurehome(), 14, vi.fn());
+    expect(cardReads()).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('a Futurehome current-limit action in a Flow blocks built-in control', async () => {

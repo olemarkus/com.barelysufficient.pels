@@ -292,11 +292,13 @@ describe('runSoleMeterAdoption', () => {
 
   it('gives up for this boot after the retry ladder when no meter ever appears, writing nothing', async () => {
     vi.useFakeTimers();
-    const { report } = stubCensus({ items: [] });
+    const { report, devices } = stubCensus({ items: [] });
     const homey = makeHomey({});
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(report.calls()).toBe(10);
+    // The registry only corroborates a sole live meter: with none, it is never read.
+    expect(devices.calls()).toBe(0);
     expect(homey.settings.get('power_source')).toBeNull();
     expect(timers.has('soleMeterAdoption')).toBe(false);
   });

@@ -20,7 +20,7 @@ import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyFlowAction } from '../../lib/device/transport/homeyActionAccess';
 import { HOMEY_FLOW_API_KEY } from '../../lib/device/transport/homeyActionAccess';
-import { CARD_INVENTORY_RETRY_MS } from '../../lib/device/homeBatteryAppActions';
+import { CARD_INVENTORY_RETRY_MS } from '../../lib/device/flowActionCardInventory';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import type { BatteryCommandKeepAlive } from '../../lib/ports/batteryControlOwner';
 

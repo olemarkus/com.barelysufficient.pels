@@ -2,6 +2,7 @@ import { ChargingPhaseTransport } from './chargingPhaseTransport';
 import type { EvChargingCurrentPolicy } from './evChargingCurrentLimitSettings';
 import type { CapabilityWrite } from './deviceAdapter';
 import { ChargingCurrentControl } from './chargingCurrentControl';
+import { FlowActionCardInventory } from './flowActionCardInventory';
 import { HomeBatteryAppActions } from './homeBatteryAppActions';
 import type { DeviceHomeySdk } from './transport/deviceHomeySdk';
 import { HomeyActionAccess } from './transport/homeyActionAccess';
@@ -13,7 +14,8 @@ import type { Logger } from '../utils/types';
  * The owner's Homey API key with the one runner of every app action card
  * (`HomeyActionAccess`), and the two owners that run actions on it: the
  * charging-current control and the home-battery action host
- * (`HomeBatteryAppActions`). The device transport builds them once and hands
+ * (`HomeBatteryAppActions`), all resolving their cards against one
+ * `FlowActionCardInventory`. The device transport builds them once and hands
  * the same ones to its snapshot reads and its writes.
  */
 export type HomeyActionOwners = {
@@ -34,14 +36,16 @@ export const createHomeyActionOwners = (
   options: Pick<DeviceTransportOptions, 'acceptedFlowWrites' | 'settings'>,
 ): HomeyActionOwners => {
   const access = new HomeyActionAccess(deviceSdk.runtime, logger);
+  const cardInventory = new FlowActionCardInventory(logger);
   const batteryAppActions = new HomeBatteryAppActions(
     access,
+    cardInventory,
     (deviceId) => snapshotStore.getTrackedRawDevice(deviceId),
     () => snapshotStore.getLatestRawDevices(),
     logger,
   );
   const chargingCurrentControl = new ChargingCurrentControl(
-    deviceSdk.runtime.settings, access, logger,
+    deviceSdk.runtime.settings, access, cardInventory, logger,
     () => snapshotStore.getLatestRawDevices(),
     () => {
       const health = deviceSdk.getHealth();
@@ -51,7 +55,7 @@ export const createHomeyActionOwners = (
   );
   return { access, batteryAppActions, chargingCurrentControl,
     createChargingPhaseTransport: (pause, currentPolicy, writeCapability) => new ChargingPhaseTransport(
-      snapshotStore, options.settings, access, pause, currentPolicy, writeCapability,
+      snapshotStore, options.settings, access, cardInventory, pause, currentPolicy, writeCapability,
     ),
   };
 };
