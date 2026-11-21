@@ -27,8 +27,10 @@ export async function sendWithTemperatureWriteEvidence(
   } catch (error) {
     const { targetCommandId } = getCurrentContext();
     if (isHomeyRequestTimeout(error) && typeof targetCommandId === 'string'
-      && previousTarget !== command.value && snapshots.getSnapshotByDeviceId(deviceId) !== undefined) {
-      temperature.recordTimeout(deviceId, command, targetCommandId, transactionId, Date.now());
+      && snapshots.getSnapshotByDeviceId(deviceId) !== undefined) {
+      temperature.recordTimeout(
+        deviceId, command, targetCommandId, transactionId, Date.now(), previousTarget !== command.value,
+      );
     }
     throw error;
   }

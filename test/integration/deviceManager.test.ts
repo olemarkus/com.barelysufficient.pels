@@ -5468,6 +5468,26 @@ describe('DeviceTransport', () => {
                 ]);
             });
 
+            it('keeps the timeout echo of an attempted write to the already observed setpoint', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.init();
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                const timeout = new HomeyRequestTimeoutError('PUT', '/target_temperature');
+                mockApiPut.mockRejectedValueOnce(timeout);
+                const targetCommandId = 'same-setpoint-attempt';
+                await expect(runWithContext({ targetCommandId }, () => (
+                    deviceManager.requestTemperatureTarget('dev1', 20)
+                ))).rejects.toBe(timeout);
+
+                const transactionId = ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature');
+                await emitCapability('dev1', 'target_temperature', 20, transactionId);
+                expect(logCapture.findEvent('target_command_echoed_after_timeout')).toMatchObject({
+                    deviceId: 'dev1', targetCommandId, transactionId,
+                });
+                await emitCapability('dev1', 'target_temperature', 20);
+                expect(logCapture.findEvent('target_command_observed_after_timeout')).toBeUndefined();
+            });
+
             it('recognises the echo of its own write however late Homey sends it', async () => {
                 vi.useFakeTimers();
                 try {

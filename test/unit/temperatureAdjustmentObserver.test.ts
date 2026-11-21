@@ -56,10 +56,9 @@ describe('timed-out temperature command evidence', () => {
     try {
       const observer = new TemperatureAdjustmentObserver();
       const attempt = observer.recordCommand('heater', 18, 0);
-      observer.recordTimeout('heater', attempt, 'attempt', 'transaction', 15_000);
+      observer.recordTimeout('heater', attempt, 'attempt', 'transaction', 15_000, true);
       if (caseName === 'superseded') {
         observer.recordCommand('heater', 18, 20_000);
-        observer.recordTimeout('heater', attempt, 'attempt', 'transaction', 21_000);
       }
       if (caseName === 'removed') observer.retainDevices(new Set());
       observer.observeTimedOutCommand({
@@ -69,6 +68,26 @@ describe('timed-out temperature command evidence', () => {
         reportedAtMs: caseName === 'expired' ? CONTROL_COMMAND_CONFIRMATION_MS : 22_000,
       });
       expect(logs.findEvent('target_command_observed_after_timeout')).toBeUndefined();
+    } finally {
+      logs.restore();
+    }
+  });
+
+  it('matches an exact late echo after a newer command times out', () => {
+    const logs = captureLogger('info', []);
+    try {
+      const observer = new TemperatureAdjustmentObserver();
+      const first = observer.recordCommand('heater', 18, 0);
+      observer.recordTimeout('heater', first, 'first', 'tx-1', 15_000, true);
+      const retry = observer.recordCommand('heater', 18, 30_000);
+      observer.recordTimeout('heater', retry, 'retry', 'tx-2', 45_000, true);
+
+      observer.observeTimedOutEcho('heater', 'tx-1', 46_000);
+      expect(logs.findEvent('target_command_echoed_after_timeout')).toMatchObject({
+        targetCommandId: 'first', transactionId: 'tx-1',
+      });
+      observer.observeTimedOutEcho('heater', 'tx-1', CONTROL_COMMAND_CONFIRMATION_MS);
+      expect(logs.findEvents('target_command_echoed_after_timeout')).toHaveLength(1);
     } finally {
       logs.restore();
     }
