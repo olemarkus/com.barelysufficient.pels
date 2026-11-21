@@ -140,11 +140,11 @@ function simulateZaptec(charger: MockDevice) {
   };
 }
 
-/** The 1.10.4 app action changes cloud current; its poll reports the new limit. */
+/** A writable installation-current command takes effect before the next poll. */
 function simulateCurrentOnlyZaptec(charger: MockDevice) {
   let limitA = 32;
   let charging = true;
-  const currentActions: Array<{ current1: number; current2: number; current3: number }> = [];
+  const currentWrites: number[] = [];
   const report = (capability: string, value: unknown) => {
     charger.setActualCapabilityValue(capability, value, { emitDeviceUpdate: false });
   };
@@ -154,31 +154,14 @@ function simulateCurrentOnlyZaptec(charger: MockDevice) {
     report('charge_mode', charging ? 'Charging' : 'Charging finished');
     report('measure_power', charging ? limitA * GRID_WATTS_PER_AMP : 0);
   }, 30_000);
-  const responseHeaders: Record<string, string> = {
-    'content-type': 'application/json', 'x-homey-id': 'mock-homey-id',
-  };
-  const response = (body: unknown) => ({
-    ok: true, status: 200,
-    headers: { get: (name: string) => responseHeaders[name.toLowerCase()] ?? null },
-    json: async () => body,
-  });
-  const fetch = vi.fn(async (_url: unknown, options?: { method?: string; body?: string }) => {
-    if (options?.method === 'POST') {
-      const { args } = JSON.parse(options.body ?? '{}') as {
-        args: { current1: number; current2: number; current3: number };
-      };
-      currentActions.push(args);
-      limitA = args.current1;
-      return response({ error: null });
-    }
-    return response({ intersectedScopes: ['homey.flow'] });
-  });
-  vi.stubGlobal('fetch', fetch);
   const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
   const put = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path, body) => {
     await originalPut(path, body);
-    if (path === pathFor('charging_button') && body && typeof body === 'object' && 'value' in body) {
-      charging = body.value === true;
+    const value = body && typeof body === 'object' && 'value' in body ? body.value : undefined;
+    if (path === pathFor('charging_button') && typeof value === 'boolean') charging = value;
+    if (path === pathFor('available_installation_current') && typeof value === 'number') {
+      currentWrites.push(value);
+      limitA = value;
     }
   });
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
@@ -189,13 +172,12 @@ function simulateCurrentOnlyZaptec(charger: MockDevice) {
       } }],
     };
     if (path === 'manager/flow/flow/' || path === 'manager/flow/advancedflow/') return {};
-    if (path === 'manager/flow/flowcardaction') return [{ id: 'homey:app:com.zaptec:go2_installation_current_control' }];
     const data = { id: ID, installationId: 'zaptec-installation' };
     if (path === 'manager/devices/device') return { [ID]: { ...charger.toHomeyApiDevice(), data } };
     if (path === `manager/devices/device/${ID}`) return { ...charger.toHomeyApiDevice(), data };
     return originalGet(path);
   });
-  return { currentActions, fetch, get, put };
+  return { currentWrites, get, put };
 }
 
 describe('Zaptec legacy current and native watt control at the SDK boundary', () => {
@@ -217,8 +199,9 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     vi.useRealTimers();
   });
 
-  it('keeps the shipped current-only charger on its installation-current action despite an Automatic preference', async () => {
+  it('uses the writable current capability without a key despite an Automatic preference', async () => {
     const charger = await buildCharger(buildZaptecCurrentOnlyDevice());
+    charger.setCapabilityMetadata('available_installation_current', { setable: true });
     const simulation = simulateCurrentOnlyZaptec(charger);
     const savedConfig = { [ID]: { enabled: true, preset: 'ev_charger_3_phase', max: 22080 } };
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -235,7 +218,6 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     mockHomeyInstance.settings.set('charging_current_control', {
       [ID]: { method: 'built_in', confirmation: 'single_charger' },
     });
-    mockHomeyInstance.settings.set('_homey_flow_api_key', 'test-key');
 
     await createApp().onInit();
     const initial = await api.ui_devices({ homey: mockHomeyInstance as never });
@@ -243,21 +225,14 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     expect(device?.automaticPowerControl).toBeUndefined();
     expect(device?.targetPowerConfig?.preset).toBe('ev_charger_3_phase');
     await vi.advanceTimersByTimeAsync(125_000);
-    await drainUntil(() => simulation.currentActions.length > 0);
-    expect(simulation.get).toHaveBeenCalledWith('manager/flow/flowcardaction');
-    for (const command of simulation.currentActions) {
-      expect(command.current1).toBeGreaterThanOrEqual(6);
-      expect(command.current1).toBeLessThanOrEqual(32);
-      expect(command.current2).toBe(command.current1);
-      expect(command.current3).toBe(command.current1);
+    await drainUntil(() => simulation.currentWrites.length > 0);
+    expect(simulation.get).not.toHaveBeenCalledWith('manager/flow/flowcardaction');
+    for (const currentA of simulation.currentWrites) {
+      expect(currentA).toBeGreaterThanOrEqual(6);
+      expect(currentA).toBeLessThanOrEqual(32);
     }
-    expect(simulation.fetch.mock.calls.some(([url, options]) => (
-      String(url).includes(encodeURIComponent('homey:app:com.zaptec:go2_installation_current_control'))
-      && options?.method === 'POST'
-    ))).toBe(true);
     expect(simulation.put).not.toHaveBeenCalledWith(pathFor('target_power'), expect.anything());
     expect(simulation.put).not.toHaveBeenCalledWith(pathFor('target_power_mode'), expect.anything());
-    expect(simulation.put).not.toHaveBeenCalledWith(pathFor('available_installation_current'), expect.anything());
     expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS)).toEqual(savedConfig);
     expect(mockHomeyInstance.settings.get(DEVICE_POWER_CONTROL_MODES)).toEqual({ [ID]: 'automatic' });
   });
