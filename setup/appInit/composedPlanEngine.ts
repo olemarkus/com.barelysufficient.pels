@@ -56,6 +56,8 @@ export type PlanEngineComposition = {
     | 'getPendingInverterReleaseCount'
     | 'handleConfirmedBinaryCommand'
     | 'retainContestedCommands'
+    | 'observeRelayShed'
+    | 'getRelayShedNoAck'
     | 'getObservationRevision'
     | 'syncStorageCommands'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
@@ -164,8 +166,16 @@ export class ComposedPlanEngine implements PlanEngine {
     return prunePendingTargetCommands(this.execution, resolveWantedPendingTargetCommands(plan));
   }
 
-  public retainContestedCommands(plan: ExecutionPlan): void {
-    this.executor.retainContestedCommands(plan);
+  public observeRelayShed(deviceId: string): void {
+    this.executor.observeRelayShed(deviceId);
+  }
+
+  public getRelayShedNoAck(deviceId: string) {
+    return this.executor.getRelayShedNoAck(deviceId);
+  }
+
+  public retainContestedCommands(plan: ExecutionPlan, observationRevisionAtBuild: number): void {
+    this.executor.retainContestedCommands(plan, observationRevisionAtBuild);
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {

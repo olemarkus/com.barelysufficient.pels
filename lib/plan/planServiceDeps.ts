@@ -46,6 +46,7 @@ type PlanServicePlanEngine = Pick<
   | 'syncStorageCommands'
   | 'prunePendingTargetCommands'
   | 'retainContestedCommands'
+  | 'observeRelayShed'
   | 'decoratePlanWithPendingTargetCommands'
   | 'hasPendingTargetCommands'
   | 'hasPendingBinaryCommands'

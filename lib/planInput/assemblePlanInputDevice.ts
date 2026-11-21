@@ -42,6 +42,7 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     carCurrentRangeUnavailable: _carCurrentRangeUnavailable,
     // Setup guidance belongs to the device status read, not planner decisions.
     powerSetupRequired: _powerSetupRequired,
+    nativeRelayMeter: _nativeRelayMeter,
     measuredPowerKw: _measuredPowerKw,
     measuredPowerIsDirectMeasurement: _measuredPowerIsDirectMeasurement,
     // Read once by the footprint producer; the planner receives the footprint.

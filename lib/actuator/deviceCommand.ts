@@ -1,3 +1,4 @@
+import type { NativeRelayBinding, NativeRelayOffResult } from '../ports/nativeRelay';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult, SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
 import type {
@@ -63,10 +64,11 @@ export type ActuatorTransport = {
   requestChargingPhaseControl: (command: import('../ports/chargingPhases').ChargingPhaseCommand) => Promise<boolean>;
   requestProductionControl: (command: import('../ports/inverterControl').InverterCommand) => Promise<void>;
   canTurnOnDevice: (deviceId: string) => boolean;
+  getNativeRelayBinding?: (deviceId: string) => NativeRelayBinding | undefined;
   requestBinaryControl: (
     deviceId: string,
     desired: boolean,
-  ) => Promise<void>;
+  ) => Promise<NativeRelayOffResult | void>;
   requestTemperatureTarget: (deviceId: string, desired: number) => Promise<number>;
   /** Resolve the exact semantic setpoint before pending/retry preflight. */
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
@@ -117,11 +119,15 @@ export type ActuatorOutcome =
     requested: true;
     kind: 'binary';
     acknowledged: true;
+    relayBinding?: string;
+    unflaggedRelay?: true;
   }
+  | ({ requested: true; kind: 'binary' } & Extract<NativeRelayOffResult, { acknowledged: false }>)
   | {
     requested: true;
     kind: 'binary';
     acknowledged: false;
+    reason?: never;
     err: unknown;
   }
   | {

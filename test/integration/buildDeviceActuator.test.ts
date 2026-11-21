@@ -1,3 +1,11 @@
+import type Homey from 'homey';
+import { getLogger } from '../../lib/logging/logger';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
+import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import { homeyDevice, setable } from '../helpers/homeyDevicePayload';
+import { mockHomeyInstance } from '../mocks/homey';
+import { partialDouble } from '../helpers/partialDouble';
 import { describe, expect, it, vi } from 'vitest';
 import { buildDeviceActuator } from '../../setup/appInit/buildDeviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
@@ -93,5 +101,63 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       value: 5,
     })).resolves.toEqual({ requested: false });
     expect(applyDeviceTargets).not.toHaveBeenCalled();
+  });
+});
+
+describe('native metered relay OFF through the actuator', () => {
+  const id = 'metered-relay';
+  const command = { kind: 'binary', deviceId: id, desired: false } as const;
+
+  async function setup(flags: string[]) {
+    const homeyApp = mockHomeyInstance as unknown as Homey.App;
+    const deviceManager = createTestDeviceTransport(homeyApp, {
+      log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test/relay-off'),
+    });
+    const relay = homeyDevice({ id, name: 'Metered switch', class: 'socket', flags },
+      { onoff: setable(true), measure_power: 1000 }, Date.now());
+    await initWithLiveFeed(deviceManager);
+    await seedTransportDevices(deviceManager, [relay]);
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: vi.fn(), put });
+    const actuator = buildDeviceActuator(partialDouble<AppContext>({
+      deviceManager, homey: mockHomeyInstance as unknown as AppContext['homey'],
+    }));
+    if (!actuator) throw new Error('Expected a device actuator');
+    return { put, actuator, relay };
+  }
+
+  it.each([true, false])('records the accepting native binding and its Z-Wave evidence (flag present: %s)', async (zwave) => {
+    const { actuator, relay, put } = await setup(zwave ? ['zwave'] : []);
+    expect(actuator.getNativeRelayBinding?.(id)).toEqual({ binding: relay.driverId, zwave });
+    await expect(actuator.apply(command)).resolves.toEqual({
+      requested: true, kind: 'binary', acknowledged: true, relayBinding: relay.driverId,
+      ...(zwave ? {} : { unflaggedRelay: true }),
+    });
+    expect(put).toHaveBeenCalledWith(
+      expect.stringContaining('/capability/onoff'), expect.objectContaining({ value: false }),
+    );
+  });
+
+  it('recognizes exact NO_ACK in the native OFF response even without a protocol flag', async () => {
+    const { actuator, relay, put } = await setup([]);
+    const err = new HomeyHttpStatusError(500, JSON.stringify({
+      error_description: `${'x'.repeat(240)} (TRANSMIT_COMPLETE_NO_ACK)`,
+    }));
+    put.mockRejectedValue(err);
+    await expect(actuator.apply(command)).resolves.toEqual({
+      requested: true, kind: 'binary', acknowledged: false, reason: 'zwave_no_ack', relayBinding: relay.driverId, err,
+    });
+    await expect(actuator.apply({ ...command, desired: true })).rejects.toBe(err);
+  });
+
+  it.each([
+    { error: 'Device did not answer' },
+    { error: 'TRANSMIT_COMPLETE_NO_ACK_OTHER' },
+    { error: 'Internal error', stack: '(TRANSMIT_COMPLETE_NO_ACK)' },
+  ])('preserves other write errors', async (body) => {
+    const { actuator, put } = await setup(['zwave']);
+    const err = new HomeyHttpStatusError(500, JSON.stringify(body));
+    put.mockRejectedValue(err);
+    await expect(actuator.apply(command)).rejects.toBe(err);
   });
 });

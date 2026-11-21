@@ -131,6 +131,9 @@ export function handleRealtimeDeviceUpdate(params: {
     measurePowerBecameSignificantlyPositive,
   }));
   emitDeviceObservationEvents({
+    relayMeterAdvanced: result.currentSnapshot?.binaryControl?.on === false && hasNewNativeRelayMeter(
+      priorSnapshot?.nativeRelayMeter, result.currentSnapshot.nativeRelayMeter,
+    ),
     observedControlStateChanged,
     deviceId,
     label,
@@ -149,7 +152,23 @@ export function handleRealtimeDeviceUpdate(params: {
   };
 }
 
+function hasNewNativeRelayMeter(
+  before: TransportDeviceSnapshot['nativeRelayMeter'],
+  after: TransportDeviceSnapshot['nativeRelayMeter'],
+): boolean {
+  if (!after) return false;
+  const previousWatts = before?.watts;
+  const { watts, energy } = after;
+  // The capability callback carries receipt time. A later device update can
+  // supply its source time even when that time precedes the callback.
+  const wattsAdvanced = watts !== undefined
+    && (watts.atMs > (previousWatts?.atMs ?? -Infinity)
+      || (watts.sourceDated && previousWatts?.sourceDated === false));
+  return wattsAdvanced || (energy !== undefined && energy.atMs > (before?.energy?.atMs ?? -Infinity));
+}
+
 function emitDeviceObservationEvents(params: {
+  relayMeterAdvanced: boolean;
   observedControlStateChanged: boolean;
   deviceId: string;
   label?: string;
@@ -161,6 +180,7 @@ function emitDeviceObservationEvents(params: {
   emitObservedState: (event: ObservedStateChangedEvent) => void;
 }): void {
   const {
+    relayMeterAdvanced,
     observedControlStateChanged,
     deviceId,
     label,
@@ -174,7 +194,7 @@ function emitDeviceObservationEvents(params: {
   const observedNonControlFacet = observedCapabilityIds.some((capabilityId) => (
     capabilityId === 'measure_temperature' || isStateOfChargeCapabilityId(capabilityId)
   ));
-  if (!observedControlStateChanged && !observedNonControlFacet) return;
+  if (!observedControlStateChanged && !observedNonControlFacet && !relayMeterAdvanced) return;
   const eventCursor = createObservationCursor(deviceId);
   emitObservedState({
     source: 'device_update',

@@ -120,6 +120,20 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
 });
 
 describe('resolvePendingShedRelief', () => {
+  it('withdraws only the credited dispatch named by the relay failure', () => {
+    const relay = buildPlanInputDevice({ id: 'relay', currentDrawKw: 2, binaryControl: { on: true } });
+    const noAck = { decisionAtMs: NOW - 3000, retryAtMs: NOW + 87_000 };
+    const latch: ShedPlanLatch = {
+      powerW: 4000, stepTargets: new Map(),
+      decisions: new Map([['relay', [...decided(1), ...decided(1, NOW - 1000)]]]),
+    };
+    const pending = resolvePendingShedRelief(latch, [{ ...relay, relayShedNoAck: noAck }], 4000, NOW, {}, { kind: 'capacity' });
+    expect(pending?.totalKw).toBe(1);
+    expect(pending?.held.get('relay')).toEqual(decided(1, NOW - 1000));
+    // Clearing the execution outcome after a subsequent accepted command cannot revive the old promise.
+    expect(resolvePendingShedRelief(pending!.retained, [relay], 4000, NOW + 1000, {}, { kind: 'capacity' })?.totalKw).toBe(1);
+  });
+
   it.each(['grid', 'hard_cap'] as const)('retires historical demand credit permanently under %s pressure', (pressure) => {
     const device = buildPlanInputDevice({
       id: 'heat', currentDrawKw: 6, currentTarget: 19, currentTemperature: 21,

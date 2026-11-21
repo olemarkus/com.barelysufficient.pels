@@ -235,7 +235,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     // rebuild state describes a different house.
     getOwningHomeHooks: () => ({
       pendingBinaryCommandStore: planEngine.pendingBinaryCommandStore,
-      observeIdleEvidence: planService.observeIdleEvidence.bind(planService),
+      observeDeviceEvidence: planService.observeDeviceEvidence.bind(planService),
       syncLivePlanState: planService.syncLivePlanState.bind(planService),
       hasPendingBinaryCommand: (deviceId) => (
         planEngine.hasAttributablePendingBinaryCommand(deviceId)

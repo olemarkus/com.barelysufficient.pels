@@ -82,6 +82,33 @@ describe('main fuse phase protection in the planner', () => {
     expect(planned(plan, 'on_l2')?.plannedState).toBe('keep');
   });
 
+  it('withdraws the failed phase decision and spends the available load on the same phase', async () => {
+    const state = createPlanEngineState();
+    state.currentRebuildTrigger = 'phase_pressure';
+    const stamp = Date.now();
+    const relay = load('first', 2, L1, 3);
+    const backup = load('second', 2, L1, 1);
+    const first = await buildCycle(state, [6.2, 1, 1]).buildDevicePlanSnapshot([relay, backup]);
+    expect(planned(first, 'first')?.relayShedDecision?.shedDecisionAtMs).toBe(stamp);
+    vi.setSystemTime(stamp + 1000);
+    const failed = { ...relay, relayShedNoAck: { decisionAtMs: stamp, retryAtMs: stamp + 90_000 } };
+    const next = await buildCycle(state, [6.2, 1, 1]).buildDevicePlanSnapshot([failed, backup, load('other', 2, L2, 2)]);
+    expect(planned(next, 'first')?.relayShedDecision).toEqual({ relayNoAckPosture: true });
+    expect(planned(next, 'second')?.plannedState).toBe('shed');
+    expect(planned(next, 'other')?.plannedState).toBe('keep');
+  });
+
+  it('grants repeat permission only to a relay on a phase that still needs relief', async () => {
+    const state = createPlanEngineState();
+    state.currentRebuildTrigger = 'phase_pressure';
+    const off = (id: string, footprint: PhaseFootprint) => ({
+      ...load(id, 2, footprint, 1), currentOn: false, binaryControl: { on: false },
+    });
+    const plan = await buildCycle(state, [6.2, 1, 1]).buildDevicePlanSnapshot([off('l1', L1), off('l2', L2)]);
+    expect(planned(plan, 'l1')?.relayShedDecision?.relayRecoveryMeterAtMs).toBe(Date.now());
+    expect(planned(plan, 'l2')?.relayShedDecision).toBeUndefined();
+  });
+
   it('counts a third of an all-three-phase device towards the phase', async () => {
     // L1 is 0.525 kW over, so a 3 kW three-phase load (1 kW on L1) is enough.
     const plan = await buildCycle(createPlanEngineState(), [5.7, 2, 2]).buildDevicePlanSnapshot([

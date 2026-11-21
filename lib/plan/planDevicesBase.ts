@@ -281,6 +281,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     residualKw: dev.residualKw,
     surplusTracking: dev.surplusTracking,
   };
+  const relayShedDecision = inputs.sheddingPlan.relayShedDecisions?.get(dev.id);
+  if (relayShedDecision !== undefined) loose.relayShedDecision = relayShedDecision;
   Object.assign(loose, resolveHoldDecisions(inputs, decision));
   // The power axis, only when the input device has a reading this cycle.
   Object.assign(loose, meteredCluster(dev));

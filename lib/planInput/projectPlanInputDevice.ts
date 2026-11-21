@@ -1,3 +1,4 @@
+import type { PlanInputDevice } from '../plan/planTypes';
 import { projectTemperatureDeniedDevice } from './temperatureControlDenial';
 import { resolvePlanInputDeviceFacts } from './resolvePlanInputDeviceFacts';
 import { assemblePlanInputDevice } from './assemblePlanInputDevice';
@@ -37,3 +38,11 @@ export const projectPlanInputDevice = (
   const facts = resolvePlanInputDeviceFacts(source, device, options);
   return assemblePlanInputDevice(rawDevice, device, facts);
 };
+
+/** Join this home's executor outcome after the home-scoped device set is known. */
+export const withRelayShedDelivery = (
+  devices: PlanInputDevice[], read: (id: string) => PlanInputDevice['relayShedNoAck'],
+): PlanInputDevice[] => devices.map((device) => {
+  const relayShedNoAck = read(device.id);
+  return relayShedNoAck ? { ...device, relayShedNoAck } : device;
+});

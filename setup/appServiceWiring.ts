@@ -76,7 +76,7 @@ import type { HeatingShadowCollector } from '../lib/diagnostics/heatingShadowCol
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 import {
   invalidateOwningHomeRebuildSuppression, syncOwningHomeLivePlanState, syncExternalOffHoldForObservation,
-  observeOwningHomeIdleEvidence,
+  observeOwningHomeDeviceEvidence,
 } from './appObservedControlStateRuntime';
 export { createHomeRuntimeRegistryForApp };
 
@@ -605,7 +605,7 @@ export class AppServiceWiring {
       getHomeRuntimeRegistry: () => handles.homeRuntimeRegistry,
       syncExternalOffHold: (event) => this.syncExternalOffHold(event),
       syncLivePlanState: (event) => syncOwningHomeLivePlanState(ctx, event, handles.homeRuntimeRegistry),
-      observeIdleEvidence: (deviceId) => observeOwningHomeIdleEvidence(ctx, deviceId, handles.homeRuntimeRegistry),
+      observeDeviceEvidence: (deviceId) => observeOwningHomeDeviceEvidence(ctx, deviceId, handles.homeRuntimeRegistry),
       invalidateRebuildSuppression: (deviceId) => this.invalidateRebuildSuppression(deviceId),
     });
   }

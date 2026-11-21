@@ -2,7 +2,7 @@ import { CapacityTimedRunLog } from './capacityTimedRun';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
-import type { PlanRebuildTrigger } from './planRebuildTrigger';
+import { isPowerSampleRebuild, type PlanRebuildTrigger } from './planRebuildTrigger';
 import { NO_PHASE_SHED_STATE, type PhaseShedState } from './phase/phaseShedState';
 import { ShedReliefAudit } from './shedding/shedReliefAudit';
 import { SimulatedPeriodEnergy } from './simulatedPeriodEnergy';
@@ -152,7 +152,7 @@ export type ShedRelief = {
 
 export type ShedLatchDecision = Omit<ShedRelief, 'kind'> & {
   /** Withdrawn demand retains only its historical claim on aggregate meter falls. */
-  readonly kind: ShedRelief['kind'] | 'withdrawn_demand';
+  readonly kind: ShedRelief['kind'] | 'withdrawn_demand' | 'withdrawn_no_ack';
   /** When this device's shed was decided: its credit's own window runs from here. */
   readonly decidedAtMs: number;
 };
@@ -390,6 +390,25 @@ export class PlanEngineState {
   }
 
   lastShedPlanMeasurementTs: number | null = null;
+  private lastRelayDecisionMeterAtMs = -Infinity;
+  /** The previous shed verdict must be rechecked on a measurement after this failed delivery. */
+  relayShedVerdictAfterMs?: number;
+
+  noteRelayShedNoAck(atMs: number): void {
+    this.relayShedVerdictAfterMs = Math.max(atMs, this.lastRelayDecisionMeterAtMs);
+  }
+
+  isNewRelayMeterDecision(sampledAtMs: number): boolean {
+    return isPowerSampleRebuild(this.currentRebuildTrigger) && sampledAtMs > this.lastRelayDecisionMeterAtMs;
+  }
+
+  noteRelayMeterDecision(sampledAtMs: number): void {
+    if (!this.isNewRelayMeterDecision(sampledAtMs)) return;
+    this.lastRelayDecisionMeterAtMs = sampledAtMs;
+    if (this.relayShedVerdictAfterMs !== undefined && sampledAtMs > this.relayShedVerdictAfterMs) {
+      this.relayShedVerdictAfterMs = undefined;
+    }
+  }
 
   /**
    * The pending-relief latch — see `ShedPlanLatch`. Its `decisions` are the

@@ -83,6 +83,7 @@ export type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energ
 export type TransportDeviceSnapshot =
   Omit<TargetDeviceSnapshot, 'binaryControlObservation'> & {
     binaryControlObservation?: TransportBinaryControlObservation;
+    nativeRelayMeter?: import('../../packages/contracts/src/types').NativeRelayMeter;
     measuredPowerReading?: MeteredPowerReading;
     /** Written with every `measuredPowerKw`, by the same seams. */
     measuredPowerSource?: MeasuredPowerSource;

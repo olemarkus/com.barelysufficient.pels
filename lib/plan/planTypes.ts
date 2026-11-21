@@ -562,6 +562,7 @@ type CarriedInputKey =
   | 'phaseFootprint';
 
 type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
+  relayShedDecision?: import('../planContract/executionPlan').RelayShedDecision;
   // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it
   // runs its own mode, and on every device that is not a battery. Stamped by
   // the storage stages (`attachStorageDecisions`).

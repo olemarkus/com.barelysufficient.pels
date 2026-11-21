@@ -15,6 +15,7 @@ import type { ActuatorOutcome, ActuatorTransport, DeviceCommand } from './device
  * See `notes/state-management/actuator-write-seam.md`.
  */
 export type Actuator = {
+  getNativeRelayBinding?: ActuatorTransport['getNativeRelayBinding'];
   canTurnOnDevice: (deviceId: string) => boolean;
   apply: (command: DeviceCommand) => Promise<ActuatorOutcome>;
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
@@ -25,7 +26,8 @@ const applyBinary = async (
   command: Extract<DeviceCommand, { kind: 'binary' }>,
 ): Promise<ActuatorOutcome> => {
   try {
-    await transport.requestBinaryControl(command.deviceId, command.desired);
+    const relay = await transport.requestBinaryControl(command.deviceId, command.desired);
+    if (relay) return { requested: true, kind: 'binary', ...relay };
     return { requested: true, kind: 'binary', acknowledged: true };
   } catch (err) {
     if (!isHomeyRequestTimeout(err)) throw err;
@@ -120,6 +122,7 @@ const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Pro
  * `lib/device/**` itself.
  */
 export const createDeviceActuator = (transport: ActuatorTransport): Actuator => ({
+  getNativeRelayBinding: transport.getNativeRelayBinding,
   canTurnOnDevice: (deviceId) => transport.canTurnOnDevice(deviceId),
   apply: (command) => applyCommand(transport, command),
   resolveTemperatureTarget: (deviceId, desired) => transport.resolveTemperatureTarget(deviceId, desired),

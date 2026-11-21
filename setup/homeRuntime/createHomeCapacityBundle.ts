@@ -94,7 +94,7 @@ import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
  */
 export type OwningHomeHooks = {
   pendingBinaryCommandStore: PlanEngine['pendingBinaryCommandStore'];
-  observeIdleEvidence: PlanService['observeIdleEvidence'];
+  observeDeviceEvidence: PlanService['observeDeviceEvidence'];
   syncLivePlanState: PlanService['syncLivePlanState'];
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;

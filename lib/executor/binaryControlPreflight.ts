@@ -1,3 +1,5 @@
+import type { RelayShedRecovery } from './relayShedRecovery';
+import type { PlannedBinaryCommand } from '../planContract/executionPlan';
 import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
@@ -73,6 +75,7 @@ export type BinaryControlDecision = {
    * diagnostic-only release recorder and never stamp the capacity cooldown markers.
    */
   lifecycleRelease?: boolean;
+  capacityShed?: PlannedBinaryCommand;
 };
 
 /**
@@ -80,6 +83,7 @@ export type BinaryControlDecision = {
  * context carries both under these names, so it passes itself.
  */
 type BinaryControlDeps = {
+  relayShed?: RelayShedRecovery;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   getObservedState: ObservedBinaryControlRead;
 };
@@ -92,17 +96,14 @@ export function decideBinaryControl(
   forceAgainstReleasedOpposing: boolean,
 ): BinaryControlDecision | null {
   const controlPlan = getBinaryControlPlan(snapshot);
-  const decision: BinaryControlDecision = {
-    deviceId: command.deviceId,
-    name: command.name,
-    desired: command.desired,
-    logContext: command.logContext,
-    ...(command.lifecycleRelease ? { lifecycleRelease: true } : {}),
-  };
-  if (shouldSkipBinaryControl(deps, controlPlan, decision, snapshot, forceAgainstReleasedOpposing)) {
+  if (command.capacityShed && deps.relayShed && !deps.relayShed.allowsOrdinary(command.capacityShed)
+    && !deps.relayShed.allowsRepeat(command.capacityShed)) {
+    emitExecutorDebug({ event: 'binary_command_skipped', reasonCode: 'zwave_no_ack_pacing',
+      deviceId: command.deviceId, deviceName: command.name, desired: command.desired, controlAxis: 'binary' });
     return null;
   }
-  return decision;
+  if (shouldSkipBinaryControl(deps, controlPlan, command, snapshot, forceAgainstReleasedOpposing)) return null;
+  return command;
 }
 
 function shouldSkipBinaryControl(
@@ -180,6 +181,10 @@ function shouldSkipAlreadyMatched(
   const latestObservedSnapshot = decision.lifecycleRelease === true
     ? snapshot
     : deps.getObservedState(deviceId) ?? snapshot;
+  if (decision.capacityShed && isBinaryControlled(latestObservedSnapshot)
+    && resolveBinaryCommandCurrentOn(latestObservedSnapshot) === false) {
+    return !deps.relayShed?.allowsRepeat(decision.capacityShed);
+  }
   // An opposite pending command must be superseded even when the current
   // observation already matches the new intent: the older command may still
   // materialize after this decision.

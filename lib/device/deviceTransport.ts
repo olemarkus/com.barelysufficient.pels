@@ -74,9 +74,10 @@ import {
   type SnapshotRefreshMetrics,
   type SnapshotRefreshOptions,
 } from './transport/transportTypes';
+import type { NativeRelayBinding, NativeRelayOffResult } from '../ports/nativeRelay';
 import { BinarySettleEvidenceService } from './transport/binarySettleEvidence';
 import {
-    buildBinaryCommandConfirmationSnapshot, resolveTemperatureTarget,
+    buildBinaryCommandConfirmationSnapshot, readNativeRelayBinding, requestBinaryControl, resolveTemperatureTarget,
 } from './transport/semanticControlResolution';
 import { DeviceWriteService } from './transport/deviceWrites';
 import type { ZoneTree } from './transport/managerZones';
@@ -366,9 +367,11 @@ export class DeviceTransport {
 
     private createChargingPhaseTransport(actionOwners: HomeyActionOwners): ChargingPhaseTransport {
         return actionOwners.createChargingPhaseTransport(
-            (deviceId) => this.requestBinaryControl(deviceId, false, async () => {
-                throw new Error('Charging phase hand-back requires native pause control.');
-            }),
+            async (deviceId) => {
+                await this.requestBinaryControl(deviceId, false, async () => {
+                    throw new Error('Charging phase hand-back requires native pause control.');
+                });
+            },
             (deviceId) => this.runtimeConfiguration.currentLimits.resolve(deviceId),
             async (deviceId, write) => {
                 await this.writeService.setCapability(deviceId, write.capabilityId, write.value);
@@ -465,6 +468,10 @@ export class DeviceTransport {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.snapshotStore.getSnapshot(); }
+
+    getNativeRelayBinding(deviceId: string): NativeRelayBinding | undefined {
+        return readNativeRelayBinding(this.snapshotStore, deviceId);
+    }
 
     /** Actuator preflight: writeability is resolved beside the transport binding. */
     canTurnOnDevice(deviceId: string): boolean {
@@ -626,28 +633,10 @@ export class DeviceTransport {
         deviceId: string,
         desired: boolean,
         triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
-    ): Promise<void> {
-        // `latestSnapshotById` is authoritative for a by-id read: every writer
-        // updates it in the same call that touches `latestSnapshot` (refresh
-        // rebuilds it from the array, an unparseable device.update splices and
-        // deletes, the capability-drop path does both). The `?? find` that used to
-        // sit here was a hedge against a divergence that cannot happen, and a
-        // hedging consumer is a symptom — root `AGENTS.md`.
-        const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-        const capabilityId = snapshot?.binaryCapabilityId;
-        if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);
-        // The switch PELS asked for, whatever reaches the SDK (an Easee under
-        // built-in control is paused with 0 A): a car-link stop that follows a
-        // PELS stop is PELS's, not the car's.
-        if (!desired) this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
-        if (snapshot.flowBackedCapabilityIds?.includes(capabilityId) === true) {
-            if (desired && !this.writeService.canTurnOnDevice(deviceId)) {
-                throw new Error('Device is not ready to start.');
-            }
-            await triggerFlow(deviceId, capabilityId, desired);
-            return;
-        }
-        await this.writeService.setCapability(deviceId, capabilityId, desired);
+    ): Promise<NativeRelayOffResult | void> {
+        return requestBinaryControl(
+            this.snapshotStore, this.writeService, this.observationProducers.evCarLink, deviceId, desired, triggerFlow,
+        );
     }
 
     /** Resolve the exact semantic setpoint before executor pending/retry preflight. */

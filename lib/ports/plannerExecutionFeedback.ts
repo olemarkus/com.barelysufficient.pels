@@ -9,6 +9,7 @@ export type PlannerExecutionFeedback = {
   setKeepInvariantShedBlock(deviceId: string, block: KeepInvariantShedBlock): void;
   clearKeepInvariantShedBlock(deviceId: string): void;
   noteInstability(nowMs: number): void;
+  noteRelayShedNoAck(): void;
   noteShedReleased(deviceId: string): void;
   recordActivationAttemptStarted(deviceId: string, name: string, nowMs: number): void;
   closeActivationAttemptForShed(deviceId: string, name: string, nowMs: number): void;

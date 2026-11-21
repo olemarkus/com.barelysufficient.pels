@@ -111,8 +111,21 @@ function hasDeviceControl(device: DeviceStatusInput): boolean {
 
 const TARGET_POWER_CONTROL_REFUSED_LINE = 'PELS can only turn it on and off: its app does not accept level control';
 
+function relayPowerReason(device: DeviceStatusInput): string | null {
+  if (device.execution.physicalState !== 'off') return null;
+  const evidence = device.execution.relayShedPowerEvidence;
+  if (evidence === 'awaiting_power') return 'Waiting for a power reading after switch-off';
+  if (device.currentDrawKw === undefined || device.currentDrawKw <= 0.05) return null;
+  const draw = `${device.currentDrawKw.toFixed(1)} kW`;
+  if (evidence === 'off_with_draw') return `Reports off, still drawing ${draw}`;
+  return evidence === 'post_command' || evidence === 'relieved' ? `Reported ${draw} after switch-off` : null;
+}
+
 function resolveReportedLoadReason(device: DeviceStatusInput, held: boolean, dryRun: boolean): string | null {
-  if (!held || device.currentDrawKw === undefined || device.currentDrawKw <= 0.05) return null;
+  if (!held) return null;
+  const relayEvidence = dryRun ? null : relayPowerReason(device);
+  if (relayEvidence) return relayEvidence;
+  if (device.currentDrawKw === undefined || device.currentDrawKw <= 0.05) return null;
   if (device.reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
     return resolveSurplusHoldReportedLoadText({ currentDrawKw: device.currentDrawKw, dryRun });
   }

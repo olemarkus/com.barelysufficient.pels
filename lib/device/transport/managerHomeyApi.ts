@@ -313,7 +313,7 @@ function homeyHttpRequest(
           return;
         }
         if (!res.statusCode || res.statusCode >= 400) {
-          reject(new HomeyHttpStatusError(res.statusCode, raw.slice(0, 200)));
+          reject(new HomeyHttpStatusError(res.statusCode, raw));
           return;
         }
         if (!raw.trim()) {

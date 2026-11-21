@@ -6,7 +6,7 @@ import {
   type UpdateObjectiveProfiles,
 } from '../lib/power/sampleIngest';
 import type { PlanRebuildThrottle } from '../lib/plan/rebuildScheduler/throttle';
-import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
+import { requireLastTotalPowerKw, resolveMeterEvidenceAtMs } from '../lib/power/lastTotalPower';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
@@ -312,9 +312,6 @@ export class PowerSamplePipeline {
       // on it so an unwinnable state rides the max-interval cadence instead of
       // burning ~1.4 s of CPU on every power sample (Homey's cpuwarn watchdog).
       const publishedMeta = latestPublishedPlan?.plan.meta;
-      const posture = resolvePlanRebuildPosture(
-        latestPlanSummary, planState, publishedMeta?.powerIsMeasured === true && publishedMeta.unrelievedPhase !== null,
-      );
       const capacitySettings = configuredPowerLimits(this.deps.getHeldPowerLimits());
       await recordPowerSampleForApp({
         currentPowerW,
@@ -378,7 +375,11 @@ export class PowerSamplePipeline {
               shortfallThresholdKw: planEngine.computeShortfallThreshold(),
               phaseDeficitKw: planEngine.computePhaseDeficitKw(requireLastTotalPowerKw(admittedTracker)),
             },
-            posture,
+            resolvePlanRebuildPosture(
+              latestPlanSummary, planState,
+              publishedMeta?.powerIsMeasured === true && publishedMeta.unrelievedPhase !== null,
+              resolveMeterEvidenceAtMs(admittedTracker),
+            ),
           );
         },
         saveState: (state) => this.deps.savePowerTracker(state),

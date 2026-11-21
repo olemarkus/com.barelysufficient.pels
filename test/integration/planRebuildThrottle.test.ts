@@ -57,6 +57,19 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     vi.useRealTimers();
   });
 
+  it('rechecks a steady breach on the next reading after a native shed fails, then resumes normal throttling', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const sample = { currentPowerW: 10_600, unactionable: true, shortfallUnrecoverable: true };
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache, lastRebuild: { msAgo: 10_000, reading: sample },
+    });
+    await sampleThrottle(throttle, sample);
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    await sampleThrottle(throttle, { ...sample, relayShedVerdictPending: true });
+    await sampleThrottle(throttle, sample);
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('power_sample_convergence');
+  });
+
   it('rebuilds on the first grid breach even when the capacity axis is absent and a calm plan was suppressed', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({

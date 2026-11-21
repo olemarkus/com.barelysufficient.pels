@@ -4,7 +4,7 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { subscribeObservedStateProjection } from '../../setup/appInit/wireDeviceTransport';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
-import { invalidateOwningHomeRebuildSuppression, observeOwningHomeIdleEvidence } from '../../setup/appObservedControlStateRuntime';
+import { invalidateOwningHomeRebuildSuppression, observeOwningHomeDeviceEvidence } from '../../setup/appObservedControlStateRuntime';
 import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
 import type { Mock } from 'vitest';
 import { IDLE_HOLD_MIN_DURATION_MS } from '../../lib/observer/idleDetector';
@@ -369,11 +369,11 @@ describe('PlanService', () => {
 
       if (axis === 'draw') live.currentDrawKw = 1.2;
       else live.currentTemperature = 55;
-      service.observeIdleEvidence('dev-1');
+      service.observeDeviceEvidence('dev-1');
       const first = service.syncLivePlanState('realtime_capability');
       live.currentDrawKw = 0;
       live.currentTemperature = 61.5;
-      service.observeIdleEvidence('dev-1');
+      service.observeDeviceEvidence('dev-1');
       const second = service.syncLivePlanState('realtime_capability');
       expect(first).toBe(second);
       expect(service.getStallEvidence('dev-1')).toBeUndefined();
@@ -411,7 +411,7 @@ describe('PlanService', () => {
       const ctx = createAppContextMock({ planService: service });
       subscribePlanObservedState({
         ctx, observedStateEmitter: emitter, getHomeRuntimeRegistry: () => undefined,
-        observeIdleEvidence: (id) => observeOwningHomeIdleEvidence(ctx, id, undefined),
+        observeDeviceEvidence: (id) => observeOwningHomeDeviceEvidence(ctx, id, undefined),
         syncLivePlanState: (event) => service.syncLivePlanState(event.source),
         syncExternalOffHold: vi.fn(), invalidateRebuildSuppression: vi.fn(),
       });
@@ -1776,7 +1776,7 @@ describe('PlanService', () => {
       observedStateEmitter: emitter,
       getHomeRuntimeRegistry: () => undefined,
       syncLivePlanState: () => Promise.resolve(false),
-      observeIdleEvidence: service.observeIdleEvidence.bind(service),
+      observeDeviceEvidence: service.observeDeviceEvidence.bind(service),
       syncExternalOffHold: vi.fn(),
       invalidateRebuildSuppression: (deviceId) => invalidateOwningHomeRebuildSuppression(ctx, deviceId, undefined),
     });

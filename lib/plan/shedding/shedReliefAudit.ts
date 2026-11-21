@@ -142,7 +142,7 @@ export class ShedReliefAudit {
     for (const [deviceId, decisions] of latch.decisions) {
       for (const decision of decisions) {
         const { kind } = decision;
-        if (kind !== 'withdrawn_demand') {
+        if (kind === 'demand' || kind === 'electrical') {
           this.noteDecision(deviceId, decision, kind, devicesById.get(deviceId), wholeHomeKw, nowTs);
         }
       }

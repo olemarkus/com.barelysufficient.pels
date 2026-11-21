@@ -180,6 +180,7 @@ const buildExecutableBinaryShedIntent = (dev: PlanDevice): PlannedBinaryCommand 
     deviceId: dev.id,
     name: dev.name,
     desiredOn: false,
+    ...(!isPostureHoldShed(dev) ? dev.relayShedDecision : undefined),
     // A shed never rides the managed -> unmanaged release path; that path only
     // ever turns a device back ON.
     source: 'controlled',

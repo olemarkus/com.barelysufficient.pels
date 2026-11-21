@@ -15,7 +15,7 @@ export function resolveMeasuredPowerKw(params: {
   now: number;
   measuredPowerResolver: DeviceMeasuredPowerResolver;
   powerState: ResolvedTransportPowerState;
-}): DeviceMeasuredPowerResolution {
+}): DeviceMeasuredPowerResolution & { meterEnergy?: import('./measuredPowerReader').MeterEnergyReading } {
   const {
     deviceId,
     deviceLabel,
@@ -27,18 +27,10 @@ export function resolveMeasuredPowerKw(params: {
     measuredPowerResolver,
     powerState,
   } = params;
-  const measuredPower = measuredPowerResolver.resolve({
-    deviceId,
-    deviceLabel,
-    observation: readDeviceMeasuredPowerObservation({
-      deviceId,
-      capabilities,
-      capabilityObj,
-      livePowerWByDeviceId,
-      deviceEnergyW,
-      homeyEnergyObservedAtMs: now,
-    }),
+  const observation = readDeviceMeasuredPowerObservation({
+    deviceId, capabilities, capabilityObj, livePowerWByDeviceId, deviceEnergyW, homeyEnergyObservedAtMs: now,
   });
+  const measuredPower = measuredPowerResolver.resolve({ deviceId, deviceLabel, observation });
   // Every accepted reading goes to peak learning, which applies its own
   // credibility floor (`MIN_PEAK_LEARNING_KW`): it needs the standby readings
   // too, to tell one running reading from the next.
@@ -55,5 +47,5 @@ export function resolveMeasuredPowerKw(params: {
       onPeakChanged: powerState.onLearnedPeakChanged,
     });
   }
-  return measuredPower;
+  return { ...measuredPower, meterEnergy: observation.meterEnergy };
 }

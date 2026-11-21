@@ -1,3 +1,5 @@
+import type { RelayMeterObservation } from '../ports/nativeRelay';
+import { observeRelayMeter } from './relayMeterObservation';
 import type {
   ObservedStateOfCharge,
   EvChargingState,
@@ -174,6 +176,7 @@ export function readObservedTemperatureState(
  * this port, so no consumer reaches the dispatcher-fed writes.
  */
 export type ObservedDeviceReads = {
+    getRelayShedObservation(deviceId: string): RelayMeterObservation | undefined;
     /**
      * The general observed read: the base state, and no observed cluster.
      *
@@ -305,6 +308,7 @@ type ProjectionEntry = ProjectionCursor & {
     value: ProjectedObservedDeviceState;
     drawLevels?: readonly DrawLevel[];
     switchedOffAtMs?: number;
+    relayMeter?: RelayMeterObservation;
 };
 
 /**
@@ -346,6 +350,7 @@ const MAX_DRAW_LEVELS = 64;
 function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedDeviceState {
     for (const target of value.targets) Object.freeze(target);
     Object.freeze(value.targets);
+    freezeNativeMeter(value.nativeRelayMeter);
     if (value.binaryControl) Object.freeze(value.binaryControl);
     if (value.temperature) {
         Object.freeze(value.temperature.target);
@@ -479,6 +484,10 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
      * Declared narrow (see {@link ObservedDeviceReads.getObservedState}); the
      * record it hands back is the same one {@link getObservedRecord} returns.
      */
+    getRelayShedObservation(deviceId: string): RelayMeterObservation | undefined {
+        return this.byId.get(deviceId)?.relayMeter;
+    }
+
     getObservedState(deviceId: string): ObservedDeviceState | undefined {
         return this.getObservedRecord(deviceId);
     }
@@ -588,6 +597,7 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         this.removalCursors.delete(value.id);
         this.byId.set(value.id, {
             value: freezeObserved(value), seq, observedAtMs,
+            relayMeter: observeRelayMeter(value, observedAtMs, prev?.relayMeter),
             drawLevels: trackDrawLevels(prev, value, observedAtMs),
             switchedOffAtMs: readSwitchOffAtMs(prev, value),
         });
@@ -679,4 +689,11 @@ function readLivePower(value: ProjectedObservedDeviceState): { kw: number; measu
     if (value.available === false || !hasLiveMeasuredPower(value)
         || value.measuredPowerKw === undefined || value.measuredPowerObservedAtMs === undefined) return null;
     return { kw: value.measuredPowerKw, measuredAtMs: value.measuredPowerObservedAtMs };
+}
+
+function freezeNativeMeter(meter: ProjectedObservedDeviceState['nativeRelayMeter']): void {
+    if (!meter) return;
+    Object.freeze(meter.watts);
+    Object.freeze(meter.energy);
+    Object.freeze(meter);
 }

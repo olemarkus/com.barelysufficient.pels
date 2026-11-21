@@ -26,18 +26,22 @@ import type { PlanRebuildPosture } from './rebuildScheduler/rebuildSignal';
  */
 export function resolvePlanRebuildPosture(
   summary: PlanCapacityStateSummary | null,
-  planState: PlanConvergenceState,
+  planState: PlanConvergenceState & { readonly relayShedVerdictAfterMs?: number },
   phaseNothingToLimit: boolean,
+  sampledAtMs?: number,
 ): PlanRebuildPosture {
   // An unwinnable overshoot must not count as "converging": convergence bypasses
   // the throttle's anti-storm gates, and that bypass is what let a persistent
   // 0-allowance shortfall rebuild ~1.6 s of plan on every power sample until the
   // cpuwarn watchdog killed the app. In-flight commands still win inside the helper.
+  const verdictAfterMs = planState.relayShedVerdictAfterMs;
+  const owesRelayVerdict = verdictAfterMs !== undefined && sampledAtMs !== undefined && sampledAtMs > verdictAfterMs;
   const unactionable = summary !== null && isPlanUnactionable(summary);
   return {
     planConvergenceActive: isPlanActivelyConverging(planState, { unactionable }),
     unactionable,
     shortfallUnrecoverable: summary !== null && !summary.remainingActionableControlledLoad,
     phaseNothingToLimit,
+    ...(owesRelayVerdict ? { relayShedVerdictPending: true } : {}),
   };
 }

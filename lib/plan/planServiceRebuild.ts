@@ -190,7 +190,7 @@ async function buildPlanForRebuild(
   // not read, and stamping changes only the meta's time.
   const executionPlan = buildExecutionPlan(plan);
   planEngine.prunePendingTargetCommands(plan);
-  planEngine.retainContestedCommands(executionPlan);
+  planEngine.retainContestedCommands(executionPlan, observationRevision);
   plan = planEngine.decoratePlanWithPendingTargetCommands(plan);
   return {
     plan,

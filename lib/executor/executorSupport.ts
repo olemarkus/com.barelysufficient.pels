@@ -43,6 +43,7 @@ export const shouldSkipShedding = (
   deviceId: string,
   deviceName: string,
   snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined,
+  repeatAuthorized = false,
 ): boolean => {
   const isUnavailable = snapshotState?.available === false;
   const isAlreadyOff = isBinaryObservedOff(snapshotState);
@@ -64,7 +65,7 @@ export const shouldSkipShedding = (
     });
     return true;
   }
-  if (isAlreadyOff) {
+  if (isAlreadyOff && !repeatAuthorized) {
     emitExecutorDebug({
       event: 'plan_shed_skipped',
       reasonCode: 'already_off',

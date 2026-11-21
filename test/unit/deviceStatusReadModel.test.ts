@@ -449,3 +449,17 @@ describe('Unavailable cards', () => {
     expect(status.reason).toBeNull();
   });
 });
+
+describe('power readings on a held relay', () => {
+  const held = runningPowerHold();
+  it.each([
+    ['awaiting_power', 'Waiting for a power reading after switch-off'],
+    ['post_command', 'Reported 1.2 kW after switch-off'],
+    ['relieved', 'Reported 1.2 kW after switch-off'],
+    ['off_with_draw', 'Reports off, still drawing 1.2 kW'],
+  ] as const)('describes %s under an observed OFF', (relayShedPowerEvidence, expected) => {
+    const device: DeviceStatusInput = { ...held, currentState: 'off', plannedState: 'shed',
+      execution: { ...held.execution, physicalState: 'off', relayShedPowerEvidence } };
+    expect(buildDeviceStatus(device, false, 0).reason?.text).toContain(expected);
+  });
+});
