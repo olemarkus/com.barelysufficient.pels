@@ -8,8 +8,12 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import { NativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
+import { PolledMeterReads } from './polledMeterReads';
 
 export class TransportSnapshotStore {
+  /** The Homey Energy poll's meter reads, reused by the same sample's phase read. */
+  readonly polledMeters = new PolledMeterReads();
+
   private snapshot: TransportDeviceSnapshot[] = [];
   private snapshotByDeviceId = new Map<string, TransportDeviceSnapshot>();
   private readonly trackedRawDeviceById = new Map<string, HomeyDeviceLike>();

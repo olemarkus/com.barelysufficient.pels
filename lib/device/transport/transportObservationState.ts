@@ -25,6 +25,7 @@ export class TransportObservationState {
   private readonly realtimeCapabilityEventTimesByKey = new Map<string, number>();
   private readonly binarySettleEvidenceByDeviceId = new Map<string, BinaryControlObservation>();
   private readonly pendingTemperatureRecoveryDeviceIds = new Set<string>();
+  private readonly writtenDeviceIdsSinceRead = new Set<string>();
 
   getObservationState(): DeviceTransportObservationState {
     return this.observations;
@@ -69,6 +70,18 @@ export class TransportObservationState {
     }
   }
 
+  /** A device PELS wrote, for the read that confirms the write landed. */
+  noteDeviceWritten(deviceId: string): void {
+    this.writtenDeviceIdsSinceRead.add(deviceId);
+  }
+
+  /** The devices written since the last call, which empties the set. */
+  takeWrittenDeviceIds(): string[] {
+    const ids = [...this.writtenDeviceIdsSinceRead];
+    this.writtenDeviceIdsSinceRead.clear();
+    return ids;
+  }
+
   markTemperatureRecoveryPending(deviceId: string): void {
     this.pendingTemperatureRecoveryDeviceIds.add(deviceId);
   }
@@ -89,6 +102,7 @@ export class TransportObservationState {
     this.realtimeCapabilityEventTimesByKey.clear();
     this.binarySettleEvidenceByDeviceId.clear();
     this.pendingTemperatureRecoveryDeviceIds.clear();
+    this.writtenDeviceIdsSinceRead.clear();
   }
 
   private pruneDuplicateRealtimeCapabilityEvents(nowMs: number): void {

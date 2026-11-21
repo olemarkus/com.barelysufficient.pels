@@ -34,6 +34,8 @@ import {
 } from './targetedSnapshotMerge';
 import { addPerfDuration } from '../../utils/perfCounters';
 import { countRefreshCaller, countRefreshRead } from './refreshWorkload';
+import { appendRecoveredTemperatureDevices, resolveTargetedViewIds } from './targetedReadScope';
+import type { PolledMeterReads } from './polledMeterReads';
 import { startRuntimeSpan } from '../../utils/runtimeTrace';
 import { logEvSnapshotChanges } from '../managerControl';
 import { type LiveDevicePowerWatts } from '../managerEnergy';
@@ -183,20 +185,6 @@ function resolveCommittedRefreshSnapshot(
     return snapshot;
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function appendRecoveredTemperatureDevices(
-    refresh: SnapshotRefreshService,
-    presentSnapshot: readonly TransportDeviceSnapshot[],
-    committedSnapshot: TransportDeviceSnapshot[],
-): void {
-    const pendingIds = new Set(refresh.temperatureRecovery.getPendingDeviceIds());
-    const committedIds = new Set(committedSnapshot.map((device) => device.id));
-    for (const device of presentSnapshot) {
-        if (!pendingIds.has(device.id) || committedIds.has(device.id)) continue;
-        committedSnapshot.push(device);
-    }
-}
-/* eslint-enable functional/immutable-data */
 
 /**
  * Publishes a refreshed snapshot after inventory acceptance and session resolution.
@@ -318,11 +306,12 @@ function adoptCommittedDeviceList(
 // next good read re-registered it.
 async function fetchDevicesForSnapshotRefresh(
     refresh: SnapshotRefreshService,
-    isTargetedRefresh: boolean,
+    targetedViewIds: ReadonlySet<string> | null,
 ): Promise<DeviceFetchResult | null> {
+    const isTargetedRefresh = targetedViewIds !== null;
     try {
         const result = isTargetedRefresh
-            ? await refresh.fetchDevicesByKnownIds()
+            ? await refresh.fetchDevicesByKnownIds(targetedViewIds)
             : await refresh.deviceSdk.fetchDevices();
         countRefreshRead(isTargetedRefresh, result.devices.length);
         return result;
@@ -422,11 +411,13 @@ export async function readLiveMeters(
     logger: Logger,
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
     meterDeviceIds: readonly string[],
+    polledMeters: PolledMeterReads,
 ): Promise<LiveMeterReadings | null> {
     const [report, devices] = await Promise.all([
         fetchLiveMeterReport(logger, meterDeviceIds),
         readPolledMeterDevices(meterDeviceIds),
     ]);
+    polledMeters.remember(devices.devices, Date.now());
     const readings = resolveLiveMeterReadings(setGenerationW, report, devices.importCounters);
     return readings === null || devices.removedMeterDeviceIds.length === 0
         ? readings
@@ -495,10 +486,13 @@ export class SnapshotRefreshService {
     readonly notifications: TransportNotifications,
   ) {}
 
-  fetchDevicesByKnownIds(): Promise<DeviceFetchResult> {
+  /** Read these views (by default every known one), plus tracked cars and pending recoveries. */
+  fetchDevicesByKnownIds(
+    viewIds: Iterable<string> = this.reader.snapshotStore.getSnapshot().map((device) => device.id),
+  ): Promise<DeviceFetchResult> {
     const store = this.reader.snapshotStore;
     const ids = new Set([
-      ...store.getSnapshot().map((device) => store.sourceDeviceId(device.id)),
+      ...[...viewIds].map((id) => store.sourceDeviceId(id)),
       ...this.observationProducers.evCarLink.getObservedCarDeviceIds(),
       ...this.temperatureRecovery.getPendingDeviceIds().map((id) => store.sourceDeviceId(id)),
     ]);
@@ -572,9 +566,9 @@ export class SnapshotRefreshService {
     const isTargetedRefresh = !refreshInventory && options.targetedRefresh === true && previousSnapshot.length > 0;
     // Keep request-time membership separate from the live array: realtime
     // can admit views while the read waits, including from an already-known source.
-    const targetedViewIds = isTargetedRefresh ? new Set(previousSnapshot.map((device) => device.id)) : null;
+    const targetedViewIds = resolveTargetedViewIds(this, options, previousSnapshot, isTargetedRefresh);
     const inventoryTrustEpoch = this.reader.chargingCurrentControl.trustEpoch();
-    const fetchResult = await fetchDevicesForSnapshotRefresh(this, isTargetedRefresh);
+    const fetchResult = await fetchDevicesForSnapshotRefresh(this, targetedViewIds);
     if (!fetchResult || this.stopped) return null;
     const { devices: list, fetchSource, failedIds } = fetchResult;
     const { byDeviceId: livePowerByDeviceId, meterReadings } = await resolveLivePowerForRefresh(

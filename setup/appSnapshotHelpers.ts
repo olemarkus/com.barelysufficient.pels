@@ -147,6 +147,7 @@ export class AppSnapshotHelpers implements AppSnapshotControl {
     const meterReadings = await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
+      writtenDevicesOnly: options.writtenDevicesOnly,
       // Bind the same semantic selection used by the end-of-cycle staleness
       // fence into the actual fetch. The adapter may recover or fail again
       // while this async refresh is in flight; an independent second read

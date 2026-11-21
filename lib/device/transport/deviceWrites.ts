@@ -268,6 +268,7 @@ export class DeviceWriteService {
     // The Homey device behind the view: the write and its echo are the Homey device's.
     const homeyDeviceId = this.snapshotStore.sourceDeviceId(deviceId);
     const ownWrite = this.observationState.ownWrites.begin(homeyDeviceId, write.capabilityId, Date.now());
+    this.observationState.noteDeviceWritten(deviceId);
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
         deviceId,

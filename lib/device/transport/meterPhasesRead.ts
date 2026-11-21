@@ -19,9 +19,11 @@ export async function readMeterPhases(
     meterDeviceId: string,
     ownerChoice: MainFusePhaseCapabilities | null,
     identify: IdentifyDevice,
+    /** The same sample's poll read of this meter, when there is one: it is not fetched again. */
+    polledRead?: HomeyDeviceLike,
 ): Promise<MeterPhasesRead> {
     try {
-        const parsed = parseHomeyDevicePayload(await getRawDevice(meterDeviceId));
+        const parsed = polledRead ?? parseHomeyDevicePayload(await getRawDevice(meterDeviceId));
         if (parsed === null) return { state: 'unavailable' };
         const device = identify(parsed);
         const [view] = getDeviceAdapter(device).projectRead(device);

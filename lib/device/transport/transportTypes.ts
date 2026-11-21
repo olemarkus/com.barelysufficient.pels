@@ -81,6 +81,12 @@ export type SnapshotRefreshMetrics = {
 export type SnapshotRefreshOptions = {
     includeLivePower?: boolean;
     targetedRefresh?: boolean;
+    /**
+     * A targeted read of only the devices PELS wrote since the last such read,
+     * to confirm the writes landed. With no write recorded it reads every
+     * targeted device, as a plain targeted refresh does.
+     */
+    writtenDevicesOnly?: boolean;
     /** The meters to read from the live report; the refresh returns their readings. */
     meterDeviceIds: readonly string[];
 };

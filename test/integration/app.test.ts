@@ -3257,7 +3257,7 @@ describe('periodic snapshot refresh scheduling', () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false });
+    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false, writtenDevicesOnly: true });
   });
 
   it('detaches the global post-actuation refresh from the scheduling home context', async () => {
