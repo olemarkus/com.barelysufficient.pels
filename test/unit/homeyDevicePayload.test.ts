@@ -23,6 +23,12 @@ describe('parseHomeyDevicePayload', () => {
     expect(parseHomeyDevicePayload({ ...device, flags: ['zwave', null] })?.flags).toEqual([]);
   });
 
+  it('preserves an absent protocol flags field', () => {
+    const payload = parseHomeyDevicePayload(device);
+    expect(payload).toMatchObject({ id: 'dev-1' });
+    expect(payload).not.toHaveProperty('flags');
+  });
+
   it('reads the older shape as the owner and qualified driver id', () => {
     expect(parseHomeyDevicePayload(olderShape)).toMatchObject({
       ownerUri: 'homey:app:com.tesla.car',
@@ -47,7 +53,7 @@ describe('parseHomeyDevicePayload', () => {
   });
 
   it.each([
-    ['flags', []], ['data', {}], ['settings', {}], ['energy', null], ['energyObj', null],
+    ['data', {}], ['settings', {}], ['energy', null], ['energyObj', null],
     ['virtualClass', null], ['unavailableMessage', null], ['ready', null], ['zone', ''],
   ])('keeps a device without %s, read as its empty form', (field, empty) => {
     const { [field as keyof typeof device]: _omitted, ...rest } = device;
