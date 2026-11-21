@@ -1,5 +1,8 @@
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
+import { incPerfCounter } from '../../utils/perfCounters';
+import { countRefreshCaller } from './refreshWorkload';
+import { getCapabilities } from './managerHelpers';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { SnapshotRefreshOptions } from './transportTypes';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
@@ -21,7 +24,16 @@ export class TemperatureRecoveryService {
   ) {}
 
   request(deviceId: string): void {
+    // Recovery waits for the temperature facet, which needs a setpoint. A device
+    // whose accepted read declares none can never complete it, so each of its
+    // temperature reports would otherwise start another refresh of every device.
+    // A thermostat whose setpoint reading is invalid still declares it.
+    if (!this.canHoldSetpoint(deviceId)) {
+      incPerfCounter('temperature_recovery_skipped_no_setpoint_total');
+      return;
+    }
     if (!this.state.requestTemperatureRecovery(deviceId)) return;
+    countRefreshCaller('temperature_recovery');
     void this.refreshSnapshot({
       targetedRefresh: true,
       // A recovery reads devices, not homes: the per-device live lanes still
@@ -45,6 +57,13 @@ export class TemperatureRecoveryService {
       this.state.completeTemperatureRecovery(deviceId);
       this.dispatchRecoveredTemperature(deviceId, recovered.name);
     }
+  }
+
+  private canHoldSetpoint(deviceId: string): boolean {
+    const accepted = this.snapshotStore.getLastAcceptedRawDevice(deviceId);
+    // No accepted read yet: nothing says the device lacks a setpoint.
+    if (accepted === undefined) return true;
+    return getCapabilities(accepted).includes(TARGET_TEMPERATURE_CAPABILITY_ID);
   }
 
   getPendingDeviceIds(): string[] {

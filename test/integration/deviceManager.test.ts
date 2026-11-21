@@ -5994,6 +5994,35 @@ describe('DeviceTransport', () => {
                 },
             );
 
+            it('does not start a recovery refresh for temperature reports from a device without a setpoint', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: homeyDevice({ id: 'dev1', name: 'Panel heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_temperature: celsius(19),
+                            measure_power: 500,
+                        }, '2026-04-01T11:59:00.000Z'),
+                    });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                    const refreshSpy = vi.spyOn(deviceManager['refreshService'], 'refresh');
+
+                    for (const [minute, value] of [[1, 20], [2, 21], [3, 22]] as const) {
+                        vi.setSystemTime(new Date(`2026-04-01T12:0${minute}:00.000Z`));
+                        await emitCapability('dev1', 'measure_temperature', value);
+                    }
+
+                    expect(refreshSpy).not.toHaveBeenCalled();
+                    const snapshot = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot;
+                    expect(hasObservedTemperature(snapshot)).toBe(false);
+                    expect(snapshot.binaryControl).toEqual({ on: true });
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
             it('recovers temperature from a valid realtime field retained through a malformed targeted read', async () => {
                 vi.useFakeTimers();
                 try {

@@ -33,6 +33,7 @@ import {
   overlayRetainedTrackedDevices,
 } from './targetedSnapshotMerge';
 import { addPerfDuration } from '../../utils/perfCounters';
+import { countRefreshCaller, countRefreshRead } from './refreshWorkload';
 import { startRuntimeSpan } from '../../utils/runtimeTrace';
 import { logEvSnapshotChanges } from '../managerControl';
 import { type LiveDevicePowerWatts } from '../managerEnergy';
@@ -320,9 +321,11 @@ async function fetchDevicesForSnapshotRefresh(
     isTargetedRefresh: boolean,
 ): Promise<DeviceFetchResult | null> {
     try {
-        return isTargetedRefresh
+        const result = isTargetedRefresh
             ? await refresh.fetchDevicesByKnownIds()
             : await refresh.deviceSdk.fetchDevices();
+        countRefreshRead(isTargetedRefresh, result.devices.length);
+        return result;
     } catch (error) {
         const normalizedError = normalizeError(error);
         moduleLogger.error({
@@ -513,6 +516,7 @@ export class SnapshotRefreshService {
   async refreshInventory(): Promise<void> {
     if (this.stopped) return;
     this.inventoryRefreshPending = true;
+    countRefreshCaller('inventory');
     await this.refresh({ includeLivePower: false, meterDeviceIds: [] });
   }
 
