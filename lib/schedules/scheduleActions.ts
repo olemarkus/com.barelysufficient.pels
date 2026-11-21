@@ -1,11 +1,13 @@
 import { scheduleInstant } from '../../packages/shared-domain/src/scheduleTime';
 import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { Schedule, ScheduleOverrideAction } from '../../packages/contracts/src/schedules';
+import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import type { SmartTaskCandidateDevice } from '../../packages/contracts/src/smartTaskEdit';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import {
   normalizeDeferredObjectiveSettingsEntry,
 } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { buildSmartTaskCandidateDevices } from '../objectives/deferredObjectives/smartTaskCandidateDevices';
 import { ScheduleSkip } from './scheduleSkip';
 import { readActiveDeviceOverride, startDeviceOverride } from '../overrides/deviceOverrides';
 import type { SettingsPort } from '../ports/homeyRuntime';
@@ -35,6 +37,11 @@ const requireTaskWrite = (outcome: ObjectiveWriteOutcome): void => {
     }
   }
 };
+
+export function requireScheduledTaskCandidates(read: CreateSmartTaskCandidateDevicesRead): SmartTaskCandidateDevice[] {
+  if (read.state !== 'ready') throw new Error('Smart-task devices are temporarily unavailable.');
+  return buildSmartTaskCandidateDevices(read.devices);
+}
 
 /** Commands shared with manual/Flow actions; this executor owns no device writes. */
 type ScheduleActionHost = SmartTaskCommandPort & {

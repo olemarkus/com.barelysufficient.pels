@@ -123,6 +123,8 @@ export type AppServiceWiringDeps = {
   getHomeOperatingMode: () => string;
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
+  getPreparedModeTargets?: Parameters<typeof import('./appInit/temperatureSetpointsSeam').bindTemperatureSetpoints>[2];
+  readPreparedTemperatureC?: Parameters<typeof createObservedTemperatureModeUpdates>[4];
   resolveOperatingModeForDevice: Parameters<typeof createObservedTemperatureModeUpdates>[1];
   createHomeRuntimeRegistry: (
     membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
@@ -203,6 +205,7 @@ export class AppServiceWiring {
       this.deps.resolveOperatingModeForDevice,
       () => this.deps.handles.homeRuntimeRegistry?.getLiveBundles() ?? [],
       (deviceId) => this.isDeviceLimitedInOwningHome(deviceId),
+      this.deps.readPreparedTemperatureC,
     );
   }
 
@@ -472,6 +475,7 @@ export class AppServiceWiring {
     const { planEngine, planService, lifecycleFallbackPort } = createHomePlanRuntime(ctx, this.mainHomeScope, {
       capacityGuard: ctx.capacityGuard, isActuationFenced: () => this.isMainActuationFenced(),
       storageLane: mainStorageLane(ctx), controlContests: this.deps.controlContests,
+      getPreparedModeTargets: this.deps.getPreparedModeTargets,
       getChargingPhasePauseTarget: (deviceId) => {
         const route = this.deps.handles.homeRuntimeRegistry?.getOwningHomeRouteForDevice(deviceId);
         return route ? { homeId: route.homeId, pendingCommands: route.hooks.pendingBinaryCommandStore } : undefined;

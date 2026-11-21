@@ -50,7 +50,7 @@ const fixture = () => {
     },
     getNowMs: () => now, listModes: () => ['Home', 'Night'], resolveModeName: (value) => value,
     currentMode: () => mode,
-    listTaskDevices: () => [], execute,
+    listTaskDevices: () => [], execute, preparationResult: () => '',
   };
   const create = () => { const service = new ScheduleService(port); services.push(service); return service; };
   return { port, values, receipts, execute, create,
@@ -125,6 +125,47 @@ describe('schedule owner', () => {
 
   it('reads a store with no settings at all as no schedules', () => {
     expect(fixture().create().read().entries).toEqual([]);
+  });
+
+  it('keeps preparation through a late tick and records readiness with the scheduled change', async () => {
+    const f = fixture();
+    f.values.set('schedule.morning', { ...modeSchedule(), action: { type: 'mode', mode: 'Home', prepare: true } });
+    f.port.preparationResult = (occurrence) => {
+      expect(occurrence).toEqual(service.readModePreparation());
+      expect(f.port.currentMode()).toBe('Night');
+      return '1 of 2 devices were ready.';
+    };
+    f.execute.mockImplementation(async () => { f.setMode('Home'); });
+    const service = f.create();
+    service.start();
+    expect(service.readModePreparation()).toMatchObject({ mode: 'Home', at: '10:00' });
+    f.setNow('2026-10-28T09:00:10Z');
+    expect(service.readModePreparation()).toMatchObject({ mode: 'Home' });
+    await service.tick();
+    expect(service.readModePreparation()).toBeUndefined();
+    expect(service.read().entries[0]?.lastResult).toBe('Mode changed. 1 of 2 devices were ready.');
+  });
+
+  it('respects an intervening mode change, the current mode condition, and pause', () => {
+    const f = fixture();
+    f.values.set('schedule.morning', { ...modeSchedule(), action: { type: 'mode', mode: 'Home', prepare: true },
+      condition: { type: 'include', modes: ['Night'] } });
+    f.values.set('schedule.earlier', { ...modeSchedule('earlier'), at: '09:59',
+      action: { type: 'mode', mode: 'Night' } });
+    f.setNow('2026-10-28T08:00:00Z');
+    const service = f.create();
+    service.start();
+    expect(service.readModePreparation()).toBeUndefined();
+
+    f.values.delete('schedule.earlier');
+    service.onSettingsChanged('schedule.earlier');
+    expect(service.readModePreparation()).toMatchObject({ mode: 'Home' });
+    f.setMode('Home');
+    expect(service.readModePreparation()).toBeUndefined();
+    f.setMode('Night');
+    f.values.set('schedule_modes_enabled', false);
+    service.onSettingsChanged('schedule_modes_enabled');
+    expect(service.readModePreparation()).toBeUndefined();
   });
 
   it('consumes before execution, fires once, and leaves a later manual mode alone', async () => {

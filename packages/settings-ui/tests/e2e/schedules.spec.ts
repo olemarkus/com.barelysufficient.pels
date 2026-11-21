@@ -87,6 +87,28 @@ const readStored = (page: Page, key: string): Promise<unknown> => page.evaluate(
   (window as unknown as { Homey: { __stub: { getSetting(key: string): unknown } } }).Homey.__stub.getSetting(settingKey)
 ), key);
 
+test('saves and displays mode preparation in the schedule editor', async ({ page }, testInfo) => {
+  await installSchedules(page);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('/?page=settings/schedules', { waitUntil: 'domcontentloaded' });
+  const panel = page.locator('#schedules-panel');
+  const schedule = panel.locator('[data-schedule-id="morning"]');
+  await schedule.getByRole('button', { name: /Morning mode/ }).click();
+  const prepare = panel.getByRole('switch', { name: 'Have devices ready by then' });
+  await expect(prepare).not.toBeChecked();
+  await prepare.click();
+  await expect(prepare).toBeChecked();
+  expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await panel.screenshot({ path: testInfo.outputPath('mode-preparation-320.png') });
+  await page.setViewportSize({ width: 480, height: 900 });
+  await panel.screenshot({ path: testInfo.outputPath('mode-preparation-480.png') });
+  await panel.getByRole('button', { name: 'Save schedule', exact: true }).click();
+  await expect.poll(() => readStored(page, 'schedule.morning')).toMatchObject({
+    action: { type: 'mode', mode: 'Home', prepare: true },
+  });
+  await expect(schedule).toContainText('Prepare devices');
+});
+
 test('opens a new schedule as an override for the device, an hour from 06:00', async ({ page }) => {
   await installSchedules(page);
   await page.setViewportSize({ width: 320, height: 900 });

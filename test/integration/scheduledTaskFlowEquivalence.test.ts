@@ -139,6 +139,7 @@ function fixture(kind: DeferredObjectiveSettingsKind, existing?: DeferredObjecti
   const executor = new ScheduleActionExecutor({ ...host, settings, getNowMs: () => Date.now() }, CLOCK);
   const execute = vi.fn((schedule: Schedule, atMs: number) => executor.execute(schedule, atMs));
   const service = new ScheduleService({
+    preparationResult: () => '',
     settings, clock: CLOCK, timers: new TimerRegistry(), getNowMs: Date.now,
     listModes: () => ['Home'], resolveModeName: (mode) => mode, currentMode: () => 'Home',
     listTaskDevices: host.listTaskDevices, execute,

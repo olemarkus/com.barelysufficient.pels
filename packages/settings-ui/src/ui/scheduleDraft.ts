@@ -40,6 +40,7 @@ export type ScheduleDraft = {
   enabled: boolean;
   actionType: ScheduleActionType;
   mode: string;
+  prepareMode: boolean;
   deviceId: string;
   taskKind: SmartTaskCandidateDevice['kind'] | null;
   target: string;
@@ -122,6 +123,7 @@ export const createScheduleDraft = (
     enabled: true,
     actionType: device ? 'task' : 'mode',
     mode,
+    prepareMode: false,
     deviceId: device?.deviceId ?? '',
     taskKind: device?.kind ?? null,
     target: device ? String(device.defaultGoal) : '',
@@ -162,14 +164,16 @@ export const overrideDraftPatch = (
 });
 
 type ActionDraftFields = Pick<ScheduleDraft,
-  'mode' | 'deviceId' | 'target' | 'taskKind' | 'readyBy' | 'permissions' | 'overrideTarget' | 'overrideUntil'>;
+  'mode' | 'prepareMode' | 'deviceId' | 'target' | 'taskKind' | 'readyBy' | 'permissions'
+  | 'overrideTarget' | 'overrideUntil'>;
 const NO_ACTION_FIELDS: ActionDraftFields = {
-  mode: '', deviceId: '', target: '', taskKind: null, readyBy: '07:00', permissions: { ...EMPTY_PERMISSIONS },
+  mode: '', prepareMode: false, deviceId: '', target: '', taskKind: null, readyBy: '07:00',
+  permissions: { ...EMPTY_PERMISSIONS },
   overrideTarget: '', overrideUntil: '',
 };
 const actionDraftFields = (schedule: Schedule): ActionDraftFields => {
   const { action } = schedule;
-  if (action.type === 'mode') return { ...NO_ACTION_FIELDS, mode: action.mode };
+  if (action.type === 'mode') return { ...NO_ACTION_FIELDS, mode: action.mode, prepareMode: action.prepare === true };
   if (action.type === 'override') {
     return {
       ...NO_ACTION_FIELDS, deviceId: action.deviceId, overrideTarget: String(action.setting.targetC),
@@ -263,7 +267,7 @@ const actionFromDraft = (
   if (draft.actionType === 'override') return overrideActionFromDraft(draft, devices);
   if (draft.actionType === 'task') return taskActionFromDraft(draft, devices);
   return modeAvailable
-    ? { ok: true, action: { type: 'mode', mode: draft.mode } }
+    ? { ok: true, action: { type: 'mode', mode: draft.mode, ...(draft.prepareMode ? { prepare: true } : {}) } }
     : { ok: false, error: 'Choose an available mode.' };
 };
 

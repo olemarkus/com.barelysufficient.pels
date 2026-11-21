@@ -52,7 +52,11 @@ export type PriceTargetShift =
   | { kind: 'none' }
   | { kind: 'shifted'; direction: 'raised' | 'lowered'; priceLevel: 'cheap' | 'expensive' };
 
+export type PreparedModeTarget = { targetC: number; mode: string; at: string };
+
 export type TemperatureSetpoints = {
+  /** The destination mode being applied early, while preparation is active. */
+  modePreparation?: PreparedModeTarget;
   /**
    * A temperature override while one is in force; otherwise the active
    * mode's target for the device, or its own setpoint when the mode has none.

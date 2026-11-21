@@ -45,6 +45,7 @@ export class ObservedTemperatureModeUpdates {
     private readonly readLimitTemperatures: (deviceId: string) => readonly number[],
     /** A temperature override while it is in force, as stored, or `null`. */
     private readonly readTemporaryTemperatureC: (deviceId: string) => number | null,
+    private readonly readPreparedTemperatureC: (deviceId: string) => number | null,
   ) {}
 
   /** Policy reads retain the last good value across transient SDK gaps. */
@@ -69,8 +70,8 @@ export class ObservedTemperatureModeUpdates {
   /**
    * A queued adjustment cannot outlive a switch to manual target ownership.
    *
-   * Under "Save as current mode target" three writes are legitimate: the saved
-   * mode target itself, a temperature override while it is in force, and
+   * Under "Save as current mode target" these writes are legitimate: the saved
+   * mode target itself, active preparation or override targets, and
    * a limit — either direction's, because the fence
    * does not know which way the device is moving demand. The limits are the
    * shed-behaviour producer's, so a limit the planner derives is one the fence
@@ -89,6 +90,8 @@ export class ObservedTemperatureModeUpdates {
     // commanded on it.
     const overrideC = this.readTemporaryTemperatureC(deviceId);
     if (overrideC !== null && this.normalizeTarget(deviceId, overrideC) === value) return true;
+    const preparedC = this.readPreparedTemperatureC(deviceId);
+    if (preparedC !== null && this.normalizeTarget(deviceId, preparedC) === value) return true;
     try {
       const active = this.resolveDeviceMode(deviceId);
       if (active.state !== 'resolved' || active.mode === null) return false;
@@ -174,6 +177,9 @@ export class ObservedTemperatureModeUpdates {
     if (this.isLimited(deviceId)) return 'observed_temperature_mode_update_skipped_while_limited';
     if (this.readTemporaryTemperatureC(deviceId) !== null) {
       return 'observed_temperature_mode_update_skipped_while_overridden';
+    }
+    if (this.readPreparedTemperatureC(deviceId) !== null) {
+      return 'observed_temperature_mode_update_skipped_while_preparing_mode';
     }
     return null;
   }

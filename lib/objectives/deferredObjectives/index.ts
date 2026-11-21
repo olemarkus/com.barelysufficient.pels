@@ -53,6 +53,7 @@ export {
   readAllObjectives,
   readObjectiveForDevice,
   readSmartTaskInProgress,
+  readSmartTaskOpen,
   writeObjectiveForDevice,
 } from './objectiveStore';
 export { buildSmartTaskCandidateDevices } from './smartTaskCandidateDevices';
@@ -105,3 +106,4 @@ export type {
 // @pels/planner-types) and imports none of this subsystem. The admission
 // appliers it owns stay internal (reached via ./admission directly).
 export { DeferredObjectiveDecorationController } from './decorationController';
+export { resolveModePreparationLeadMs } from './modePreparationLead';

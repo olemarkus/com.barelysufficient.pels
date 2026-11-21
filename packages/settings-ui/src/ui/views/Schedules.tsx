@@ -80,7 +80,8 @@ const Choice = ({ value, children }: { value: string; children: ComponentChildre
 const actionSummary = (entry: ScheduleEntry, snapshot: SchedulesViewSnapshot): string => {
   const { schedule } = entry;
   if (schedule.action.type === 'mode') {
-    return `Set mode to ${scheduleModeLabel(schedule.action.mode, entry.modeReferences)}`;
+    const mode = scheduleModeLabel(schedule.action.mode, entry.modeReferences);
+    return `Set mode to ${mode}${schedule.action.prepare ? ' · Prepare devices' : ''}`;
   }
   const name = scheduleDeviceName(snapshot, scheduleActionDeviceId(schedule.action) ?? '');
   if (schedule.action.type === 'override') {
@@ -335,6 +336,19 @@ const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
     </>
   );
 };
+const ModePreparationSwitch = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
+  const disabled = view.snapshot.busy || view.snapshot.load !== 'ready';
+  return (
+    <div class="schedule-editor__enabled">
+      <div><span class="pels-text-settings-label">Have devices ready by then</span>
+        <p class="pels-card-supporting">Start heating eligible devices early toward their new mode temperatures.</p></div>
+      <MdSwitch key={`prepare:${draft.prepareMode}:${disabled}`} aria-label="Have devices ready by then"
+        selected={draft.prepareMode} disabled={disabled}
+        onChange={(event: Event) => view.actions.onDraftChange({ prepareMode: readSwitchSelected(event) })} />
+    </div>
+  );
+};
+
 const Editor = (view: View) => {
   const { snapshot, actions } = view;
   if (!snapshot.editor || !snapshot.read) return null;
@@ -385,7 +399,8 @@ const Editor = (view: View) => {
                   && <Choice value={draft.mode}>Choose an available mode</Choice>}
                 {modeOptions.map((option) => <Choice key={option.value} value={option.value}>{option.label}</Choice>)}
               </MdFilledSelect>
-            </div><p class="pels-card-supporting">The mode changes once. Later manual or Flow changes take effect normally.</p>
+            </div>
+            <ModePreparationSwitch draft={draft} view={view} />
           </>}
         </section>
         <section class="pels-surface-card schedules-form__section">

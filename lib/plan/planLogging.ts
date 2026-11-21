@@ -373,6 +373,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       lastDesiredStepId: d.lastDesiredStepId,
       currentState: d.currentState,
       reason: buildComparableDeviceReason(d.reason),
+      modePreparation: d.modePreparation,
       shedAction: d.shedAction,
       commandAuthority: d.control.commandAuthority,
       stepCommandPending: d.stepCommandPending ?? null,

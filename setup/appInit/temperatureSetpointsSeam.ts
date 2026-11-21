@@ -1,8 +1,12 @@
-import { createTemperatureSetpointResolver } from '../../lib/thermostat/temperatureSetpoints';
+import { ModePreparationResolver, type ModePreparationReads } from '../../lib/thermostat/modePreparation';
+import {
+  createTemperatureSetpointResolver, type TemperatureIntentReads,
+} from '../../lib/thermostat/temperatureSetpoints';
 import { readActiveTemperatureOverride } from '../../lib/overrides/deviceOverrides';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
+import { requirePlanService } from './contextGuards';
 
 /**
  * Bind `lib/thermostat`'s setpoint resolver to one home's reads, for that home's
@@ -21,7 +25,11 @@ export const bindTemporaryTemperatureRead = (ctx: AppContext) => (deviceId: stri
   readActiveTemperatureOverride(ctx.homey.settings, deviceId, ctx.getNow().getTime())?.targetC ?? null
 );
 
-export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): ResolveTemperatureSetpoints => (
+export const bindTemperatureSetpoints = (
+  scope: HomeScope,
+  ctx: AppContext,
+  getPreparedModeTargets: TemperatureIntentReads['getPreparedModeTargets'] = () => new Map(),
+): ResolveTemperatureSetpoints => (
   createTemperatureSetpointResolver({
     getOperatingMode: scope.getOperatingMode,
     getModeDeviceTargets: scope.getModeDeviceTargets,
@@ -31,5 +39,23 @@ export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): Res
     getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getTemporaryTemperatureC: bindTemporaryTemperatureRead(ctx),
+    getPreparedModeTargets,
   })
 );
+
+
+export const bindModePreparationResolver = (
+  ctx: AppContext,
+  modes: Pick<ModePreparationReads, 'currentMode' | 'modeTargets'>,
+  occurrence: ModePreparationReads['occurrence'],
+  objectives: Pick<ModePreparationReads, 'smartTaskState' | 'leadMs'>,
+): ModePreparationResolver => new ModePreparationResolver({
+  ...modes,
+  ...objectives,
+  occurrence,
+  listDevices: () => requirePlanService(ctx).getPlanDevices(),
+  nowMs: () => ctx.getNow().getTime(),
+  thermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
+  canSetTemperature: (deviceId) => ctx.observedTemperatureModeUpdates.allowsLimiting(deviceId),
+  temporaryTemperatureC: bindTemporaryTemperatureRead(ctx),
+});

@@ -91,7 +91,10 @@ export const scheduleActionDeviceId = (action: Schedule['action']): string | nul
 const parseAction = (raw: unknown): Schedule['action'] => {
   if (!isUnknownRecord(raw)) throw new Error('Choose a schedule action');
   if (raw.type === 'override') return parseOverride(raw);
-  if (raw.type === 'mode' && text(raw.mode, 100)) return { type: 'mode', mode: text(raw.mode, 100) };
+  if (raw.type === 'mode' && text(raw.mode, 100)) {
+    if (raw.prepare !== undefined && typeof raw.prepare !== 'boolean') throw new Error('Invalid mode preparation');
+    return { type: 'mode', mode: text(raw.mode, 100), ...(raw.prepare === true ? { prepare: true } : {}) };
+  }
   if (raw.type === 'task') return { type: 'task', task: parseTask(raw.task) };
   throw new Error('Choose a schedule action');
 };
