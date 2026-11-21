@@ -8,7 +8,7 @@ import {
   parseContinuousBatteryPlanConfig,
 } from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { formatDayFirstInTimeZone, formatTimeInTimeZone, getDateKeyInTimeZone, shiftDateKey } from '../../../../shared-domain/src/utils/dateUtils.ts';
-import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
+import { MdDecimalField, MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 
 export type ContinuousBatteryPlanProps = {
   read: ContinuousBatteryPlanRead;
@@ -279,7 +279,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     {changedUnit && <p class="field__hint" role="status">The electricity price unit changed from {props.config.priceUnit} to {unit}. Review the wear allowance and save the battery plan.</p>}
     {props.error && <p class="field__hint field__hint--alert" role="alert">{props.error}</p>}
     {draft.enabled && <div class="form-grid battery-plan-fields">
-      <MdFilledTextField id="device-detail-battery-plan-capacity" label="Usable capacity (kWh)" type="number" min="0.1" max="500" step="0.1" value={draft.capacity} disabled={props.busy}
+      <MdDecimalField id="device-detail-battery-plan-capacity" label="Usable capacity (kWh)" min="0.1" max="500" step="0.1" value={draft.capacity} disabled={props.busy}
         onInput={(event: Event) => update('capacity', (event.currentTarget as HTMLInputElement).value)} />
       <MdFilledTextField id="device-detail-battery-plan-reserve" label="Minimum reserve (%)" type="number" min="0" max="95" step="1" value={draft.reserve} disabled={props.busy}
         onInput={(event: Event) => update('reserve', (event.currentTarget as HTMLInputElement).value)} />
@@ -293,7 +293,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     </label>}
     {draft.enabled && <p class="field__hint">PELS compares selling with keeping the energy for your home, after losses and wear, and sells only when that lowers your electricity cost. Stored solar can then go to the grid in the evening, when export pays more than at midday. Your minimum reserve stays. Selling needs an export price, set under Electricity prices.</p>}
     {draft.enabled && draft.sell && <div class="form-grid battery-plan-fields">
-      <MdFilledTextField id="device-detail-battery-plan-export-ceiling" label="Export limit at your meter (kW)" type="number"
+      <MdDecimalField id="device-detail-battery-plan-export-ceiling" label="Export limit at your meter (kW)"
         min={String(EXPORT_CEILING_MIN_KW)} max={String(EXPORT_CEILING_MAX_KW)} step="0.1" value={draft.exportCeiling} disabled={props.busy}
         onInput={(event: Event) => update('exportCeiling', (event.currentTarget as HTMLInputElement).value)} />
     </div>}
@@ -302,7 +302,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
       <div class="form-grid battery-plan-fields">
         <MdFilledTextField id="device-detail-battery-plan-efficiency" label="Round-trip efficiency (%)" type="number" min="50" max="100" step="1" value={draft.efficiency} disabled={props.busy}
           onInput={(event: Event) => update('efficiency', (event.currentTarget as HTMLInputElement).value)} />
-        <MdFilledTextField id="device-detail-battery-plan-wear" label={wearLabel} type="number" min="0" max="1000" step="any" value={draft.wear} disabled={props.busy}
+        <MdDecimalField id="device-detail-battery-plan-wear" label={wearLabel} min="0" max="1000" step="any" value={draft.wear} disabled={props.busy}
           onInput={(event: Event) => update('wear', (event.currentTarget as HTMLInputElement).value)} />
       </div>
       <MeasuredEfficiency efficiency={props.efficiency} draft={draft.efficiency} busy={props.busy}

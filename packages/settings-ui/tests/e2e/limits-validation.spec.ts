@@ -26,8 +26,8 @@ test.describe('Limits & safety controls', () => {
     for (const name of ['Main fuse', 'Grid import limit', 'Capacity limit']) {
       await expect(panel.getByRole('switch', { name, exact: true })).toBeVisible();
     }
-    await expect(panel.getByRole('spinbutton', { name: 'Hard cap', exact: true })).toBeVisible();
-    await expect(panel.getByRole('spinbutton', { name: 'Safety margin', exact: true })).toBeVisible();
+    await expect(panel.getByRole('textbox', { name: 'Hard cap', exact: true })).toBeVisible();
+    await expect(panel.getByRole('textbox', { name: 'Safety margin', exact: true })).toBeVisible();
     await expect(panel.getByRole('combobox', { name: 'Capacity period', exact: true })).toBeVisible();
     await expect(panel.getByRole('combobox', { name: 'Power source', exact: true })).toBeVisible();
   });
@@ -98,5 +98,28 @@ test.describe('Limits & safety inline validation', () => {
       });
     }));
     expect(persistedMargin).toBe(0.5);
+  });
+
+  // A comma-region decimal keypad may offer only a comma: the typed value still
+  // saves as a number.
+  test('saves a safety margin typed with a decimal comma', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openLimitsAndSafety(page);
+    await page.evaluate(() => {
+      (window as unknown as StubWindow).Homey.__stub.setSetting('capacity_limit_kw', 8);
+    });
+
+    const margin = page.getByRole('textbox', { name: 'Safety margin', exact: true });
+    await margin.fill('');
+    await margin.pressSequentially('0,25');
+    await expect(margin).toHaveValue('0.25');
+    await margin.blur();
+
+    await expect.poll(() => page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as unknown as StubWindow).Homey.get('capacity_margin_kw', (error: Error | null, value?: unknown) => {
+        if (error) reject(error);
+        else resolve(value);
+      });
+    }))).toBe(0.25);
   });
 });

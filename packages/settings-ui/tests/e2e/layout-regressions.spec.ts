@@ -122,7 +122,7 @@ test.describe('settings shell layout regressions', () => {
         expect(handle.width).toBeGreaterThanOrEqual(48);
         expect(handle.height).toBeGreaterThanOrEqual(48);
       }
-      const target = page.getByRole('spinbutton', { name: 'Target temperature for Termostat hovedsoverom' });
+      const target = page.getByRole('textbox', { name: 'Target temperature for Termostat hovedsoverom' });
       await expect(target).toHaveValue('23');
       const inputSize = await target.evaluate((element) => ({ width: element.clientWidth, needed: element.scrollWidth }));
       expect(inputSize.width).toBeGreaterThanOrEqual(inputSize.needed);

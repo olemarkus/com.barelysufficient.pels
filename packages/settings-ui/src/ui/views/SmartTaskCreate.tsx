@@ -19,7 +19,7 @@ import {
 import type { SmartTaskEditPermissionKey } from '../smartTaskEdit.ts';
 import { SmartTaskPermissionRow } from './DeadlinePlan.tsx';
 import { ExpandMoreIcon } from './icons.tsx';
-import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJSX.tsx';
+import { MdDecimalField, MdFilledButton, MdTextButton } from './materialWebJSX.tsx';
 
 /** What the New smart task flow can ask its controller to do. */
 export type SmartTaskCreateActions = {
@@ -97,9 +97,7 @@ const ComposeFields = ({ step, view }: {
         <span class="field__label pels-text-settings-label">
           {CREATE_SMART_TASK_WIDGET_COPY.goalLabel} ({device.unitSymbol})
         </span>
-        <MdFilledTextField
-          type="number"
-          inputMode="decimal"
+        <MdDecimalField
           min={String(device.goalMin)}
           max={String(device.goalMax)}
           step={String(device.goalStep)}

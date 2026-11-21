@@ -14,6 +14,7 @@ export type MdFilledTextFieldElement = HTMLElement & {
   label: string;
   readonly validity: ValidityState;
   reportValidity(): boolean;
+  setCustomValidity(message: string): void;
   disabled: boolean;
   min: string;
   max: string;
