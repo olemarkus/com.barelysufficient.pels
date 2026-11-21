@@ -30,13 +30,14 @@ import type CapacityGuard from '../power/capacityGuard';
 import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanBuilderDeps } from './planBuilderDeps';
-import { resolvePowerCycleReading } from '../power/powerCycleReading';
+import { resolvePowerCycleReading, type PowerCycleReading } from '../power/powerCycleReading';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { CapacityTimedRun } from './capacityTimedRun';
 import {
   computeDailyUsageSoftLimit,
   applyCapacityTimedRun,
+  resolveTimedRunPower,
   computeDynamicSoftLimit,
   isDailyBudgetBelowPlanningCeiling,
   resolveShortfallThresholdKw,
@@ -286,6 +287,22 @@ export class PlanBuilder {
     };
   }
 
+  private resolveCapacityTimedRun(
+    capacity: CapacityPlanLimit,
+    settings: PowerLimitSettings,
+    reading: PowerCycleReading,
+    decoration: DeferredDecorationBundle,
+    nowMs: number,
+  ): { limit: CapacityPlanLimit; run: CapacityTimedRun } {
+    const { actuation, shedDecisions } = this.state;
+    const power = resolveTimedRunPower(
+      reading, this.powerTracker, actuation, this.deps, decoration.admittedDevices, nowMs,
+    );
+    return applyCapacityTimedRun(
+      capacity, settings, this.powerTracker, power, decoration, shedDecisions.lastPlannedShedIds, nowMs,
+    );
+  }
+
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     return trackPlanStageAsync('plan_build_ms', async () => {
       const { plan, run } = await this.buildPlanSnapshotWithTimings(devices);
@@ -330,9 +347,7 @@ export class PlanBuilder {
       phaseReading: this.capacityGuard.phaseReadings.current(),
     });
     const { context, run } = trackPlanStage('plan_context_ms', () => {
-      const timedRun = applyCapacityTimedRun(
-        capacity, settings, this.powerTracker, reading, decoration, this.state.shedDecisions.lastPlannedShedIds, nowTs,
-      );
+      const timedRun = this.resolveCapacityTimedRun(capacity, settings, reading, decoration, nowTs);
       const cycleContext = buildPlanContext(
         admittedDevices,
         settings,

@@ -25,8 +25,12 @@ import {
 } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
 import { EOH_DRAIN_WINDOW_MIN } from './planConstants';
-import { resolveCapacityTimedRun, type CapacityTimedRun } from './capacityTimedRun';
+import { resolveCapacityTimedRun, type CapacityTimedRun, type TimedStartDraw } from './capacityTimedRun';
 import type { PowerCycleReading } from '../power/powerCycleReading';
+import type { ActuationHistoryRead } from '../ports/actuationHistory';
+import type { PlanInputDevice } from './planTypes';
+import type { PlanBuilderDeps } from './planBuilderDeps';
+import { resolveOutstandingRestoreDrawKw } from './restore/timing';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import type { CapacityPlanLimit } from './planContext';
 import type { DrainStart } from './capacityDrainStart';
@@ -152,6 +156,29 @@ export function computeDynamicSoftLimit(
   return { allowedKw, hourlyBudgetExhausted, remainingKWh };
 }
 
+type TimedRunPower =
+  | { kind: 'unmeasured' }
+  | { kind: 'measured'; drawKw: number; timedStartDraw: TimedStartDraw };
+
+/** A meter value and the separate demand that could still arrive after it. */
+export function resolveTimedRunPower(
+  reading: PowerCycleReading,
+  tracker: PowerTrackerState,
+  actuation: ActuationHistoryRead,
+  deps: Pick<PlanBuilderDeps, 'drawEvidence' | 'pendingBinaryCommandStore'>,
+  devices: readonly PlanInputDevice[],
+  nowMs: number,
+): TimedRunPower {
+  if (!reading.isMeasured) return { kind: 'unmeasured' };
+  const timedStartDraw: TimedStartDraw = actuation.hasInFlight()
+    || devices.some(({ id }) => deps.pendingBinaryCommandStore.hasActiveTurnOn(id))
+    ? { kind: 'command_in_flight' }
+    : { kind: 'projected', outstandingRestoreKw: resolveOutstandingRestoreDrawKw(
+      actuation, deps.drawEvidence, tracker, devices, nowMs,
+    ) };
+  return { kind: 'measured', drawKw: reading.totalKw, timedStartDraw };
+}
+
 /**
  * The build's capacity axis with this cycle's timed run applied
  * (`capacityTimedRun.ts`): the pace rises to what the hour's marginal on/off
@@ -163,12 +190,12 @@ export function applyCapacityTimedRun(
   capacity: CapacityPlanLimit,
   settings: CapacitySettings,
   powerTracker: PowerTrackerState,
-  reading: PowerCycleReading,
+  power: TimedRunPower,
   decoration: DeferredDecorationBundle,
   heldOffIds: ReadonlySet<string>,
   nowMs: number,
 ): { limit: CapacityPlanLimit; run: CapacityTimedRun } {
-  if (capacity.kind === 'off' || !reading.isMeasured) return { limit: capacity, run: { kind: 'none' } };
+  if (capacity.kind === 'off' || power.kind === 'unmeasured') return { limit: capacity, run: { kind: 'none' } };
   const period = getCurrentCapacityPeriodContext(powerTracker, settings.periodMinutes, nowMs);
   const run = resolveCapacityTimedRun({
     settings,
@@ -178,7 +205,8 @@ export function applyCapacityTimedRun(
     budgetKWh: resolveUsableCapacityKWh(settings),
     minutesRemaining: period.minutesRemaining,
     coverageComplete: period.coverageComplete,
-    drawKw: reading.totalKw,
+    drawKw: power.drawKw,
+    timedStartDraw: power.timedStartDraw,
     devices: decoration.admittedDevices,
     heldOffIds,
     forceShedIds: decoration.forceShedSet,
