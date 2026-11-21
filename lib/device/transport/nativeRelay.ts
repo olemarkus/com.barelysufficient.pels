@@ -16,8 +16,9 @@ export function resolveNativeRelayBinding(
   raw: HomeyDeviceLike | undefined,
 ): NativeRelayBinding | undefined {
   if (!snapshot || !raw || !hasNativeRelayControl(snapshot) || !raw.capabilities.includes('onoff')) return undefined;
-  if (!raw.capabilities.includes('measure_power') && !raw.capabilities.includes('meter_power')) return undefined;
-  return { binding: raw.driverId, zwave: raw.flags?.includes('zwave') === true };
+  const measuresWatts = raw.capabilities.includes('measure_power');
+  if (!measuresWatts && !raw.capabilities.includes('meter_power')) return undefined;
+  return { binding: raw.driverId, zwave: raw.flags?.includes('zwave') === true, measuresWatts };
 }
 
 const NO_ACK = 'TRANSMIT_COMPLETE_NO_ACK';

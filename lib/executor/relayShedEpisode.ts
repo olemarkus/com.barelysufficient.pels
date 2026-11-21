@@ -49,11 +49,13 @@ export class RelayShedEpisode {
   private identifiedByNoAck = false;
   readonly binding: string;
   private readonly flagged: boolean;
+  private readonly measuresWatts: boolean;
 
   constructor(readonly id: string, binding: NativeRelayBinding, observed: RelayMeterObservation | undefined,
     private readonly deps: HouseholdEvidence) {
     this.binding = binding.binding;
     this.flagged = binding.zwave;
+    this.measuresWatts = binding.measuresWatts;
     const sample = observed?.watts;
     const dated = observed?.datedWatts;
     if (sample?.sourceDated) this.baseline = sample;
@@ -78,6 +80,8 @@ export class RelayShedEpisode {
   }
 
   status(observed: RelayMeterObservation | undefined): RelayShedStatus | undefined {
+    // A relay without `measure_power` has no draw to report after switch-off.
+    if (!this.measuresWatts) return undefined;
     if (this.invalidated || this.ack === 'dispatching' || observed?.on !== false) return undefined;
     return { startedAtMs: this.startedAtMs, repeatIssued: this.repeatIssued,
       powerEvidence: observed.watts ? this.powerEvidence : 'awaiting_power' };

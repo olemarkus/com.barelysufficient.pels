@@ -618,7 +618,7 @@ describe('native relay shed delivery and electrical evidence', () => {
     vi.useFakeTimers();
     vi.setSystemTime(start);
     const { transport } = buildTransport();
-    const binding = { binding: 'switch-driver', zwave: true };
+    const binding = { binding: 'switch-driver', zwave: true, measuresWatts: true };
     const bindingRead = vi.fn<() => typeof binding | undefined>(() => binding);
     const observed: RelayMeterObservation = { on: true, binaryAtMs: start - 50, watts: dated(1000, start - 50) };
     const revision = vi.fn(() => 1);
@@ -741,6 +741,21 @@ describe('native relay shed delivery and electrical evidence', () => {
     expect(h.recovery.status(id)).toBeUndefined();
     h.bindingRead.mockReturnValue(h.binding);
     expect(h.recovery.status(id)?.repeatIssued).toBe(true);
+  });
+
+  it.each([
+    [true, 'awaiting_power'],
+    [false, undefined],
+  ] as const)('waits for a power reading after switch-off only when the relay reports watts (%s)', async (measuresWatts, evidence) => {
+    const h = harness();
+    h.binding.measuresWatts = measuresWatts;
+    delete h.observed.watts;
+    const first = makeIntent({ shedDecisionAtMs: start });
+    h.retain(first);
+    await h.send(first);
+    h.off();
+    vi.setSystemTime(settle + 60_000);
+    expect(h.recovery.status(id)?.powerEvidence).toBe(evidence);
   });
 
   it('retries an observed OFF once after two independently dated readings and a fresh meter decision', async () => {

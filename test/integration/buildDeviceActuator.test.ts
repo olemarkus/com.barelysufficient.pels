@@ -128,7 +128,7 @@ describe('native metered relay OFF through the actuator', () => {
 
   it.each([true, false])('records the accepting native binding and its Z-Wave evidence (flag present: %s)', async (zwave) => {
     const { actuator, relay, put } = await setup(zwave ? ['zwave'] : []);
-    expect(actuator.getNativeRelayBinding?.(id)).toEqual({ binding: relay.driverId, zwave });
+    expect(actuator.getNativeRelayBinding?.(id)).toEqual({ binding: relay.driverId, zwave, measuresWatts: true });
     await expect(actuator.apply(command)).resolves.toEqual({
       requested: true, kind: 'binary', acknowledged: true, relayBinding: relay.driverId,
       ...(zwave ? {} : { unflaggedRelay: true }),
