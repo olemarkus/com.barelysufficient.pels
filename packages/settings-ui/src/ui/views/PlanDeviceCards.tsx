@@ -365,6 +365,13 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, 
               onOpenDevice={() => dispatchOpenDeviceDetail(dev.id, 'top')}
             />
           )}
+          {dev.status.needsChargerAppUpdate === true && (
+            <OverviewDeviceWarningIcon
+              title="Update the charger’s app"
+              body="Built-in current control needs a newer version of the charger’s app in Homey. Until you update it, PELS limits this charger by pausing and resuming charging."
+              onOpenDevice={() => dispatchOpenDeviceDetail(dev.id, 'top')}
+            />
+          )}
           {leadingChip}
           <PlanCardStatusChipView dev={dev} displayKind={stateKind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />

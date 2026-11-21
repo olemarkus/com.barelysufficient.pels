@@ -349,7 +349,7 @@ test('a retired read-only built-in route offers an app update and explicit Flow 
     : { configured: true, state: 'ready' });
   await act(async () => setChargingCurrentDevice('charger', true));
   await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
-  expect(document.body.textContent).toContain('Built-in current control is unavailable.');
+  expect(document.body.textContent).toContain('Built-in current control needs a charger app update.');
   expect(document.body.textContent).toContain('Update the charger’s app');
   expect(document.body.textContent).not.toContain('Your key is ready');
   expect(button('Use a Flow')).toBeTruthy();

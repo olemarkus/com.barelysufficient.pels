@@ -9,6 +9,15 @@ export function resolveChargingCurrentAdapter(device: HomeyDeviceLike): Charging
   return getDeviceAdapter(device).currentBindings(device)[0];
 }
 
+/**
+ * Whether the installed app gives PELS a way to set the current: a capability its
+ * metadata marks writable, or an app action PELS runs. A saved built-in choice
+ * without either sets nothing.
+ */
+export function canSetChargingCurrent(adapter: ChargingCurrentBinding): boolean {
+  return (adapter.current.kind === 'capability' && adapter.current.writable) || adapter.supportsAppAction;
+}
+
 /** Exact device-owned driver card, resolved from installed Homey metadata. */
 export function resolveChargingCurrentAction(
   adapter: ChargingCurrentBinding,

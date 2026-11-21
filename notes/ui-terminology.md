@@ -997,6 +997,12 @@ and dialog. Warnings that clear when the device reports again, such as the
 power reading from before switch-off, use the same icon and **Open device**
 action without a **Hide warning** button.
 
+A charger whose selected built-in current control needs a newer version of its
+app shows the same amber icon, titled **Update the charger’s app**. Its dialog
+says that PELS limits the charger by pausing and resuming charging until the
+app is updated. The warning has no **Hide warning** button and clears when the
+app reports the current writable or the owner selects Flow control.
+
 ### Device-page "Power when running" — one line about the present source
 
 The device's Setup section carries **Power when running** (watts, `suffix-text="W"`)

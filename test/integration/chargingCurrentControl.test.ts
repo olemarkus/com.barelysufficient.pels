@@ -78,20 +78,35 @@ test('an API key cannot enable built-in control for read-only Zaptec current', a
   expect(control.setup('charger').method).toBe('flow');
 });
 
-test('a saved read-only Zaptec built-in route refuses app actions and can be changed to a Flow', async () => {
+test('a saved read-only Zaptec built-in route routes nothing, asks for an app update and can be changed to a Flow', async () => {
   const { control, access, values, get } = fixture();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow'] })));
   await access.save({ key: 'private-key' });
   values.set('charging_current_control', { charger: selected });
+  expect(control.routesBuiltIn('charger')).toBe(false);
+  expect(control.withdrawsCurrentLadder(zaptec())).toBe(true);
+  expect(control.unusedBuiltInControl('charger', undefined)).toBe('needs_app_update');
+  expect((await control.list())[0]?.currentRoute).toBe('flow');
   const action = vi.spyOn(access, 'runAction');
   const write = vi.fn();
-  await expect(control.writeCurrent(zaptec(), 10, write)).rejects.toThrow('Update the charger app');
+  await expect(control.writeCurrent(zaptec(), 10, write)).rejects.toThrow('not enabled');
   expect(action).not.toHaveBeenCalled();
   expect(write).not.toHaveBeenCalled();
-  expect(get).not.toHaveBeenCalled();
+  expect(get).not.toHaveBeenCalledWith('manager/flow/flowcardaction');
   expect(control.setup('charger').method).toBe('built_in');
   await control.save('charger', { ...selected, method: 'flow' });
   expect(control.setup('charger').method).toBe('flow');
+  expect(control.withdrawsCurrentLadder(zaptec())).toBe(false);
+});
+
+test('a saved read-only Zaptec built-in route resumes on its own once the app makes current writable', async () => {
+  const { control, values, inventory } = fixture();
+  values.set('charging_current_control', { charger: selected });
+  expect(control.withdrawsCurrentLadder(zaptec())).toBe(true);
+  inventory[0] = zaptec(true);
+  expect(control.withdrawsCurrentLadder(zaptec(true))).toBe(false);
+  expect(control.routesBuiltIn('charger')).toBe(true);
+  expect(control.unusedBuiltInControl('charger', undefined)).toBe('none');
 });
 
 test('refuses an installation-wide command when another charger is discovered', async () => {

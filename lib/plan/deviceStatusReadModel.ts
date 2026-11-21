@@ -159,6 +159,7 @@ const UNANSWERED_STEP_LINES: Record<UnusedBuiltInControl, string> = {
   none: 'Level change not confirmed — check the Flow that reports the level back',
   held_by_flow: 'Level change not confirmed — disable your Flow to use built-in control',
   not_set_up: 'Level change not applied — finish Charging current setup',
+  needs_app_update: 'Level change not applied — update the charger app',
 };
 
 function resolveUnansweredStepLine(device: DeviceStatusInput, dryRun: boolean): string | null {
@@ -597,7 +598,17 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     canEaseOff: device.controllable && (kind === 'active' || (limited && !powerPredatesSwitchOff && (draw ?? 0) > 0)),
     controlOffDrawing: !device.controllable && (draw ?? 0) > 0,
     holdCause: resolveHoldCause(device),
+    ...resolveCardMarks(device),
+  };
+}
+
+/** The card's optional marks: the phase that holds it, an override, an app update it needs. */
+function resolveCardMarks(
+  device: DeviceStatusInput,
+): Pick<DeviceStatus, 'heldForPhase' | 'override' | 'needsChargerAppUpdate'> {
+  return {
     ...(device.reason.code === PLAN_REASON_CODES.phaseLimit ? { heldForPhase: device.reason.phase } : {}),
     ...(device.temporaryTemperatureActive === true ? { override: true as const } : {}),
+    ...(device.unusedBuiltInControl === 'needs_app_update' ? { needsChargerAppUpdate: true as const } : {}),
   };
 }

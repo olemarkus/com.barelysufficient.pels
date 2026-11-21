@@ -32,7 +32,7 @@ import { vi } from 'vitest';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
-import type { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
+import type { ChargingCurrentParseRead } from '../../lib/device/chargingCurrentControl';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { DeviceTransportOptions, SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -68,7 +68,7 @@ export type TestTransportInputs = {
   nativeWiring?: Partial<NativeWiringRead>;
   flowBacked?: Partial<FlowBackedRead>;
   batteryManaged?: Partial<BatteryManagedRead>;
-  chargingCurrent?: Pick<ChargingCurrentControl, 'requiresManualControl'>;
+  chargingCurrent?: ChargingCurrentParseRead;
 };
 
 /** Every device managed and controllable, the filter on, and no per-device configuration. */
@@ -108,7 +108,7 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
     ...inputs.flowBacked,
   },
   batteryManaged: { isManaged: () => true, ...inputs.batteryManaged },
-  chargingCurrent: inputs.chargingCurrent ?? { requiresManualControl: () => false },
+  chargingCurrent: inputs.chargingCurrent ?? { requiresManualControl: () => false, withdrawsCurrentLadder: () => false },
 });
 
 /**

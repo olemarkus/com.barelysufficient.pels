@@ -67,7 +67,7 @@ function currentControlStatus(device: ChargingCurrentRead): string {
   if (device.setup.method !== 'built_in') {
     return device.flowCheck === 'conflict' ? 'Flow control is selected.' : 'Built-in current control is not enabled.';
   }
-  if (requiresChargingAppUpdate(device)) return 'Built-in current control is unavailable.';
+  if (requiresChargingAppUpdate(device)) return 'Built-in current control needs a charger app update.';
   return device.currentRoute === 'flow' ? 'Built-in current control is paused.' : 'Built-in current control is selected.';
 }
 
