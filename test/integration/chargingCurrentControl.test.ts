@@ -69,20 +69,29 @@ test.each([false, true])('native target power supersedes saved current control o
   expect((await control.list())[0]?.currentRoute).toBe(usable ? 'flow' : 'built_in');
 });
 
-test('uses the exact installed app action and all three installation-current arguments', async () => {
-  const { control, access, get } = fixture();
-  const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
-    .mockResolvedValueOnce(response({ error: null }));
-  vi.stubGlobal('fetch', fetchMock);
+test('an API key cannot enable built-in control for read-only Zaptec current', async () => {
+  const { control, access } = fixture();
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow'] })));
   await access.save({ key: 'private-key' });
-  await control.save('charger', selected);
-  get.mockResolvedValue([{ id: 'homey:app:com.zaptec:go2_installation_current_control' }]);
-  const capabilityWrite = vi.fn();
-  await control.writeCurrent(zaptec(), 10, capabilityWrite);
-  expect(capabilityWrite).not.toHaveBeenCalled();
-  expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ args: {
-    device: { id: 'charger' }, current1: 10, current2: 10, current3: 10,
-  } });
+  expect((await control.list())[0]).toMatchObject({ capabilityWritable: false, supportsAppAction: false });
+  await expect(control.save('charger', selected)).rejects.toThrow('Update the charger app');
+  expect(control.setup('charger').method).toBe('flow');
+});
+
+test('a saved read-only Zaptec built-in route refuses app actions and can be changed to a Flow', async () => {
+  const { control, access, values, get } = fixture();
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow'] })));
+  await access.save({ key: 'private-key' });
+  values.set('charging_current_control', { charger: selected });
+  const action = vi.spyOn(access, 'runAction');
+  const write = vi.fn();
+  await expect(control.writeCurrent(zaptec(), 10, write)).rejects.toThrow('Update the charger app');
+  expect(action).not.toHaveBeenCalled();
+  expect(write).not.toHaveBeenCalled();
+  expect(get).not.toHaveBeenCalled();
+  expect(control.setup('charger').method).toBe('built_in');
+  await control.save('charger', { ...selected, method: 'flow' });
+  expect(control.setup('charger').method).toBe('flow');
 });
 
 test('refuses an installation-wide command when another charger is discovered', async () => {
@@ -144,24 +153,27 @@ test.each(['missing key', 'conflicting Flow', 'unreadable Flows'])('Tesla contro
 });
 
 
-test.each([false, true])('current timeout preserves its actual writable=%s route', async (writable) => {
-  const { control, access, get } = fixture(zaptec(writable));
+test('a writable current capability timeout preserves its transport error', async () => {
+  const { control } = fixture(zaptec(true));
+  await control.save('charger', selected);
+  const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/charger/capability/available_installation_current');
+  const command = control.writeCurrent(zaptec(true), 10, vi.fn().mockRejectedValue(timeout));
+  await expect(command).rejects.toBe(timeout);
+});
+
+test('an app-action current timeout preserves its transport error', async () => {
+  const { control, access, get } = fixture(futurehome());
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow'] })));
   await access.save({ key: 'private-key' });
-  await control.save('charger', selected);
-  get.mockResolvedValue([{ id: 'homey:app:com.zaptec:go2_installation_current_control' }]);
+  await control.save('futurehome', { method: 'built_in', confirmation: 'none' });
+  get.mockResolvedValue([{ id: 'homey:device:futurehome:currentLimit' }]);
   const timeout = new HomeyRequestTimeoutError('POST', '/api/manager/flow/flowcardaction/current/run');
   vi.spyOn(access, 'runAction').mockRejectedValue(timeout);
-  const capabilityWrite = vi.fn().mockRejectedValue(timeout);
-  const command = control.writeCurrent(zaptec(writable), 10, capabilityWrite);
-  if (writable) {
-    await expect(command).rejects.toBe(timeout);
-    expect(access.runAction).not.toHaveBeenCalled();
-  } else {
-    await expect(command).rejects.toBeInstanceOf(SteppedLoadTransportError);
-    await expect(command).rejects.toMatchObject({ transport: 'homey_action', cause: timeout });
-    expect(capabilityWrite).not.toHaveBeenCalled();
-  }
+  const capabilityWrite = vi.fn();
+  const command = control.writeCurrent(futurehome(), 10, capabilityWrite);
+  await expect(command).rejects.toBeInstanceOf(SteppedLoadTransportError);
+  await expect(command).rejects.toMatchObject({ transport: 'homey_action', cause: timeout });
+  expect(capabilityWrite).not.toHaveBeenCalled();
 });
 
 test('a Futurehome charger runs its own current-limit action with no capability and no scope confirmation', async () => {
@@ -169,7 +181,7 @@ test('a Futurehome charger runs its own current-limit action with no capability 
   const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
     .mockResolvedValueOnce(response({ error: null }));
   vi.stubGlobal('fetch', fetchMock);
-  expect((await control.list())[0]).toMatchObject({ scope: 'charger', capabilityWritable: false, flowCheck: 'clear' });
+  expect((await control.list())[0]).toMatchObject({ scope: 'charger', capabilityWritable: false, supportsAppAction: true, flowCheck: 'clear' });
   await access.save({ key: 'private-key' });
   await expect(control.save('futurehome', { method: 'built_in', confirmation: 'single_charger' }))
     .rejects.toThrow('Confirm the control scope');

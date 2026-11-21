@@ -26,6 +26,16 @@ export const invalidateChargingSetupReads = (): void => {
   minimumReadGeneration = ++readGeneration;
 };
 
+/** Whether the installed app lacks a supported built-in current-control surface. */
+export const requiresChargingAppUpdate = (device: ChargingCurrentRead): boolean => (
+  !device.capabilityWritable && !device.supportsAppAction
+);
+
+/** Access applies only to a supported app action; a writable capability needs no key. */
+export const hasBuiltInChargingAccess = (device: ChargingCurrentRead, access: ChargingAccessStatus): boolean => (
+  device.capabilityWritable || (device.supportsAppAction && access.state === 'ready')
+);
+
 export const needsVehicleChargingConsent = (device: ChargingCurrentRead): boolean => (
   device.scope === 'vehicle' && device.setup.confirmation !== 'vehicle'
 );

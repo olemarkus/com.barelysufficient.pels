@@ -142,6 +142,7 @@ export const kebaAdapter: DeviceAdapter = {
     actionId: 'set_charge_power',
     scope: { kind: 'charger' },
     sharesInstallation: () => false,
+    supportsAppAction: true,
     currentArguments: (currentA) => ({ charge_power: currentA }),
   }] : [],
 };

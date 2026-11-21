@@ -19,11 +19,13 @@ While PELS controls the charger, it keeps the charger's power control in Homey s
 
 ## Built-in current control
 
-Without **Automatic**, PELS sets the charging current. Open the charger's **Setup → Charging current** section. For an installation with one charger, confirm **This installation has only one charger**. PELS uses a writable current capability when the installed Zaptec app exposes one. Otherwise, create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro), enter it here, and choose **Save key and enable**. If a key is already verified or the charger has a writable current capability, choose **Use built-in control**. One key works for all supported chargers on this Homey.
+Without **Automatic**, PELS sets charging current through the Zaptec app's writable current capability. No API key is needed. Open the charger's **Setup → Charging current** section. For an installation with one charger, confirm **This installation has only one charger**, then choose **Use built-in control**.
+
+If the installed Zaptec app does not expose writable current control, update it or use a current-setting Flow. An existing Flow keeps working until you explicitly switch methods.
 
 Before switching from an existing Flow, remove its current-setting action and choose **Check again**. Enable built-in control and check that the page says **Built-in current control is selected**. If you add a current-setting Flow later, PELS cannot stop it, and the two would override each other: the page then says **Built-in current control is paused**, PELS leaves the current to the Flow, and built-in control resumes on its own once you remove that action and choose **Check again**. Keep unrelated battery-level Flows.
 
-Zaptec's action changes the current for the whole installation. PELS refuses built-in current control when it knows of another charger on that installation. Only confirm a single-charger installation when that is true; otherwise keep your existing coordinated installation Flow.
+Zaptec's current control changes the current for the whole installation. PELS refuses built-in current control when it knows of another charger on that installation. Only confirm a single-charger installation when that is true; otherwise keep your existing coordinated installation Flow.
 
 ## Several chargers on one installation
 

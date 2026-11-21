@@ -14,6 +14,7 @@ export type HomeyApiKeyCopy = {
 export type HomeyApiKeySetupProps = {
   access: ChargingAccessStatus;
   busy: boolean;
+  removeOnly?: boolean;
   copy: HomeyApiKeyCopy;
   /** The save button's label: `Save key` / `Replace key`, or the page's own combined action. */
   saveLabel: string;
@@ -41,19 +42,22 @@ export function HomeyApiKeySetup(props: HomeyApiKeySetupProps) {
   const { access, busy } = props;
   const [key, setKey] = useState('');
   const [confirmRemoval, setConfirmRemoval] = useState(false);
-  const KeyContainer = access.state === 'ready' ? 'details' : 'div';
+  const collapsed = props.removeOnly || access.state === 'ready';
+  const KeyContainer = collapsed ? 'details' : 'div';
   return <KeyContainer>
-    {access.state === 'ready' && <summary>Manage API key</summary>}
-    <p class="field__hint">{props.copy.states[access.state]}</p>
-    <p class="field__hint">{props.copy.hint} <a href={HOMEY_API_KEY_GUIDE} target="_blank" rel="noopener noreferrer">Create an API key</a></p>
-    <MdFilledTextField label={access.configured ? 'Replacement API key' : 'API key'} type="password"
-      autocomplete="off" value={key} disabled={busy}
-      onInput={(event: Event) => setKey((event.currentTarget as HTMLInputElement).value)} />
-    {props.children}
+    {collapsed && <summary>{props.removeOnly ? 'Remove saved API key' : 'Manage API key'}</summary>}
+    {!props.removeOnly && <>
+      <p class="field__hint">{props.copy.states[access.state]}</p>
+      <p class="field__hint">{props.copy.hint} <a href={HOMEY_API_KEY_GUIDE} target="_blank" rel="noopener noreferrer">Create an API key</a></p>
+      <MdFilledTextField label={access.configured ? 'Replacement API key' : 'API key'} type="password"
+        autocomplete="off" value={key} disabled={busy}
+        onInput={(event: Event) => setKey((event.currentTarget as HTMLInputElement).value)} />
+      {props.children}
+    </>}
     <div class="form__actions">
-      <MdFilledButton disabled={busy || !key.trim() || props.saveBlocked} onClick={async () => {
+      {!props.removeOnly && <MdFilledButton disabled={busy || !key.trim() || props.saveBlocked} onClick={async () => {
         if (await props.onSave(key)) setKey('');
-      }}>{props.saveLabel}</MdFilledButton>
+      }}>{props.saveLabel}</MdFilledButton>}
       {access.configured && !confirmRemoval && <MdOutlinedButton disabled={busy}
         onClick={() => setConfirmRemoval(true)}>Remove key</MdOutlinedButton>}
     </div>

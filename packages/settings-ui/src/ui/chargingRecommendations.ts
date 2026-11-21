@@ -1,7 +1,10 @@
 import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
 import type { SetupRecommendation } from './recommendationsModel.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { FINISH_CHARGING_SETUP, lacksChargingCurrentRoute, needsVehicleChargingConsent } from './chargingSetupFacts.ts';
+import {
+  FINISH_CHARGING_SETUP, hasBuiltInChargingAccess, lacksChargingCurrentRoute,
+  needsVehicleChargingConsent, requiresChargingAppUpdate,
+} from './chargingSetupFacts.ts';
 
 /**
  * A car PELS controls whose app offers a companion device the owner has not
@@ -49,7 +52,12 @@ function setupRecommendations(
     let title: string;
     let body: string;
     const name = formatDisplayDeviceName(device.name);
-    if (device.setup.method === 'built_in' && device.currentRoute === 'flow') {
+    const usesExistingFlow = device.setup.method === 'flow' && device.flowCheck === 'conflict';
+    if (requiresChargingAppUpdate(device) && !usesExistingFlow) {
+      kind = 'charging-setup';
+      title = `Set up charging-current control for ${name}`;
+      body = 'Update the charger’s app in Homey to use built-in current control, or use a Flow.';
+    } else if (device.setup.method === 'built_in' && device.currentRoute === 'flow') {
       kind = 'charging-paused';
       title = `Built-in current control is paused for ${name}`;
       body = 'A Flow sets the same charging current, and PELS cannot stop a Flow, so PELS leaves the current '
@@ -60,10 +68,10 @@ function setupRecommendations(
       title = `Choose how PELS controls ${name}`;
       body = 'Control either the car or its physical charger. '
         + 'Confirm your choice on the device page before enabling car control.';
-    } else if (device.setup.method === 'flow' && device.flowCheck === 'conflict') {
+    } else if (usesExistingFlow) {
       // The Flow route also defaults to 'flow'; only the scan proves a current-setting Flow exists.
       return [];
-    } else if (device.setup.method === 'built_in' && (device.capabilityWritable || access.state === 'ready')) return [];
+    } else if (device.setup.method === 'built_in' && hasBuiltInChargingAccess(device, access)) return [];
     else {
       kind = 'charging-setup';
       title = `Set up charging-current control for ${name}`;

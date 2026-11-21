@@ -32,7 +32,7 @@ for (const width of [320, 480]) {
                 hasExhibitedExport: false, surplusPoolReachable: true,
                 chargerPhasePresets: { state: 'resolved', presets: {} } }),
               'GET /ui_charging_current': () => [{ deviceId: car.id, name: car.name, setup,
-                scope: 'vehicle', capabilityWritable: false, sharedInstallation: false,
+                scope: 'vehicle', supportsAppAction: true, capabilityWritable: false, sharedInstallation: false,
                 flowCheck: 'clear', flowNames: [], currentRoute: setup.method, missingCompanion: 'none' }],
               'GET /ui_charging_access': () => ({ configured: true, state: 'ready' }),
               'PUT /ui_charging_current/solar-car': (body: typeof setup) => { setup = body; },
