@@ -14,6 +14,7 @@
 import { getComponentLogger, getDebugEmitter } from '../logging/logger';
 import { runWithoutContext } from '../logging/alsContext';
 import { normalizeError } from '../utils/errorUtils';
+import { countRefreshCaller } from './transport/refreshWorkload';
 import { createSingleFlightLoop } from '../utils/singleFlightLoop';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { DeviceTransportPort } from './deviceTransport';
@@ -134,6 +135,9 @@ export class SnapshotRefreshScheduler {
   async refresh(options: SnapshotRefreshOptions = {}): Promise<void> {
     const transport = this.getTransport();
     if (!transport) return;
+    // Every snapshot cycle; the poll, post-actuation and stuck-confirmation
+    // counters above say which of them the scheduler started itself.
+    countRefreshCaller('snapshot_cycle');
     await this.loop.request({
       transport,
       // Normalized here so the re-run policy above only has to clear it.
@@ -171,6 +175,7 @@ export class SnapshotRefreshScheduler {
           event: 'post_actuation_refresh_running',
         });
         try {
+          countRefreshCaller('post_actuation');
           await this.refresh({ targeted: true, recordHomeyEnergySample: false });
         } catch (error) {
           logger.error({
@@ -217,6 +222,7 @@ export class SnapshotRefreshScheduler {
       event: 'stuck_target_confirmation_poll',
       thresholdMs: TARGET_CONFIRMATION_STUCK_POLL_MS,
     });
+    countRefreshCaller('stuck_confirmation');
     await this.refresh({ targeted: true });
   }
 
@@ -235,6 +241,7 @@ export class SnapshotRefreshScheduler {
       setTimeout(async () => {
         this.timers.clear('devicePoll');
         try {
+          countRefreshCaller('device_poll');
           await this.refresh({ targeted: true });
         } catch (error) {
           logger.error({
