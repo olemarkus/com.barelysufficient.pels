@@ -672,10 +672,13 @@ Two further consequences:
   that pass no longer runs this predicate at all, it is its own path that sheds every
   candidate, `lib/plan/planBuilderSilentMeter.ts`.)
 
-The `?? 0` in item 3 is independent of this and should be fixed first — in the
-producer, by removing the unavailability rather than modelling it
-(`notes/state-management/snapshot-decomposition.md`, "Absence stops here"). The
-planner must not be handed an "exempt draw unresolved" state to branch on.
+Item 3 is now a producer invariant, independent of the two-predicate work.
+`deviceReadContract.ts` resolves each power field before classification: a cold
+unreadable field is withheld, while a transient bad read retains the last accepted
+observation at its original timestamp. `toMeteredUsageDevices` then admits only
+plan devices with a resolved power axis, so `sumBudgetExemptProjectedUsageKw`
+returns a number and the planner has no "exempt draw unresolved" branch. Keep
+absence at those producers; do not make the sum nullable again.
 
 ## What this means for the Overview hero
 

@@ -315,26 +315,53 @@ describe('Tesla vendor state without an EV equivalent', () => {
 describe('independent capability resolution', () => {
   const emitter = () => ({ warn: vi.fn(), info: vi.fn() });
 
-  it.each([
+  const invalidPowerReads = [
     ['null', entry(null)],
+    ['undefined value', entry(undefined)],
     ['wrong type', entry('1200')],
-    ['nonfinite', entry(Infinity)],
+    ['NaN', entry(NaN)],
+    ['positive infinity', entry(Infinity)],
+    ['negative infinity', entry(-Infinity)],
     ['missing date', { value: 1200 }],
     ['invalid date', { value: 1200, lastUpdated: 'soon' }],
     ['missing entry', undefined],
-  ] as const)('withholds only a %s field on the first read', (_label, invalid) => {
-    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: invalid } });
-    const said = emitter();
-    const resolved = resolveDeviceRead({}, read, 'device_fetch', said);
-    expect(resolved?.capabilities).toEqual(['onoff', 'meter_power', 'button.reset']);
-    expect(resolved?.capabilitiesObj).not.toHaveProperty('measure_power');
-    expect(resolved?.capabilitiesObj?.onoff).toEqual(entry(true));
-    expect(resolved?.capabilitiesObj?.meter_power).toEqual(entry(42.5));
-    expect(said.warn).not.toHaveBeenCalled();
-    expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'device_capabilities_withheld', capabilityIds: ['measure_power'],
-      withheldCapabilityIds: ['measure_power'], retainedCapabilityIds: [],
-    }));
+  ] as const;
+  const coldInvalidPowerReads = (['measure_power', 'meter_power'] as const).flatMap(capabilityId => (
+    invalidPowerReads.map(([label, invalid]) => [capabilityId, label, invalid] as const)
+  ));
+
+  it.each(coldInvalidPowerReads)(
+    'withholds only cold invalid %s (%s)',
+    (capabilityId, _label, invalid) => {
+      const read = heater({ capabilitiesObj: { ...HEATER_VALUES, [capabilityId]: invalid } });
+      const said = emitter();
+      const resolved = resolveDeviceRead({}, read, 'device_fetch', said);
+      expect(resolved?.capabilities).toEqual(
+        ['onoff', 'measure_power', 'meter_power', 'button.reset'].filter(id => id !== capabilityId),
+      );
+      expect(resolved?.capabilitiesObj).not.toHaveProperty(capabilityId);
+      expect(resolved?.capabilitiesObj?.onoff).toEqual(entry(true));
+      const siblingPowerCapabilityId = capabilityId === 'measure_power' ? 'meter_power' : 'measure_power';
+      expect(resolved?.capabilitiesObj?.[siblingPowerCapabilityId])
+        .toEqual(HEATER_VALUES[siblingPowerCapabilityId]);
+      expect(said.warn).not.toHaveBeenCalled();
+      expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'device_capabilities_withheld', capabilityIds: [capabilityId],
+        withheldCapabilityIds: [capabilityId], retainedCapabilityIds: [],
+      }));
+    },
+  );
+
+  it.each([
+    ['measure_power', 0],
+    ['measure_power', -1200],
+    ['meter_power', 0],
+    ['meter_power', -42.5],
+  ] as const)('accepts finite %s value %s', (capabilityId, value) => {
+    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, [capabilityId]: entry(value) } });
+    const resolved = withholdInvalidModelCapabilities(read);
+    expect(resolved.violations).toEqual([]);
+    expect(resolved.device.capabilitiesObj?.[capabilityId]).toEqual(entry(value));
   });
 
   it.each([
