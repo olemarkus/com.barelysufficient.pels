@@ -1,8 +1,8 @@
 import Homey from 'homey';
 import { getLogger } from '../../lib/logging/logger';
 import { DEVICES_API_PATH, ENERGY_LIVE_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
-import { createTestDeviceTransport, initWithLiveFeed } from '../helpers/deviceTransportHarness';
-import { emitDeviceInventoryChange } from '../helpers/liveFeedSocketHarness';
+import { createTestDeviceTransport, initWithLiveFeed, onObservedStateRefresh } from '../helpers/deviceTransportHarness';
+import { emitDeviceInventoryChange, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { homeyDevice } from '../helpers/homeyDevicePayload';
 import { mockHomeyInstance } from '../mocks/homey';
 
@@ -41,6 +41,67 @@ describe('device inventory events', () => {
       vi.useRealTimers();
     }
   });
+  it('keeps a thermostat admitted by a live update while a targeted read is pending', async () => {
+    const transport = createTestDeviceTransport(new Homey.App(), {
+      log: vi.fn(), error: vi.fn(), structuredLog: getLogger('inventory-test'),
+    });
+    const first = heater('first');
+    const thermostat = homeyDevice({ id: 'thermostat', name: 'Thermostat', class: 'thermostat' }, {
+      measure_temperature: 20.7, target_temperature: { value: 23, setable: true },
+    }, new Date().toISOString());
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+    let finishRead!: (device: typeof first) => void;
+    const pending = new Promise<typeof first>((resolve) => { finishRead = resolve; });
+    const targeted = { includeLivePower: false, targetedRefresh: true, meterDeviceIds: [] };
+    const thermostatPath = `${DEVICES_API_PATH}/thermostat`;
+    const observedRefresh = vi.fn();
+    onObservedStateRefresh(transport, observedRefresh);
+    const get = vi.fn(async (path: string) => {
+      if (path === DEVICES_API_PATH) {
+        return { first, thermostat: { ...thermostat, capabilitiesObj: {} } };
+      }
+      if (path === `${DEVICES_API_PATH}/first`) {
+        signalStarted();
+        return pending;
+      }
+      if (path === thermostatPath) return thermostat;
+      return mockHomeyInstance.api.get(path);
+    });
+    try {
+      await initWithLiveFeed(transport);
+      setRestClient({ get, put: vi.fn() });
+      await transport.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
+      expect(transport.getSnapshotByDeviceId('thermostat')).toBeUndefined();
+
+      const refresh = transport.refreshSnapshot(targeted);
+      await started;
+      emitDeviceUpdate(thermostat);
+      await settleLiveFeed();
+      const admitted = transport.getSnapshotByDeviceId('thermostat');
+      expect(admitted?.temperature).toMatchObject({ currentTemperature: 20.7 });
+
+      finishRead(first);
+      await refresh;
+      expect(get).not.toHaveBeenCalledWith(thermostatPath);
+      expect(observedRefresh).toHaveBeenLastCalledWith({
+        entries: expect.arrayContaining([
+          expect.objectContaining({
+            observed: expect.objectContaining({ id: 'thermostat', temperature: admitted?.temperature }),
+          }),
+        ]),
+      });
+      expect(transport.getSnapshotByDeviceId('thermostat')?.temperature).toEqual(admitted?.temperature);
+
+      await transport.refreshSnapshot(targeted);
+      expect(get).toHaveBeenCalledWith(thermostatPath);
+      expect(transport.getSnapshotByDeviceId('thermostat')?.temperature).toEqual(admitted?.temperature);
+    } finally {
+      finishRead(first);
+      transport.destroy();
+    }
+  });
+
   it('waits for an older targeted read before refreshing a deleted device out of inventory', async () => {
     vi.useFakeTimers();
     const transport = createTestDeviceTransport(new Homey.App(), {

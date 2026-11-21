@@ -56,7 +56,7 @@ export const advanceTargetedMiss = (
 };
 
 export type TargetedRefreshMergeResult = {
-    /** The committed snapshot: present (updated) + within-grace retained. */
+    /** The committed snapshot after applying the targeted read. */
     snapshot: TransportDeviceSnapshot[];
     /** Devices dropped this cycle because the grace was exceeded. */
     graceExceededIds: string[];
@@ -68,33 +68,28 @@ export type TargetedRefreshMergeResult = {
  * a successful read resets a device's entry, a within-grace NETWORK miss
  * increments it, a grace-exceeded miss clears it and reports the id for dropping.
  *
- * `failedIds` is the set of ids whose by-id NETWORK read actually failed this
- * cycle — the ONLY ids the grace may retain. A previous-snapshot device absent
- * from `presentSnapshot` but NOT in `failedIds` was fetched successfully and
- * dropped by PARSING (unmanaged/unsupported/ineligible/invalid); it is an
- * intentional removal and is DROPPED immediately (no grace), mirroring the
- * whole-snapshot "raw-nonempty-but-parsed-empty commits immediately" invariant.
+ * Only the views in `targetedViewIds` were known when the poll started.
+ * Retain a live addition absent from the result. For a targeted view, a
+ * network failure gets grace and a successful read that parsed out is
+ * removed immediately.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function mergeTargetedRefreshSnapshot(params: {
     presentSnapshot: TransportDeviceSnapshot[];
     previousSnapshot: readonly TransportDeviceSnapshot[];
+    targetedViewIds: ReadonlySet<string>;
     failedIds: readonly string[];
     missByDeviceId: Map<string, TargetedMissState>;
     nowMs: number;
 }): TargetedRefreshMergeResult {
-    const { presentSnapshot, previousSnapshot, failedIds, missByDeviceId, nowMs } = params;
+    const { presentSnapshot, previousSnapshot, targetedViewIds, failedIds, missByDeviceId, nowMs } = params;
     const presentById = new Map(presentSnapshot.map((device) => [device.id, device]));
     const networkFailedIds = new Set(failedIds);
-    // The targeted request covered every prior known id (`fetchDevicesByKnownIds`
-    // derives them from `latestSnapshot`, plus EV-link car ids that parse always
-    // drops and so never appear here). Reset the counter for any id no longer
-    // requested so the map can't leak. Collect stale keys first (no spread
-    // allocation), then delete.
-    const requestedIds = new Set(previousSnapshot.map((device) => device.id));
+    // Clear counters for views that have left the live snapshot.
+    const liveIds = new Set(previousSnapshot.map((device) => device.id));
     const staleMissIds: string[] = [];
     for (const deviceId of missByDeviceId.keys()) {
-        if (!requestedIds.has(deviceId)) staleMissIds.push(deviceId);
+        if (!liveIds.has(deviceId)) staleMissIds.push(deviceId);
     }
     for (const deviceId of staleMissIds) missByDeviceId.delete(deviceId);
 
@@ -102,10 +97,10 @@ export function mergeTargetedRefreshSnapshot(params: {
     const graceExceededIds: string[] = [];
     for (const previous of previousSnapshot) {
         const present = presentById.get(previous.id);
-        if (present) {
-            // Read succeeded this cycle: take the fresh entry, reset misses.
+        if (present || !targetedViewIds.has(previous.id)) {
+            // Take the parsed row, or keep a view admitted after the poll started.
             missByDeviceId.delete(previous.id);
-            snapshot.push(present);
+            snapshot.push(present ?? previous);
             continue;
         }
         if (!networkFailedIds.has(previous.id)) {

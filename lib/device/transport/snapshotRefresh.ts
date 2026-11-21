@@ -143,24 +143,19 @@ function shouldDeferEmptySnapshotCommit(
 /* eslint-enable functional/immutable-data */
 
 /**
- * Resolve the snapshot to commit. For a TARGETED (by-id) overlay, `failedIds`
- * is the set of ids whose NETWORK read failed this cycle: overlay onto the
- * prior snapshot via the per-device miss grace (`mergeTargetedRefreshSnapshot`)
- * — a network-missed device is RETAINED with its prior entry (stays planned,
- * keeps its plan state, stays in the targeted set so it is retried, ages via
- * the staleness backstop), while a device that was fetched fine but parsed out
- * is dropped immediately. A FULL read passes `failedIds = null` — authoritative,
- * take it wholesale and reset the miss state. The committed snapshot is always
- * complete truth for the known device set, so the projection prunes to match.
+ * A targeted read overlays the live snapshot. Only views known at request time
+ * can be dropped for being absent from its result. A full read replaces the
+ * snapshot and clears all targeted misses.
  */
 function resolveCommittedRefreshSnapshot(
     refresh: SnapshotRefreshService,
     presentSnapshot: TransportDeviceSnapshot[],
     previousSnapshot: readonly TransportDeviceSnapshot[],
-    failedIds: readonly string[] | null,
+    targetedViewIds: ReadonlySet<string> | null,
+    failedIds: readonly string[],
     nowMs: number,
 ): TransportDeviceSnapshot[] {
-    if (failedIds === null) {
+    if (targetedViewIds === null) {
         refresh.refreshState.getTargetedMisses().clear();
         return presentSnapshot;
     }
@@ -171,6 +166,7 @@ function resolveCommittedRefreshSnapshot(
     const { snapshot, graceExceededIds } = mergeTargetedRefreshSnapshot({
         presentSnapshot,
         previousSnapshot,
+        targetedViewIds,
         failedIds: [...new Set([...failedIds, ...failedViewIds])],
         missByDeviceId: refresh.refreshState.getTargetedMisses(),
         nowMs,
@@ -570,6 +566,9 @@ export class SnapshotRefreshService {
   ): Promise<LiveMeterReadings | null> {
     const previousSnapshot = this.reader.snapshotStore.getSnapshot();
     const isTargetedRefresh = !refreshInventory && options.targetedRefresh === true && previousSnapshot.length > 0;
+    // Keep request-time membership separate from the live array: realtime
+    // can admit views while the read waits, including from an already-known source.
+    const targetedViewIds = isTargetedRefresh ? new Set(previousSnapshot.map((device) => device.id)) : null;
     const inventoryTrustEpoch = this.reader.chargingCurrentControl.trustEpoch();
     const fetchResult = await fetchDevicesForSnapshotRefresh(this, isTargetedRefresh);
     if (!fetchResult || this.stopped) return null;
@@ -628,7 +627,8 @@ export class SnapshotRefreshService {
         this,
         presentSnapshot,
         previousSnapshot,
-        isTargetedOverlay ? failedIds : null,
+        isTargetedOverlay ? targetedViewIds : null,
+        failedIds,
         start,
     ).map((device) => this.reader.chargingCurrentControl.projectControl(device));
     commitRefreshedSnapshot(
