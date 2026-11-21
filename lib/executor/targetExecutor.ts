@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
@@ -5,6 +6,9 @@ import {
 } from './targetCommandRetry';
 import type { PendingTargetCommandStatus } from '../ports/pendingTargetCommand';
 import { getDebugEmitter, getLogger } from '../logging/logger';
+import { runWithContext } from '../logging/alsContext';
+import { isHomeyRequestTimeout } from '../utils/errorUtils';
+import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
 import {
   logPendingTargetRetry,
@@ -242,13 +246,14 @@ const executeTargetCommandDispatch = async (
 ): Promise<TargetCommandDispatchResult> => {
   const { deviceId, name, desired, observedValue } = command;
   const nowMs = Date.now();
+  const targetCommandId = randomUUID();
   try {
-    const outcome = await ctx.actuator.apply({
+    const outcome = await runWithContext({ targetCommandId }, () => ctx.actuator.apply({
       kind: 'target',
       deviceId,
       target: 'temperature',
       value: desired,
-    });
+    }));
     if (!outcome.requested) return { applied: false, reason: 'not_requested' };
     if (outcome.kind !== 'target') {
       throw new Error(`Target actuator returned ${outcome.kind} outcome for ${deviceId}`);
@@ -291,15 +296,26 @@ const executeTargetCommandDispatch = async (
     const failedPending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, desired, nowMs, 'temporary_unavailable', latestObservedValue ?? observedValue,
     );
+    const details = {
+      targetCommandId, deviceId, deviceName: name, target: 'temperature', desired, skipContext,
+    };
+    if (isHomeyRequestTimeout(error)) {
+      logger.warn({
+        event: 'target_command_outcome_unknown',
+        reasonCode: 'control_request_timed_out',
+        ...details,
+        nextRetryAtMs: failedPending.nextRetryAtMs,
+        err: error,
+      });
+      return { applied: false, reason: 'failed' };
+    }
+    const statusCode = resolveHomeyHttpStatusCode(error);
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
     logger.error({
       event: 'target_command_failed',
-      reasonCode: 'device_manager_write_failed',
-      deviceId,
-      deviceName: name,
-      target: 'temperature',
-      desired,
-      skipContext,
+      reasonCode: statusCode === undefined ? 'device_manager_write_failed' : 'control_request_rejected',
+      ...details,
+      statusCode,
     });
     logger.info({
       event: 'executor_target_log',
@@ -309,6 +325,7 @@ const executeTargetCommandDispatch = async (
     logger.error({
       event: 'executor_target_error',
       msg: `Failed to set temperature for ${name} via DeviceTransport`,
+      targetCommandId,
       err: error,
     });
     return { applied: false, reason: 'failed' };

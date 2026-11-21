@@ -12,6 +12,12 @@ export const runWithContext = <T>(ctx: LogContext, fn: () => T): T => {
   return als.run(merged, fn);
 };
 
+/** Re-enter this operation's log context from a callback owned by a shared resource. */
+export const bindCurrentContext = () => {
+  const context = getCurrentContext();
+  return <T>(fn: () => T): T => als.run(context, fn);
+};
+
 /**
  * Starts a deliberately uncorrelated async branch. Use at a global handoff
  * (for example a whole-app refresh timer) that must not inherit the home or

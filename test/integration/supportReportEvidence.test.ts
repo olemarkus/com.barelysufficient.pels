@@ -93,6 +93,61 @@ const values = (report: SupportReportEvidence, title: string) => (
   report.sections.find((section) => section.title === title)?.values
 );
 
+describe('configured power source', () => {
+  const meter = {
+    ...HOMEY_DEVICE_FIELDS, id: 'meter', name: 'Main meter', ownerUri: 'homey:app:com.example.meter',
+  };
+  const settingsFor = (settings: Record<string, unknown>): ObjectiveSettingsStore => ({
+    ...objectiveStore(), get: (key) => settings[key], getKeys: () => Object.keys(settings),
+  });
+  const energy = { power_source: 'homey_energy', homey_energy_meter_device_id: meter.id };
+
+  it('identifies the selected meter outside the inventory limit with one inventory read', async () => {
+    const host = currentHost();
+    const devices = Array.from({ length: SUPPORT_REPORT_MAX_HOMEY_DEVICES }, (_, i) => ({
+      ...meter, id: `other-${i}`,
+    }));
+    const readDevices = vi.fn(async () => [...devices, meter]);
+    host.deviceManager.getDevicesForDebug = readDevices;
+    const report = await source(host, settingsFor(energy)).capture(request, now);
+
+    expect(values(report, 'Current power source')).toEqual({
+      scope: 'main', selection: 'chosen', source: 'homey_energy',
+      meter: { state: 'resolved', deviceId: meter.id, name: meter.name, ownerUri: meter.ownerUri },
+    });
+    expect(values(report, 'Current Homey devices')).toMatchObject({ leftOut: 1 });
+    expect(readDevices).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the meter selection when the inventory cannot be read', async () => {
+    const host = currentHost();
+    host.deviceManager.getDevicesForDebug = vi.fn().mockRejectedValue(new Error('inventory unavailable'));
+    const report = await source(host, settingsFor(energy)).capture(request, now);
+
+    expect(values(report, 'Current power source')).toEqual({
+      scope: 'main', selection: 'chosen', source: 'homey_energy',
+      meter: { state: 'resolved', deviceId: meter.id },
+    });
+    expect(report.omissions).toContain('Current Homey devices is unavailable.');
+  });
+
+  it.each([
+    [{ power_source: 'flow', homey_energy_meter_device_id: meter.id }, { selection: 'chosen', source: 'flow' }],
+    [{}, { selection: 'unset', source: 'flow' }],
+    [{ power_source: null }, { selection: 'unavailable', reason: 'missing_existing_key' }],
+    [{ power_source: 'homey_energy' }, { selection: 'chosen', source: 'homey_energy', meter: { state: 'unconfigured' } }],
+    [{ ...energy, homey_energy_meter_device_id: null }, {
+      selection: 'chosen', source: 'homey_energy', meter: { state: 'unavailable' },
+    }],
+  ] satisfies Array<[Record<string, unknown>, Record<string, unknown>]>)(
+    'reports the power source for %j',
+    async (settings, expected) => {
+      const report = await source(currentHost(), settingsFor(settings)).capture(request, now);
+      expect(values(report, 'Current power source')).toEqual({ scope: 'main', ...expected });
+    },
+  );
+});
+
 describe('app memory', () => {
   // Reports from many homes are compared on memory, so every kind of report
   // carries it, whatever its subject or trigger.
@@ -338,6 +393,9 @@ describe('support report evidence capture', () => {
     }, now);
     expect(values(report, 'Current home plan')).toMatchObject({ powerKw: 2 });
     expect(values(report, 'Current limits settings')).toMatchObject({ hardCapKw: 4 });
+    expect(values(report, 'Current power source')).toEqual({
+      scope: 'area', source: 'area_meter', meter: { state: 'resolved', deviceId: 'cabin-meter' },
+    });
     expect(values(report, 'Current daily budget')).toBeUndefined();
     expect(report.activity).toEqual({ state: 'unavailable', reason: 'Retained device activity is available only for Main.' });
     expect(host.getLatestPlanSnapshotForUi).not.toHaveBeenCalled();
@@ -352,6 +410,7 @@ describe('support report evidence capture', () => {
     expect(report.subjectName).toBe('PELS');
     expect(values(report, 'Current home plan')).toBeUndefined();
     expect(values(report, 'Current limits settings')).toBeUndefined();
+    expect(values(report, 'Current power source')).toEqual({ scope: 'area', selection: 'unavailable' });
     expect(host.getLatestPlanSnapshotForUi).not.toHaveBeenCalled();
     expect(host.getCapacityScalars).not.toHaveBeenCalled();
     host.getDeviceLogUiPayload.mockImplementation(() => { throw Error('private-history-error'); });

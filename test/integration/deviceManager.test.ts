@@ -29,6 +29,8 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import { capabilityReadings, celsius, homeyDevice, setable, HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { runWithContext } from '../../lib/logging/alsContext';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 
 const mockApiGet = vi.fn();
 const mockApiPut = vi.fn().mockResolvedValue(undefined);
@@ -5437,6 +5439,33 @@ describe('DeviceTransport', () => {
                 );
 
                 expect(realtimeListener).not.toHaveBeenCalled();
+            });
+
+            it('records a timeout echo separately from a later matching thermostat report', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.init();
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                const timeout = new HomeyRequestTimeoutError('PUT', '/target_temperature');
+                mockApiPut.mockRejectedValueOnce(timeout);
+                const targetCommandId = 'thermostat-attempt';
+                await expect(runWithContext({ targetCommandId }, () => (
+                    deviceManager.requestTemperatureTarget('dev1', 16)
+                ))).rejects.toBe(timeout);
+
+                const transactionId = ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature');
+                await emitCapability('dev1', 'target_temperature', 16, transactionId);
+                expect(logCapture.findEvent('target_command_echoed_after_timeout')).toMatchObject({
+                    deviceId: 'dev1', targetCommandId, transactionId,
+                });
+                expect(logCapture.findEvent('target_command_observed_after_timeout')).toBeUndefined();
+
+                await emitCapability('dev1', 'target_temperature', 17);
+                expect(logCapture.findEvent('target_command_observed_after_timeout')).toBeUndefined();
+                await emitCapability('dev1', 'target_temperature', 16);
+                await emitCapability('dev1', 'target_temperature', 16);
+                expect(logCapture.findEvents('target_command_observed_after_timeout')).toEqual([
+                    expect.objectContaining({ deviceId: 'dev1', targetCommandId, transactionId, targetValue: 16 }),
+                ]);
             });
 
             it('recognises the echo of its own write however late Homey sends it', async () => {
