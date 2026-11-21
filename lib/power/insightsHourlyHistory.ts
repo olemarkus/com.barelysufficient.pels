@@ -29,11 +29,10 @@ export function readHourlyInsightsLogs(raw: unknown, meterDeviceId: string): {
   return { power: read('energy_power', 'W'), exported: read('meter_power.exported', 'kWh') };
 }
 
-function readHour(timestamp: unknown, timestamps: Set<number>): number {
+function readHour(timestamp: unknown, timestamps: Set<number>): number | undefined {
   const hour = typeof timestamp === 'string' ? Date.parse(timestamp) : NaN;
-  if (!Number.isFinite(hour) || hour % HOUR_MS !== 0 || timestamps.has(hour)) {
-    throw new Error('Insights hourly details contain an invalid timestamp.');
-  }
+  if (!Number.isFinite(hour) || hour % HOUR_MS !== 0) return undefined;
+  if (timestamps.has(hour)) throw new Error('Insights hourly details contain a duplicate timestamp.');
   timestamps.add(hour);
   return hour;
 }
@@ -54,6 +53,10 @@ function readHourlySeries(
       continue;
     }
     const hour = readHour(value.t, timestamps);
+    if (hour === undefined) {
+      logger.warn({ event: 'power_history_recovery_point_skipped', logId: log.id, index, reason: 'invalid_timestamp' });
+      continue;
+    }
     if (value.v === null) continue;
     if (!isFiniteNumber(value.v) || (kind === 'export_counter' && value.v < 0)) {
       logger.warn({
