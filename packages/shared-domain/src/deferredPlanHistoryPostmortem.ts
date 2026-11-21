@@ -1,3 +1,4 @@
+import { DEVICE_IDLE_HISTORY_REASON } from './smartTaskCopy/shortfallCauses';
 import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
@@ -64,6 +65,7 @@ export type DeferredPlanHistoryPostmortemVariant =
   // its cause. The sentence names the car as the cause, since the setting that
   // would change it lives in the car.
   | 'met-at-car-limit'
+  | 'device-idle'
   | 'missed-by-shortfall'
   | 'missed-by-budget-exhaustion'
   | 'abandoned-by-clear'
@@ -455,6 +457,7 @@ export const formatPlanHistoryPostmortem = (
   timeZone = 'UTC',
 ): DeferredPlanHistoryPostmortem => {
   if (entry.outcome === 'met') return resolveMetPostmortem(entry, timeZone);
+  if (entry.outcome === 'device_idle') return { variant: 'device-idle', sentence: DEVICE_IDLE_HISTORY_REASON };
   if (entry.outcome === 'missed') return resolveMissedPostmortem(entry, timeZone);
   if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
     return resolveAbandonedPostmortem(entry, timeZone);

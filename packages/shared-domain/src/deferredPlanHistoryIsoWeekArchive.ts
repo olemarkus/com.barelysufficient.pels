@@ -21,6 +21,7 @@ import {
   formatReceiptOutcomeAbandoned,
   formatReceiptOutcomeReplaced,
   formatReceiptOutcomeMissed,
+  formatReceiptOutcomeDeviceIdle,
   formatReceiptOutcomeSucceeded,
   formatReceiptWeekCost,
   scaleRawCostToDisplay,
@@ -170,6 +171,7 @@ const formatRelativeWeekLabel = (
 type OutcomeCounts = {
   succeeded: number;
   missed: number;
+  deviceIdle: number;
   abandoned: number;
   replaced: number;
 };
@@ -178,10 +180,11 @@ type OutcomeCounts = {
 const countOutcomes = (
   entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
 ): OutcomeCounts => {
-  const counts: OutcomeCounts = { succeeded: 0, missed: 0, abandoned: 0, replaced: 0 };
+  const counts: OutcomeCounts = { succeeded: 0, missed: 0, deviceIdle: 0, abandoned: 0, replaced: 0 };
   for (const entry of entries) {
     if (entry.outcome === 'met') counts.succeeded += 1;
     else if (entry.outcome === 'missed') counts.missed += 1;
+    else if (entry.outcome === 'device_idle') counts.deviceIdle += 1;
     else if (entry.outcome === 'abandoned') counts.abandoned += 1;
     else if (entry.outcome === 'replaced') counts.replaced += 1;
   }
@@ -204,6 +207,7 @@ const formatWeekHeading = (
   // previous "N deadlines met" wording dropped on the floor.
   if (counts.succeeded > 0) outcomeFragments.push(formatReceiptOutcomeSucceeded(counts.succeeded));
   if (counts.missed > 0) outcomeFragments.push(formatReceiptOutcomeMissed(counts.missed));
+  if (counts.deviceIdle > 0) outcomeFragments.push(formatReceiptOutcomeDeviceIdle(counts.deviceIdle));
   if (counts.abandoned > 0) outcomeFragments.push(formatReceiptOutcomeAbandoned(counts.abandoned));
   if (counts.replaced > 0) outcomeFragments.push(formatReceiptOutcomeReplaced(counts.replaced));
   const parts = [lead, ...outcomeFragments];

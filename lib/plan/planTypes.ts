@@ -559,7 +559,7 @@ type CarriedInputKey =
   | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'
   | 'priority' | 'expectedPowerSource' | 'control' | 'budgetExempt' | 'available'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'targetPowerClaimNeeded' | 'residualKw'
-  | 'phaseFootprint';
+  | 'phaseFootprint' | 'usesAvailablePower';
 
 type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it

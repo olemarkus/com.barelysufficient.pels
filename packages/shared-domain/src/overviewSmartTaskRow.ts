@@ -38,6 +38,7 @@ export type OverviewSmartTaskRowVariant =
   | 'miss_streak'
   | 'at_risk'
   | 'paused'
+  | 'device_idle'
   | 'steady';
 
 export type OverviewSmartTaskRow = {
@@ -128,6 +129,16 @@ export const resolveOverviewSmartTaskRow = (params: {
       variant: 'paused',
       deviceName: paused.deviceName,
       statusText: SMART_TASK_WIDGET_STATUS_LABELS[paused.statusId],
+    };
+  }
+
+  const deviceIdle = pickSoonest(statuses, ['device_idle']);
+  if (deviceIdle !== null) {
+    return {
+      tone: 'muted',
+      variant: 'device_idle',
+      deviceName: deviceIdle.deviceName,
+      statusText: SMART_TASK_LIST_STATUS_LABELS.device_idle,
     };
   }
 

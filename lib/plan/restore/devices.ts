@@ -74,6 +74,8 @@ export function getStorageHandBackCandidates(
 /** Restore candidates in priority order, most important first. */
 export function sortRestoreCandidates(candidates: readonly RestoreCandidate[]): RestoreCandidate[] {
   return candidates.slice().sort((a, b) => {
+    const byAdmission = Number(a.device.usesAvailablePower === true) - Number(b.device.usesAvailablePower === true);
+    if (byAdmission !== 0) return byAdmission;
     const byPriority = a.device.priority - b.device.priority;
     if (byPriority !== 0) return byPriority;
     // Defensive tiebreak for partial/legacy inputs, shared with shed. Normal
@@ -114,6 +116,9 @@ export function isOffBinaryRestoreHoldCandidate(device: DevicePlanDevice): devic
 }
 
 function needsRestoreAdmission(device: DevicePlanDevice, shedDecisions: ShedDecisions): boolean {
+  // Admission has already priced an energized relay's possible draw against
+  // this cycle's room. Only an observed-off relay needs to apply for a start.
+  if (device.usesAvailablePower === true) return resolveRestoreObservedState(device) === 'off';
   // A newly appearing device is admitted from shed posture regardless of its
   // binary observation.
   if (shedDecisions.wasShedOrUnplanned(device.id)) return true;
@@ -237,7 +242,11 @@ export function getOnDevices(
       }
       return canSwapOutDevice(device, temperatureSetpoints);
     });
-  return sortByPriorityDesc(filtered);
+  const byPriority = sortByPriorityDesc(filtered);
+  return [
+    ...byPriority.filter((device) => device.usesAvailablePower === true),
+    ...byPriority.filter((device) => device.usesAvailablePower !== true),
+  ];
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {

@@ -29,6 +29,7 @@ import {
   formatReceiptOutcomeAbandoned,
   formatReceiptOutcomeReplaced,
   formatReceiptOutcomeMissed,
+  formatReceiptOutcomeDeviceIdle,
   formatReceiptOutcomeSucceeded,
   RECEIPT_FRAGMENT_SEPARATOR,
 } from './deferredPlanHistoryReceiptStrings';
@@ -70,6 +71,7 @@ const resolveSevenDayCutoffMs = (nowMs: number, timeZone: string): number => {
 type SevenDayCounts = {
   succeeded: number;
   missed: number;
+  deviceIdle: number;
   abandoned: number;
   replaced: number;
   inWindow: number;
@@ -121,12 +123,14 @@ const tallySevenDayEntry = (
   const next: SevenDayCounts = {
     succeeded: counts.succeeded,
     missed: counts.missed,
+    deviceIdle: counts.deviceIdle,
     abandoned: counts.abandoned,
     replaced: counts.replaced,
     inWindow: counts.inWindow + 1,
   };
   if (entry.outcome === 'met') next.succeeded += 1;
   else if (entry.outcome === 'missed') next.missed += 1;
+  else if (entry.outcome === 'device_idle') next.deviceIdle += 1;
   else if (entry.outcome === 'abandoned') next.abandoned += 1;
   else if (entry.outcome === 'replaced') next.replaced += 1;
   return next;
@@ -161,6 +165,7 @@ export type PlanHistory7DayHitRateStrip = {
   // the only place that decides what counts; consumers stay flat.
   succeeded: number;
   missed: number;
+  deviceIdle: number;
   abandoned: number;
   replaced: number;
   // Hit rate as an integer percent rounded to the nearest whole number.
@@ -212,7 +217,7 @@ export const resolvePlanHistory7DayHitRateStrip = (
   const cutoffMs = resolveSevenDayCutoffMs(nowMs, timeZone);
   const counts = entries.reduce<SevenDayCounts>(
     (acc, entry) => tallySevenDayEntry(acc, entry, cutoffMs, nowMs),
-    { succeeded: 0, missed: 0, abandoned: 0, replaced: 0, inWindow: 0 },
+    { succeeded: 0, missed: 0, deviceIdle: 0, abandoned: 0, replaced: 0, inWindow: 0 },
   );
   if (counts.inWindow === 0) return null;
   // `decisive` is the hit-rate denominator: succeeded + missed (the runs that
@@ -235,6 +240,9 @@ export const resolvePlanHistory7DayHitRateStrip = (
     segments.push({ text: formatReceiptOutcomeSucceeded(counts.succeeded), tone: 'positive' });
   }
   if (counts.missed > 0) segments.push({ text: formatReceiptOutcomeMissed(counts.missed), tone: 'warning' });
+  if (counts.deviceIdle > 0) {
+    segments.push({ text: formatReceiptOutcomeDeviceIdle(counts.deviceIdle), tone: 'muted' });
+  }
   if (counts.abandoned > 0) {
     segments.push({ text: formatReceiptOutcomeAbandoned(counts.abandoned), tone: 'muted' });
   }
@@ -249,6 +257,7 @@ export const resolvePlanHistory7DayHitRateStrip = (
     segments,
     succeeded: counts.succeeded,
     missed: counts.missed,
+    deviceIdle: counts.deviceIdle,
     abandoned: counts.abandoned,
     replaced: counts.replaced,
     hitRatePercent,

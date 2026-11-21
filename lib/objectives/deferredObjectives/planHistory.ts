@@ -3,9 +3,10 @@ import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import {
-  EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts,
+  EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts, restoreEnergyTaskIdle,
 } from './deliveryEvidence';
 import { restoreTaskNonDelivery } from './taskDeliveryState';
+import { observeDeviceIdleEvidence, reconcileIdleAtDeadline } from './deviceIdleOutcome';
 import type {
   TaskDeviceConstraint, TaskDeliveryControl, TaskDeliveryEvidence,
 } from '../../../packages/contracts/src/taskDelivery';
@@ -135,6 +136,7 @@ export type PlanHistoryPersistDeps = {
   getDeviceConstraint: (deviceId: string) => TaskDeviceConstraint;
   getDeliveryControl: (deviceId: string) => TaskDeliveryControl;
   isLiveMeasuredDraw: (deviceId: string) => boolean;
+  getLiveDrawAt: (deviceId: string, atMs: number) => number | null;
 };
 
 export type PlanHistoryLoadResult = {
@@ -155,9 +157,11 @@ export class DeferredObjectivePlanHistoryRecorder {
   private persistenceSafe: boolean;
 
   private restoreDeliveryState(state: PersistedMeteredDeliveryState): void {
+    const energyIdle = restoreEnergyTaskIdle(state.deliveryEvidence.energyIdle);
     const deliveryEvidence: TaskDeliveryEvidence = {
       explanation: state.deliveryEvidence.explanation,
       nonDelivery: restoreTaskNonDelivery(state.deliveryEvidence.nonDelivery),
+      ...(energyIdle ? { energyIdle } : {}),
     };
     this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), { ...state, deliveryEvidence });
   }
@@ -225,7 +229,9 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (record) {
         const facts = resolveTaskDeliveryFacts(diag, this.deps.getDeliveryControl(diag.deviceId),
           this.deps.isLiveMeasuredDraw(diag.deviceId), this.deps.getDeviceConstraint(diag.deviceId), nowMs);
-        const deliveryEvidence = observeTaskDelivery(record.deliveryEvidence, facts, nowMs, nowMs - previousAtMs);
+        const elapsedMs = nowMs - previousAtMs;
+        const deliveryEvidence = observeTaskDelivery(record.deliveryEvidence, facts, nowMs, elapsedMs);
+        const deviceIdleEvidence = observeDeviceIdleEvidence(record, facts, deliveryEvidence, nowMs, elapsedMs);
         // The latch keeps a task at risk while the tick's blocker names PELS's
         // own hold, so its changes are logged beside the blocker's.
         if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)
@@ -234,7 +240,7 @@ export class DeferredObjectivePlanHistoryRecorder {
             deadlineAtMs: diag.deadlineAtMs, before: activeDeliveryCause(record.deliveryEvidence),
             after: activeDeliveryCause(deliveryEvidence), nonDelivery: deliveryEvidence.nonDelivery.kind, facts });
         }
-        this.inProgress.set(key, { ...record, deliveryEvidence });
+        this.inProgress.set(key, { ...record, deliveryEvidence, deviceIdleEvidence });
         this.dirty = true;
       }
   }
@@ -501,7 +507,10 @@ export class DeferredObjectivePlanHistoryRecorder {
     nowMs: number,
     reason: 'deadline_passed' | 'replaced' | 'abandoned',
   ): void {
-    this.pushObservedEntry(finalizeRecord(record, nowMs, reason));
+    const finalRecord = reason === 'deadline_passed'
+      ? reconcileIdleAtDeadline(record, this.deps.getLiveDrawAt)
+      : record;
+    this.pushObservedEntry(finalizeRecord(finalRecord, nowMs, reason));
     this.inProgress.delete(key);
   }
 

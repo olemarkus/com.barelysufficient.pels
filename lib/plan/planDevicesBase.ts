@@ -331,6 +331,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   if (dev.externalOffHoldActive === true) loose.externalOffHoldActive = true;
   if (dev.targetPowerClaimNeeded === true) loose.targetPowerClaimNeeded = true;
   if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
+  if (dev.usesAvailablePower === true) loose.usesAvailablePower = true;
 
   if (decision.stepDownToRetire) loose.stepDownToRetire = decision.stepDownToRetire;
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));

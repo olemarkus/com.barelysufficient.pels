@@ -87,7 +87,7 @@ const resolveTaskStatus = (
   nowMs: number,
 ): OverviewSmartTaskStatus | null => {
   const status = resolveSmartTaskListStatus(plan, nowMs);
-  if (status === 'satisfied' || status === 'queued' || status === 'on_track') return null;
+  if (status === 'satisfied' || status === 'queued' || status === 'on_track' || status === 'device_idle') return null;
   if ((status === 'at_risk' || status === 'cannot_meet') && plan.latest !== null) {
     const labels = deadlineLabels(objective.kind, plan.progressDirection ?? 'unknown');
     const budgetRole = resolveSmartTaskBudgetRole(plan.latest);

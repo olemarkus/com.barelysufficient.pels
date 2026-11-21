@@ -28,6 +28,7 @@ export type TaskDeliveryExplanation =
 /** In-flight persistence carries evidence, never a restart-spanning power anchor. */
 export type TaskDeliveryEvidence = {
   explanation: TaskDeliveryExplanation;
+  energyIdle?: EnergyTaskIdleState;
   // `stopped` and `rechecking` keep a confirmed stop for the status without
   // freeing reservations; see `TaskNonDeliveryState` in lib/objectives.
   nonDelivery:
@@ -37,6 +38,13 @@ export type TaskDeliveryEvidence = {
     | { kind: 'stopped'; sinceMs: number }
     | { kind: 'rechecking'; sinceMs: number };
 };
+
+/** An energy task's reversible response to an observed device-side stop. */
+export type EnergyTaskIdleState =
+  | { kind: 'accepted' }
+  | { kind: 'uncertain' }
+  | { kind: 'recovering'; startedKWh: number; previouslyAccepted: boolean }
+  | { kind: 'reopened'; sinceMs: number };
 
 /** Device-owned constraint independent of the task's unit or underlying control type. */
 export type TaskDeviceConstraint =

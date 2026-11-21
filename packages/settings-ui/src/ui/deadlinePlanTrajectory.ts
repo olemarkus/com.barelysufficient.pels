@@ -5,15 +5,17 @@
 // resolution (series points, axis bounds, stateline, shortfall) so the view
 // renders flat data only.
 import type {
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DEADLINE_MARKER_WORD,
+  SMART_TASK_ENERGY_DELIVERED_TITLE,
   formatSmartTaskTargetLabel,
   formatSmartTaskTrajectoryCardTitle,
   formatSmartTaskTrajectoryShortAmountLabel,
   formatSmartTaskCurrentValuePhrase,
+  formatSmartTaskIdleTrajectoryStateline,
   formatSmartTaskTrajectoryStatelineReady,
   formatSmartTaskTrajectoryStatelineShort,
   SMART_TASK_STATELINE_AT_RISK_WORD,
@@ -159,32 +161,24 @@ const buildPlannedStaircase = (
   return { points, projected, readyAtMs };
 };
 
-export const buildTrajectory = (
+const buildTrajectoryForecast = (
   input: ObjectivePayloadReady,
-  schedule: DeadlinePlanSchedule,
-): DeadlineTrajectoryPayload => {
-  const { ctx, progress } = input;
-  const { nowMs, deadlineAtMs } = ctx;
+  planStatus: DeferredObjectiveReportedStatus,
+  xMaxMs: number,
+): Pick<DeadlineTrajectoryPayload, 'plannedPoints' | 'stateline' | 'shortfall' | 'deadlineDanger'> => {
+  const { ctx: { nowMs, deadlineAtMs }, progress } = input;
   const { currentValue, targetValue, unit } = progress;
-  const { planStatus } = schedule;
-  const measuredPoints = collectMeasuredPoints(ctx.activePlan, nowMs, currentValue);
-  const staircase = buildPlannedStaircase(input);
-  const { projected, readyAtMs } = staircase;
-  const xMaxMs = deadlineAtMs + 30 * 60 * 1000;
-  // `collectMeasuredPoints` always ends with the now-point, so the first entry
-  // exists; with none, `nowMs` is the earliest thing measured.
-  const earliestMeasuredMs = measuredPoints[0]?.[0] ?? nowMs;
-  const xMinMs = Math.min(earliestMeasuredMs, nowMs - 30 * 60 * 1000);
-  const plannedPoints = [...staircase.points, [xMaxMs, projected] as [number, number]];
-  const runBands = resolveRunBands(ctx.activePlan.latest.hours, xMinMs, xMaxMs)
-    .map((band, index) => ({ ...band, label: index === 0 ? schedule.labels.deviceSeriesName : null }));
-  const observedValues = measuredPoints.map((point) => point[1]);
-  const minValue = Math.min(targetValue, ...observedValues, currentValue);
-  const pad = unit === '%' ? 5 : 2;
-  // Only a temperature can sit below zero; a charge level or an amount of
-  // energy delivered cannot.
-  const yMin = unit === '°C' ? Math.floor(minValue - pad) : Math.max(0, Math.floor(minValue - pad));
-  const yMax = Math.ceil(Math.max(targetValue, ...observedValues) + pad);
+  if (planStatus === 'device_idle') {
+    return {
+      plannedPoints: [],
+      stateline: formatSmartTaskIdleTrajectoryStateline(
+        formatProgressValueForUnit(currentValue, unit), formatProgressValueForUnit(targetValue, unit),
+      ),
+      shortfall: null,
+      deadlineDanger: false,
+    };
+  }
+  const { points, projected, readyAtMs } = buildPlannedStaircase(input);
   const shortBy = progress.progressDirection === 'increasing'
     ? targetValue - projected
     : projected - targetValue;
@@ -207,7 +201,7 @@ export const buildTrajectory = (
   // produce a valid plan, which is neither "on track" nor "at risk" — claiming
   // either would fabricate a verdict. The formatter already supports a null
   // status word.
-  const STATELINE_STATUS_WORD: Record<DeferredObjectiveActivePlanStatusV1, string | null> = {
+  const STATELINE_STATUS_WORD: Record<Exclude<DeferredObjectiveReportedStatus, 'device_idle'>, string | null> = {
     on_track: SMART_TASK_STATELINE_ON_TRACK_WORD,
     satisfied: SMART_TASK_STATELINE_ON_TRACK_WORD,
     at_risk: SMART_TASK_STATELINE_AT_RISK_WORD,
@@ -230,27 +224,9 @@ export const buildTrajectory = (
       (deadlineAtMs - effectiveReadyAtMs!) / ONE_HOUR_MS,
     );
   return {
-    cardTitle: formatSmartTaskTrajectoryCardTitle({ targetValue, targetUnit: unit }),
-    ariaLabel: `Smart task progress trajectory for ${formatDisplayDeviceName(ctx.device.name)}`,
-    measuredPoints,
-    nowPoint: [nowMs, currentValue],
-    plannedPoints,
-    runBands,
-    targetValue,
-    targetLabel: formatSmartTaskTargetLabel({ targetValue, targetUnit: unit }),
-    deadlineAtMs: deadlineAtMs,
-    deadlineMarkLabel: isShort
-      ? `${DEADLINE_MARKER_WORD} ${formatHourLabel(deadlineAtMs)}`
-      : DEADLINE_MARKER_WORD,
-    deadlineDanger: isShort,
-    xMinMs,
-    xMaxMs,
-    yMin,
-    yMax,
-    yFloorLabel: formatProgressValueForUnit(yMin, unit),
+    plannedPoints: [...points, [xMaxMs, projected]],
     stateline,
-    // `isShort` already implies `shortBy >= SHORTFALL_DISPLAY_EPSILON[unit]`,
-    // so the annotation's amount can never round to zero.
+    deadlineDanger: isShort,
     shortfall: isShort
       ? {
         fromValue: projected,
@@ -258,5 +234,54 @@ export const buildTrajectory = (
         label: formatSmartTaskTrajectoryShortAmountLabel(shortBy, unit),
       }
       : null,
+  };
+};
+
+export const buildTrajectory = (
+  input: ObjectivePayloadReady,
+  schedule: DeadlinePlanSchedule,
+): DeadlineTrajectoryPayload => {
+  const { ctx, progress } = input;
+  const { nowMs, deadlineAtMs } = ctx;
+  const { currentValue, targetValue, unit } = progress;
+  const { planStatus } = schedule;
+  const measuredPoints = collectMeasuredPoints(ctx.activePlan, nowMs, currentValue);
+  const deviceIdle = planStatus === 'device_idle';
+  const xMaxMs = deadlineAtMs + 30 * 60 * 1000;
+  // `collectMeasuredPoints` always ends with the now-point, so the first entry
+  // exists; with none, `nowMs` is the earliest thing measured.
+  const earliestMeasuredMs = measuredPoints[0]?.[0] ?? nowMs;
+  const xMinMs = Math.min(earliestMeasuredMs, nowMs - 30 * 60 * 1000);
+  const bookings = deviceIdle
+    ? ctx.activePlan.latest.hours.filter((hour) => hour.endsAtMs <= nowMs) : ctx.activePlan.latest.hours;
+  const runBands = resolveRunBands(bookings, xMinMs, xMaxMs)
+    .map((band, index) => ({ ...band, label: index === 0 ? schedule.labels.deviceSeriesName : null }));
+  const observedValues = measuredPoints.map((point) => point[1]);
+  const minValue = Math.min(targetValue, ...observedValues, currentValue);
+  const pad = unit === '%' ? 5 : 2;
+  // Only a temperature can sit below zero; a charge level or an amount of
+  // energy delivered cannot.
+  const yMin = unit === '°C' ? Math.floor(minValue - pad) : Math.max(0, Math.floor(minValue - pad));
+  const yMax = Math.ceil(Math.max(targetValue, ...observedValues) + pad);
+  const forecast = buildTrajectoryForecast(input, planStatus, xMaxMs);
+  return {
+    cardTitle: deviceIdle
+      ? SMART_TASK_ENERGY_DELIVERED_TITLE : formatSmartTaskTrajectoryCardTitle({ targetValue, targetUnit: unit }),
+    ariaLabel: `Smart task progress trajectory for ${formatDisplayDeviceName(ctx.device.name)}`,
+    measuredPoints,
+    nowPoint: [nowMs, currentValue],
+    runBands,
+    targetValue,
+    targetLabel: formatSmartTaskTargetLabel({ targetValue, targetUnit: unit }),
+    deadlineAtMs: deadlineAtMs,
+    deadlineMarkLabel: forecast.deadlineDanger
+      ? `${DEADLINE_MARKER_WORD} ${formatHourLabel(deadlineAtMs)}`
+      : DEADLINE_MARKER_WORD,
+    xMinMs,
+    xMaxMs,
+    yMin,
+    yMax,
+    yFloorLabel: formatProgressValueForUnit(yMin, unit),
+    ...forecast,
   };
 };

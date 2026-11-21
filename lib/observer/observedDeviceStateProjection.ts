@@ -257,6 +257,8 @@ export type ObservedDeviceReads = {
      * history was received by then, or the reading stopped being live since.
      */
     getLiveDrawAt(deviceId: string, atMs: number): number | null;
+    /** Lowest retained draw since this bound, or null if the history does not reach the bound. */
+    getMinimumLiveDrawSince(deviceId: string, sinceMs: number): number | null;
     /**
      * Whether this device reached at least `minKw` in a live reading measured and
      * received after `sinceMs` and received before `reachedBeforeMs`, and is still
@@ -275,7 +277,7 @@ export type ObservedDeviceReads = {
  * planner's restore pacing reads as evidence that an increase has landed.
  */
 export type DrawEvidenceReads = Pick<
-    ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince'
+    ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'getMinimumLiveDrawSince' | 'hasDrawnAtLeastSince'
 >;
 
 /**
@@ -532,6 +534,20 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
             kw = level.kw;
         }
         return kw;
+    }
+
+    getMinimumLiveDrawSince(deviceId: string, sinceMs: number): number | null {
+        const levels = this.byId.get(deviceId)?.drawLevels ?? [];
+        let minimumKw: number | null = null;
+        for (const level of levels) {
+            if (level.receivedAtMs <= sinceMs) {
+                minimumKw = level.kw;
+            } else {
+                if (minimumKw === null) return null;
+                minimumKw = Math.min(minimumKw, level.kw);
+            }
+        }
+        return minimumKw;
     }
 
     hasDrawnAtLeastSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean {

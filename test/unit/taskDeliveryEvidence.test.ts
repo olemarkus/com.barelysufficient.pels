@@ -13,9 +13,19 @@ const permitted: TaskDeliveryFacts = {
   obligation: 'claimed', control: { kind: 'permitted' }, observation: { kind: 'not_drawing' },
   progress: { kind: 'known', value: 0 }, deviceConstraint: { kind: 'none' }, schedule: 'fits',
 };
+const observeMinutes = (
+  initial: TaskDeliveryEvidence, facts: TaskDeliveryFacts, fromMinute: number, toMinute: number,
+): TaskDeliveryEvidence => {
+  let evidence = initial;
+  for (let minute = fromMinute + 1; minute <= toMinute; minute += 1) {
+    evidence = observeTaskDelivery(evidence, facts, minute * MINUTE, MINUTE);
+  }
+  return evidence;
+};
+
 const tick = (facts: TaskDeliveryFacts = permitted) => {
   const first = observeTaskDelivery(EMPTY_DELIVERY_EVIDENCE, facts, 0, 0);
-  return observeTaskDelivery(first, facts, 15 * MINUTE, 15 * MINUTE);
+  return observeMinutes(first, facts, 0, 15);
 };
 describe('device-neutral delivery evidence', () => {
   it('confirms a mechanical thermostat or EV cutoff only during claimed permitted delivery', () => {
@@ -55,10 +65,71 @@ describe('device-neutral delivery evidence', () => {
   it('keeps mixed causes in chronological intervals and final expiry retains the last blocker', () => {
     const limited = tick({ ...permitted, control: { kind: 'restricted', cause: 'budget_limited' } });
     const stopped = observeTaskDelivery(limited, permitted, 16 * MINUTE, MINUTE);
-    const confirmed = observeTaskDelivery(stopped, permitted, 31 * MINUTE, 15 * MINUTE);
+    const confirmed = observeMinutes(stopped, permitted, 16, 31);
     expect(activeDeliveryCause(confirmed)).toBe('device_not_accepting');
     expect(confirmed.explanation).toMatchObject({ contributors: ['budget_limited'] });
     expect(observeTaskDelivery(confirmed, { ...permitted, obligation: 'expired' }, 32 * MINUTE, MINUTE)).toEqual(confirmed);
+  });
+});
+
+describe('provisional relay energy delivery', () => {
+  const eligible = { ...permitted, energyIdleEligible: true } as const;
+
+  it('does not carry a partial idle watch across missing lifecycle observations', () => {
+    const first = observeTaskDelivery(EMPTY_DELIVERY_EVIDENCE, eligible, 0, 0);
+    const afterGap = observeTaskDelivery(first, eligible, 20 * MINUTE, 20 * MINUTE);
+    expect(afterGap.nonDelivery).toEqual({ kind: 'watching', sinceMs: 20 * MINUTE });
+    expect(afterGap.energyIdle).toBeUndefined();
+    expect(observeMinutes(afterGap, eligible, 20, 35).energyIdle).toEqual({ kind: 'accepted' });
+  });
+
+  it('does not credit a watch that spanned a gap before provisional idle became eligible', () => {
+    const first = observeTaskDelivery(EMPTY_DELIVERY_EVIDENCE, permitted, 0, 0);
+    const afterGap = observeTaskDelivery(first, permitted, 14 * MINUTE, 14 * MINUTE);
+    const firstEligible = observeTaskDelivery(afterGap, eligible, 15 * MINUTE, MINUTE);
+    expect(firstEligible.nonDelivery).toEqual({ kind: 'watching', sinceMs: 14 * MINUTE });
+    expect(firstEligible.energyIdle).toBeUndefined();
+  });
+
+  it('keeps a price hold neutral and requires fresh evidence after an unobserved permitted interval', () => {
+    const accepted = tick(eligible);
+    expect(accepted.energyIdle).toEqual({ kind: 'accepted' });
+    const priceHeld = observeTaskDelivery(accepted, { ...eligible, obligation: 'deferred' }, 16 * MINUTE, MINUTE);
+    expect(priceHeld.energyIdle).toEqual({ kind: 'accepted' });
+    expect(activeDeliveryCause(priceHeld)).toBe('clear');
+
+    const noReading = observeTaskDelivery(priceHeld, {
+      ...eligible, observation: { kind: 'unavailable' },
+    }, 17 * MINUTE, MINUTE);
+    expect(noReading.energyIdle).toEqual({ kind: 'uncertain' });
+    const rechecking = observeTaskDelivery(noReading, eligible, 18 * MINUTE, MINUTE);
+    expect(rechecking.energyIdle).toEqual({ kind: 'uncertain' });
+    expect(observeMinutes(rechecking, eligible, 18, 33).energyIdle)
+      .toEqual({ kind: 'accepted' });
+  });
+
+  it('requires a trusted reading to retain idle through a pending control decision', () => {
+    const accepted = tick(eligible);
+    const noReading = { ...eligible, observation: { kind: 'unavailable' } } as const;
+    expect(observeTaskDelivery(accepted, {
+      ...noReading, control: { kind: 'pending' },
+    }, 16 * MINUTE, MINUTE).energyIdle).toEqual({ kind: 'uncertain' });
+    expect(observeTaskDelivery(accepted, {
+      ...eligible, obligation: 'deferred', control: { kind: 'uncontrolled' },
+    }, 16 * MINUTE, MINUTE).energyIdle).toEqual({ kind: 'accepted' });
+  });
+
+  it('keeps a task on available power until the draw is confirmed by metered delivery', () => {
+    const drawing = { ...eligible, observation: { kind: 'drawing', kw: 2 } } as const;
+    const recovering = observeTaskDelivery(tick(eligible), drawing, 16 * MINUTE, MINUTE);
+    expect(recovering.energyIdle?.kind).toBe('recovering');
+    const idleAgain = observeTaskDelivery(recovering, eligible, 17 * MINUTE, MINUTE);
+    expect(idleAgain.energyIdle).toEqual({ kind: 'accepted' });
+
+    expect(observeTaskDelivery(recovering, {
+      ...drawing, progress: { kind: 'known', value: 0.03 },
+    }, 17 * MINUTE, MINUTE).energyIdle).toEqual({ kind: 'reopened', sinceMs: 17 * MINUTE });
+    expect(tick(permitted).energyIdle).toBeUndefined();
   });
 });
 
@@ -130,6 +201,18 @@ describe('live status overlay', () => {
   const blocked = (cause: TaskDeliveryCause): TaskDeliveryEvidence => ({
     explanation: { kind: 'recorded', primary: { kind: 'blocked', cause }, contributors: [], intervals: [] },
     nonDelivery: { kind: 'none' },
+  });
+
+  it('holds the tentative status while a brief draw is being verified', () => {
+    const reported = reportTaskDeliveryStatus({
+      ...diagnostic,
+      energyIdleEligible: true,
+      evaluation: { ...diagnostic.evaluation, completion: { kind: 'unmet' } },
+    }, () => ({
+      ...EMPTY_DELIVERY_EVIDENCE,
+      energyIdle: { kind: 'recovering', startedKWh: 1, previouslyAccepted: true },
+    }));
+    expect(reported.evaluation.completion).toEqual({ kind: 'device_idle' });
   });
 
   // Planner decisions and transient executor facts: the horizon plan owns them,

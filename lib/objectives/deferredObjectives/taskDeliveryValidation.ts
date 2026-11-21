@@ -4,7 +4,7 @@
 // Accepts rows written before `MAX_DELIVERY_INTERVALS` bounded the interval
 // list; the next append trims them.
 import type {
-  TaskDeliveryCause, TaskDeliveryEvidence, TaskDeliveryExplanation,
+  EnergyTaskIdleState, TaskDeliveryCause, TaskDeliveryEvidence, TaskDeliveryExplanation,
 } from '../../../packages/contracts/src/taskDelivery';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 const CAUSES: Record<TaskDeliveryCause, true> = {
@@ -35,6 +35,15 @@ export const isTaskDeliveryExplanation = (raw: unknown): raw is TaskDeliveryExpl
         && item.toMs >= item.fromMs && isCause(item.cause);
     });
 };
+
+const isEnergyTaskIdleState = (raw: unknown): raw is EnergyTaskIdleState => {
+  if (!raw || typeof raw !== 'object') return false;
+  const value = raw as Record<string, unknown>;
+  return value.kind === 'accepted' || value.kind === 'uncertain'
+    || (value.kind === 'recovering' && isFiniteNumber(value.startedKWh) && value.startedKWh >= 0
+      && typeof value.previouslyAccepted === 'boolean')
+    || (value.kind === 'reopened' && isFiniteNumber(value.sinceMs) && value.sinceMs >= 0);
+};
 export const isTaskDeliveryEvidence = (raw: unknown): raw is TaskDeliveryEvidence => {
   if (!raw || typeof raw !== 'object') return false;
   const value = raw as Record<string, unknown>;
@@ -42,7 +51,8 @@ export const isTaskDeliveryEvidence = (raw: unknown): raw is TaskDeliveryEvidenc
     return false;
   }
   const state = value.nonDelivery as Record<string, unknown>;
-  return state.kind === 'none'
-    || (typeof state.kind === 'string' && Object.hasOwn(TIMED_NON_DELIVERY_KINDS, state.kind)
-      && isFiniteNumber(state.sinceMs));
+  return (value.energyIdle === undefined || isEnergyTaskIdleState(value.energyIdle))
+    && (state.kind === 'none'
+      || (typeof state.kind === 'string' && Object.hasOwn(TIMED_NON_DELIVERY_KINDS, state.kind)
+        && isFiniteNumber(state.sinceMs)));
 };

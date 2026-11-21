@@ -249,14 +249,18 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const { ctx, progress } = input;
   const { objective, activePlan } = ctx;
   const latest = activePlan.latest;
+  const planStatus = resolveEffectivePlanStatus(latest.planStatus, activePlan);
+  const displayedHours = planStatus === 'device_idle'
+    ? input.hours.filter((hour) => hour.endMs <= ctx.nowMs)
+    : input.hours;
   const schedule: DeadlinePlanSchedule = {
     labels: deadlineLabels(objective.kind, progress.progressDirection),
     // The overlay never reaches `latest`: the committed revision stays the
     // trajectory the hero's budget-cause derivation reads, because a device
     // left off is not a budget shortfall.
-    planStatus: resolveEffectivePlanStatus(latest.planStatus, activePlan),
-    originalChargeByStartMs: buildChargeByStartMs(activePlan.original ?? latest, input.hours),
-    currentChargeByStartMs: buildChargeByStartMs(latest, input.hours),
+    planStatus,
+    originalChargeByStartMs: buildChargeByStartMs(activePlan.original ?? latest, displayedHours),
+    currentChargeByStartMs: buildChargeByStartMs(latest, displayedHours),
   };
   const revisionPanelFeed = buildRevisionPanelFeed({
     latest,

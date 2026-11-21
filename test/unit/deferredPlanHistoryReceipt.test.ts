@@ -662,6 +662,18 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     expect(strip).toBeNull();
   });
 
+  it('counts device idle separately from succeeded and missed', () => {
+    const entries = [
+      buildEntry({ id: 'a', outcome: 'met' }),
+      buildEntry({ id: 'b', outcome: 'missed' }),
+      buildEntry({ id: 'c', outcome: 'device_idle', metAtMs: null }),
+    ];
+    const strip = resolvePlanHistory7DayHitRateStrip(entries, NOW_MS, 'UTC');
+    expect(strip).toMatchObject({ succeeded: 1, missed: 1, deviceIdle: 1, hitRatePercent: 50 });
+    expect(strip?.text).toContain('1 ended with the device idle');
+    expect(groupPlanHistoryByIsoWeek(entries, 'UTC', NOW_MS)[0]?.heading).toContain('1 ended with the device idle');
+  });
+
   it('renders 100% hit rate when every in-window entry succeeded', () => {
     const strip = resolvePlanHistory7DayHitRateStrip(
       [

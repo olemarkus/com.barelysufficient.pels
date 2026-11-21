@@ -75,6 +75,8 @@
   var WHY_AT_RISK_HIGHER_PRIORITY_LOAD = "Other devices use the power your limit allows before the deadline.";
   var WHY_CANNOT_MEET_BUDGET_PARTIAL = "Today\u2019s daily budget is holding part of this back, but there is not enough time either.";
   var WHY_AT_RISK_BUDGET_PARTIAL = "Today\u2019s daily budget may be holding part of this back, and time is short too.";
+  var DEVICE_IDLE_HISTORY_REASON = "The device stopped taking power while PELS allowed it to run.";
+  var DEVICE_IDLE_LIVE_REASON = DEVICE_IDLE_HISTORY_REASON + " For example, a water heater stops heating when it reaches its set temperature. It can draw again when power is available.";
 
   // packages/shared-domain/src/smartTaskCopy/createEditCopy.ts
   var CREATE_SMART_TASK_WIDGET_COPY = {
@@ -627,6 +629,7 @@
     on_track: "On track",
     at_risk: "At risk",
     cannot_meet: "Cannot finish",
+    device_idle: "Tentatively met",
     satisfied: "Satisfied"
   };
   var SMART_TASK_WIDGET_STATUS_LABELS = {
@@ -651,6 +654,7 @@
     on_track: "ok",
     at_risk: "warn",
     cannot_meet: "alert",
+    device_idle: "info",
     satisfied: "ok"
   };
   var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
@@ -672,6 +676,7 @@
     on_track: null,
     at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
+    device_idle: null,
     satisfied: null
   };
 

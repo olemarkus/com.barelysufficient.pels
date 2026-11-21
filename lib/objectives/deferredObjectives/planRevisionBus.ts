@@ -1,5 +1,5 @@
 import type {
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -9,14 +9,14 @@ type DeferredObjectivePlanRevisionEventBase = {
   deviceId: string;
   deviceName: string | null;
   objectiveKind: DeferredObjectiveSettingsKind;
-  previousPlanStatus: DeferredObjectiveActivePlanStatusV1 | null;
+  previousPlanStatus: DeferredObjectiveReportedStatus | null;
   /**
    * The status consumers should REPORT, when it differs from the revision's own
    * `planStatus` because a live per-cycle overlay applies (a confirmed
    * device-side stop, or the car's own charge limit). Absent on ordinary revisions. Consumers must
    * prefer this over `revision.planStatus`, or a Flow disagrees with every screen.
    */
-  effectivePlanStatus?: DeferredObjectiveActivePlanStatusV1;
+  effectivePlanStatus?: DeferredObjectiveReportedStatus;
   previousWasPending: boolean;
   allocationChanged: boolean;
   projectedFinishAtMs: number | null;

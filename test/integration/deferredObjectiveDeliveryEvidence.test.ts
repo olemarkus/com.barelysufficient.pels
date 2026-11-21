@@ -17,7 +17,10 @@ import {
 import { DeferredObjectivePlanHistoryRecorder, type PlanHistoryLoadResult } from '../../lib/objectives/deferredObjectives/planHistory';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
-import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
+import { buildFixtureDiagnosticsForLane } from '../helpers/taskEvaluationFixture';
+import {
+  LIVE_LANE, SERVING_LANE, type TaskEvaluationLane,
+} from '../../lib/objectives/deferredObjectives/taskEvaluationCoordinator';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -56,6 +59,7 @@ const relay = (id: string, drawKw: number, nowMs: number): Device => withBinaryD
   hasStandingDemand: true, surplusTracking: false, confirmedNotDrawing: false,
   targets: [], binaryCapabilityId: 'onoff', binaryControl: { on: true },
   control: fixtureControlPosture({ controllable: true }),
+  controlModel: 'binary_power',
   deviceType: 'onoff', lastFreshDataMs: nowMs, thermalDirection: 'heating',
 })) as unknown as Device;
 
@@ -109,7 +113,7 @@ const evSettings = (): DeferredObjectiveRoster => objectiveRosterFor({
 
 // Stores are the external persistence seam. Restart constructs fresh owners
 // against the same durable rows; no observation/time anchor is injected.
-const createScenario = (settings: DeferredObjectiveRoster) => {
+const createScenario = (settings: DeferredObjectiveRoster, provisionalIdle = false) => {
   const energyStore = createMemoryEnergyDeliveryStore();
   let persistedHistory: PlanHistoryLoadResult = {
     snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [],
@@ -195,6 +199,9 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
         resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
         hasObservedTask: () => false,
         getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
+        ...(provisionalIdle ? {
+          getEnergyIdleState: (deviceId, deadlineAtMs) => history.getDeliveryEvidence(deviceId, deadlineAtMs).energyIdle,
+        } : {}),
       },
       getDeferredObjectiveSettings: () => settings,
       getDevices: () => devices, getDailyBudgetSnapshot: () => null,
@@ -219,7 +226,7 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
     energy.flushIfDirty();
     return reported;
   };
-  const build = (nowMs: number) => buildFixtureDiagnostics({
+  const build = (nowMs: number, lane: TaskEvaluationLane = LIVE_LANE) => buildFixtureDiagnosticsForLane({
     hasSolarProduction: false,
     nowMs, timeZone: 'UTC', devices, settings, powerTracker,
     dailyBudgetSnapshot: null, buildPriceHorizon: priceHorizon,
@@ -228,13 +235,16 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
     resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
     hasObservedTask: () => false,
     getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
-  });
+    ...(provisionalIdle ? {
+      getEnergyIdleState: (deviceId, deadlineAtMs) => history.getDeliveryEvidence(deviceId, deadlineAtMs).energyIdle,
+    } : {}),
+  }, lane);
   return {
     tick, build, restart,
     setPlanDecision: (control: TaskDeliveryControl | null) => { planDecision = control; },
     revisionEvents: () => [...revisionEvents],
-    activePlan: () => {
-      const plan = active.getActivePlansSnapshot()?.plansByDeviceId[HIGH_ID];
+    activePlan: (deviceId = HIGH_ID) => {
+      const plan = active.getActivePlansSnapshot()?.plansByDeviceId[deviceId];
       if (!plan) throw new Error('Missing active plan');
       return plan;
     },
@@ -266,7 +276,7 @@ describe('task delivery evidence at the device boundary', () => {
     const beforeCount = scenario.delivered();
     expect(beforeCount).toBeGreaterThan(0);
     expect(beforeCount).toBeLessThan(6);
-    for (let minutes = 25; minutes < 35; minutes += 5) {
+    for (let minutes = 21; minutes < 35; minutes += 1) {
       scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
     }
     expect(scenario.evidence().nonDelivery.kind).toBe('watching');
@@ -293,7 +303,9 @@ describe('task delivery evidence at the device boundary', () => {
 
     // Lower tasks acquire the freed physical room at the ordinary :58 settle.
     const settleAt = START_MS + 58 * MIN_MS;
-    scenario.tick(settleAt, observed(settleAt, 0));
+    for (let atMs = confirmedAt + MIN_MS; atMs <= settleAt; atMs += MIN_MS) {
+      scenario.tick(atMs, observed(atMs, 0));
+    }
     const freed = plannedKWh(task(scenario.build(settleAt), LOW_ID));
     expect(freed).toBeGreaterThan(before);
 
@@ -305,6 +317,47 @@ describe('task delivery evidence at the device boundary', () => {
     scenario.tick(nextSettle, observed(nextSettle, 2));
     expect(scenario.delivered()).toBeGreaterThan(beforeCount);
     expect(plannedKWh(task(scenario.build(nextSettle), LOW_ID))).toBeLessThan(freed);
+  });
+
+  it('keeps governing the idle relay after its last booked interval', () => {
+    const scenario = createScenario(claimedEnergySettings(), true);
+    for (let minute = 0; minute <= 181; minute += 1) {
+      const atMs = START_MS + minute * MIN_MS;
+      scenario.tick(atMs, [relay(HIGH_ID, minute < 10 ? 2 : 0, atMs)]);
+    }
+    const nowMs = START_MS + 181 * MIN_MS;
+    expect(scenario.activePlan().latest?.hours.every((hour) => hour.endsAtMs <= nowMs)).toBe(true);
+    const served = task(scenario.build(nowMs, SERVING_LANE), HIGH_ID);
+    expect(served.evaluation.planning).toMatchObject({ kind: 'allocated', plan: { currentHourClaim: 'released' } });
+    const decisions = applyDeferredObjectiveAdmission([served.evaluation], [relay(HIGH_ID, 0, nowMs)]);
+    expect(decisions.get(HIGH_ID)).toMatchObject({ kind: 'idle' });
+  });
+
+  it('rebooks a cycling relay around the lower task that used its released room', () => {
+    const scenario = createScenario(energySettings(), true);
+    const sample = (minute: number, drawKw: number) => {
+      const nowMs = START_MS + minute * MIN_MS;
+      return scenario.tick(nowMs, [relay(HIGH_ID, drawKw, nowMs), relay(LOW_ID, 0.02, nowMs)]);
+    };
+    for (let minute = 0; minute < 20; minute += 1) sample(minute, 2);
+    for (let minute = 20; minute < 70; minute += 1) sample(minute, 0);
+    expect(scenario.activePlan().liveCompletion.kind).toBe('device_idle');
+    expect(scenario.activePlan().latest?.hours.some((hour) => (
+      hour.endsAtMs > START_MS + 70 * MIN_MS && hour.plannedKWh > 0
+    ))).toBe(false);
+    for (let minute = 70; minute < 118; minute += 1) sample(minute, 2);
+    const lowerCommitment = scenario.activePlan(LOW_ID).latest;
+    expect(lowerCommitment?.hours.some((hour) => (
+      hour.endsAtMs > START_MS + 118 * MIN_MS && hour.plannedKWh > 0
+    ))).toBe(true);
+    const cycle = sample(118, 2);
+    expect(task(cycle, LOW_ID).evaluation.planning.kind).toBe('allocated');
+    expect(scenario.activePlan(LOW_ID).latest).toEqual(lowerCommitment);
+    const served = scenario.build(START_MS + 118 * MIN_MS, SERVING_LANE);
+    expect(task(served, LOW_ID).evaluation.planning.kind).toBe('allocated');
+    expect(scenario.activePlan().latest?.hours.some((hour) => (
+      hour.endsAtMs > START_MS + 118 * MIN_MS && hour.plannedKWh > 0
+    ))).toBe(true);
   });
 
   it('keeps a claimed hour on track through capacity shed and settle cycles, with no status event', () => {
@@ -358,7 +411,7 @@ describe('task delivery evidence at the device boundary', () => {
     scenario.tick(START_MS, observed(START_MS, 2));
     const eventsBefore = scenario.revisionEvents().length;
     scenario.setPlanDecision({ kind: 'permitted' });
-    for (let minutes = 2; minutes <= 18; minutes += 2) {
+    for (let minutes = 2; minutes <= 18; minutes += 1) {
       scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
     }
     expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
@@ -391,7 +444,7 @@ describe('task delivery evidence at the device boundary', () => {
     // A full permitted window re-confirms the stop and frees the room again,
     // with no second status event.
     scenario.setPlanDecision({ kind: 'permitted' });
-    for (let minutes = 44; minutes <= 60; minutes += 2) {
+    for (let minutes = 43; minutes <= 60; minutes += 1) {
       const atMs = START_MS + minutes * MIN_MS;
       scenario.tick(atMs, observed(atMs, 0));
     }
@@ -414,7 +467,7 @@ describe('task delivery evidence at the device boundary', () => {
     const scenario = createScenario(claimedEnergySettings());
     const observed = (atMs: number, kw: number) => [relay(HIGH_ID, kw, atMs)];
     scenario.tick(START_MS, observed(START_MS, 2));
-    for (let minutes = 2; minutes <= 18; minutes += 2) {
+    for (let minutes = 2; minutes <= 18; minutes += 1) {
       scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
     }
     scenario.setPlanDecision({ kind: 'restricted', cause: 'capacity_limited' });
@@ -434,7 +487,7 @@ describe('task delivery evidence at the device boundary', () => {
 
   it('persists a relay cutoff cause across restart and misses without inventing capacity pressure', () => {
     const scenario = createScenario(energySettings());
-    for (let minutes = 0; minutes <= 20; minutes += 5) {
+    for (let minutes = 0; minutes <= 20; minutes += 1) {
       const atMs = START_MS + minutes * MIN_MS;
       scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
     }
@@ -449,7 +502,7 @@ describe('task delivery evidence at the device boundary', () => {
     // Restart resumes fresh observation instead of billing or counting its gap.
     expect(scenario.delivered()).toBe(0);
     expect(scenario.evidence().nonDelivery.kind).toBe('rechecking');
-    for (let atMs = restoredAt + 5 * MIN_MS; atMs < DEADLINE_MS; atMs += 5 * MIN_MS) {
+    for (let atMs = restoredAt + MIN_MS; atMs < DEADLINE_MS; atMs += MIN_MS) {
       scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
     }
     scenario.tick(DEADLINE_MS, [relay(HIGH_ID, 0, DEADLINE_MS), relay(LOW_ID, 0, DEADLINE_MS)]);

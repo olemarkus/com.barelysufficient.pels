@@ -58,4 +58,7 @@ export const buildTaskEvaluationSource = (
   isReservationSuppressed: (deviceId, deadlineAtMs) => (
     requireDeferredObjectivePlanHistoryRecorder(ctx).isReservationSuppressed(deviceId, deadlineAtMs)
   ),
+  getEnergyIdleState: (deviceId, deadlineAtMs) => (
+    requireDeferredObjectivePlanHistoryRecorder(ctx).getDeliveryEvidence(deviceId, deadlineAtMs).energyIdle
+  ),
 });

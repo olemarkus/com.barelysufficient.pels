@@ -660,6 +660,24 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
     });
 
+    it('shows an idle outcome with measured energy and the requested target', async () => {
+      const root = await mount({
+        ...buildEntry({ outcome: 'device_idle', metAtMs: null }),
+        objectiveKind: 'energy',
+        targetValue: 6,
+        startProgressValue: 0,
+        finalProgressValue: 2,
+        progressDirection: 'increasing',
+      });
+      const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
+      expect(hero?.dataset.tone).toBe('muted');
+      expect(hero?.textContent).toContain('Device idle');
+      expect(hero?.textContent).toContain('The device stopped taking power while PELS allowed it to run.');
+      expect(hero?.textContent).toMatch(/2(?:\.0)? kWh delivered.*target 6(?:\.0)? kWh/);
+      expect(hero?.textContent).toContain('Review device');
+      expect(hero?.textContent).not.toContain('Missed');
+    });
+
     it('keeps recourse on the final device blocker despite a budget-shaped snapshot and earlier budget restriction', async () => {
       const revision = buildRevision({ planStatus: 'cannot_meet', dailyBudgetExhaustedBucketCount: 4 });
       const root = await mount({

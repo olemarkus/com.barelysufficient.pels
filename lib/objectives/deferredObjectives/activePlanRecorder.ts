@@ -50,7 +50,7 @@ import { isSmartTaskPricePaused } from '../../../packages/shared-domain/src/smar
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
 import { effectivePlanStatusOf, publishOverlayOnlyStatusChange } from './effectivePlanStatusEvents';
 import type {
-  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveReportedStatus,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   hasPriceHorizonAdvanced,
@@ -80,6 +80,7 @@ import {
   hasLearnedRateDeviated,
   hasMetadataDriftedWithinSchedule,
   isFrozenServedDiagnostic,
+  preserveLowerPriorityContext,
   withBackfilledAllocationRank,
   withDiagnosticOverlay,
   MAX_HISTORY_REVISIONS,
@@ -106,7 +107,7 @@ const emitDeferredDebug = getDebugEmitter('deferred_objectives', 'deferred_objec
 // last public status; older records fall back to the retained verdict/overlays.
 const previousEffectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
-): DeferredObjectiveActivePlanStatusV1 | null => {
+): DeferredObjectiveReportedStatus | null => {
   if (!isSmartTaskPricePaused(plan) || plan.latest === null) return effectivePlanStatusOf(plan);
   return plan.pricePausePreviousStatus === undefined
     ? resolveEffectivePlanStatus(plan.latest.planStatus, plan)
@@ -518,7 +519,7 @@ export class DeferredObjectiveActivePlanRecorder {
     hours: DeferredObjectivePlanInterval[],
     current: DeferredObjectiveActivePlanV1,
     nowMs: number,
-    previousEffective: DeferredObjectiveActivePlanStatusV1 | null,
+    previousEffective: DeferredObjectiveReportedStatus | null,
   ): boolean {
     // Caller (`observeDiagnostic`) already returns early when `current.latest`
     // is null, so we can dereference it directly here.
@@ -597,7 +598,7 @@ export class DeferredObjectiveActivePlanRecorder {
       measuredDeviation,
       hasPriceHorizonAdvanced(latest, diag.evaluation),
     );
-    const revision = buildRevision(
+    const revision = preserveLowerPriorityContext(diag, buildRevision(
       diag,
       effectiveHours,
       latest.revision + 1,
@@ -605,7 +606,7 @@ export class DeferredObjectiveActivePlanRecorder {
       nowMs,
       latest.computedFromPricesUpTo,
       replaceCommitment ? undefined : latest.reservationSegments,
-    );
+    ), latest);
     const provenance = resolveProvenance(diag);
     // Provenance updates are best-effort; preserve the existing snapshot when
     // the new diagnostic didn't resolve a profile so we don't clobber useful

@@ -405,8 +405,12 @@ export const resolveCoordinatedScheduleUpdate = (
     objectiveChanged,
     diag.replaceCommitment === true,
   ].includes(true);
+  const preservesElapsedHours = diag.releasesIdleBookings === true || diag.restoresIdleBookings === true;
+  const replacedHours = preservesElapsedHours
+    ? [...latest.hours.filter((hour) => hour.endsAtMs <= nowMs), ...liveHours]
+    : liveHours;
   const mergedHours = replaceCommitment
-    ? liveHours
+    ? replacedHours
     : mergeHoursPreservingCommitment(committedHours, liveHours, nowMs);
   const effectiveHours = stampCheaperHourAhead(
     stampUnitMilestones(mergedHours, diag, nowMs, replaceCommitment ? [] : committedHours),

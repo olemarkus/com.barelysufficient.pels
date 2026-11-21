@@ -9,6 +9,7 @@ import type { DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.
 export type DeferredObjectivePlanOutcome =
   | 'met'
   | 'missed'
+  | 'device_idle'
   | 'abandoned'
   | 'replaced'
   | 'unknown';

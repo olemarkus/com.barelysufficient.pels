@@ -59,36 +59,44 @@ type LedgerDevice = Pick<DevicePlanDevice, 'budgetExempt' | 'phaseFootprint'>;
 
 export type RestoreHeadroomLedger = {
   availableFor(dev: LedgerDevice): number | null;
-  commit(dev: LedgerDevice, spentKw: number): void;
+  /** Phase readings can lag the home total and require a larger debit. */
+  commit(dev: LedgerDevice, spentKw: number, phaseSpentKw?: number): void;
   /** A phase redistribution can consume phase room while its total-power increase is zero. */
   commitPhaseVector(dev: Pick<LedgerDevice, 'budgetExempt'>, debit: ChargingPhaseDebit): void;
   summaryAvailableKw(): number | null;
   axes(): RestoreHeadroomAxes;
 };
 
+const availableKw = (...limits: LimitHeadroom[]): number | null => {
+  const headroom = minLimitHeadroom(...limits);
+  return headroom.kind === 'on' ? headroom.kw : null;
+};
+
+export const restoreHeadroomFor = (axes: RestoreHeadroomAxes, dev: LedgerDevice): number | null => availableKw(
+  axes.capacity, axes.grid, dev.budgetExempt ? { kind: 'off' } : axes.budget,
+  phaseRoomFor(axes.phase, dev.phaseFootprint),
+);
+
 export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHeadroomLedger {
   let capacity = axes.capacity;
   let grid = axes.grid;
   let budget = axes.budget;
   let phase = axes.phase;
-  const availableKw = (...limits: LimitHeadroom[]): number | null => {
-    const headroom = minLimitHeadroom(...limits);
-    return headroom.kind === 'on' ? headroom.kw : null;
-  };
   return {
     availableFor(dev) {
-      return availableKw(
-        capacity, grid, dev.budgetExempt ? { kind: 'off' } : budget, phaseRoomFor(phase, dev.phaseFootprint),
-      );
+      return restoreHeadroomFor({ capacity, grid, budget, phase }, dev);
     },
-    commit(dev, spentKw) {
+    commit(dev, spentKw, phaseSpentKw = spentKw) {
       // Negative swaps free no room until the next meter sample; keep the existing
       // admission-delta boundary's finite-positive gate.
-      if (!Number.isFinite(spentKw) || spentKw <= 0) return;
-      capacity = spendLimitHeadroom(capacity, spentKw);
-      grid = spendLimitHeadroom(grid, spentKw);
-      if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
-      phase = spendPhaseRoom(phase, dev.phaseFootprint, spentKw);
+      if (Number.isFinite(spentKw) && spentKw > 0) {
+        capacity = spendLimitHeadroom(capacity, spentKw);
+        grid = spendLimitHeadroom(grid, spentKw);
+        if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
+      }
+      if (Number.isFinite(phaseSpentKw) && phaseSpentKw > 0) {
+        phase = spendPhaseRoom(phase, dev.phaseFootprint, phaseSpentKw);
+      }
     },
     commitPhaseVector(dev, debit) {
       capacity = spendLimitHeadroom(capacity, debit.totalKw);

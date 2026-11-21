@@ -216,6 +216,13 @@ const hasValidRevisionDurationFields = (v: Record<string, unknown>): boolean => 
     && isOptionalSpeedMode(v.speedMode);
 };
 
+const isOptionalLowerPriorityContext = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.revision) && isFiniteNumber(v.revisedAtMs);
+};
+
 const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -229,6 +236,7 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isOptionalReservationSegments(v.reservationSegments)
     && isOptionalAllocationRank(v.allocationRank)
     && isOptionalNonEmptyString(v.allocationContextSignature)
+    && isOptionalLowerPriorityContext(v.lowerPriorityContext)
     && hasValidRevisionEnergyFields(v)
     && hasValidRevisionDurationFields(v);
 };
@@ -336,7 +344,7 @@ const readStoredTargetValue = (v: Record<string, unknown>): number | undefined =
 };
 
 const isOptionalPricePausePreviousStatus = (value: unknown): boolean => (
-  value === undefined || value === null || isPlanStatus(value)
+  value === undefined || value === null || value === 'device_idle' || isPlanStatus(value)
 );
 
 const isActivePlan = (value: unknown): value is StoredActivePlan => {
@@ -418,7 +426,10 @@ const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | u
   if (targetValue === undefined) return undefined;
   return {
     ...stripRetiredDiagnosticReasonCode(current),
-    liveCompletion: plan.liveCompletion ?? { kind: 'unavailable' },
+    // The permitted-idle window cannot be verified across app downtime.
+    liveCompletion: plan.liveCompletion?.kind === 'device_idle'
+      ? { kind: 'unmet', status: 'at_risk' }
+      : plan.liveCompletion ?? { kind: 'unavailable' },
     targetValue,
     original: plan.original === null ? null : normalizeChargingRevision(plan.original),
     latest: plan.latest === null ? null : normalizeChargingRevision(stripRetiredRevisionFields(plan.latest)),

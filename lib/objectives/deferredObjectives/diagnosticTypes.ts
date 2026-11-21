@@ -198,6 +198,14 @@ type BaseDeferredObjectiveDiagnostic = {
   replaceCommitment?: true;
   /** A lifecycle queue turn authorizes a fresh revision even after the settle window. */
   scheduledReplan?: true;
+  /** This non-EV binary energy task can safely retry using its expected draw. */
+  energyIdleEligible?: true;
+  /** An ordinary allocation after renewed draw now backs the task. */
+  energyIdleBookingRestored?: true;
+  /** This turn is removing positive future bookings while the task is idle. */
+  releasesIdleBookings?: true;
+  /** This reopened task's new bookings fit around all committed tasks. */
+  restoresIdleBookings?: true;
   /** The task's queue turn could not allocate and served its commitment in this context. */
   contextReviewed?: true;
   // True only while the current bucket is a planned bucket for a smart task whose "exempt

@@ -30,8 +30,11 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
     vi.useRealTimers();
   });
 
-  it('attributes an on relay taking no energy to the device, with ample house capacity', async () => {
+  it.each([
+    'stays idle', 'starts drawing again', 'starts drawing at the deadline',
+  ] as const)('handles a relay that %s after its thermostat cuts off', async (scenario) => {
     const heater = new MockDevice(DEVICE_ID, 'Relay water heater', ['onoff', 'measure_power'], 'socket');
+    heater.setSettings({ load: 2_000 });
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 2_000);
     setMockDrivers({ relays: new MockDriver('relays', [heater]) });
@@ -85,15 +88,47 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
     });
     const active = app.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot().plansByDeviceId[DEVICE_ID];
     expect(active?.diagnosticReasonCode).toBe('objective_not_accepting_energy');
+    expect(recorder.getDeliveryEvidence(DEVICE_ID, DEADLINE_MS).energyIdle).toEqual({ kind: 'accepted' });
+    expect(active?.liveCompletion).toEqual({ kind: 'device_idle' });
 
     // The clock reaches ready-by with the device still refusing energy.
-    vi.setSystemTime(DEADLINE_MS);
-    await vi.advanceTimersByTimeAsync(31_000);
-    await drainPending();
+    await pump(40);
+    const settled = app.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot().plansByDeviceId[DEVICE_ID];
+    expect(settled?.latest).toBeDefined();
+    expect(settled?.latest?.hours.some((hour) => hour.startsAtMs >= START_MS + HOUR_MS && hour.plannedKWh > 0))
+      .toBe(false);
+    expect(await heater.getCapabilityValue('onoff')).toBe(true);
+
+    if (scenario === 'starts drawing again') {
+      const deliveredBefore = app.deferredObjectiveEnergyDelivery?.getDeliveredKWh(DEVICE_ID, DEADLINE_MS) ?? 0;
+      wholeHomeW = 2_500;
+      await heater.setCapabilityValue('measure_power', 2_000);
+      await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
+      await pump(10);
+      const reopened = app.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot().plansByDeviceId[DEVICE_ID];
+      expect(reopened?.liveCompletion.kind).toBe('unmet');
+      expect(app.deferredObjectiveEnergyDelivery?.getDeliveredKWh(DEVICE_ID, DEADLINE_MS)).toBeGreaterThan(deliveredBefore);
+      await pump(55);
+      const rebooked = app.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot().plansByDeviceId[DEVICE_ID];
+      expect(rebooked?.latest?.hours.some((hour) => hour.endsAtMs > Date.now() && hour.plannedKWh > 0)).toBe(true);
+      return;
+    }
+
+    if (scenario === 'starts drawing at the deadline') {
+      await pump(Math.ceil((DEADLINE_MS - Date.now()) / 60_000) - 1);
+      await vi.advanceTimersByTimeAsync(DEADLINE_MS - Date.now() - 1_000);
+      wholeHomeW = 2_500;
+      await heater.setCapabilityValue('measure_power', 2_000);
+      await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
+      await drainPending();
+      expect(recorder.getDeliveryEvidence(DEVICE_ID, DEADLINE_MS).energyIdle).toEqual({ kind: 'accepted' });
+    }
+    const outcome = scenario === 'stays idle' ? 'device_idle' : 'missed';
+    await pump(Math.ceil((DEADLINE_MS - Date.now()) / 60_000) + 1);
     const history = await api.ui_deferred_objective_history({ homey: mockHomeyInstance as never });
     expect(history.entriesByDeviceId[DEVICE_ID]).toEqual([
       expect.objectContaining({
-        outcome: 'missed',
+        outcome,
         deliveryExplanation: {
           kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
           contributors: expect.any(Array), intervals: expect.any(Array),
@@ -101,5 +136,7 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
       }),
     ]);
     expect(JSON.stringify(history.entriesByDeviceId[DEVICE_ID][0].deliveryExplanation)).not.toContain('capacity_limited');
+    expect(mockHomeyInstance.flow._triggerCardTriggers.deadline_ended?.[0]?.tokens)
+      .toMatchObject({ outcome, shortfall_known: true });
   });
 });

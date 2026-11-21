@@ -46,7 +46,8 @@ export const formatSmartTaskListConfidenceChipLabel = (
   statusId: SmartTaskListStatusId,
   learning: boolean,
 ): string | null => {
-  if (statusId === 'cannot_meet' || statusId === 'on_track' || statusId === 'unavailable') return null;
+  if (statusId === 'cannot_meet' || statusId === 'on_track' || statusId === 'unavailable'
+    || statusId === 'device_idle') return null;
   if (!learning) return null;
   return formatConfidenceChipLabel(confidence);
 };

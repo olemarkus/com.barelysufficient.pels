@@ -11,6 +11,7 @@ import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import { formatDeliveredEnergyOfTarget } from '../../../packages/shared-domain/src/smartTaskCopy/liveDetailCopy';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import {
@@ -24,7 +25,7 @@ import {
   type SmartTaskRowFacts,
 } from '../../../packages/shared-domain/src/smartTaskRowFacts';
 import {
-  formatPlanHistoryMissedReason,
+  formatPlanHistoryDeliveryReason,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
@@ -100,6 +101,7 @@ const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   building_plan: 2,
   queued: 3,
   on_track: 3,
+  device_idle: 3,
   satisfied: 99,
 };
 
@@ -113,6 +115,7 @@ const STATUS_TONE: Record<SmartTaskListStatusId, SmartTasksWidgetTone> = {
   building_plan: 'muted',
   queued: 'ok',
   on_track: 'ok',
+  device_idle: 'muted',
   satisfied: 'ok',
 };
 
@@ -292,17 +295,18 @@ const resolveRowCopy = (
   // dropping the meta keeps the 220 px detail panel from pushing the recourse
   // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
   const suppressPlanMeta = pricePaused || statusId === 'cannot_meet'
-    || smartTaskScheduleNoLongerGoverns(statusId) || !plan.latest;
+    || smartTaskScheduleNoLongerGoverns(statusId);
   // "Estimating" alongside a pending "why" line reads as two conflicting
   // blocked states; those reasons own the row. Routed through the shared
   // resolver so a record with no `pendingReason` is judged by the same rule the
   // copy above used — comparing the raw field here let the two disagree.
   const suppressConfidence = pricePaused || smartTaskScheduleNoLongerGoverns(statusId)
     || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(pendingReason));
+  const plannedMetaLabel = suppressPlanMeta || !plan.latest
+    ? null : formatPlanMetaLabel(plan.latest, resolveLiveRemainingEnergy(plan, facts.currentValue));
   return {
-    planMetaLabel: suppressPlanMeta || plan.latest === null
-      ? null
-      : formatPlanMetaLabel(plan.latest, resolveLiveRemainingEnergy(plan, facts.currentValue)),
+    planMetaLabel: statusId === 'device_idle' && plan.objectiveKind === 'energy'
+      ? formatDeliveredEnergyOfTarget(plan.deliveredKWh, plan.targetValue) : plannedMetaLabel,
     confidenceLabel: suppressConfidence
       ? null
       : resolveConfidenceLabel(plan.kwhPerUnitProvenance, statusId),
@@ -352,6 +356,10 @@ const buildRow = (
   };
 };
 
+const showActivePlan = (plan: ResolvedDeferredObjectiveActivePlanV1, nowMs: number): boolean => (
+  plan.liveCompletion.kind !== 'device_idle' || plan.deadlineAtMs > nowMs
+);
+
 const buildCandidate = (
   deviceId: string,
   plan: ResolvedDeferredObjectiveActivePlanV1,
@@ -359,13 +367,14 @@ const buildCandidate = (
   nowMs: number,
   timeZone: string | null,
 ): Candidate | null => {
+  if (!showActivePlan(plan, nowMs)) return null;
   const facts = resolveSmartTaskRowFacts(plan, device, nowMs);
   if (facts.statusId === 'satisfied') return null;
   const row = buildRow(deviceId, plan, device, facts, nowMs, timeZone);
   return {
     row,
     tier: STATUS_TIER[facts.statusId],
-    etaMs: resolvePlannerEtaMs(plan),
+    etaMs: facts.statusId === 'device_idle' ? null : resolvePlannerEtaMs(plan),
     deadlineMs: plan.deadlineAtMs,
   };
 };
@@ -408,7 +417,7 @@ const buildEndedRow = (
     // use, so wording stays single-sourced.
     progressLabel: formatPlanHistoryProgressLine(entry),
     reachedAtLabel: formatPlanHistoryReachedAtLine(entry, timeZone ?? 'UTC'),
-    whyLabel: formatPlanHistoryMissedReason(entry),
+    whyLabel: formatPlanHistoryDeliveryReason(entry),
     recourseHint: resolveEndedRecourse(entry),
     chart: toWidgetChart(resolveHistoryDetailChartData(entry)),
   };
@@ -515,14 +524,16 @@ export const buildSmartTaskDeviceView = (
     input.devices.map((device) => [device.id, device]),
   );
   const timeZone = input.timeZone ?? null;
-  const plan = input.activePlans?.plansByDeviceId?.[deviceId];
+  const savedPlan = input.activePlans?.plansByDeviceId?.[deviceId];
+  const plan = savedPlan && showActivePlan(savedPlan, input.nowMs) ? savedPlan : null;
   const device = devicesById.get(deviceId);
   const facts = plan ? resolveSmartTaskRowFacts(plan, device, input.nowMs) : null;
-  const active = plan && facts
+  const active: SmartTaskDeviceView['active'] = plan && facts
     ? {
       row: buildRow(deviceId, plan, device, facts, input.nowMs, timeZone),
       statusId: facts.statusId,
-      run: resolveRunTiming(plan, input.nowMs),
+      run: facts.statusId === 'device_idle'
+        ? { kind: 'none_ahead' } : resolveRunTiming(plan, input.nowMs),
     }
     : null;
   const dayStartMs = getStartOfDayInTimeZone(new Date(input.nowMs), timeZone ?? 'UTC');
