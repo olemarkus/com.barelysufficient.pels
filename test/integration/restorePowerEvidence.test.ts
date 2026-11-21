@@ -408,6 +408,18 @@ describe('observer draw levels', () => {
     expect(observer.getLiveDrawAt('charger', 2100)).toBe(4.6);
   });
 
+  it('keeps a dip in the live draw floor after the draw recovers', () => {
+    const { observer } = steppedUp();
+    expect(observer.getLiveDrawFloorSince('charger', 400)).toBeNull();
+    expect(observer.getLiveDrawFloorSince('charger', 2100)).toBe(4.6);
+    observe(observer, reading('charger', 1.5, 2600), 2700);
+    observe(observer, reading('charger', 4.6, 2800), 2900);
+    expect(observer.getLiveDrawFloorSince('charger', 2100)).toBe(1.5);
+    expect(observer.getLiveDrawFloorSince('charger', 2900)).toBe(4.6);
+    observe(observer, { ...reading('charger', 4.6, 3000), available: false }, 3100);
+    expect(observer.getLiveDrawFloorSince('charger', 2900)).toBeNull();
+  });
+
   it('adds no level for a reading within the active threshold of the last one', () => {
     const { observer } = steppedUp({ risenKw: 3.72 });
     expect(observer.hasDrawnAtLeastSince('charger', 1000, 10_000, 3.71)).toBe(false);
