@@ -316,7 +316,7 @@ export class DeviceTransport {
         const temperatureRecovery = new TemperatureRecoveryService(
             this.observationBridge.state,
             this.snapshotStore,
-            (refreshOptions) => this.refreshSnapshot(refreshOptions),
+            (deviceId) => this.realtimeIngest.rebuildFromAcceptedRead(deviceId),
             (deviceId) => this.observationBridge.nextCursor(deviceId),
             (event) => this.observationBridge.dispatchControlStateChanged(event),
         );
