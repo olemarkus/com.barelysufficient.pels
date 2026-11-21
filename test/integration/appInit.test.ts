@@ -1,4 +1,4 @@
-import { createMockPlanEngine } from '../utils/planEngineMock';
+import { partialDouble } from '../helpers/partialDouble';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { controlContestsForTest } from '../helpers/controlContests';
 import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
@@ -145,7 +145,9 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
   });
 
   it('projects transport binary bindings into semantic planner fields', () => {
-    const planEngine = createMockPlanEngine();
+    const planEngine = partialDouble<NonNullable<AppContext['planEngine']>>({
+      getRelayShedNoAck: () => undefined,
+    });
     const serviceCtx = createAppContextMock({
       planEngine,
       latestTargetSnapshot: transportSnapshotFixtures([
@@ -205,7 +207,9 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
   });
 
   it('fails fast when plan service device manager wiring is missing', () => {
-    const planEngine = createMockPlanEngine();
+    const planEngine = partialDouble<NonNullable<AppContext['planEngine']>>({
+      getRelayShedNoAck: () => undefined,
+    });
     const ctx = createAppContextMock({
       planEngine,
       deviceManager: undefined,
