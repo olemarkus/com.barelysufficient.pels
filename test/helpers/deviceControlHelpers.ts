@@ -61,6 +61,7 @@ export function createDeviceControlHelpersForTest(
     getSteppedLoadProfile: control.getSteppedLoadProfile.bind(control),
     getSteppedLoadCommandSession: control.getSteppedLoadCommandSession.bind(control),
     markSteppedLoadDesiredStepIssued: control.markSteppedLoadDesiredStepIssued.bind(control),
+    trackFlowStepAttempt: control.trackFlowStepAttempt.bind(control),
     hasPendingTargetPowerProbe: control.hasPendingTargetPowerProbe.bind(control),
     reconcileTargetPowerReachability: control.reconcileTargetPowerReachability.bind(control),
     reportSteppedLoadActualStep: control.reportSteppedLoadActualStep.bind(control),

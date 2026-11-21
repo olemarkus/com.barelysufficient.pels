@@ -39,6 +39,7 @@ import {
   preserveSteppedLoadDesiredStep,
   pruneStaleSteppedLoadCommandStates,
   reportSteppedLoadActualStep,
+  resolveSteppedLoadCommandRetryDelayMs,
   type DeviceControlRuntimeState,
   type ReportSteppedLoadActualStepResult,
   type SteppedLoadDesiredRuntimeState,
@@ -47,9 +48,14 @@ import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { ControlContestRecording } from '../ports/controlContest';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
+
+type FlowStepFeedback = { issuedAtMs: number; attempts: number };
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
+  // The Flow can stop answering across many otherwise independent command sessions.
+  private readonly flowFeedback = new Map<string, FlowStepFeedback>();
 
   /**
    * The observer's record of what the device attested. Injected, not owned:
@@ -101,6 +107,32 @@ export class SteppedCommandStore {
     this.clearCommandSession(deviceId);
   }
 
+  getFlowStepRetryAtMs(deviceId: string): number | undefined {
+    const feedback = this.flowFeedback.get(deviceId);
+    if (!feedback) return undefined;
+    const delay = resolveSteppedLoadCommandRetryDelayMs(feedback.attempts - 1);
+    return feedback.issuedAtMs + CONTROL_COMMAND_CONFIRMATION_MS + delay;
+  }
+
+  trackFlowStepAttempt(deviceId: string, issuedAtMs: number): () => void {
+    const previousReport = this.reportedStore.get(deviceId);
+    return () => {
+      // The feedback Flow can report before the trigger call returns, even in the same clock tick.
+      const report = this.reportedStore.get(deviceId);
+      if (report && report !== previousReport && report.updatedAtMs >= issuedAtMs) return;
+      const attempts = (this.flowFeedback.get(deviceId)?.attempts ?? 0) + 1;
+      this.flowFeedback.set(deviceId, { issuedAtMs, attempts });
+    };
+  }
+
+  reconcileFlowStepFeedback(readConfiguration: (deviceId: string) => DeviceConfigurationRead | undefined): void {
+    for (const deviceId of this.flowFeedback.keys()) {
+      if (!readConfiguration(deviceId)?.manualFlowSteppedLoad) {
+        this.flowFeedback.delete(deviceId);
+      }
+    }
+  }
+
   /** Retire command state that refers to a control axis or rung removed by its owner. */
   reconcileConfiguration(configuration: DeviceConfigurationRead): void {
     if (!('steppedLoadProfile' in configuration)) {
@@ -127,14 +159,18 @@ export class SteppedCommandStore {
 
   /** Whether anything at all is tracked — the settle pass's cheap early out. */
   hasTrackedState(): boolean {
-    return this.state.steppedLoadDesiredByDeviceId.size > 0
+    return this.flowFeedback.size > 0 || this.state.steppedLoadDesiredByDeviceId.size > 0
       || this.state.steppedLoadInitializedAtLowestStepByDeviceId.size > 0
       || this.state.steppedLoadStepCommandIssuedByDeviceId.size > 0
       || this.state.steppedLoadLastBinaryOnByDeviceId.size > 0;
   }
 
-  /** The tracked step, when commands for it in a row drew no report of any level. */
-  getUnansweredStepCommands(deviceId: string): UnansweredStepCommands {
+  getUnansweredStepCommands(deviceId: string, nowMs = Date.now()): UnansweredStepCommands {
+    const feedback = this.flowFeedback.get(deviceId);
+    if (feedback) {
+      const count = feedback.attempts - Number(nowMs < feedback.issuedAtMs + CONTROL_COMMAND_CONFIRMATION_MS);
+      return count > 0 ? { kind: 'flow_unanswered', count } : { kind: 'none' };
+    }
     const desired = this.state.steppedLoadDesiredByDeviceId.get(deviceId);
     return desired?.answer.kind === 'unanswered' && desired.answer.expiredCount > 0
       ? { kind: 'unanswered', stepId: desired.stepId, count: desired.answer.expiredCount }
@@ -149,7 +185,7 @@ export class SteppedCommandStore {
    */
   isLevelUnconfirmed(deviceId: string): boolean {
     const unanswered = this.getUnansweredStepCommands(deviceId);
-    return unanswered.kind === 'unanswered' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
+    return unanswered.kind !== 'none' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
   }
 
   /** Whether a step command is issued and not yet settled, acknowledged or not. */
@@ -188,6 +224,8 @@ export class SteppedCommandStore {
   reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
     const result = reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
     const { deviceId, stepId, observedAtMs } = observation;
+    const feedback = this.flowFeedback.get(deviceId);
+    if (feedback && observedAtMs >= feedback.issuedAtMs) this.flowFeedback.delete(deviceId);
     this.contests.controlReported({ deviceId, setting: 'level', value: stepId, reportedAtMs: observedAtMs });
     return result;
   }

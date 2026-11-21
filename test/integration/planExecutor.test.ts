@@ -353,6 +353,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     getOperatingMode: () => 'Home',
     retireStepDown: vi.fn(),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    trackFlowStepAttempt: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({
       hasPriorStepCommand: false,
@@ -3844,7 +3845,7 @@ describe('PlanExecutor stepped loads', () => {
     await expect(applying).resolves.toMatchObject({ deviceWriteCount: 2, commandRequestCount: 1 });
   });
 
-  it('leaves a turn_off stepped shed running when the planner parked it at an intermediate rung', async () => {
+  it.each([false, true])('sheds to an intermediate rung while Flow feedback backoff is %s', async (backedOff) => {
     // The sibling of the two-phase test above, and the whole point of the shed
     // behaviour being a FLOOR: same `turn_off` device, same ladder, but this
     // cycle decided `low` — the rung its relief was priced at. The step write is
@@ -3861,7 +3862,14 @@ describe('PlanExecutor stepped loads', () => {
         binaryControl: { on: true },
       },
     ];
-    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot, {
+      getSteppedLoadCommandSession: () => ({
+        hasPriorStepCommand: false,
+        stepCommandPending: false,
+        unansweredStepCommands: { kind: 'none' },
+        ...(backedOff && { flowStepRetryAtMs: Date.now() + 900_000 }),
+      }),
+    });
 
     await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
@@ -3891,6 +3899,26 @@ describe('PlanExecutor stepped loads', () => {
       effectiveTransition: 'full_shed_to_off',
     }));
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
+  });
+
+  it('backs off a shed step command when the live step is already below the intended rung', async () => {
+    const profile = { steps: [...steppedProfile.steps, { id: 'medium', planningPowerW: 2000 }] };
+    const { executor, desiredSteppedTrigger } = buildExecutor(
+      undefined, steppedSnapshot({ steppedLoadProfile: profile, reportedStepId: 'low' }), {
+        getSteppedLoadCommandSession: () => ({
+          hasPriorStepCommand: false, stepCommandPending: false, unansweredStepCommands: { kind: 'none' },
+          flowStepRetryAtMs: Date.now() + 900_000,
+        }),
+      },
+    );
+
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
+      currentState: 'on', plannedState: 'shed', shedAction: 'turn_off',
+      steppedLoadProfile: profile, reportedStepId: 'max', selectedStepId: 'max',
+      desiredStepId: 'medium', plannedShedStepId: 'medium',
+    })));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
   });
 
   it.each([false, true])('records shed actuation for a stepped reduction only under capacity pressure (non-capacity hold: %s)', async (nonCapacityHold) => {

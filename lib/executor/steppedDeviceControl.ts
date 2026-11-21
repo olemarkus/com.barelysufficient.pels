@@ -36,7 +36,9 @@ export class SteppedDeviceControl {
   }
 
   getSteppedLoadCommandSession(deviceId: string) {
-    const profile = this.getSteppedLoadProfile(deviceId);
+    const configuration = this.source.getDeviceConfiguration(deviceId);
+    const profile = configuration && 'steppedLoadProfile' in configuration
+      ? configuration.steppedLoadProfile : undefined;
     return {
       command: this.store.getDesired(deviceId),
       initializationAssumedStepId: this.store.peekInitializationLatch(deviceId,
@@ -45,11 +47,17 @@ export class SteppedDeviceControl {
       reportedStepId: this.source.getObservedState(deviceId)?.reportedStepId,
       stepCommandPending: this.store.isStepCommandPending(deviceId),
       unansweredStepCommands: this.store.getUnansweredStepCommands(deviceId),
+      flowStepRetryAtMs: configuration?.manualFlowSteppedLoad ? this.store.getFlowStepRetryAtMs(deviceId) : undefined,
     };
   }
 
   markSteppedLoadDesiredStepIssued(command: MarkSteppedLoadDesiredStepIssuedParams): void {
     this.targetPower.markDesiredStepIssued(command);
+  }
+
+  trackFlowStepAttempt(deviceId: string, issuedAtMs: number): (() => void) | undefined {
+    if (!this.source.getDeviceConfiguration(deviceId)?.manualFlowSteppedLoad) return undefined;
+    return this.store.trackFlowStepAttempt(deviceId, issuedAtMs);
   }
 
   hasPendingTargetPowerProbe(): boolean { return this.store.hasPendingTargetPowerProbe(); }
@@ -61,6 +69,7 @@ export class SteppedDeviceControl {
       const configuration = this.source.getDeviceConfiguration(device.id);
       if (configuration) this.store.reconcileConfiguration(configuration);
     }
+    this.store.reconcileFlowStepFeedback((deviceId) => this.source.getDeviceConfiguration(deviceId));
     this.targetPower.reconcile(devices, nowMs);
   }
 

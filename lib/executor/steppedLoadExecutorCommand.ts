@@ -1,5 +1,5 @@
 import {
-  getSteppedLoadStep,
+  getSteppedLoadStep, isSteppedLoadStepOff,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
@@ -26,6 +26,33 @@ const logger = getLogger('executor/stepped-load');
  * `*_command_skipped` event was absent from production.
  */
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
+
+const isDiscretionaryStep = (action: ExecutableSteppedLoadDevice, step: SteppedLoadStep): boolean => {
+  const { intent, current } = action;
+  const transition = intent.transition?.effectiveTransition;
+  if (isSteppedLoadStepOff(step) || intent.stepDirection === 'down_only'
+    || transition === 'initialize_unknown_step_at_low') return false;
+  if (intent.plannedShedTarget?.kind === 'step') {
+    // The same planned rung can be an increase if the device has since dropped lower.
+    return current.stepForShed !== undefined && step.planningPowerW > current.stepForShed.planningPowerW;
+  }
+  return intent.plannedShedTarget === undefined && transition !== 'step_down_while_on';
+};
+
+export const shouldWaitForFlowStep = (
+  ctx: ExecutorCommandContext,
+  action: ExecutableSteppedLoadDevice,
+  step: SteppedLoadStep,
+): boolean => {
+  if (!isDiscretionaryStep(action, step)) return false;
+  const { intent } = action;
+  const { flowStepRetryAtMs } = ctx.getSteppedLoadCommandSession(intent.id);
+  if (flowStepRetryAtMs === undefined || Date.now() >= flowStepRetryAtMs) return false;
+  logSteppedLoadCommandSkip(intent, 'flow_feedback_backoff',
+    'Capacity: skip discretionary step while the Flow feedback retry is backed off',
+    { desiredStepId: step.id, nextRetryAtMs: flowStepRetryAtMs });
+  return true;
+};
 
 export const isSteppedLoadStepCommandRedundant = (
   action: ExecutableSteppedLoadDevice,
@@ -80,6 +107,7 @@ export const logSteppedLoadCommandSkip = (
     | 'missing_step'
     | 'waiting_for_confirmation'
     | 'retry_backoff'
+    | 'flow_feedback_backoff'
     | 'command_unavailable'
     | 'previous_command_in_flight'
     | 'not_below_reported_step',
@@ -408,7 +436,7 @@ export const executeSteppedLoadCommand = async (
 ): Promise<boolean> => {
   const { intent } = action;
   const now = Date.now();
-  if (isHeldByLifecycleLane(ctx, intent.id)) return false;
+  if (isHeldByLifecycleLane(ctx, intent.id) || shouldWaitForFlowStep(ctx, action, desiredStep)) return false;
   if (!ctx.steppedCommandClaim.acquire(
     intent.id,
     ctx.owner,
@@ -417,6 +445,8 @@ export const executeSteppedLoadCommand = async (
   )) return false;
   let accepted = false;
   try {
+    const recordFlowAttempt = isDiscretionaryStep(action, desiredStep)
+      ? ctx.trackFlowStepAttempt(intent.id, now) : undefined;
     const result = await ctx.actuator.apply({
       kind: 'step', deviceId: intent.id, profile: intent.steppedLoadProfile,
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
@@ -425,6 +455,7 @@ export const executeSteppedLoadCommand = async (
     if (!result.requested) return handleUnrequestedStep(intent, desiredStep, result);
     if (result.kind !== 'step') throw new Error(`Step actuator returned ${result.kind} outcome for ${intent.id}`);
     if (!ctx.isAuthorityCurrent()) return false;
+    if (result.transport === 'flow') recordFlowAttempt?.();
     accepted = result.acknowledged
       ? recordAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, result.transport)
       : recordUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now, options, result);

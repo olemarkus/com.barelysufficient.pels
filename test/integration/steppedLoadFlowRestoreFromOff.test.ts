@@ -322,6 +322,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     // it — the loop under test.
     retireStepDown: vi.fn(),
     markSteppedLoadDesiredStepIssued: (params) => helpers.markSteppedLoadDesiredStepIssued(params),
+    trackFlowStepAttempt: helpers.trackFlowStepAttempt,
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -442,6 +443,84 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       previous_step_id: '',
     }, { deviceId: DEVICE_ID });
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(3);
+  });
+
+  it('backs off across Flow step changes and binary cycles while allowing shedding and feedback', async () => {
+    const start = Date.parse('2026-11-01T08:00:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(start);
+    const logger = createLogger();
+    const readDevice = (on: boolean): TransportDeviceSnapshot => ({
+      ...parseEaseeSnapshot({ freshIso: new Date().toISOString(), nowMs: Date.now(), logger, charging: on }, EV_PROFILE),
+      manualFlowSteppedLoad: true,
+    });
+    const {
+      executor, deviceManager, helpers, decorate, setSnapshot, desiredSteppedTrigger,
+    } = buildHarness(readDevice(true));
+    const stepUp = () => buildExecutionPlan(buildRunningTo8aPlan(decorate()));
+    const restore = () => buildExecutionPlan(buildRestoreTo6aPlan(decorate()));
+
+    await executor.applyPlanActions(stepUp());
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({ step_id: '6a' }), { deviceId: DEVICE_ID },
+    );
+
+    vi.setSystemTime(start + 10_000);
+    await executor.applyPlanActions(stepUp());
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(2);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({ step_id: '8a' }), { deviceId: DEVICE_ID },
+    );
+
+    const running = buildRunningTo8aPlan(decorate());
+    const [device] = running.devices;
+    const shed = buildExecutionPlan({
+      ...running,
+      devices: [{
+        ...device, plannedState: 'shed', plannedShedTargetKind: 'binary_off', shedAction: 'turn_off',
+        reason: { code: 'deferred_objective_avoid' },
+      }],
+    });
+    await executor.applyPlanActions(shed);
+    expect(deviceManager.setCapability).toHaveBeenLastCalledWith(DEVICE_ID, 'evcharger_charging', false);
+
+    vi.setSystemTime(start + 20_000);
+    setSnapshot(readDevice(false));
+    expect(decorate().desiredStepId).toBeUndefined();
+    vi.setSystemTime(start + 129_999);
+    await executor.applyPlanActions(restore());
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(2);
+
+    vi.setSystemTime(start + 130_000);
+    await executor.applyPlanActions(restore());
+    expect(deviceManager.setCapability).toHaveBeenLastCalledWith(DEVICE_ID, 'evcharger_charging', true);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(3);
+
+    vi.setSystemTime(start + 150_000);
+    setSnapshot(readDevice(true));
+    decorate();
+    vi.setSystemTime(start + 170_000);
+    setSnapshot(readDevice(false));
+    decorate();
+    vi.setSystemTime(start + 220_000);
+    const backedOff = restore();
+    expect(executor.getDeviceExecutionStates(backedOff).get(DEVICE_ID)?.stepCommandUnanswered).toBe(true);
+    expect(helpers.getSteppedLoadCommandSession(DEVICE_ID).flowStepRetryAtMs).toBe(start + 340_000);
+    await executor.applyPlanActions(backedOff);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(3);
+
+    vi.setSystemTime(start + 221_000);
+    setSnapshot(readDevice(true));
+    expect(helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a')).toBe('changed');
+    const recovered = stepUp();
+    expect(executor.getDeviceExecutionStates(recovered).get(DEVICE_ID)?.stepCommandUnanswered).toBe(false);
+    await executor.applyPlanActions(recovered);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(4);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({ step_id: '8a' }), { deviceId: DEVICE_ID },
+    );
   });
 
   it('prepares a current-before-start adapter and waits for its observation before binary ON', async () => {

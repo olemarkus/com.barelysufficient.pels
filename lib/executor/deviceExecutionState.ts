@@ -111,6 +111,7 @@ function isStepCommandUnanswered(
   observedStepId: string | null,
   stepProgress: AxisProgress,
 ): boolean {
+  if (unanswered.kind === 'flow_unanswered') return unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
   return unanswered.kind === 'unanswered'
     && (unanswered.stepId === desiredStepId || observedStepId === null)
     && stepProgress !== 'settled' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;

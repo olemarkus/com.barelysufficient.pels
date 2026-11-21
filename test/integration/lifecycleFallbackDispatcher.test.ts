@@ -390,6 +390,7 @@ describe('LifecycleFallbackDispatcher', () => {
       expectedPowerKw: 2,
       expectedPowerSource: 'default',
       controlModel: 'stepped_load',
+      manualFlowSteppedLoad: false,
       binaryControllable: false,
       isEvCharger: false,
       isBatteryOrSolar: false,
@@ -452,6 +453,7 @@ describe('LifecycleFallbackDispatcher', () => {
         available: true,
         canSetControl: false,
         controlModel: 'stepped_load' as const,
+        manualFlowSteppedLoad: false,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -513,6 +515,7 @@ describe('LifecycleFallbackDispatcher', () => {
         expectedPowerKw: 2,
         expectedPowerSource: 'default',
         controlModel: 'stepped_load',
+        manualFlowSteppedLoad: false,
         binaryControllable: false,
         isEvCharger: false,
         isBatteryOrSolar: false,
@@ -574,6 +577,7 @@ describe('LifecycleFallbackDispatcher', () => {
       expectedPowerKw: 2,
       expectedPowerSource: 'default',
       controlModel: 'stepped_load',
+      manualFlowSteppedLoad: false,
       binaryControllable: true,
       isEvCharger: false,
       isBatteryOrSolar: false,

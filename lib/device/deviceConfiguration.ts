@@ -9,6 +9,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveSetpointShedFloorC } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import type { EvChargingCurrentLimitPolicy } from './evChargingCurrentLimitPolicy';
 import { needsHomeyEnergySetup } from '../../packages/shared-domain/src/homeyEnergySetup';
+import { isBuiltInSteppedLoadControlEnabled } from './deviceActionProjection';
 
 export type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
@@ -60,7 +61,12 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     targetPowerConfig: snapshot.targetPowerConfig,
   };
   return snapshot.steppedLoadProfile
-    ? { ...fields, controlModel: 'stepped_load', steppedLoadProfile: snapshot.steppedLoadProfile }
+    ? {
+      ...fields,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: snapshot.steppedLoadProfile,
+      manualFlowSteppedLoad: snapshot.manualFlowSteppedLoad === true && !isBuiltInSteppedLoadControlEnabled(snapshot),
+    }
     : { ...fields, controlModel: snapshot.deviceType === 'temperature' ? 'temperature_target' : 'binary_power' };
 };
 
