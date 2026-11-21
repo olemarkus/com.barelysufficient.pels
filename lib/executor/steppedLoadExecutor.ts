@@ -18,6 +18,7 @@ import {
   isSteppedLoadStepCommandRedundant,
   logSteppedLoadCommandSkip,
   maybeLogSteppedLoadCommandPendingSkip,
+  shouldWaitForFlowStep,
   type SteppedCommandOptions,
 } from './steppedLoadExecutorCommand';
 import {
@@ -206,8 +207,8 @@ export const applySteppedLoadRestore = async (
   const requestedStepId = intent.desired.stepId;
   // Once the device reports on, keep the existing step-command attempt
   // dampening. While it is still off, activation owns the ordering: dispatch
-  // binary ON first and immediately reassert the desired step even when an
-  // earlier step request was pending or in retry backoff.
+  // binary ON first and reassert the desired step despite an earlier
+  // per-command attempt. Manual Flow feedback backoff is checked before ON.
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingCommandAttempt
     && effectiveCurrentOn === true;
   if (shouldDeferRestoreForAttempt) {
@@ -250,6 +251,9 @@ const restorePreparedBinary = async (
   if (isBinaryOnOrUnknown(snapshot)) return { ready: true, wroteBinary: false };
   if (intent.controlAdapter?.activationOrder === 'current_before_start'
     && !isRequestedStepMaterialized(action.stepActuation)) return NOT_RESTORED;
+  // This activation will reassert the step even if the pre-activation level matched.
+  const requestedStep = getSteppedLoadStep(intent.steppedLoadProfile, intent.desired.stepId);
+  if (requestedStep && shouldWaitForFlowStep(ctx, action, requestedStep)) return NOT_RESTORED;
   const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, intent, snapshot);
   return { ready: wroteBinary, wroteBinary };
 };

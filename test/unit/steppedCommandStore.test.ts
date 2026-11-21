@@ -77,6 +77,32 @@ describe('SteppedCommandStore', () => {
     expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'unanswered', stepId: 'low', count: 1 });
   });
 
+  it('caps the device-wide Flow backoff at fifteen minutes after each confirmation window', () => {
+    const { store } = steppedStoresForTest();
+    let issuedAtMs = 1_000;
+    for (const delayMs of [30_000, 120_000, 300_000, 900_000, 900_000]) {
+      store.trackFlowStepAttempt('dev-1', issuedAtMs)();
+      const nextRetryAtMs = issuedAtMs + STEPPED_LOAD_COMMAND_STALE_MS + delayMs;
+      expect(store.getFlowStepRetryAtMs('dev-1')).toBe(nextRetryAtMs);
+      issuedAtMs = nextRetryAtMs;
+    }
+    expect(store.getFlowStepRetryAtMs('dev-2')).toBeUndefined();
+  });
+
+  it('does not rearm Flow feedback backoff when a fresh level arrives before the trigger returns', () => {
+    const { store } = steppedStoresForTest();
+    const initial = { deviceId: 'dev-1', stepId: 'low', planningPowerW: 100, observedAtMs: 1_000 };
+    store.reportActualStep(initial);
+
+    store.trackFlowStepAttempt('dev-1', 1_000)();
+    expect(store.getFlowStepRetryAtMs('dev-1')).toBe(121_000);
+
+    const complete = store.trackFlowStepAttempt('dev-1', 121_000);
+    expect(store.reportActualStep({ ...initial, observedAtMs: 121_000 })).toBe('unchanged');
+    complete();
+    expect(store.getFlowStepRetryAtMs('dev-1')).toBeUndefined();
+  });
+
   it('clears the whole command session when the ladder changed under it', () => {
     const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({

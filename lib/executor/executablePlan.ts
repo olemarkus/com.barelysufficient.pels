@@ -270,11 +270,14 @@ export type ExecutableSteppedLoadCommandSession = {
   reportedStepId?: string;
   /** Commanded-axis: a step command is issued and not yet settled. */
   stepCommandPending: boolean;
-  /** The tracked step command, when the device has reported nothing back to commands for it. */
+  /** Earliest time for another discretionary step command on this manual Flow device. */
+  flowStepRetryAtMs?: number;
+  /** Whether the device's level reports have stopped answering step requests. */
   unansweredStepCommands: UnansweredStepCommands;
 };
 
 /** A step the device was asked for, and how many commands for it in a row drew no report of any level. */
 export type UnansweredStepCommands =
   | { kind: 'none' }
-  | { kind: 'unanswered'; stepId: string; count: number };
+  | { kind: 'unanswered'; stepId: string; count: number }
+  | { kind: 'flow_unanswered'; count: number };

@@ -38,6 +38,6 @@ type DeviceConfigurationFields = {
 
 /** The device owner resolves the control identity and usable ladder together. */
 export type DeviceConfigurationRead = DeviceConfigurationFields & (
-  | { controlModel: 'stepped_load'; steppedLoadProfile: SteppedLoadProfile }
-  | { controlModel: 'temperature_target' | 'binary_power' }
+  | { controlModel: 'stepped_load'; steppedLoadProfile: SteppedLoadProfile; manualFlowSteppedLoad: boolean }
+  | { controlModel: 'temperature_target' | 'binary_power'; manualFlowSteppedLoad?: never }
 );

@@ -78,6 +78,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
   getOperatingMode: () => string;
   retireStepDown: SteppedCommandStore['retireStepDown'];
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
+  trackFlowStepAttempt: ExecutorCommandContext['trackFlowStepAttempt'];
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
@@ -148,6 +149,7 @@ export class PlanExecutor {
       getOperatingMode: deps.getOperatingMode,
       getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
       markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
+      trackFlowStepAttempt: deps.trackFlowStepAttempt,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       binaryCommandClaim: createCommandClaim<boolean>(),
       steppedCommandClaim: createCommandClaim<string>(),

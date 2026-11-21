@@ -259,6 +259,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     getOperatingMode: () => 'Home',
     retireStepDown: vi.fn(),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    trackFlowStepAttempt: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({
       hasPriorStepCommand: false,

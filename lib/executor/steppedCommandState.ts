@@ -427,7 +427,7 @@ function expireAcknowledgedSteppedLoadCommand(
   return true;
 }
 
-function resolveSteppedLoadCommandRetryDelayMs(retryCount: number): number {
+export function resolveSteppedLoadCommandRetryDelayMs(retryCount: number): number {
   const normalizedRetryCount = Number.isFinite(retryCount) ? Math.max(0, Math.trunc(retryCount)) : 0;
   // The ladder is a fixed const tuple and the index is clamped into it at both ends, so
   // the first rung is an unreachable rather than a substituted value.

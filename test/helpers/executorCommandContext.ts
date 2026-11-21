@@ -48,6 +48,7 @@ export const createTestExecutorCommandContext = (
     unansweredStepCommands: { kind: 'none' as const },
   }),
   markSteppedLoadDesiredStepIssued: vi.fn(),
+  trackFlowStepAttempt: vi.fn(),
   syncLivePlanStateAfterTargetActuation: vi.fn(),
   binaryCommandClaim: createCommandClaim<boolean>(),
   steppedCommandClaim: createCommandClaim<string>(),

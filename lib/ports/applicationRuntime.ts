@@ -7,6 +7,7 @@ export type DeviceControlHelpers = Pick<SteppedDeviceControl,
   | 'getSteppedLoadProfile'
   | 'getSteppedLoadCommandSession'
   | 'markSteppedLoadDesiredStepIssued'
+  | 'trackFlowStepAttempt'
   | 'hasPendingTargetPowerProbe'
   | 'reconcileTargetPowerReachability'
   | 'reportSteppedLoadActualStep'

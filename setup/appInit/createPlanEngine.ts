@@ -191,6 +191,7 @@ export function createPlanEngineComposition(
     getOperatingMode: scope.getOperatingMode,
     retireStepDown: (deviceId, retirement) => ctx.steppedCommandStore.retireStepDown(deviceId, retirement),
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
+    trackFlowStepAttempt: ctx.deviceControlHelpers.trackFlowStepAttempt,
     getSteppedLoadCommandSession: (deviceId) => (
       ctx.deviceControlHelpers.getSteppedLoadCommandSession(deviceId)
     ),

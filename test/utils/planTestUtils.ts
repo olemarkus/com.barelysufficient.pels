@@ -534,7 +534,10 @@ export const withDeviceConfiguration = <T extends {
     expectedPowerSource: configuration.expectedPowerSource,
   };
   return (configuration.controlModel === 'stepped_load'
-    ? { ...fields, controlModel: 'stepped_load', steppedLoadProfile: configuration.steppedLoadProfile }
+    ? {
+      ...fields, controlModel: 'stepped_load', steppedLoadProfile: configuration.steppedLoadProfile,
+      manualFlowSteppedLoad: configuration.manualFlowSteppedLoad,
+    }
     : { ...fields, controlModel: configuration.controlModel }) as T & DeviceConfigurationRead;
 };
 
