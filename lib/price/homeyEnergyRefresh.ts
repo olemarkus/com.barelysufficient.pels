@@ -45,6 +45,26 @@ export const buildHomeyEnergyDateInfo = (timeZone: string, now = new Date()): Ho
   };
 };
 
+/**
+ * The local hour from which tomorrow's prices are due. The day-ahead auction
+ * publishes around midday; before this hour a missing next day is ordinary.
+ */
+const HOMEY_NEXT_DAY_DUE_LOCAL_HOUR = 13;
+
+const isNextDayDue = (info: HomeyEnergyDateInfo): boolean => (
+  getZonedParts(info.today, info.timeZone).hour >= HOMEY_NEXT_DAY_DUE_LOCAL_HOUR
+);
+
+/** Tomorrow's prices are due and the stored next day is not tomorrow's. */
+export const isHomeyNextDayOutstanding = (params: {
+  info: HomeyEnergyDateInfo;
+  readCachedPayload: (key: PricePayloadKey) => unknown;
+}): boolean => {
+  const { info, readCachedPayload } = params;
+  if (!isNextDayDue(info)) return false;
+  return getFlowPricePayload(readCachedPayload(HOMEY_PRICES_TOMORROW))?.dateKey !== info.tomorrowKey;
+};
+
 export const shouldUseHomeyEnergyCache = (params: {
   info: HomeyEnergyDateInfo;
   forceRefresh: boolean;
@@ -87,7 +107,7 @@ export const fetchHomeyEnergyResults = async (
   // Homey answers a day it has no prices for yet with an error (HTTP 500
   // `NotFoundError`), not an empty day, so a rejected tomorrow is the ordinary
   // state until the day-ahead auction is published. It is judged with a missing
-  // payload in `logHomeyEnergyPayloadStatus`: pending before 13:00, an error after.
+  // payload in `logHomeyEnergyPayloadStatus`: pending before the next day is due, an error after.
   if (tomorrowOutcome.status === 'rejected') {
     emitPriceDebug({
       event: 'homey_prices_tomorrow_fetch_rejected',
@@ -122,8 +142,7 @@ export const logHomeyEnergyPayloadStatus = (
       intervalMinutes: results.tomorrowResult.intervalMinutes,
       priceUnit: results.tomorrowResult.priceUnit,
     };
-    const localHour = getZonedParts(new Date(), info.timeZone).hour;
-    if (localHour < 13) {
+    if (!isNextDayDue(info)) {
       emitPriceDebug({ event: 'homey_energy_tomorrow_pending', ...details });
     } else {
       priceLogger.error({ event: 'homey_prices_missing_tomorrow', ...details });

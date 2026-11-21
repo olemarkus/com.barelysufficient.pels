@@ -18,6 +18,7 @@ import { PriceLevel } from './priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from './priceLevelUtils';
 import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import PriceService from './priceService';
+import { buildHomeyEnergyDateInfo, isHomeyNextDayOutstanding } from './homeyEnergyRefresh';
 import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
 import type {
@@ -75,6 +76,8 @@ const MIDNIGHT_ROTATION_OFFSET_MS = 30 * 1000;
 // Floor on the scheduled delay to avoid scheduling tight back-to-back timers
 // if the previous fire ran slightly early (e.g. 23:59:59.998 local).
 const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
+// While tomorrow's Homey prices are due but not stored, how often to ask again.
+const NEXT_DAY_RETRY_INTERVAL_MS = 30 * 60 * 1000;
 
 export type PriceCoordinatorDeps = {
   homey: { settings: SettingsPort; api: ApiPort };
@@ -123,6 +126,7 @@ export class PriceCoordinator {
   private priceService: PriceService;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
   private midnightRotationTimeout?: ReturnType<typeof setTimeout>;
+  private nextDayRetryInterval?: ReturnType<typeof setInterval>;
   // Guards midnight-rotation re-entry. A pending setTimeout may still fire
   // briefly after stop() before clearTimeout takes effect; without this flag
   // the callback would call updateCombinedPrices and reschedule itself.
@@ -248,6 +252,10 @@ export class PriceCoordinator {
       clearTimeout(this.midnightRotationTimeout);
       this.midnightRotationTimeout = undefined;
     }
+    if (this.nextDayRetryInterval) {
+      clearInterval(this.nextDayRetryInterval);
+      this.nextDayRetryInterval = undefined;
+    }
   }
 
   startPriceRefresh(): void {
@@ -262,6 +270,16 @@ export class PriceCoordinator {
       this.refreshSpotPrices().catch(() => {});
       this.refreshGridTariffData().catch(() => {});
     }, refreshIntervalMs);
+    // Homey publishes tomorrow's prices some time after midday, and the
+    // three-hourly cycle can miss that by almost three hours. While they are
+    // due but not stored, ask again every half hour.
+    if (this.nextDayRetryInterval) {
+      clearInterval(this.nextDayRetryInterval);
+    }
+    this.nextDayRetryInterval = setInterval(() => {
+      if (!this.awaitsHomeyNextDayPrices()) return;
+      this.refreshSpotPrices().catch(() => {});
+    }, NEXT_DAY_RETRY_INTERVAL_MS);
     // If the app boots after local midnight, the rotation scheduled below only fires at the
     // NEXT midnight. In flow mode the periodic refresh is a no-op, so a prior-day combined_prices
     // payload keeps yesterday's tier classification all day. Catch up once on boot, but only when
@@ -272,6 +290,14 @@ export class PriceCoordinator {
     // yesterday's isCheap/isExpensive classification until the next push, so flow-only users
     // see stale price tiers post-midnight. Schedule a one-shot nudge per local midnight.
     this.scheduleNextMidnightRotation();
+  }
+
+  private awaitsHomeyNextDayPrices(): boolean {
+    if (this.priceService.getPriceScheme() !== 'homey') return false;
+    return isHomeyNextDayOutstanding({
+      info: buildHomeyEnergyDateInfo(this.deps.getTimeZone()),
+      readCachedPayload: (key) => this.deps.priceDataStore.readFlowPayload(key),
+    });
   }
 
   private scheduleNextMidnightRotation(): void {
