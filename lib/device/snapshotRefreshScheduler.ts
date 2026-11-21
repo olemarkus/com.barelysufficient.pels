@@ -54,6 +54,8 @@ export type SnapshotRefreshOptions = {
   targeted?: boolean;
   recordHomeyEnergySample?: boolean;
   emitFlowBackedRefresh?: boolean;
+  /** Read only the devices PELS wrote since the last read (`SnapshotRefreshService`). */
+  writtenDevicesOnly?: boolean;
 };
 
 /** One pass of the refresh loop: the transport to read, and the intent. */
@@ -77,13 +79,18 @@ export class SnapshotRefreshScheduler {
    * A queued re-run repeats THIS refresh's options rather than adopting the
    * queued caller's — a queued request means "do that again" — with
    * `emitFlowBackedRefresh` cleared, so the flow-backed refresh is emitted at
-   * most once per drain.
+   * most once per drain. It never narrows what is read: a re-run reads only
+   * the written devices when both the run and the queued request asked for that.
    */
   private readonly loop = createSingleFlightLoop<SnapshotRefreshRequest>({
     run: (request) => this.runCycle(request.transport, request.options),
-    nextRequest: (_queued, ran) => ({
+    nextRequest: (queued, ran) => ({
       ...ran,
-      options: { ...ran.options, emitFlowBackedRefresh: false },
+      options: {
+        ...ran.options,
+        emitFlowBackedRefresh: false,
+        writtenDevicesOnly: ran.options.writtenDevicesOnly === true && queued.options.writtenDevicesOnly === true,
+      },
     }),
     mayContinue: () => !this.stopped,
     onRequest: ({ join }) => {
@@ -176,7 +183,8 @@ export class SnapshotRefreshScheduler {
         });
         try {
           countRefreshCaller('post_actuation');
-          await this.refresh({ targeted: true, recordHomeyEnergySample: false });
+          // Confirming the writes needs only the written devices (`writtenDevicesOnly`).
+          await this.refresh({ targeted: true, recordHomeyEnergySample: false, writtenDevicesOnly: true });
         } catch (error) {
           logger.error({
             event: 'post_actuation_snapshot_refresh_failed',

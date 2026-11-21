@@ -542,6 +542,7 @@ export class DeviceTransport {
             this.logger,
             (watts, observedAtMs) => this.observationBridge.setGenerationW(watts, observedAtMs),
             meterDeviceIds,
+            this.snapshotStore.polledMeters,
         );
     }
     /** The whole-home meter's per-phase capabilities; a failed read is `unavailable`, never no phases. */
@@ -549,7 +550,9 @@ export class DeviceTransport {
         meterDeviceId: string,
         ownerChoice: MainFusePhaseCapabilities | null,
     ): Promise<MeterPhasesRead> {
-        return readMeterPhases(meterDeviceId, ownerChoice, (device) => this.reader.applyDeviceDriverOverride(device));
+        const polledRead = this.snapshotStore.polledMeters.take(meterDeviceId, Date.now());
+        const identify = (device: HomeyDeviceLike) => this.reader.applyDeviceDriverOverride(device);
+        return readMeterPhases(meterDeviceId, ownerChoice, identify, polledRead);
     }
     /** The month peak a home's meter reports itself (`readMeterMonthlyPeak`). */
     readMeterMonthlyPeak = (id: string): Promise<MeterMonthlyPeakRead> =>

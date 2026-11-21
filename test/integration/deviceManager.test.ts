@@ -2969,6 +2969,42 @@ describe('DeviceTransport', () => {
             });
         });
 
+        it('a written-devices refresh reads only the devices PELS wrote and keeps the rest', async () => {
+            const devices = {
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater 1', class: 'heater' }, {
+                    measure_power: 1000, onoff: false,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+                dev2: homeyDevice({ id: 'dev2', name: 'Heater 2', class: 'heater' }, {
+                    measure_power: 800, onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+                dev3: homeyDevice({ id: 'dev3', name: 'Heater 3', class: 'heater' }, {
+                    measure_power: 600, onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+            };
+            mockApiGet.mockImplementation(async (path: string) => {
+                const id = path.match(/^manager\/devices\/device\/(dev\d)$/)?.[1];
+                return id ? devices[id as keyof typeof devices] : devices;
+            });
+            await deviceManager.init();
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.setCapability('dev1', 'onoff', true);
+
+            mockApiGet.mockClear();
+            await deviceManager.refreshSnapshot({ targetedRefresh: true, writtenDevicesOnly: true, meterDeviceIds: [] });
+
+            const reads = mockApiGet.mock.calls.map(([path]) => path).filter((path) => /devices\/device\/dev/.test(path));
+            expect(reads).toEqual(['manager/devices/device/dev1']);
+            expect(deviceManager.getSnapshot().map(snapshotDeviceId).sort()).toEqual(['dev1', 'dev2', 'dev3']);
+
+            // Nothing written since: the same request reads every device.
+            mockApiGet.mockClear();
+            await deviceManager.refreshSnapshot({ targetedRefresh: true, writtenDevicesOnly: true, meterDeviceIds: [] });
+            const allReads = mockApiGet.mock.calls.map(([path]) => path).filter((path) => /devices\/device\/dev/.test(path));
+            expect(allReads.sort()).toEqual([
+                'manager/devices/device/dev1', 'manager/devices/device/dev2', 'manager/devices/device/dev3',
+            ]);
+        });
+
         it('publishes the observed realtime confirmation of a local onoff write', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {

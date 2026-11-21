@@ -573,6 +573,51 @@ describe('appSnapshotHelpers', () => {
     expect(refreshSnapshot).toHaveBeenCalledTimes(2);
   });
 
+  it('a refresh queued behind a written-devices read re-runs as a read of every device', async () => {
+    let release!: () => void;
+    const firstCycle = new Promise<void>((resolve) => { release = resolve; });
+    const refreshSnapshot = vi.fn()
+      .mockImplementationOnce(() => firstCycle)
+      .mockResolvedValue(undefined);
+    const helper = new AppSnapshotHelpers({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
+      getPlanEngine: () => undefined,
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      }),
+      getPlanInputSnapshot: () => [],
+      getDeviceSurfaces: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => testLogger,
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      persistFilledModeTargets: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
+    });
+    helper['refreshScheduler']['stopped'] = false;
+
+    const confirmation = helper.refreshTargetDevicesSnapshot({ targeted: true, writtenDevicesOnly: true });
+    await Promise.resolve();
+    const poll = helper.refreshTargetDevicesSnapshot({ targeted: true });
+    release();
+    await confirmation;
+    await poll;
+
+    expect(refreshSnapshot).toHaveBeenCalledTimes(2);
+    expect(refreshSnapshot.mock.calls[0]?.[0]).toMatchObject({ writtenDevicesOnly: true });
+    expect(refreshSnapshot.mock.calls[1]?.[0]).toMatchObject({ targetedRefresh: true, writtenDevicesOnly: false });
+  });
+
   it('overlapping refresh calls await the in-flight cycle instead of returning immediately', async () => {
     const deferred = (() => {
       let resolve!: () => void;

@@ -48,7 +48,9 @@ export function resolveMeterImportCounters(
  */
 const IMPORT_COUNTER_READ_DEADLINE_MS = 2_000;
 
-async function readPolledMeterDevice(meterDeviceId: string): Promise<MeterImportCounter | 'removed' | null> {
+type PolledMeterDeviceRead = { counter: MeterImportCounter | null; device: HomeyDeviceLike } | 'removed' | null;
+
+async function readPolledMeterDevice(meterDeviceId: string): Promise<PolledMeterDeviceRead> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<null>((resolve) => {
         timer = setTimeout(() => {
@@ -56,9 +58,9 @@ async function readPolledMeterDevice(meterDeviceId: string): Promise<MeterImport
             resolve(null);
         }, IMPORT_COUNTER_READ_DEADLINE_MS);
     });
-    const read = getRawDevice(meterDeviceId).then((raw) => {
+    const read = getRawDevice(meterDeviceId).then((raw): PolledMeterDeviceRead => {
         const device = parseHomeyDevicePayload(raw);
-        return device === null ? null : resolveMeterImportCounter(device);
+        return device === null ? null : { counter: resolveMeterImportCounter(device), device };
     }).catch((error: unknown) => {
         if (resolveHomeyHttpStatusCode(error) === 404) return 'removed' as const;
         emitDeviceDebug({
@@ -84,8 +86,11 @@ export async function readPolledMeterDevices(meterDeviceIds: readonly string[]) 
     })));
     return {
         importCounters: Object.fromEntries(reads.flatMap(({ result }) => (
-            result === null || result === 'removed' ? [] : [[result.meterDeviceId, result] as const]
+            result === null || result === 'removed' || result.counter === null
+                ? [] : [[result.counter.meterDeviceId, result.counter] as const]
         ))),
         removedMeterDeviceIds: reads.flatMap(({ id, result }) => result === 'removed' ? [id] : []),
+        /** The meter payloads read, for the readers that follow the same sample. */
+        devices: reads.flatMap(({ result }) => (result === null || result === 'removed' ? [] : [result.device])),
     };
 }
