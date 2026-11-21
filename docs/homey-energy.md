@@ -111,7 +111,7 @@ Until you choose a price source yourself, PELS uses Homey Energy on a Homey outs
 
 ![Price source set to Homey Energy](images/price-source-homey-energy.png)
 
-PELS fetches today's and tomorrow's prices and uses them for price-based optimization. The status card below the selector confirms whether data is flowing.
+PELS fetches today's and tomorrow's prices and uses them for price-based optimization. From 13:00 local time, until Homey has published tomorrow's prices, PELS asks for them every half hour. The status card below the selector confirms whether data is flowing.
 
 ![Homey Energy price settings panel](images/price-homey-energy-settings.png)
 
