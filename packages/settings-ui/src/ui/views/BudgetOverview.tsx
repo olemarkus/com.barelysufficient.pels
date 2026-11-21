@@ -3,9 +3,9 @@ import { Chip } from './components/Chip.tsx';
 import { render, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useLayoutEffect, useState } from 'preact/hooks';
 import {
+  MdDecimalField,
   MdElevation,
   MdFilledButton,
-  MdFilledTextField,
   MdOutlinedButton,
   MdSwitch,
   MdTextButton,
@@ -790,16 +790,14 @@ const BudgetAdjustView = ({
                 ) : null}
               </FieldHint>
             </span>
-            <MdFilledTextField
+            <MdDecimalField
               id="budget-redesign-kwh"
               class="budget-redesign-field budget-redesign-field--kwh"
               aria-label="Daily budget in kWh"
-              type="number"
               suffixText="kWh"
               min={MIN_DAILY_BUDGET_KWH}
               max={MAX_DAILY_BUDGET_KWH}
               step="0.1"
-              inputMode="decimal"
               value={String(draft.dailyBudgetKWh)}
               {...(draft.enabled ? {} : { disabled: true })}
               onChange={onKWhChange}

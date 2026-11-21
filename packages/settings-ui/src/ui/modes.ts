@@ -51,6 +51,7 @@ import {
   applyTemperatureControlSettings, applyDeviceStartPolicySettings, applyBatteryControlSettings,
   readStrictBooleanSettingMap, applyDevicePhaseSettings, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
+import { markDecimalField } from './decimalField.ts';
 import { EMPTY_MODE_COPY, prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
 import {
   isPriorityContextCurrent,
@@ -195,7 +196,7 @@ const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number 
   if (!supportsTemperatureDevice(device)) return buildNoTemperaturePlaceholder();
   const target = getPrimaryTemperatureTarget(device);
   const tempInput = document.createElement('md-filled-text-field') as MaterialTextFieldElement;
-  tempInput.setAttribute('type', 'number');
+  markDecimalField(tempInput);
   tempInput.step = getTargetCapabilityStep(target).toString();
   tempInput.setAttribute('step', tempInput.step);
   if (typeof target?.min === 'number' && Number.isFinite(target.min)) {
@@ -206,7 +207,6 @@ const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number 
     tempInput.max = target.max.toString();
     tempInput.setAttribute('max', tempInput.max);
   }
-  tempInput.inputMode = 'decimal';
   tempInput.placeholder = 'Desired';
   tempInput.setAttribute('inputmode', tempInput.inputMode);
   tempInput.setAttribute('placeholder', tempInput.placeholder);

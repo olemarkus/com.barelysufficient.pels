@@ -8,6 +8,7 @@ import { setupJourneyFromSearch } from './setupJourneyState.ts';
 import { showUsageDayToday } from './usageDayView.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import './materialWeb.ts';
+import { installDecimalFieldInput } from './decimalField.ts';
 import {
   emptyState,
   refreshButton,
@@ -580,6 +581,7 @@ const openInitialRoute = () => {
 export const boot = async () => {
   resetSettingsUiPerf();
   markSettingsUi('boot:start');
+  installDecimalFieldInput(document);
   try {
     const hasHomey = await prepareHomeySdk();
     if (!hasHomey) {

@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import type { HTMLAttributes, ComponentChildren } from 'preact';
 import type { MdSwitchElement } from '../dom.ts';
+import { DECIMAL_FIELD_ATTRIBUTES } from '../decimalField.ts';
 
 type MdBaseProps = HTMLAttributes<HTMLElement> & {
   children?: ComponentChildren;
@@ -32,6 +33,11 @@ export const MdCheckbox = (props: MdBaseProps) => (
 
 export const MdFilledTextField = (props: MdBaseProps) => (
   h('md-filled-text-field', props as Record<string, unknown>)
+);
+
+// A text field for a number that may have a decimal part; see `decimalField.ts`.
+export const MdDecimalField = (props: MdBaseProps) => (
+  h('md-filled-text-field', { ...props, ...DECIMAL_FIELD_ATTRIBUTES } as Record<string, unknown>)
 );
 
 export const MdFilledSelect = (props: MdBaseProps) => (

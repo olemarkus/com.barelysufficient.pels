@@ -1,7 +1,7 @@
 import {
   OVERRIDE_COPY, OVERRIDE_MORNING_AT, type OverrideDraft, type OverrideEndChoice, type OverrideTemperatureRange,
 } from '../deviceOverrideDraft.ts';
-import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJSX.tsx';
+import { MdDecimalField, MdFilledButton, MdTextButton } from './materialWebJSX.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';
 
 export type DeviceOverrideCardState =
@@ -48,7 +48,7 @@ export const OverrideForm = ({ state, actions }: { state: EditingState; actions:
   const { draft, range, error, busy, smartTaskNote, endLine, changing } = state;
   return (
     <div class="device-detail-override__form">
-      <MdFilledTextField type="number" inputmode="decimal" label={OVERRIDE_COPY.temperatureLabel}
+      <MdDecimalField label={OVERRIDE_COPY.temperatureLabel}
         value={draft.temperature} min={range.min ?? undefined} max={range.max ?? undefined} step={String(range.step)}
         disabled={busy} data-override-field="temperature"
         onInput={(event: Event) => actions.onDraftChange({ temperature: inputValue(event) })} />

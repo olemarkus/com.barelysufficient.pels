@@ -7,7 +7,8 @@ import type { SetupBatteryGoal } from '../setupBatteryPlan.ts';
 import { BATTERY_PLAN_ORDER_LINE } from './ContinuousBatteryPlan.tsx';
 import { AppBar } from './AppBar.tsx';
 import {
-  MdFilledButton, MdFilledTextField, MdFilledTonalButton, MdTextButton, MdSwitch, readSwitchSelected,
+  MdDecimalField,
+  MdFilledButton, MdFilledTonalButton, MdTextButton, MdSwitch, readSwitchSelected,
 } from './materialWebJSX.tsx';
 
 export type SetupDeviceChoice = {
@@ -131,8 +132,7 @@ const BatteryGoal = ({ id, name, goal, busy, onBatteryPlan, onOpen }: BatteryGoa
       resumes when you turn this off.
     </p>
     {!goal.enabled && (
-      <MdFilledTextField class="setup-journey__battery-capacity" label="Usable capacity (kWh)" type="number"
-        inputmode="decimal" min="0.1" max="500" step="0.1" value={draft} disabled={busy}
+      <MdDecimalField class="setup-journey__battery-capacity" label="Usable capacity (kWh)" min="0.1" max="500" step="0.1" value={draft} disabled={busy}
         aria-label={`Usable capacity of ${name} in kWh`}
         {...(invalid ? { error: true, 'error-text': 'Enter 0.1 to 500 kWh.' } : {})}
         supporting-text="From your battery’s specification. PELS needs it to plan."

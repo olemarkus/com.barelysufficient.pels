@@ -1,4 +1,5 @@
 import { supportsPowerLimiting } from './temperaturePolicy.ts';
+import { isIncompleteDecimalText } from '../decimalField.ts';
 import {
   deviceDetailShedAction,
   deviceDetailShedCoolingTemp,
@@ -517,16 +518,20 @@ const saveShedBehavior = async (
   });
 };
 
+const SHED_LIMIT_NOT_A_NUMBER = 'Enter a number.';
+
 export const initDeviceDetailShedHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
 }) => {
   const autoSaveShedBehavior = async () => {
-    // A number field reads empty while it holds a partial number (for example
-    // '-'). Saving then would refill it with the default limit over the saved one.
-    if (deviceDetailShedTemp?.validity.badInput) {
+    // A partial number (for example '-') reads as no number. Saving then would
+    // refill the field with the default limit over the saved one.
+    if (deviceDetailShedTemp && isIncompleteDecimalText(deviceDetailShedTemp.value)) {
+      deviceDetailShedTemp.setCustomValidity(SHED_LIMIT_NOT_A_NUMBER);
       deviceDetailShedTemp.reportValidity();
       return;
     }
+    deviceDetailShedTemp?.setCustomValidity('');
     const currentDetailDeviceId = params.getCurrentDetailDeviceId();
     const device = currentDetailDeviceId ? findLatestDevice(currentDetailDeviceId) : null;
     updateShedFieldVisibility(device);

@@ -927,7 +927,7 @@ test.describe('Device detail panel', () => {
     for (const name of ['Managed by PELS', 'Power-limit control', 'Price-based control', 'Budget exempt']) {
       await expect(panel.getByRole('switch', { name, exact: true })).toBeVisible();
     }
-    await expect(panel.getByRole('spinbutton', { name: 'Cheap-hour boost', exact: true })).toBeVisible();
+    await expect(panel.getByRole('textbox', { name: 'Cheap-hour boost', exact: true })).toBeVisible();
     await expect(panel.getByRole('combobox', { name: 'Control model', exact: true })).toBeVisible();
     await expect(panel.getByRole('combobox', {
       name: 'When the temperature changes outside PELS', exact: true,

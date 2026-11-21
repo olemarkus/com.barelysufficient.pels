@@ -252,7 +252,7 @@ test('simulation review names active mode targets and priorities rather than the
   await page.goto('/?page=settings/modes');
   await page.locator('#mode-select').click();
   await page.getByRole('option', { name: 'Night', exact: true }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Target temperature for Heat pump' })).toHaveValue('18');
+  await expect(page.getByRole('textbox', { name: 'Target temperature for Heat pump' })).toHaveValue('18');
   await expect(page.locator('#priority-list')).toContainText('No temperature target');
   await expect(page.locator('#priority-list')).not.toContainText('On/off only');
   await page.locator('#simulation-disable-button').click();

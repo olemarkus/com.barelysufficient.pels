@@ -61,9 +61,9 @@ import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../cont
 import { DeadlinePlanHistoryDetail, PlanRevisionRow } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import {
+  MdDecimalField,
   MdDialog,
   MdFilledButton,
-  MdFilledTextField,
   MdFilledTonalButton,
   MdSwitch,
   MdTextButton,
@@ -1446,9 +1446,7 @@ const SmartTaskEditSection = ({ edit, inputs }: {
       </>}
       <label class="field">
         <span class="field__label pels-text-settings-label">{CREATE_SMART_TASK_WIDGET_COPY.goalLabel}</span>
-        <MdFilledTextField
-          type="number"
-          inputMode="decimal"
+        <MdDecimalField
           value={s.draft.target === null ? '' : String(s.draft.target)}
           min={String(s.context.min)}
           max={String(s.context.max)}

@@ -28,6 +28,7 @@ import {
   assertWritableModeDeviceTargets,
   readModeDeviceTargetsSetting,
 } from '../modeCatalogMaps.ts';
+import { markDecimalField } from '../decimalField.ts';
 import { serializeModeCatalogWrite } from '../modeRename.ts';
 
 const modesHelpEl = document.querySelector<HTMLElement>('#device-detail-modes-help');
@@ -171,12 +172,11 @@ const buildDeviceDetailModeInput = (
   catalog: DetailModeCatalog,
 ): MdFilledTextFieldElement => {
   const tempInput = document.createElement('md-filled-text-field') as MdFilledTextFieldElement;
-  tempInput.setAttribute('type', 'number');
+  markDecimalField(tempInput);
   tempInput.setAttribute('step', getTargetCapabilityStep(target).toString());
   const bounds = getTargetBounds(target);
   if (bounds.min) tempInput.setAttribute('min', bounds.min);
   if (bounds.max) tempInput.setAttribute('max', bounds.max);
-  tempInput.setAttribute('inputmode', 'decimal');
   tempInput.setAttribute('suffix-text', '°C');
   tempInput.setAttribute('aria-label', `${mode} target temperature`);
   tempInput.classList.add('detail-mode-temp');

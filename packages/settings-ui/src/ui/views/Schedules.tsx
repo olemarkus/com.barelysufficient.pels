@@ -21,6 +21,7 @@ import { SegmentedControl } from './SegmentedControl.tsx';
 import { SmartTaskPermissionRow } from './DeadlinePlan.tsx';
 import { ArrowBackIcon, ExpandMoreIcon } from './icons.tsx';
 import {
+  MdDecimalField,
   MdCheckbox, MdFilledButton, MdFilledSelect, MdFilledTextField, MdIconButton,
   MdOutlinedButton, MdSelectOption, MdSwitch, MdTextButton, readSwitchSelected,
 } from './materialWebJSX.tsx';
@@ -219,8 +220,7 @@ const TaskTargetFields = ({ draft, view }: { draft: ScheduleDraft; view: View })
   return (
     <>
       <label class="field"><span class="field__label pels-text-settings-label">Target ({unit})</span>
-        <MdFilledTextField key={`${draft.deviceId}:${draft.taskKind}:${Boolean(goal)}`}
-          type="number" value={draft.target} min={goal?.goalMin.toString()}
+        <MdDecimalField key={`${draft.deviceId}:${draft.taskKind}:${Boolean(goal)}`} value={draft.target} min={goal?.goalMin.toString()}
           max={goal?.goalMax.toString()} step={goal?.goalStep.toString()}
           disabled={disabled || !goal} aria-label={`Target (${unit})`}
           onInput={(event: Event) => actions.onDraftChange({ target: inputValue(event) })} />
@@ -278,7 +278,7 @@ const OverrideFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) =
         </MdFilledSelect>
       </div>
       <label class="field"><span class="field__label pels-text-settings-label">Temperature (°C)</span>
-        <MdFilledTextField key={`${draft.deviceId}:${Boolean(goal)}`} type="number" value={draft.overrideTarget}
+        <MdDecimalField key={`${draft.deviceId}:${Boolean(goal)}`} value={draft.overrideTarget}
           min={goal?.goalMin.toString()} max={goal?.goalMax.toString()} step={goal?.goalStep.toString()}
           disabled={disabled || !goal} aria-label="Temperature (°C)"
           onInput={(event: Event) => actions.onDraftChange({ overrideTarget: inputValue(event) })} />

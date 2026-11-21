@@ -42,7 +42,7 @@ const loadHarness = async () => {
   const listening = (name: string) => ({
     addEventListener: (type: string, fn: () => Promise<void> | void) => { listeners[`${name}:${type}`] = fn; },
   });
-  const shedTemp = { value: '', disabled: false, setAttribute: vi.fn(), validity: { badInput: false }, reportValidity: vi.fn(), ...listening('temp') };
+  const shedTemp = { value: '', disabled: false, setAttribute: vi.fn(), reportValidity: vi.fn(), setCustomValidity: vi.fn(), ...listening('temp') };
   const shedTempRow = { hidden: true };
   const shedTempLabel = { textContent: '' };
   const shedTempHint = { textContent: '' };
@@ -246,11 +246,11 @@ describe('limited temperature for a device with no on/off', () => {
     const device = setpointOnlyDevice();
     state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 55, coolingTemperature: 28 } };
     show(device);
-    // A number field reads empty while it holds '-'.
-    shedTemp.validity.badInput = true;
-    await changeHeatingLimit('', device);
+    await changeHeatingLimit('-', device);
     expect(setSetting).not.toHaveBeenCalled();
+    expect(shedTemp.setCustomValidity).toHaveBeenCalledWith('Enter a number.');
     expect(shedTemp.reportValidity).toHaveBeenCalled();
+    expect(shedTemp.value).toBe('-');
     expect(state.shedBehaviors[device.id]).toMatchObject({ temperature: 55 });
   });
 

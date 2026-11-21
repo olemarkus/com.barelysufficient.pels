@@ -97,7 +97,7 @@ test('opens a new schedule as an override for the device, an hour from 06:00', a
 
   await expect(panel.getByRole('button', { name: 'Override', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(panel.getByRole('textbox', { name: 'Schedule name', exact: true })).toHaveValue('Water heater override');
-  await expect(panel.getByRole('spinbutton', { name: 'Temperature (°C)', exact: true })).toHaveValue('65');
+  await expect(panel.getByRole('textbox', { name: 'Temperature (°C)', exact: true })).toHaveValue('65');
   await expect(panel.locator('[data-schedule-field="override-until"]')).toHaveValue('07:00');
   await expect(panel.locator('[data-schedule-field="time"]')).toHaveValue('06:00');
   expect(await panel.getByRole('group', { name: 'Scheduled action', exact: true })
@@ -157,7 +157,7 @@ test('changing an unavailable battery target stays in the editor until explicitl
   const row = panel.locator('[data-schedule-id="water"]');
   await expect(row).toContainText('Charge overnight');
   await row.getByRole('button', { name: 'Edit', exact: true }).click();
-  const batteryTarget = panel.getByRole('spinbutton', { name: 'Target (%)', exact: true });
+  const batteryTarget = panel.getByRole('textbox', { name: 'Target (%)', exact: true });
   await expect(batteryTarget).toHaveValue('80');
   await expect(batteryTarget).toBeEnabled();
   await page.evaluate(() => {
@@ -181,7 +181,7 @@ test('changing an unavailable battery target stays in the editor until explicitl
   const before = await readStored(page, 'schedule.water');
   await panel.getByRole('button', { name: 'Use energy target', exact: true }).click();
   await expect(panel.getByRole('heading', { name: 'Edit schedule', exact: true })).toBeVisible();
-  const energyTarget = panel.getByRole('spinbutton', { name: 'Target (kWh)', exact: true });
+  const energyTarget = panel.getByRole('textbox', { name: 'Target (kWh)', exact: true });
   await expect(energyTarget).toHaveValue('20');
   await expect(energyTarget).toBeEnabled();
   expect(await page.evaluate(() => (window as unknown as { __scheduleSubmitCount: number })
@@ -227,7 +227,7 @@ test('keeps a supported energy target editable when the picker defaults to batte
   await expect(row).toContainText('Charge overnight');
   await expect(row).toContainText('Extra permissions: May go over daily budget');
   await row.getByRole('button', { name: 'Edit', exact: true }).click();
-  const target = panel.getByRole('spinbutton', { name: 'Target (kWh)', exact: true });
+  const target = panel.getByRole('textbox', { name: 'Target (kWh)', exact: true });
   await expect(target).toBeEnabled();
   await expect(target).toHaveValue('150');
   await expect(panel.getByRole('region', { name: 'Saved schedule status', exact: true })).toContainText('Saved schedule: On');
@@ -331,7 +331,7 @@ for (const width of [320, 480]) {
         await panel.getByRole('textbox', { name: 'Schedule name', exact: true }).fill('Morning hot water');
         await panel.locator('summary').filter({ hasText: 'Extra permissions' }).click();
         await panel.getByRole('switch', { name: 'May go over daily budget', exact: true }).click();
-        const targetField = panel.getByRole('spinbutton', { name: 'Target (°C)', exact: true });
+        const targetField = panel.getByRole('textbox', { name: 'Target (°C)', exact: true });
         await targetField.fill('70');
         await panel.getByRole('button', { name: 'Smart task', exact: true }).click();
         await expect(targetField).toHaveValue('70');

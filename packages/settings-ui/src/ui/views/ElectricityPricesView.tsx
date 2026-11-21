@@ -24,6 +24,7 @@ import { resolvePvForecastStatusLine } from '../../../../shared-domain/src/solar
 import { isPvForecastSourceSetting } from '../../../../shared-domain/src/settings/pvForecastSource.ts';
 import { EXPORT_PRICE_LABEL, IMPORT_PRICE_LABEL } from '../../../../shared-domain/src/price/planningPrice.ts';
 import {
+  MdDecimalField,
   MdFilledSelect,
   MdFilledTextField,
   MdOutlinedButton,
@@ -740,8 +741,7 @@ const NorwaySection = ({
   const surchargeField = (
       <label class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
-        <MdFilledTextField
-          type="number"
+        <MdDecimalField
           value={String(config.providerSurcharge)}
           step="0.1"
           min="-100"
@@ -1200,15 +1200,13 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
             <span class="field__label pels-text-settings-label" id="electricity-prices-export-spot-factor-label">
               Share of spot price
             </span>
-            <MdFilledTextField
+            <MdDecimalField
               id="electricity-prices-export-spot-factor"
-              type="number"
               value={String(exportSpotFactor)}
               min={String(EXPORT_SPOT_FACTOR_MIN)}
               max={String(EXPORT_SPOT_FACTOR_MAX)}
               step="1"
               suffix-text="%"
-              inputmode="decimal"
               {...(shareEditable ? {} : { disabled: true })}
               aria-labelledby="electricity-prices-export-spot-factor-label"
               onChange={(e) => {
@@ -1227,15 +1225,13 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
             <span class="field__label pels-text-settings-label" id="electricity-prices-export-fixed-label">
               Fixed amount
             </span>
-            <MdFilledTextField
+            <MdDecimalField
               id="electricity-prices-export-fixed"
-              type="number"
               value={String(exportFixed)}
               min={String(-EXPORT_FIXED_LIMIT)}
               max={String(EXPORT_FIXED_LIMIT)}
               step="0.1"
               {...(hasSpotPrice ? { 'suffix-text': 'øre/kWh' } : {})}
-              inputmode="decimal"
               aria-labelledby="electricity-prices-export-fixed-label"
               onChange={(e) => {
                 const val = readFiniteNumber(e);
@@ -1362,14 +1358,12 @@ const ThresholdForm = ({ config, handlers }: {
       <span class="field__label pels-text-settings-label" id="electricity-prices-min-diff-label">
         Minimum price difference
       </span>
-      <MdFilledTextField
-        type="number"
+      <MdDecimalField
         value={String(config.minDiffOre)}
         min="0"
         max="1000"
         step="any"
         {...minDiffUnitProps(config)}
-        inputmode="decimal"
         aria-labelledby="electricity-prices-min-diff-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
