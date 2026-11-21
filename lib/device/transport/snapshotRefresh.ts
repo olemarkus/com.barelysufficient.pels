@@ -540,6 +540,17 @@ export class SnapshotRefreshService {
     void refreshZoneTreeCache(this);
   }
 
+  /**
+   * Only a full read carries the zone tree: zones change rarely, a targeted
+   * read follows every command, and a device moved into an unknown zone
+   * refetches the tree at once (`refreshZoneTreeIfUnknown`).
+   */
+  private refreshZoneTreeAfterRead(fetchSource: DeviceFetchSource): void {
+    if (fetchSource === 'raw_manager_devices' || this.refreshState.getZoneTree() === null) {
+        void refreshZoneTreeCache(this);
+    }
+  }
+
   private completeInventoryRefresh(refreshInventory: boolean): void {
     if (!refreshInventory) return;
     this.inventoryRefreshPending = false;
@@ -689,7 +700,7 @@ export class SnapshotRefreshService {
     // eventually-consistent cache. Still fired only after a successful
     // device fetch + committed snapshot; the grace-deferred empty-read
     // path above skips it for the cycle (a degraded blip already).
-    void refreshZoneTreeCache(this);
+    this.refreshZoneTreeAfterRead(fetchSource);
     this.completeInventoryRefresh(refreshInventory);
     return meterReadings;
   }

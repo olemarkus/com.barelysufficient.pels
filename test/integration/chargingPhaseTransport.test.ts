@@ -7,6 +7,8 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { partialDouble } from '../helpers/partialDouble';
+import { getLogger } from '../../lib/logging/logger';
+import { FlowActionCardInventory } from '../../lib/device/flowActionCardInventory';
 
 const { readCards } = vi.hoisted(() => ({ readCards: vi.fn() }));
 vi.mock('../../lib/device/transport/managerHomeyApi', () => ({ getRawFromHomeyApi: readCards }));
@@ -43,7 +45,8 @@ function harness(
     getDeviceChargingPhaseSettings: () => optedIn ? { mode: 'automatic', installationConfirmed: true } : undefined,
     getDeviceTargetPowerConfig: () => ({ enabled: true, preset }),
     getDevicePhaseConnection: () => connection ?? undefined, isManaged: () => true, isControllable: () => true,
-  }, partialDouble<HomeyActionAccess>({ runAction }), pause, () => ({ kind: 'unrestricted' }), write);
+  }, partialDouble<HomeyActionAccess>({ runAction }),
+    new FlowActionCardInventory({ structuredLog: getLogger('test') }), pause, () => ({ kind: 'unrestricted' }), write);
   readCards.mockResolvedValue([
     { id: 'homey:device:charger:set_force_1_phase' },
     { id: 'homey:device:charger:set_charge_limit_with_phase' },

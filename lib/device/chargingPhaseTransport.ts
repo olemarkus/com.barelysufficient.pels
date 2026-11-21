@@ -11,10 +11,10 @@ import type { ChargingPhaseBinding } from './deviceAdapter';
 import type { CapabilityWrite } from './deviceAdapter';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
 import {
-  FLOW_ACTION_CARDS_API_PATH, readFlowActionCardIds, resolveDeviceActionCard, type DeviceActionStep,
+  resolveDeviceActionCard, type DeviceActionStep,
 } from './flowActionCards';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
-import { getRawFromHomeyApi } from './transport/managerHomeyApi';
+import type { FlowActionCardInventory } from './flowActionCardInventory';
 import type { TransportSnapshotStore } from './transport/transportSnapshotStore';
 import type { EvChargingCurrentPolicy } from './evChargingCurrentLimitSettings';
 import { isEvChargingState, isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
@@ -58,6 +58,7 @@ export class ChargingPhaseTransport {
     private readonly snapshots: TransportSnapshotStore,
     private readonly settings: PhaseSettings,
     private readonly access: HomeyActionAccess,
+    private readonly cardInventory: FlowActionCardInventory,
     private readonly pause: (deviceId: string) => Promise<void>,
     private readonly currentPolicy: (deviceId: string) => EvChargingCurrentPolicy,
     private readonly writeCapability: (deviceId: string, write: CapabilityWrite) => Promise<void>,
@@ -250,8 +251,7 @@ export class ChargingPhaseTransport {
   private async writeAction(
     command: ChargingPhaseCommand, binding: ChargingPhaseBinding, step: DeviceActionStep,
   ): Promise<boolean> {
-    const cards = readFlowActionCardIds(await getRawFromHomeyApi(FLOW_ACTION_CARDS_API_PATH));
-    const action = resolveDeviceActionCard(cards, binding.appUri, step);
+    const action = await this.cardInventory.resolve((cards) => resolveDeviceActionCard(cards, binding.appUri, step));
     if (action === undefined) throw new Error('The charger phase action is unavailable.');
     if (!this.canDeliver(command)) return false;
     try {
@@ -264,6 +264,7 @@ export class ChargingPhaseTransport {
       });
       return command.authority.isCurrent();
     } catch (error) {
+      this.cardInventory.retrySoon();
       if (!this.canDeliver(command)) return false;
       throw error;
     }

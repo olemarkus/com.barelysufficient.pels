@@ -25,12 +25,12 @@
  *   Refused permission blocks new commands but leaves hand-back retryable. A saved key
  *   not checked yet, or one whose last check could not reach Homey, is not a
  *   missing key: the runner checks it again before its next action.
- * - **The inventory** is read when a full device read shows a battery bound to
- *   app actions, and again `CARD_INVENTORY_MAX_AGE_MS` later, or
- *   `CARD_INVENTORY_RETRY_MS` after a read or a run failed, or while a bound
- *   battery misses a card (an app still starting, or just updated). A command runs
- *   against the inventory last read, never a fresh read per command: a battery
- *   setpoint can change every few seconds.
+ * - **The inventory** is the transport's shared `FlowActionCardInventory`. It
+ *   is read when a full device read shows a battery bound to app actions and the
+ *   inventory is due, and is due again sooner after a run failed, or while a
+ *   bound battery misses a card (an app still starting, or just updated). A
+ *   command runs against the inventory last read, never a fresh read per
+ *   command: a battery setpoint can change every few seconds.
  *
  * Commands are sequences: the steps run one at a time in order, and a step
  * that fails stops the sequence and throws, as any refused write does.
@@ -40,29 +40,17 @@ import type { AppActionControlTarget } from '../ports/storageCommand';
 import type {
   BatteryCommandKeepAlive, BatteryControlRead, BatteryUnobservedCause, HomeBatteryControlMode,
 } from '../ports/batteryControlOwner';
-import { normalizeError } from '../utils/errorUtils';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
 import type {
   HomeBatteryActionBinding, HomeBatteryActions, HomeBatteryActionsResolution, HomeBatteryCommandLifetime,
 } from './deviceAdapter';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
-import {
-  FLOW_ACTION_CARDS_API_PATH,
-  readFlowActionCardIds,
-  resolveDeviceActionCard,
-  type DeviceActionStep,
-  type FlowActionCardIds,
-} from './flowActionCards';
+import type { FlowActionCardInventory } from './flowActionCardInventory';
+import { resolveDeviceActionCard, type DeviceActionStep, type FlowActionCardIds } from './flowActionCards';
 import type { HomeyActionAccess, HomeyFlowAction } from './transport/homeyActionAccess';
-import { getRawFromHomeyApi } from './transport/managerHomeyApi';
 
 const UNREPORTED_CONTROL_MODE: HomeBatteryControlMode = { kind: 'unreported' };
-
-/** How long an inventory read stands before the next full device read reads it again. */
-export const CARD_INVENTORY_MAX_AGE_MS = 60 * 60_000;
-/** How soon after a failed inventory read, or a failed run, the inventory is read again. */
-export const CARD_INVENTORY_RETRY_MS = 60_000;
 
 /**
  * The battery as the owner reads it when its binding is app actions:
@@ -73,10 +61,6 @@ export const CARD_INVENTORY_RETRY_MS = 60_000;
 export type AppActionBatteryControl = Extract<BatteryControlRead, {
   kind: 'unobserved' | 'observe_only' | 'homey_api_key_missing' | 'hand_back_only' | 'app_actions';
 }>;
-
-type CardInventory =
-  | { kind: 'unread'; retryAtMs: number }
-  | { kind: 'read'; cards: FlowActionCardIds; refreshAtMs: number; startedAtMs: number };
 
 /**
  * A battery's actions against the installed cards. Hand-back can start even
@@ -140,8 +124,6 @@ const isKeyMissing = (access: HomeyActionAccess): boolean => {
 };
 
 export class HomeBatteryAppActions {
-  private inventory: CardInventory = { kind: 'unread', retryAtMs: 0 };
-  private inventoryRead: Promise<void> | undefined;
   /** The reason each battery was last logged unavailable, so each change is logged once. */
   private readonly unavailable = new Map<string, string>();
   /** When each battery was first seen missing a card, until an inventory read started after it confirms the miss. */
@@ -157,6 +139,7 @@ export class HomeBatteryAppActions {
    */
   constructor(
     private readonly access: HomeyActionAccess,
+    private readonly cardInventory: FlowActionCardInventory,
     private readonly getBattery: (deviceId: string) => HomeyDeviceLike | undefined,
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly logger: Pick<Logger, 'structuredLog'>,
@@ -166,26 +149,12 @@ export class HomeBatteryAppActions {
   observeDevices(devices: readonly HomeyDeviceLike[], nowMs: number): void {
     if (!devices.some((device) => this.bindingOf(device) !== undefined)) return;
     void this.access.retryDeniedAccess(nowMs);
-    if (this.isInventoryDue(nowMs)) void this.refreshCards();
+    if (this.cardInventory.isDue(nowMs)) void this.refreshCards();
   }
 
   /** Read the card inventory now, joining a read already running. Never rejects. */
   refreshCards(): Promise<void> {
-    const startedAtMs = Date.now();
-    this.inventoryRead ??= getRawFromHomeyApi(FLOW_ACTION_CARDS_API_PATH).then(
-      (raw) => {
-        this.inventory = {
-          kind: 'read', cards: readFlowActionCardIds(raw), startedAtMs,
-          refreshAtMs: Date.now() + CARD_INVENTORY_MAX_AGE_MS,
-        };
-      },
-    ).catch((error: unknown) => {
-      // A failed read keeps the cards last read: they were installed then.
-      if (this.inventory.kind === 'read') this.inventory = { ...this.inventory, refreshAtMs: this.retryAt() };
-      else this.inventory = { kind: 'unread', retryAtMs: this.retryAt() };
-      this.logger.structuredLog.warn({ event: 'home_battery_action_cards_read_failed', err: normalizeError(error) });
-    }).finally(() => { this.inventoryRead = undefined; });
-    return this.inventoryRead;
+    return this.cardInventory.refresh();
   }
 
   /** The battery as the owner reads it (`BatteryControlRead`). */
@@ -263,9 +232,10 @@ export class HomeBatteryAppActions {
   async handBack(deviceId: string, target: AppActionControlTarget): Promise<void> {
     const binding = this.requireBinding(deviceId);
     if (binding.appUri !== target.appUri) throw new Error('Home battery hand-back app does not match recorded target.');
-    if (this.inventory.kind !== 'read') throw new Error('Home battery action cards are unread.');
+    const inventory = this.cardInventory.last();
+    if (inventory === undefined) throw new Error('Home battery action cards are unread.');
     if (isKeyMissing(this.access)) throw new Error('Home battery Homey API key is missing.');
-    const cards = this.inventory.cards;
+    const { cards } = inventory;
     const steps = binding.handBack(target, this.getDevices());
     // Bind each step only when it runs: an available first release step must
     // still land when a later cleanup card disappeared. The owed claim stays.
@@ -314,7 +284,7 @@ export class HomeBatteryAppActions {
       } catch (error) {
         // A card that went missing after the inventory was read fails its run:
         // read the inventory again soon rather than wait out its age.
-        this.retryInventorySoon();
+        this.cardInventory.retrySoon();
         throw error;
       }
     }
@@ -357,7 +327,8 @@ export class HomeBatteryAppActions {
       this.cardMissSinceMs.delete(deviceId);
       return { kind: 'unobserved', cause: reportsNoReadings(device) ? binding.noReadingsCause : 'unknown' };
     }
-    if (this.inventory.kind !== 'read') return { kind: 'unobserved', cause: 'unknown' };
+    const inventory = this.cardInventory.last();
+    if (inventory === undefined) return { kind: 'unobserved', cause: 'unknown' };
     const devices = this.getDevices();
     const target = binding.resolveTarget(device, devices);
     if (target.kind === 'unavailable') {
@@ -365,7 +336,7 @@ export class HomeBatteryAppActions {
       return { kind: 'unobserved', cause: 'unknown' };
     }
     const handBack = binding.handBack(target.target, devices);
-    const { cards } = this.inventory;
+    const { cards } = inventory;
     const handBackMissing = missingCard(cards, binding.appUri, handBack);
     if (handBackMissing !== undefined) {
       this.noteCardMiss(deviceId);
@@ -384,12 +355,13 @@ export class HomeBatteryAppActions {
   /** A missing card is retried soon, and reported only once a read started after the miss still lacks it. */
   private noteCardMiss(deviceId: string): void {
     if (!this.cardMissSinceMs.has(deviceId)) this.cardMissSinceMs.set(deviceId, Date.now());
-    this.retryInventorySoon();
+    this.cardInventory.retrySoon();
   }
 
   private isCardMissConfirmed(deviceId: string): boolean {
     const sinceMs = this.cardMissSinceMs.get(deviceId);
-    return sinceMs !== undefined && this.inventory.kind === 'read' && this.inventory.startedAtMs > sinceMs;
+    const inventory = this.cardInventory.last();
+    return sinceMs !== undefined && inventory !== undefined && inventory.startedAtMs > sinceMs;
   }
 
   private noteUnavailable(deviceId: string, reasonCode: string): void {
@@ -398,20 +370,6 @@ export class HomeBatteryAppActions {
     if (this.unavailable.get(deviceId) === reasonCode) return;
     this.unavailable.set(deviceId, reasonCode);
     this.logger.structuredLog.warn({ event: 'home_battery_actions_unavailable', deviceId, reasonCode });
-  }
-
-  private isInventoryDue(nowMs: number): boolean {
-    return this.inventory.kind === 'read' ? nowMs >= this.inventory.refreshAtMs : nowMs >= this.inventory.retryAtMs;
-  }
-
-  /** Bring the next inventory read forward to `CARD_INVENTORY_RETRY_MS` from now, never put it back. */
-  private retryInventorySoon(): void {
-    if (this.inventory.kind !== 'read') return;
-    this.inventory = { ...this.inventory, refreshAtMs: Math.min(this.inventory.refreshAtMs, this.retryAt()) };
-  }
-
-  private retryAt(): number {
-    return Date.now() + CARD_INVENTORY_RETRY_MS;
   }
 }
 

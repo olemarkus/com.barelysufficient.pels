@@ -88,7 +88,7 @@ describe('meter phases under an app\'s own capability names', () => {
   });
 });
 
-describe('the phase read beside a Homey Energy poll', () => {
+describe('the phase and month-peak reads beside a Homey Energy poll', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('reuses the poll\'s read of the meter once, then reads it again', async () => {
@@ -109,6 +109,23 @@ describe('the phase read beside a Homey Energy poll', () => {
 
     // The poll's read was taken: a phase read on its own fetches the meter.
     await transport.readMeterPhases(device.id, null);
+    expect(getRawDevice).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets the month-peak read take the same poll read as the phase read', async () => {
+    const device = d4z();
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
+    await initWithLiveFeed(transport);
+    await seedTransportDevices(transport, [device]);
+    const getRawDevice = vi.spyOn(homeyApi, 'getRawDevice').mockResolvedValue(device);
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
+
+    await transport.readMeters([device.id]);
+    await transport.readMeterPhases(device.id, null);
+    await expect(transport.readMeterMonthlyPeak(device.id)).resolves.toMatchObject({ state: 'none' });
+    expect(getRawDevice).toHaveBeenCalledTimes(1);
+
+    await transport.readMeterMonthlyPeak(device.id);
     expect(getRawDevice).toHaveBeenCalledTimes(2);
   });
 });

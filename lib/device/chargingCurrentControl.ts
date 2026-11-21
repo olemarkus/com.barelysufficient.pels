@@ -17,7 +17,7 @@ import {
 } from './chargingCurrentAdapter';
 import type { CapabilityWrite, ChargingCurrentBinding } from './deviceAdapter';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
-import { FLOW_ACTION_CARDS_API_PATH } from './flowActionCards';
+import type { FlowActionCardInventory } from './flowActionCardInventory';
 import type { Logger } from '../utils/types';
 import type { DeviceControlSettings } from './deviceControlSettings';
 import { getRawFromHomeyApi } from './transport/managerHomeyApi';
@@ -74,9 +74,11 @@ export class ChargingCurrentControl {
    *   action card (`HomeyActionAccess`), built by the device transport and
    *   shared with the home-battery action host.
    */
+  // eslint-disable-next-line max-params -- Direct owner collaborators, not an argument bag.
   constructor(
     private readonly settings: SettingsPort,
     readonly access: HomeyActionAccess,
+    private readonly cardInventory: FlowActionCardInventory,
     private readonly logger: Pick<Logger, 'structuredLog'>,
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly readTrust: () => { connected: boolean; revision: number },
@@ -420,19 +422,21 @@ export class ChargingCurrentControl {
     if (this.access.isActionInFlight(device.id)) {
       throw new SteppedLoadTransportError('homey_action', new HomeyRequestInFlightError());
     }
-    const inventory = await getRawFromHomeyApi(FLOW_ACTION_CARDS_API_PATH).catch((cause: unknown) => {
-      throw new Error('Unable to read charging-current action metadata', { cause });
-    });
+    const action = await this.cardInventory.resolve((cards) => resolveChargingCurrentAction(adapter, cards, currentA))
+      .catch((cause: unknown) => {
+        throw new Error('Unable to read charging-current action metadata', { cause });
+      });
     // Selection can change while Homey is answering the metadata read.
     if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
     this.assertInstallation(adapter);
     this.assertControlAllowed(device);
-    const action = resolveChargingCurrentAction(adapter, inventory, currentA);
+    if (action === undefined) throw new Error('The charging-current action is unavailable in Homey.');
     await this.access.runAction(device.id, action, 'charging_current', () => {
       if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
       this.assertControlAllowed(device);
       this.assertInstallation(adapter);
     }).catch((error: unknown) => {
+      this.cardInventory.retrySoon();
       throw new SteppedLoadTransportError('homey_action', error);
     });
     return 'homey_action';

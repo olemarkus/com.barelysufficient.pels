@@ -60,11 +60,11 @@ test('supported current actions and installation membership are resolved by the 
     data: { installationId: 'site' }, capabilities: ['available_installation_current'] };
   const carBinding = getDeviceAdapter(car).currentBindings(car)[0]!;
   const chargerBinding = getDeviceAdapter(charger).currentBindings(charger)[0]!;
-  expect(resolveChargingCurrentAction(carBinding, [{ id: 'homey:device:car:charge_current' }], 10).args)
+  expect(resolveChargingCurrentAction(carBinding, new Set(['homey:device:car:charge_current']), 10)?.args)
     .toEqual({ current: 10 });
   expect(carBinding.supportsAppAction).toBe(true);
   expect(chargerBinding.supportsAppAction).toBe(false);
-  expect(() => resolveChargingCurrentAction(chargerBinding, [{ id: 'homey:device:charger:installation_current_control' }], 10))
+  expect(() => resolveChargingCurrentAction(chargerBinding, new Set(['homey:device:charger:installation_current_control']), 10))
     .toThrow('does not support built-in current actions');
   // Even a sibling without a supported current-control driver belongs to the installation.
   expect(hasSharedChargingInstallation(chargerBinding, [charger, { ...HOMEY_DEVICE_FIELDS,
@@ -140,7 +140,7 @@ test('an amina S reads its switch from onoff, its plug state from the EV status 
   ]);
 
   const binding = getDeviceAdapter(charger(connected)).currentBindings(charger(connected))[0]!;
-  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:com.aminacharging:set_charging_current' }], 10).args)
+  expect(resolveChargingCurrentAction(binding, new Set(['homey:app:com.aminacharging:set_charging_current']), 10)?.args)
     .toEqual({ device: { id: 'amina' }, max: 10 });
   expect(getDeviceAdapter(charger(connected)).phaseReport(charger(connected, { singlePhase: true })))
     .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
@@ -200,7 +200,7 @@ test('a go-e reads its switch from is_allowed, its plug state from the status an
 
   const binding = adapter.currentBindings(charger(waiting))[0]!;
   expect(binding).toMatchObject({ current: { kind: 'action_only' }, scope: { kind: 'charger' } });
-  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:com.go-e.charger:change_current' }], 10).args)
+  expect(resolveChargingCurrentAction(binding, new Set(['homey:app:com.go-e.charger:change_current']), 10)?.args)
     .toEqual({ device: { id: 'goe' }, action_amps: 10 });
   expect(adapter.phaseReport(charger({ ...waiting, num_phases: '1' })))
     .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
@@ -257,7 +257,7 @@ test('a KEBA P30 reads its switch from onoff, its plug state from the status boo
 
   const binding = adapter.currentBindings(charger(waiting))[0]!;
   expect(binding).toMatchObject({ current: { kind: 'action_only' }, scope: { kind: 'charger' } });
-  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:se.cohen.keba:set_charge_power' }], 10).args)
+  expect(resolveChargingCurrentAction(binding, new Set(['homey:app:se.cohen.keba:set_charge_power']), 10)?.args)
     .toEqual({ device: { id: 'keba' }, charge_power: 10 });
 
   // The P40 driver has no switch: it stays a plain device with no derived charging capability.
@@ -348,7 +348,7 @@ test('a WARP charger reads its switch from the charging state and its current fr
   const shown = charger({ ...waiting, warp_current_limit: 16 });
   const binding = adapter.currentBindings(shown)[0]!;
   expect(binding).toMatchObject({ current: { kind: 'action_only' }, scope: { kind: 'charger' } });
-  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:com.glumpf.warp:wb_set_current' }], 10).args)
+  expect(resolveChargingCurrentAction(binding, new Set(['homey:app:com.glumpf.warp:wb_set_current']), 10)?.args)
     .toEqual({ device: { id: 'warp' }, current: 10 });
   // A charger that shows no limit has no current reading, so no built-in current control.
   expect(adapter.currentBindings(charger(waiting))).toEqual([]);
