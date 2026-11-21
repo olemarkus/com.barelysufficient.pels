@@ -206,6 +206,7 @@ function buildSubHomeScope(
     },
     // Home-battery control is Main only (v1): this home drives no battery.
     readBatteryControlCapability: () => 'not_battery',
+    readBatteryDelivery: () => ({ kind: 'following' }),
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     // Teardown fence: a post-teardown continuation cannot persist a suffixed key.

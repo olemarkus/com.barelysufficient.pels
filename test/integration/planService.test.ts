@@ -316,6 +316,7 @@ describe('PlanService', () => {
     const getHomeBatteryCard = vi.fn(() => ({
       kind: 'battery' as const,
       control: 'drivable' as const,
+      delivery: { kind: 'following' as const },
       power: { kind: 'observed' as const, signedW: -2400 },
       level: { kind: 'observed' as const, percent: 64 },
     }));

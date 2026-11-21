@@ -1,4 +1,5 @@
 import type { RelayMeterObservation } from '../ports/nativeRelay';
+import type { HomeBatteryDelivery } from '../ports/batteryControlOwner';
 import { observeRelayMeter } from './relayMeterObservation';
 import type {
   ObservedStateOfCharge,
@@ -97,6 +98,7 @@ export type HomeBatteryCardRead =
     | {
         kind: 'battery';
         control: HomeBatteryCardControl;
+        delivery: HomeBatteryDelivery;
         power: { kind: 'observed'; signedW: number } | { kind: 'absent' };
         level: { kind: 'observed'; percent: number } | { kind: 'absent' };
     };
@@ -107,12 +109,14 @@ export type HomeBatteryCardRead =
  * power and level the observer projection carries, and whether PELS can drive
  * it, as the battery control owner answers (`control`, its
  * `readControlCapability`; a home with no battery owner answers `not_battery`,
- * read as one PELS only observes). Nothing here decides on any of them.
+ * read as one PELS only observes), and whether it follows PELS's setpoints
+ * (`delivery`, its `readDelivery`). Nothing here decides on any of them.
  */
 export function readHomeBatteryCard(
     descriptor: HomeBatteryDescriptorProbe | undefined,
     state: (ObservedDeviceState & HomeBatteryObservedProbe) | undefined,
     control: HomeBatteryCardControl | 'not_battery',
+    delivery: HomeBatteryDelivery,
 ): HomeBatteryCardRead {
     if (descriptor?.homeBattery?.controlSurface === undefined) return { kind: 'none' };
     const power = state?.batteryPower;
@@ -120,6 +124,7 @@ export function readHomeBatteryCard(
     return {
         kind: 'battery',
         control: control === 'not_battery' ? 'observe_only' : control,
+        delivery,
         power: power === undefined ? { kind: 'absent' } : { kind: 'observed', signedW: power.signedW },
         level: level === undefined ? { kind: 'absent' } : { kind: 'observed', percent: level.percent },
     };

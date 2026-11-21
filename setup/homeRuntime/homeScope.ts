@@ -46,6 +46,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { HomeBatteryControlCapability } from '../../packages/contracts/src/types';
+import type { HomeBatteryDelivery } from '../../lib/ports/batteryControlOwner';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
@@ -152,6 +153,12 @@ export type HomeScope = {
    * `not_battery`.
    */
   readBatteryControlCapability: (deviceId: string) => HomeBatteryControlCapability | 'not_battery';
+  /**
+   * Whether this home battery follows PELS's setpoints, for its card
+   * (`BatteryControlOwner.readDelivery`). A meter area drives no battery, so
+   * it answers `following`.
+   */
+  readBatteryDelivery: (deviceId: string) => HomeBatteryDelivery;
   binaryCommandLifecycle: BinaryCommandLifecycleListener;
   disposeBinaryCommandReachability: () => void;
   // Signal writers: this home's rows in the last-controlled store, and its
@@ -331,6 +338,7 @@ export function buildMainHomeScope(
     },
     // Built by its startup step before the plan stack reads a card.
     readBatteryControlCapability: (deviceId) => requireBatteryControl(ctx).readControlCapability(deviceId),
+    readBatteryDelivery: (deviceId) => requireBatteryControl(ctx).readDelivery(deviceId),
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     // Main has a teardown edge like any other home: `runUninit` trips the

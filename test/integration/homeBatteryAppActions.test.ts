@@ -133,7 +133,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: MARSTEK_CONTROL.target,
       range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' },
     });
     // A third of the app's 300 s passive countdown, whatever the command.
     const resend = { kind: 'resend', everyMs: 100_000 };
@@ -347,6 +347,26 @@ describe('home battery app actions', () => {
     expect(runs()).toEqual([]);
   });
 
+  it('logs each change of the EMS mode a Sigenergy plant reports, once', async () => {
+    const info = vi.fn();
+    const logger: Logger = { ...loggerMock, structuredLog: { ...loggerMock.structuredLog, info } as Logger['structuredLog'] };
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const { transport } = await setup([battery, plant], SIGENERGY_CARDS, { logger });
+    const modeEvents = () => info.mock.calls.map(([event]) => event as Record<string, unknown>)
+      .filter((event) => event.event === 'home_battery_control_mode_changed');
+
+    transport.readBatteryControl('sigen');
+    transport.readBatteryControl('sigen');
+    plant.setActualCapabilityValue('ems_work_mode', 'Remote EMS', { emitCapabilityEvent: false, emitDeviceUpdate: false });
+    await seedTransportDevices(transport, [battery, plant].map((device) => device.toHomeyApiDevice() as HomeyDeviceLike));
+    expect(transport.readBatteryControl('sigen')).toMatchObject({ controlMode: { kind: 'homey' } });
+
+    expect(modeEvents()).toEqual([
+      { event: 'home_battery_control_mode_changed', deviceId: 'sigen', controlMode: 'AI mode', previousControlMode: null },
+      { event: 'home_battery_control_mode_changed', deviceId: 'sigen', controlMode: 'homey', previousControlMode: 'AI mode' },
+    ]);
+  });
+
   it('drives a Sigenergy battery through its plant\'s cards, in kW, as an ordered sequence', async () => {
     const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
     const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
@@ -355,7 +375,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: SIGENERGY_CONTROL.target,
       range: { minW: -5000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' }, controlMode: { kind: 'own', mode: 'AI mode' },
     });
     expect(keepAlives(transport, 'sigen')).toEqual([{ kind: 'none' }, { kind: 'none' }, { kind: 'none' }]);
     await expect(transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: -1234 }))
@@ -588,7 +608,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: ZENDURE_CONTROL.target,
       range: { minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' },
     });
     // The app's idle poll drops a charge; a discharge and the 0 W hold stand until the next command.
     expect(keepAlives(transport, 'zendure')).toEqual([
@@ -614,7 +634,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: FRONIUS_CONTROL.target,
       range: { minW: -4800, maxW: 4800, stepW: 300, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function), pacing: { kind: 'paced', importRaisingIntervalMs: 300_000 },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'paced', importRaisingIntervalMs: 300_000 }, controlMode: { kind: 'unreported' },
     });
     const holds = { kind: 'none' };
     expect(keepAlives(transport, 'gen24')).toEqual([holds, holds, holds]);
@@ -645,7 +665,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: HUAWEI_CONTROL.target,
       range: { minW: -4000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' },
     });
     const resend = { kind: 'resend', everyMs: 200_000 };
     expect(keepAlives(transport, 'luna')).toEqual([resend, resend, resend]);
@@ -687,7 +707,7 @@ describe('home battery app actions', () => {
       kind: 'app_actions',
       target: SOLAX_CONTROL.target,
       range: { minW: -30_000, maxW: 30_000, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' },
+      keepAliveFor: expect.any(Function), pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' },
     });
     const resend = { kind: 'resend', everyMs: 100_000 };
     expect(keepAlives(transport, 'solax')).toEqual([resend, resend, resend]);

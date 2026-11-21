@@ -51,7 +51,9 @@
  *   under the plan live control asks for no more than the plan does, so
  *   nothing would ask for charge at that level again to lift it.
  */
-import type { BatteryChargeCeiling, BatteryDelivery } from '../ports/batteryControlOwner';
+import type {
+  BatteryChargeCeiling, BatteryControlRead, BatteryDelivery, HomeBatteryControlMode, HomeBatteryDelivery,
+} from '../ports/batteryControlOwner';
 import type { HomeBatteryLevelObservation, HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import { getLogger } from '../logging/logger';
@@ -125,6 +127,7 @@ type VerificationEntry = {
 };
 
 const NO_PLATEAU: LearnedPlateau = { kind: 'none' };
+const UNREPORTED: HomeBatteryControlMode = { kind: 'unreported' };
 const NO_CHARGE_PLATEAUS: ReadonlyMap<ChargeBand, BandLessons> = new Map();
 const NO_BAND_LESSONS: BandLessons = { latest: NO_PLATEAU, planned: NO_PLATEAU };
 
@@ -286,6 +289,18 @@ export class BatteryVerificationLedger {
       deliveryCeilingW: resolveCeilingW(Math.max(0, -range.minW), entry.plateau, nowMs),
       chargeCeiling: resolveChargeCeiling(Math.max(0, range.maxW), entry.chargePlateaus, nowMs),
     };
+  }
+
+  /**
+   * Whether the battery follows PELS's setpoints (`HomeBatteryDelivery`), for
+   * its card: an unanswered setpoint reads `not_following` through its
+   * back-off and the re-probe, until the battery answers one, with the control
+   * mode its app reports (`battery`, the owner's read of it).
+   */
+  readDelivery(deviceId: string, battery: BatteryControlRead, nowMs: number): HomeBatteryDelivery {
+    const verdict = resolveVerdict(this.entryOf(deviceId), nowMs);
+    if (verdict !== 'not_responding' && verdict !== 'reprobing') return { kind: 'following' };
+    return { kind: 'not_following', controlMode: battery.kind === 'app_actions' ? battery.controlMode : UNREPORTED };
   }
 
   startsAtPlateau(deviceId: string, dischargeW: number, toleranceW: number): boolean {

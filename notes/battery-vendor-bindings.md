@@ -57,6 +57,12 @@ Homey API key (see "App-action bindings" below). It states:
   target device's driver.
 - **resolveLegacyTarget(device, devices)**: the adapter's upgrade policy for
   claims written before target identities were persisted.
+- **readControlMode(target, devices)** (optional): who the app reports running
+  the target, `homey` (under Homey's control), `own` with the app's mode name,
+  or `unreported`. Control never decides on it. The host logs each change
+  (`home_battery_control_mode_changed`), and the battery card names an `own`
+  mode while the battery does not follow PELS's setpoints. Sigenergy reads the
+  plant's `ems_work_mode` ("Remote EMS" is `homey`).
 
 The battery owner stores the target in `battery_control_claim.<deviceId>`
 before the first write and carries it through the actuator on commands and

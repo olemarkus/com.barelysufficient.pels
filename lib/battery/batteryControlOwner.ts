@@ -300,6 +300,10 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     return this.watchOnly.isWatchOnly(deviceId, battery.surface, Date.now()) ? 'watch_only' : 'drivable';
   }
 
+  readDelivery(deviceId: string) {
+    return this.verification.readDelivery(deviceId, this.getBattery(deviceId), Date.now());
+  }
+
   usesHomeyApiKey(deviceId: string): boolean { return runsOnHomeyApiKey(this.getBattery(deviceId)); }
 
   async handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<BatteryKeyRemovalOutcome> {

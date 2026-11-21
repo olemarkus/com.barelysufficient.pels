@@ -692,7 +692,17 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
   const TARGET = { appUri: 'homey:app:com.niewold.marstek', deviceId: BATTERY };
   const RANGE = { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 };
   const resendsEvery150s = (): BatteryCommandKeepAlive => ({ kind: 'resend', everyMs: 150_000 });
-  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', target: TARGET, range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' } });
+  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', target: TARGET, range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' } });
+
+  it('reads not following from an unanswered setpoint until one is answered, with the mode its app reports', () => {
+    const battery = { ...appActions(), controlMode: { kind: 'own', mode: 'AI mode' } } as const;
+    const { owner } = buildOwner({ batteries: { [BATTERY]: battery } });
+    expect(owner.readDelivery(BATTERY)).toEqual({ kind: 'following' });
+    owner.verification.recordNotResponding(BATTERY, Date.now());
+    expect(owner.readDelivery(BATTERY)).toEqual({ kind: 'not_following', controlMode: { kind: 'own', mode: 'AI mode' } });
+    owner.verification.recordResponding(BATTERY, { signedW: -1000, toleranceW: 100, level: undefined }, Date.now());
+    expect(owner.readDelivery(BATTERY)).toEqual({ kind: 'following' });
+  });
 
   it('records a claim of its own before the first command, and holds it from that record alone', async () => {
     const { owner, settings } = buildOwner({ batteries: { [BATTERY]: appActions() } });
@@ -724,7 +734,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     });
     await owner.dispatchSetpoint(BATTERY, write);
     batteries[BATTERY] = { kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' },
-      range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' } };
+      range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' } };
     await expect(owner.dispatchSetpoint(BATTERY, write))
       .resolves.toEqual({ status: 'refused', reason: 'claim_record_mismatch' });
     expect(write).toHaveBeenCalledTimes(1);
@@ -743,7 +753,8 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
   it('keeps the stored target through restart and failed hand-back retries despite a replacement', async () => {
     const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
     const replacement: BatteryControlRead = {
-      kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' }, range: RANGE, keepAliveFor: resendsEvery150s, pacing: { kind: 'unpaced' },
+      kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' }, range: RANGE, keepAliveFor: resendsEvery150s,
+      pacing: { kind: 'unpaced' }, controlMode: { kind: 'unreported' },
     };
     const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: replacement },
       apply: async () => { throw new Error('original target unavailable'); } });
