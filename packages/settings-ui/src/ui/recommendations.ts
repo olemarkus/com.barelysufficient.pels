@@ -4,12 +4,12 @@ import {
 import { registerOverviewRecommendationDismissals } from './overviewControlWarnings.ts';
 import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
 import {
-  SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_POWER_PATH, SETTINGS_UI_RECOMMENDATION_CARS_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
 import {
   callApi, coldStartReadRetryDelays, getHomeyTimezone, getSetting, getSettingFresh,
-  invalidateApiCache, sleep,
+  invalidateApiCache, invalidateSettingCache, sleep,
 } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
@@ -40,12 +40,13 @@ import { formatSetupProgress } from './setupPathModel.ts';
 import {
   anyChargerHasSelectedCar, loadEvCarAssociations, readCarAssociationStatus,
 } from './deviceDetail/carAssociation.ts';
-import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './deviceDetail/settingsWrite.ts';
+import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
 import { renderSetupRecommendationsBanner, renderSetupRecommendationsView } from './views/SetupRecommendationsView.tsx';
 import {
   readEvSocFlowReporters, readIgnoredPowerUsageFlows, refreshFlowConflictFacts, refreshFlowConflictFactsExplicit,
   refreshEvSocReportersIfNeeded,
 } from './flowConflictRefresh.ts';
+import { SETUP_RECOMMENDATION_DISMISSALS } from '../../../shared-domain/src/settings/recommendationDismissals.ts';
 import { showToastError } from './toast.ts';
 import { resolveRecommendationTask, type RecommendationNavigation } from './recommendationActions.ts';
 export type { RecommendationNavigation } from './recommendationActions.ts';
@@ -56,9 +57,7 @@ import {
   resolveHardCapReachRecommendations,
 } from './hardCapReachRecommendation.ts';
 
-// Browser-owned acknowledgement state. The runtime acts on none of it; it only
-// serves the key in the settings bootstrap.
-export const SETUP_RECOMMENDATION_DISMISSALS = 'setup_recommendation_dismissals';
+export { SETUP_RECOMMENDATION_DISMISSALS };
 
 type DismissalReadState =
   | { state: 'loading' }
@@ -297,26 +296,27 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
 
 const writeDismissal = async (recommendation: SetupRecommendation, dismissed: boolean): Promise<void> => {
   if (!hasLoadedDismissals(dismissalRead)) return;
-  await writeFreshSetting<RecommendationDismissals>({
-    key: SETUP_RECOMMENDATION_DISMISSALS,
-    context: 'setup recommendations',
-    logMessage: 'Failed to update recommendation acknowledgement',
-    toastMessage: 'Failed to update the recommendation.',
-    fallbackValue: dismissalRead.dismissals,
-    readFresh: (value, fallback) => normalizeRecommendationDismissals(readRecordSetting(value, fallback)),
-    mutate: (current) => {
-      const next = { ...current };
-      if (dismissed) next[recommendation.id] = recommendation.version;
-      else delete next[recommendation.id];
-      return next;
-    },
-    commit: (next) => {
+  const { id } = recommendation;
+  const version = dismissed ? recommendation.version : null;
+  const generation = loadGeneration;
+  try {
+    const result = await callApi<unknown>('POST', SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH, {
+      id, version, expectedVersion: dismissalRead.dismissals[id] ?? null,
+    });
+    if (!isUnknownRecord(result)) throw new Error('Saved recommendations could not be read.');
+    invalidateSettingCache(SETUP_RECOMMENDATION_DISMISSALS);
+    if (generation !== loadGeneration) {
+      await loadRecommendationDismissals();
+    } else {
       dismissalRevision += 1;
-      dismissalRead = { state: 'resolved', dismissals: next };
+      dismissalRead = { state: 'resolved', dismissals: normalizeRecommendationDismissals(result) };
       refreshRecommendationSurfaces();
-    },
-    rollback: refreshRecommendationSurfaces,
-  });
+    }
+    if ((result[id] ?? null) !== version) throw new Error('This recommendation changed. Review it again.');
+  } catch (error) {
+    await logSettingsError('Failed to update recommendation acknowledgement', error, 'setup recommendations');
+    await showToastError(error, 'Failed to update the recommendation.');
+  }
 };
 
 export const refreshRecommendationSurfaces = (): void => {

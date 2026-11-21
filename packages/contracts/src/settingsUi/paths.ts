@@ -15,6 +15,7 @@ export const SETTINGS_UI_POWER_PATH = '/ui_power';
 export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
 export const SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH = '/ui_car_association_confirm';
 export const SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH = '/ui_car_association_clear';
+export const SETTINGS_UI_RECOMMENDATION_ACKNOWLEDGE_PATH = '/ui_recommendation_acknowledge';
 export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
 
 // The PELS version running on this Homey, the Homey's timezone and its id. The
