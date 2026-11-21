@@ -203,7 +203,7 @@ describe('targetPowerReachability', () => {
     expect(resolveTargetPowerProbeRetryAtMs(1_000, 9)).toBe(3_601_000);
   });
 
-  it('keeps the proven maximum when only an early lower ramp sample exists at settlement', () => {
+  it('reports a post-command target unchanged at settlement without lowering the proven maximum', () => {
     const config = buildConfig();
     const transition = resolveTargetPowerReachabilityTransition(
       config.reachability!.profileFingerprint,
@@ -214,15 +214,44 @@ describe('targetPowerReachability', () => {
         issuedAtMs: 1_000,
         settleWindowMs: 100,
       },
-      { planningPowerW: 1_380, observedAtMs: 1_050 },
-      2_000,
+      { planningPowerW: 1_380, observedAtMs: 1_099 },
+      1_100,
     );
 
     expect(transition).toMatchObject({
-      kind: 'failed',
-      reachability: { maxReachedPowerW: 5_750, probeFailureCount: 1, nextProbeAtMs: 902_000 },
+      kind: 'reported_below_request',
+      observation: { planningPowerW: 1_380, observedAtMs: 1_099 },
+      reachability: { maxReachedPowerW: 5_750, probeFailureCount: 1, nextProbeAtMs: 901_100 },
     });
-    expect(transition).not.toHaveProperty('observedPowerW');
+  });
+
+  it.each([
+    undefined,
+    { planningPowerW: 5_750, observedAtMs: 999 },
+  ])('reports no post-command target at settlement for %j', (observation) => {
+    const config = buildConfig();
+    const transition = resolveTargetPowerReachabilityTransition(
+      config.reachability!.profileFingerprint,
+      config.reachability,
+      {
+        requestedPowerW: 6_440,
+        confirmedMaxPowerW: 5_750,
+        issuedAtMs: 1_000,
+        settleWindowMs: 100,
+      },
+      observation,
+      1_100,
+    );
+
+    expect(transition).toEqual({
+      kind: 'no_post_command_report',
+      reachability: {
+        profileFingerprint: config.reachability!.profileFingerprint,
+        maxReachedPowerW: 5_750,
+        probeFailureCount: 1,
+        nextProbeAtMs: 901_100,
+      },
+    });
   });
 
   it('retains backoff while advancing to an early intermediate clamp', () => {
@@ -241,14 +270,14 @@ describe('targetPowerReachability', () => {
     );
 
     expect(transition).toMatchObject({
-      kind: 'failed',
+      kind: 'reported_below_request',
+      observation: { planningPowerW: 5_750, observedAtMs: 1_050 },
       reachability: {
         maxReachedPowerW: 5_750,
         probeFailureCount: 1,
         nextProbeAtMs: 902_000,
       },
     });
-    expect(transition).not.toHaveProperty('observedPowerW');
   });
 
   it('captures a settled exact intermediate rung without lowering prior proof', () => {
@@ -267,8 +296,8 @@ describe('targetPowerReachability', () => {
     );
 
     expect(transition).toMatchObject({
-      kind: 'failed',
-      observedPowerW: 5_750,
+      kind: 'reported_below_request',
+      observation: { planningPowerW: 5_750, observedAtMs: 1_500 },
       reachability: { maxReachedPowerW: 5_750, probeFailureCount: 1 },
     });
   });
