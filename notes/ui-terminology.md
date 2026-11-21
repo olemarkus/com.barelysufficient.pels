@@ -484,6 +484,14 @@ the hero states it once on the Power-now subline (§ "Safe pace now"). Repeating
 it per card printed the same sentence N times while the reader's actual question
 went unanswered.
 
+An ordinary limited on/off device shows **Last reported 2.8 kW** when the
+device's positive reading is from before its observed switch-off. The amber
+device warning icon opens **Power reading is from before switch-off**, with
+the shared dialog and **Open device** action. The card keeps its regular hold
+reason and timer. A power reading taken at or after switch-off clears the
+icon. A fresh positive reading can still say **Still drawing**. Household
+usage comes from the whole-home meter.
+
 Ladder (source of truth: `resolveHeldCardReasonLine` in `planCardReasonLine.ts`,
 shared by all three card variants):
 
@@ -983,6 +991,11 @@ in view. Loading acknowledgements does not flash a previously hidden icon. If
 acknowledgements cannot be read, the icon remains visible and Hide warning is
 disabled. The card's state, reason and status chip stay in place. The Devices
 list has no additional chip.
+
+Overview device warnings use the shared `OverviewDeviceWarningIcon` button
+and dialog. Warnings that clear when the device reports again, such as the
+power reading from before switch-off, use the same icon and **Open device**
+action without a **Hide warning** button.
 
 ### Device-page "Power when running" — one line about the present source
 

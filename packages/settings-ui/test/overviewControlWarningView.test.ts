@@ -105,4 +105,32 @@ describe('Overview warning icon', () => {
     openDialog();
     expect(dialogButton('Hide warning')?.hasAttribute('disabled')).toBe(true);
   });
+
+  it('opens the reading warning independently and clears it after a new reading', () => {
+    const warningTitle = 'Power reading is from before switch-off';
+    const props = { dryRun: false, nowMs: 1000, evStateLine: null, warning: { recommendation } };
+    const dev = uiDeviceFixture({ id: 'heater', name: 'Hall heater' });
+    const opened = vi.fn();
+    document.addEventListener('open-device-detail', opened);
+    try {
+      act(() => render(h(PlanGenericCard, { ...props, dev: { ...dev, status: { ...dev.status,
+        powerVariant: 'before_switch_off', powerText: 'Last reported 2.8 kW',
+      } } }), mount));
+      const readWarning = mount.querySelector(`md-icon-button[aria-label="${warningTitle}"]`)!;
+      expect(mount.querySelectorAll('.plan-card__control-warning-icon')).toHaveLength(2);
+      act(() => { readWarning.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      expect(document.querySelector('md-dialog')?.textContent).toContain(warningTitle);
+      expect(opened).not.toHaveBeenCalled();
+      expect(dialogButton('Hide warning')).toBeUndefined();
+      act(() => { dialogButton('Open device')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      expect(opened).toHaveBeenCalledOnce();
+      expect((opened.mock.calls[0]![0] as CustomEvent).detail).toEqual({ deviceId: 'heater', focus: 'top' });
+      act(() => { readWarning.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      act(() => render(h(PlanGenericCard, { ...props, dev }), mount));
+      expect(document.querySelector('md-dialog')).toBeNull();
+      expect(mount.querySelectorAll('.plan-card__control-warning-icon')).toHaveLength(1);
+    } finally {
+      document.removeEventListener('open-device-detail', opened);
+    }
+  });
 });

@@ -363,6 +363,51 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         }
     });
 
+    it('keeps pre-switch-off power distinct from a fresh positive reading', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(Date.parse(READ_AT));
+        const h = await buildHarness();
+        try {
+            mockApiGet.mockResolvedValue({ dev1: device('dev1', {
+                capabilitiesObj: {
+                    measure_power: { value: 2817, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                    onoff: { value: false, id: 'onoff', lastUpdated: READ_AT },
+                },
+            }) });
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            expect(h.projection.getPowerBeforeSwitchOffKw('dev1')).toBe(2.817);
+
+            // A read taken at switch-off or later is current, even if it still
+            // reports the same consumption as the earlier reading.
+            await emitCapability('dev1', 'measure_power', 2817);
+            expect(h.projection.getPowerBeforeSwitchOffKw('dev1')).toBeUndefined();
+
+            vi.setSystemTime(Date.parse(READ_AT) + 60_000);
+            await emitCapability('dev1', 'onoff', false);
+            // An unrelated accepted observation carries the re-dated off
+            // value. It must not turn the newer draw into pre-off draw.
+            emitDeviceUpdate(device('dev1', {
+                capabilitiesObj: {
+                    measure_power: { value: 2818, id: 'measure_power', lastUpdated: '2026-03-20T06:00:30.000Z' },
+                    onoff: { value: false, id: 'onoff', lastUpdated: READ_AT },
+                },
+            }));
+            expect(h.projection.getPowerBeforeSwitchOffKw('dev1')).toBeUndefined();
+
+            vi.setSystemTime(Date.parse(READ_AT) + 120_000);
+            await emitCapability('dev1', 'onoff', true);
+            vi.setSystemTime(Date.parse(READ_AT) + 121_000);
+            await emitCapability('dev1', 'onoff', false);
+            expect(h.projection.getPowerBeforeSwitchOffKw('dev1')).toBe(2.818);
+
+            await emitCapability('dev1', 'onoff', null);
+            expect(h.projection.getPowerBeforeSwitchOffKw('dev1')).toBeUndefined();
+        } finally {
+            h.transport.destroy();
+            vi.useRealTimers();
+        }
+    });
+
     it('drops the binary observation from the projection when the driver sends an invalid control payload', async () => {
         // A driver reporting `onoff: null` (or a string) makes the transport discard
         // the binary observation it held. The projection must lose it too: the

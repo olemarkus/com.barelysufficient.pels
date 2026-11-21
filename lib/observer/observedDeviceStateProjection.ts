@@ -233,6 +233,8 @@ export type ObservedDeviceReads = {
      */
     getObservedStateOfCharge(deviceId: string): ObservedStateOfChargeRead;
     getObservedTemperature(deviceId: string): ObservedTemperatureRead;
+    /** Last live device draw when its reading predates the observed on/off switch-off. */
+    getPowerBeforeSwitchOffKw(deviceId: string): number | undefined;
     getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead;
     /** Which way this device's setpoint moves demand. */
     getThermalDirection(deviceId: string): ThermalDirection;
@@ -290,6 +292,7 @@ export type PlanServiceObservedReads = Pick<
     | 'getObservedEvChargingState'
     | 'getObservedStateOfCharge'
     | 'getObservedTemperature'
+    | 'getPowerBeforeSwitchOffKw'
     | 'getThermalDirection'
 >;
 
@@ -301,6 +304,7 @@ type ProjectionCursor = {
 type ProjectionEntry = ProjectionCursor & {
     value: ProjectedObservedDeviceState;
     drawLevels?: readonly DrawLevel[];
+    switchedOffAtMs?: number;
 };
 
 /**
@@ -492,6 +496,13 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         return readObservedTemperatureState(this.getObservedRecord(deviceId));
     }
 
+    getPowerBeforeSwitchOffKw(deviceId: string): number | undefined {
+        const entry = this.byId.get(deviceId);
+        if (entry?.switchedOffAtMs === undefined) return undefined;
+        const power = readLivePower(entry.value);
+        return power && power.measuredAtMs < entry.switchedOffAtMs ? power.kw : undefined;
+    }
+
     getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead {
         return readObservedEvChargingState(this.getObservedRecord(deviceId));
     }
@@ -578,6 +589,7 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         this.byId.set(value.id, {
             value: freezeObserved(value), seq, observedAtMs,
             drawLevels: trackDrawLevels(prev, value, observedAtMs),
+            switchedOffAtMs: readSwitchOffAtMs(prev, value),
         });
         this.revision += 1;
     }
@@ -594,6 +606,18 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         // Equal/absent timestamps → accept (last-writer-wins).
         return false;
     }
+}
+
+function readSwitchOffAtMs(
+    previous: ProjectionEntry | undefined,
+    value: ProjectedObservedDeviceState,
+): number | undefined {
+    const binary = value.binaryControlObservation;
+    if (value.available === false || value.binaryControl?.on !== false
+        || binary?.capabilityId !== 'onoff' || binary.observedValue !== false) return undefined;
+    // Full reads give the capability's own change timestamp. Repeated off
+    // events can re-date that same value without another switch-off.
+    return previous?.switchedOffAtMs ?? binary.observedAtMs;
 }
 
 /**
