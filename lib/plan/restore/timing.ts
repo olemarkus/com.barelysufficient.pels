@@ -189,11 +189,12 @@ export function resolveOutstandingRestoreDrawKw(
     const device = devices.find(({ id }) => id === deviceId);
     if (device === undefined || device.currentState !== 'on' || device.isBatteryOrSolar
       || isSteppedLoadDevice(device)) continue;
-    // Without evidence of a post-command start included in this sample, the
-    // previous draw may predate the restore. Reserve the full expected draw.
+    // A post-command start must precede the meter's lower time bound. Credit
+    // only the draw that stayed present after that bound, since the meter may
+    // have measured at any point after it.
     const includedKw = measuredAfterMs !== null && drawEvidence.hasStartedDrawingSince(
       deviceId, drawEvidenceFromMs, measuredAfterMs, MIN_ACTIVE_MEASURED_POWER_KW,
-    ) ? (drawEvidence.getLiveDrawAt(deviceId, measuredAfterMs) ?? 0) : 0;
+    ) ? (drawEvidence.getLiveDrawFloorSince(deviceId, measuredAfterMs) ?? 0) : 0;
     outstandingKw += Math.max(0, device.expectedPowerKw - includedKw);
   }
   return outstandingKw;

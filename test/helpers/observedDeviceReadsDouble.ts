@@ -15,6 +15,7 @@ import type { ProjectedObservedDeviceState, ThermalDirection } from '../../packa
 export const noDrawEvidence: DrawEvidenceReads = {
   hasStartedDrawingSince: () => false,
   getLiveDrawAt: () => null,
+  getLiveDrawFloorSince: () => null,
   hasDrawnAtLeastSince: () => false,
 };
 
@@ -62,6 +63,7 @@ export const observedDeviceReadsDouble = (
   }),
   hasStartedDrawingSince: vi.fn(() => false),
   getLiveDrawAt: vi.fn(() => null),
+  getLiveDrawFloorSince: vi.fn(() => null),
   hasDrawnAtLeastSince: vi.fn(() => false),
   getRelayShedObservation: vi.fn(() => undefined),
   getRevision: vi.fn(() => 0),

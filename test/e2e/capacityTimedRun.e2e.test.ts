@@ -260,9 +260,19 @@ describe('Capacity timed run of an on/off heater (SDK-boundary e2e)', () => {
     expect(second.getActualCapabilityValue('onoff')).toBe(false);
     expect(first.getActualCapabilityValue('onoff')).toBe(true);
 
-    // Keep the house's draw the same by reducing background load. The
-    // newer meter values now account for all of the first heater's draw.
+    // The first heater reaches full draw before the previous meter value,
+    // then dips and recovers before the next value reaches PELS. That
+    // value could have been measured during the dip.
     first.setActualCapabilityValue('measure_power', 3000);
+    await report(4200);
+    first.setActualCapabilityValue('measure_power', 1550);
+    await vi.advanceTimersByTimeAsync(1);
+    first.setActualCapabilityValue('measure_power', 3000);
+    for (let poll = 0; poll < 5; poll += 1) await report(4100);
+    expect(second.getActualCapabilityValue('onoff')).toBe(false);
+    expect(first.getActualCapabilityValue('onoff')).toBe(true);
+
+    // Newer meter values now account for the first heater's full draw.
     for (let poll = 0; poll < 5; poll += 1) {
       await report(4110 - poll % 2 * 10);
       if (second.getActualCapabilityValue('onoff') === true) break;

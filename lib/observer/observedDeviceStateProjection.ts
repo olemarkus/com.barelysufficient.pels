@@ -263,6 +263,11 @@ export type ObservedDeviceReads = {
      */
     getLiveDrawAt(deviceId: string, atMs: number): number | null;
     /**
+     * Lowest retained live draw since `fromMs`, including the level in effect
+     * at that time. Without a live level at the start there is no bound.
+     */
+    getLiveDrawFloorSince(deviceId: string, fromMs: number): number | null;
+    /**
      * Whether this device reached at least `minKw` in a live reading measured and
      * received after `sinceMs` and received before `reachedBeforeMs`, and is still
      * drawing at least that. Unlike `hasStartedDrawingSince` it holds for a device
@@ -280,7 +285,7 @@ export type ObservedDeviceReads = {
  * planner's restore pacing reads as evidence that an increase has landed.
  */
 export type DrawEvidenceReads = Pick<
-    ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince'
+    ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'getLiveDrawFloorSince' | 'hasDrawnAtLeastSince'
 >;
 
 /**
@@ -552,6 +557,19 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
             kw = level.kw;
         }
         return kw;
+    }
+
+    getLiveDrawFloorSince(deviceId: string, fromMs: number): number | null {
+        const levels = this.byId.get(deviceId)?.drawLevels ?? [];
+        let floorKw: number | null = null;
+        for (const level of levels) {
+            if (level.receivedAtMs <= fromMs) {
+                floorKw = level.kw;
+            } else if (floorKw !== null) {
+                floorKw = Math.min(floorKw, level.kw);
+            }
+        }
+        return floorKw;
     }
 
     hasDrawnAtLeastSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean {
