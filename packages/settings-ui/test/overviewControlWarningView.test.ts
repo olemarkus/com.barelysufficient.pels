@@ -133,4 +133,20 @@ describe('Overview warning icon', () => {
       document.removeEventListener('open-device-detail', opened);
     }
   });
+
+  it('asks for a charger app update without a Hide warning button', () => {
+    const warningTitle = 'Update the charger’s app';
+    const props = { dryRun: false, nowMs: 1000, evStateLine: null };
+    const dev = uiDeviceFixture({ id: 'charger', name: 'Garage charger' });
+    act(() => render(h(PlanGenericCard, { ...props, dev: { ...dev, status: { ...dev.status,
+      needsChargerAppUpdate: true,
+    } } }), mount));
+    const icon = mount.querySelector(`md-icon-button[aria-label="${warningTitle}"]`)!;
+    act(() => { icon.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(document.querySelector('md-dialog')?.textContent).toContain('pausing and resuming charging');
+    expect(dialogButton('Hide warning')).toBeUndefined();
+    expect(dialogButton('Open device')).toBeDefined();
+    act(() => render(h(PlanGenericCard, { ...props, dev }), mount));
+    expect(mount.querySelector(`md-icon-button[aria-label="${warningTitle}"]`)).toBeNull();
+  });
 });

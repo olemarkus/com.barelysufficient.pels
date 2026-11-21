@@ -237,6 +237,50 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     expect(mockHomeyInstance.settings.get(DEVICE_POWER_CONTROL_MODES)).toEqual({ [ID]: 'automatic' });
   });
 
+  it('limits a read-only current charger on its switch when a saved key route has no write left', async () => {
+    // Saved with a Homey API key while the keyed action was the Zaptec route.
+    // The installed app still reports current as read-only, so PELS has no way
+    // to set it: the charger drops its current ladder and is paused instead.
+    const charger = await buildCharger(buildZaptecCurrentOnlyDevice());
+    const simulation = simulateCurrentOnlyZaptec(charger);
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, HOUSE_LIMIT_W / 1000);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [ID]: true });
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { [ID]: true });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { [ID]: { action: 'set_step' } });
+    mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
+      [ID]: { enabled: true, preset: 'ev_charger_3_phase', max: 22080 },
+    });
+    mockHomeyInstance.settings.set('charging_current_control', {
+      [ID]: { method: 'built_in', confirmation: 'single_charger' },
+    });
+    mockHomeyInstance.settings.set('_homey_flow_api_key', 'test-key');
+
+    await createApp().onInit();
+    const [setup] = await api.ui_charging_current({ homey: mockHomeyInstance as never });
+    expect(setup).toMatchObject({
+      deviceId: ID, setup: { method: 'built_in' }, capabilityWritable: false, supportsAppAction: false,
+      currentRoute: 'flow',
+    });
+    const { devices } = await api.ui_devices({ homey: mockHomeyInstance as never });
+    const device = devices.find((entry) => entry.id === ID);
+    expect(device?.controlAdapter?.currentControl).toBeUndefined();
+    expect(device?.steppedLoadProfile).toBeUndefined();
+
+    await advanceMeterDecisionsUntil(() => simulation.put.mock.calls.some(([path, body]) => (
+      path === pathFor('charging_button') && (body as { value?: unknown }).value === false
+    )));
+    expect(simulation.currentWrites).toEqual([]);
+    expect(simulation.get).not.toHaveBeenCalledWith('manager/flow/flowcardaction');
+    const plan = await api.ui_plan({ homey: mockHomeyInstance as never });
+    const card = plan.plan?.devices?.find((entry) => entry.id === ID);
+    expect(card?.status.needsChargerAppUpdate).toBe(true);
+  });
+
   it('writes nothing to the charger in simulation, then limits it once simulation is switched off', async () => {
     const charger = await buildCharger();
     const simulation = simulateZaptec(charger);

@@ -463,3 +463,15 @@ describe('power readings on a held relay', () => {
     expect(buildDeviceStatus(device, false, 0).reason?.text).toContain(expected);
   });
 });
+
+describe('charger app update warning', () => {
+  it('flags a charger whose selected built-in current control needs an app update', () => {
+    expect(buildDeviceStatus(runningPowerHold({ isEvCharger: true, unusedBuiltInControl: 'needs_app_update' }), false, 0))
+      .toMatchObject({ needsChargerAppUpdate: true });
+  });
+
+  it.each(['none', 'held_by_flow', 'not_set_up'] as const)('leaves the flag off for %s', (unusedBuiltInControl) => {
+    expect(buildDeviceStatus(runningPowerHold({ isEvCharger: true, unusedBuiltInControl }), false, 0))
+      .not.toHaveProperty('needsChargerAppUpdate');
+  });
+});

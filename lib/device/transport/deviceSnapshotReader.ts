@@ -1,5 +1,5 @@
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
-import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import type { ChargingCurrentControl, ChargingCurrentParseRead } from '../chargingCurrentControl';
 import type { ChargingPhaseTransport } from '../chargingPhaseTransport';
 import type { HomeBatteryAppActions } from '../homeBatteryAppActions';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
@@ -32,7 +32,7 @@ import type { DeviceTransportOptions } from './transportTypes';
 export function createDeviceParseSources(
   owners: Pick<DeviceTransportOptions, 'settings' | 'nativeWiring' | 'flowBacked' | 'batteryManaged'>,
   roles: DeviceRoleMembership,
-  chargingCurrent: Pick<ChargingCurrentControl, 'requiresManualControl'>,
+  chargingCurrent: ChargingCurrentParseRead,
   chargingPhases: Pick<ChargingPhaseTransport, 'profile'>,
 ): DeviceParseSources {
   return {

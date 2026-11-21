@@ -1,6 +1,6 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import type { DeviceControlSettings } from '../deviceControlSettings';
-import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import type { ChargingCurrentParseRead } from '../chargingCurrentControl';
 import type { ChargingPhaseTransport } from '../chargingPhaseTransport';
 import type { FlowBackedDeviceState } from '../flowBackedDeviceState';
 import type { DeviceManagement } from '../deviceRoleReads';
@@ -88,7 +88,7 @@ export type DeviceTransportParseDeps = {
     logger: Logger;
     settings: DeviceParseSettings;
     nativeWiring: NativeWiringRead;
-    chargingCurrent: Pick<ChargingCurrentControl, 'requiresManualControl'>;
+    chargingCurrent: ChargingCurrentParseRead;
     chargingPhases: Pick<ChargingPhaseTransport, 'profile'>;
     flowBacked: FlowBackedRead;
     management: DeviceManagement;

@@ -44,5 +44,7 @@ export function resolveNativeWiringEnabled(
  * Why PELS does not set a device's level itself although it could. `held_by_flow`:
  * a Flow writes the same setting. `not_set_up`: Charging current setup is
  * unfinished and no Flow sets the current, so level changes reach no one.
+ * `needs_app_update`: built-in control is selected, but the installed app no
+ * longer offers a way to set the current, so PELS only switches the device.
  */
-export type UnusedBuiltInControl = 'none' | 'held_by_flow' | 'not_set_up';
+export type UnusedBuiltInControl = 'none' | 'held_by_flow' | 'not_set_up' | 'needs_app_update';

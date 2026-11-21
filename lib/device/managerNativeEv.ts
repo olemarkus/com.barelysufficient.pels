@@ -326,7 +326,10 @@ function applySyntheticTargetPowerOverlay(
   const savedConfig = sources.settings.getDeviceTargetPowerConfig(deviceId)
     ?? resolveDeviceCompatibilityTargetPowerConfig(device);
   const config = savedConfig && getDeviceAdapter(device).configureTargetPower(device, savedConfig);
-  if (!config || (evPresetOnly && !isEvTargetPowerPresetConfig(config))) {
+  // A saved built-in current choice the installed app can no longer carry out
+  // leaves the charger on its switch rather than on steps nobody applies.
+  if (!config || (evPresetOnly && !isEvTargetPowerPresetConfig(config))
+    || sources.chargingCurrent.withdrawsCurrentLadder(device)) {
     return {
       capabilities: nativeEvOverlay.capabilities,
       capabilityObj: nativeEvOverlay.capabilityObj,

@@ -13,7 +13,7 @@ import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { HomeyRequestInFlightError } from '../utils/homeyRequestInFlightError';
 import { isBuiltInControlInEffect, type UnusedBuiltInControl } from './builtInControlFlowGate';
 import {
-  hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
+  canSetChargingCurrent, hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
 import type { CapabilityWrite, ChargingCurrentBinding } from './deviceAdapter';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
@@ -50,6 +50,9 @@ function readSetup(value: unknown): ChargingCurrentSetup | undefined {
   if (confirmation !== 'none' && confirmation !== 'vehicle' && confirmation !== 'single_charger') return undefined;
   return { method: value.method, confirmation };
 }
+
+/** What a device parse reads from the current-route owner. */
+export type ChargingCurrentParseRead = Pick<ChargingCurrentControl, 'requiresManualControl' | 'withdrawsCurrentLadder'>;
 
 /** Owns current-route selection. Binary control remains independent of this choice. */
 export class ChargingCurrentControl {
@@ -170,9 +173,10 @@ export class ChargingCurrentControl {
 
   /**
    * Whether PELS sets this device's current itself: the owner selected built-in
-   * control and no Flow is known to set the same current
-   * (`isBuiltInControlInEffect`). Otherwise the current goes through the
-   * owner's Flow, as with Flow control selected.
+   * control, the installed app offers a way to set it (`canSetChargingCurrent`)
+   * and no Flow is known to set the same current (`isBuiltInControlInEffect`).
+   * Otherwise the current goes through the owner's Flow, as with Flow control
+   * selected.
    */
   routesBuiltIn(deviceId: string): boolean {
     return this.routesBuiltInFor(deviceId, this.setup(deviceId));
@@ -200,30 +204,34 @@ export class ChargingCurrentControl {
   }
 
   /**
-   * Whether nothing sets this device's current: PELS can set it itself, but
-   * built-in control is not selected and no Flow is known to set it either.
-   * Its level changes then reach no one until the owner finishes Charging
-   * current setup. A shared installation is left to its coordinating Flow.
+   * Whether nothing sets this device's current: built-in control is not in
+   * effect (not selected, or selected while the installed app offers no way to
+   * set the current) and no Flow is known to set it either. Its level changes
+   * then reach no one until the owner finishes Charging current setup. A shared
+   * installation is left to its coordinating Flow.
    */
   lacksCurrentRoute(deviceId: string): boolean {
     const device = this.findDevice(deviceId);
     const adapter = device && resolveChargingCurrentAdapter(device);
     if (!device || !adapter || this.automaticWattsOwnRoute(device)) return false;
     if (hasSharedChargingInstallation(adapter, this.knownDevices())) return false;
-    return this.setup(deviceId).method !== 'built_in' && currentSettingFlows(adapter, this.flowWrites).size === 0;
+    return !this.routesBuiltIn(deviceId) && currentSettingFlows(adapter, this.flowWrites).size === 0;
   }
 
   /**
    * Why PELS does not set the device's level itself although it could, for its
    * card. A Flow that holds built-in control back (`flowConflict`, also set for
    * the built-in control of devices without a charging-current binding) is
-   * named before an unfinished setup.
+   * named first, then a selected built-in control the app can no longer carry
+   * out, then an unfinished setup.
    */
   unusedBuiltInControl(
     deviceId: string,
     snapshot: Pick<TransportDeviceSnapshot, 'flowConflict'> | undefined,
   ): UnusedBuiltInControl {
     if (snapshot?.flowConflict !== undefined) return 'held_by_flow';
+    const device = this.findDevice(deviceId);
+    if (device && this.withdrawsCurrentLadder(device)) return 'needs_app_update';
     return this.lacksCurrentRoute(deviceId) ? 'not_set_up' : 'none';
   }
 
@@ -239,6 +247,10 @@ export class ChargingCurrentControl {
     const device = this.findDevice(deviceId);
     if (device && this.automaticWattsOwnRoute(device)) return false;
     const adapter = device && resolveChargingCurrentAdapter(device);
+    // A saved choice whose app now offers no current write (a read-only
+    // capability without an app action) routes nothing: the device leaves
+    // current stepping until the app is updated or a Flow is chosen.
+    if (adapter && !canSetChargingCurrent(adapter)) return false;
     return isBuiltInControlInEffect(
       setup.method === 'built_in',
       adapter !== undefined && currentSettingFlows(adapter, this.flowWrites).size > 0,
@@ -292,6 +304,20 @@ export class ChargingCurrentControl {
   requiresManualControl(deviceId: string): boolean {
     this.sync();
     return this.setupsReadState === 'unavailable' || this.setups.has(deviceId);
+  }
+
+  /**
+   * Whether the device's saved built-in current choice has no current write left:
+   * the installed app reports current read-only, offers no app action PELS
+   * runs, and no Flow is known to set the current instead. Such a charger gets
+   * no current ladder, so PELS limits it on its switch until the owner updates
+   * the app or chooses a Flow.
+   */
+  withdrawsCurrentLadder(device: HomeyDeviceLike): boolean {
+    const adapter = resolveChargingCurrentAdapter(device);
+    return adapter !== undefined && !canSetChargingCurrent(adapter)
+      && this.setup(device.id).method === 'built_in'
+      && currentSettingFlows(adapter, this.flowWrites).size === 0;
   }
 
   /** The Flows that set a current now, read fresh; nothing is accepted here. */

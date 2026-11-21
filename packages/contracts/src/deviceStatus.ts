@@ -61,4 +61,10 @@ export type DeviceStatus = {
   /** The phase this device is held for, when a phase is what holds it. */
   heldForPhase?: 'L1' | 'L2' | 'L3';
   holdCause: 'smart_task' | 'smart_task_done' | 'daily_budget' | null;
+  /**
+   * Built-in current control is selected, but the charger's installed app no
+   * longer offers a way to set the current: PELS only switches the charger until
+   * the owner updates the app. The card shows an amber warning.
+   */
+  needsChargerAppUpdate?: true;
 };

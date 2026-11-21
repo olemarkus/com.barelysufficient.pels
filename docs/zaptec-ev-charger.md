@@ -21,7 +21,7 @@ While PELS controls the charger, it keeps the charger's power control in Homey s
 
 Without **Automatic**, PELS sets charging current through the Zaptec app's writable current capability. No API key is needed. Open the charger's **Setup → Charging current** section. For an installation with one charger, confirm **This installation has only one charger**, then choose **Use built-in control**.
 
-If the installed Zaptec app does not expose writable current control, update it or use a current-setting Flow. An existing Flow keeps working until you explicitly switch methods.
+If the installed Zaptec app does not expose writable current control, update it or use a current-setting Flow. An existing Flow keeps working until you explicitly switch methods. With built-in control selected and no Flow, PELS limits the charger by pausing and resuming charging until the app is updated, and the charger's card on Overview shows a warning.
 
 Before switching from an existing Flow, remove its current-setting action and choose **Check again**. Enable built-in control and check that the page says **Built-in current control is selected**. If you add a current-setting Flow later, PELS cannot stop it, and the two would override each other: the page then says **Built-in current control is paused**, PELS leaves the current to the Flow, and built-in control resumes on its own once you remove that action and choose **Check again**. Keep unrelated battery-level Flows.
 
