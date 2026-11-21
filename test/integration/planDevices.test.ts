@@ -413,6 +413,53 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.desiredStepId).toBe('low');
   });
 
+  describe('an unanswered step-down once pressure clears', () => {
+    const unansweredStepDown = (currentDrawKw: number) => steppedInput({
+      id: 'dev-1',
+      name: 'Charger',
+      steppedLoadProfile: {
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 2000 },
+          { id: 'max', planningPowerW: 6000 },
+        ],
+      },
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+      stepCommandPending: true,
+      lastStepCommandIssuedAt: 1_000,
+      binaryControl: { on: true },
+      controllable: true,
+      expectedPowerKw: 6,
+      currentDrawKw,
+    });
+    const planFor = (device: PlanInputDevice) => buildInitialPlanDevicesForSpec({
+      context: buildContext([device]),
+      sheddingPlan: sheddingPlanFixture(),
+      deps: {
+        getInferredSurplusKw: () => 0,
+        getShedBehavior: () => ({ action: 'set_step' }),
+        getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
+      },
+    })[0]!;
+
+    it('retires the request while the device still draws the reported step', () => {
+      const planDevice = planFor(unansweredStepDown(6));
+      expect(planDevice.plannedState).toBe('keep');
+      expect(planDevice.stepDownToRetire).toEqual({ stepId: 'low', issuedAtMs: 1_000 });
+      expect(planDevice.desiredStepId).toBeUndefined();
+    });
+
+    it('keeps the request when the device draws the lower step that was never reported', () => {
+      const planDevice = planFor(unansweredStepDown(2));
+      expect(planDevice.plannedState).toBe('keep');
+      expect(planDevice.stepDownToRetire).toBeUndefined();
+      expect(planDevice.desiredStepId).toBe('low');
+    });
+  });
+
   it('forces a shed stepped load to lowest active step while another device is recovering', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedShedIds = new Set(['gang']);
