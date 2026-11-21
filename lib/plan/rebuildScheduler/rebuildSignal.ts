@@ -92,6 +92,8 @@ export type AdmittedPowerReading = {
  * own invalidation latch, which no longer round-trips out through the wiring.
  */
 export type PlanRebuildPosture = {
+  /** The last plan banked a command whose native dispatch subsequently failed. */
+  relayShedVerdictPending?: boolean;
   planConvergenceActive: boolean;
   unactionable: boolean;
   shortfallUnrecoverable: boolean;

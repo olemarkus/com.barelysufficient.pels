@@ -59,7 +59,7 @@ export function selectShedDevices(
   reason: DeviceReason,
   shedAllCandidates: boolean,
   pressure: ShedPressure,
-): ShedSelection {
+): ShedSelection & { remainingKw: number } {
   const selection: ShedSelection = {
     shedSet: new Set<string>(),
     shedReasons: new Map<string, DeviceReason>(),
@@ -82,12 +82,13 @@ export function selectShedDevices(
     logSelectedCandidate(nextCandidate, spend);
     const relief: ShedRelief = {
       kind: nextCandidate.kind === 'temperature' ? 'demand' : 'electrical',
-      creditedKw: nextCandidate.unconfirmedRelief ? 0 : spend.reliefKw,
+      creditedKw: nextCandidate.unconfirmedRelief || (nextCandidate.kind === 'binary' && nextCandidate.relayShedNoAck)
+        ? 0 : spend.reliefKw,
     };
     selection.reliefByDevice.set(nextCandidate.id, relief);
     remaining -= relief.creditedKw;
   }
-  return selection;
+  return { ...selection, remainingKw: Math.max(0, remaining) };
 }
 
 /**

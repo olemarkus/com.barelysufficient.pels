@@ -36,7 +36,7 @@ describe('observed temperature mode updates ask the owning home whether a device
       hooks: {
         pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
         isDeviceLimited: vi.fn(() => params.areaLimited === true),
-        observeIdleEvidence: vi.fn(),
+        observeDeviceEvidence: vi.fn(),
         syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
         clearRecentBinaryOffCommand: () => {},

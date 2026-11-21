@@ -330,6 +330,69 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         ].sort());
     });
 
+    it('retains the receipt of each native sample and distinguishes callbacks from dated device reads', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        const now = Date.parse(READ_AT);
+        vi.setSystemTime(now);
+        const h = await buildHarness();
+        try {
+            const dev = onoffDevice('dev1', false, READ_AT);
+            mockApiGet.mockResolvedValue({ dev1: { ...dev, capabilities: [...dev.capabilities, 'meter_power'],
+                capabilitiesObj: { ...dev.capabilitiesObj, meter_power: { value: 24, lastUpdated: READ_AT } } } });
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            const prior = h.projection.getRelayShedObservation('dev1');
+            expect(prior).toMatchObject({ on: false, watts: { value: 1000, atMs: now, receivedAtMs: now,
+                sourceDated: true }, energy: { kwh: 24, atMs: now, receivedAtMs: now } });
+            vi.setSystemTime(now + 95_000);
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            expect(h.projection.getRelayShedObservation('dev1')).toEqual(prior);
+            await emitCapability('dev1', 'measure_power', 0);
+            expect(h.projection.getRelayShedObservation('dev1')?.watts).toEqual({
+                value: 0, atMs: now + 95_000, receivedAtMs: now + 95_000, sourceDated: false,
+            });
+            await emitCapability('dev1', 'onoff', true);
+            vi.setSystemTime(now + 96_000);
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            expect(h.projection.getRelayShedObservation('dev1')).toMatchObject({
+                on: true, binaryAtMs: now + 95_000, lastOpposingOnAtMs: now + 95_000,
+            });
+        } finally {
+            h.transport.destroy();
+            vi.useRealTimers();
+        }
+    });
+
+    it('can date a native power callback when the device clock precedes receipt', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        const now = Date.parse(READ_AT);
+        vi.setSystemTime(now);
+        const h = await buildHarness();
+        try {
+            mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, READ_AT) });
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            vi.setSystemTime(now + 101_000);
+            await emitCapability('dev1', 'measure_power', 800);
+            const freshAt = now + 100_000;
+            const dev = onoffDevice('dev1', false, READ_AT);
+            mockApiGet.mockResolvedValue({ dev1: { ...dev, capabilitiesObj: { ...dev.capabilitiesObj,
+                measure_power: { id: 'measure_power', value: 800, lastUpdated: new Date(freshAt).toISOString() },
+            } } });
+            vi.setSystemTime(now + 105_000);
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            const watts = { value: 800, atMs: freshAt, receivedAtMs: now + 105_000, sourceDated: true };
+            expect(h.projection.getRelayShedObservation('dev1')).toMatchObject({ watts, datedWatts: watts });
+            vi.setSystemTime(now + 110_000);
+            await emitCapability('dev1', 'measure_power', 0);
+            await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+            expect(h.projection.getRelayShedObservation('dev1')).toMatchObject({
+                watts: { value: 0, sourceDated: false }, datedWatts: watts,
+            });
+        } finally {
+            h.transport.destroy();
+            vi.useRealTimers();
+        }
+    });
+
     it('advances the measured-power observation stamp on a REPEATED identical reading', async () => {
         // `applyFreshnessOnlyCapabilityUpdate` stamps `measuredPowerObservedAtMs`
         // BEFORE its change check, deliberately: a repeated identical reading is

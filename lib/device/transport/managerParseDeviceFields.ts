@@ -1,7 +1,7 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
-  TargetDeviceSnapshot,
+  NativeRelayMeter, TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
@@ -286,6 +286,7 @@ export function assembleDeviceSnapshot(params: {
         thermostatMode,
         stateOfCharge,
         temperature,
+        nativeRelayMeter: readNativeRelayMeter(effectiveDevice.capabilities, measuredPower),
         measuredPowerKw: resolvedMeasuredPower.measuredPowerKw,
         measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
         measuredPowerReading: resolvedMeasuredPower.reading,
@@ -354,4 +355,17 @@ function resolveParsedDeviceSettings(
     if (isSolarPanelDevice(device)) return { ...base, managed: true, controllable: false };
     if (isHomeBatteryDevice(device)) return { ...base, controllable: false };
     return base;
+}
+
+/** Keep the device-clock sample apart from later receipt-clock updates to the accounting reading. */
+function readNativeRelayMeter(
+    capabilities: readonly string[], power: ReturnType<typeof resolveMeasuredPowerKw>,
+): NativeRelayMeter | undefined {
+    if (!capabilities.includes('onoff')) return undefined;
+    const watts = capabilities.includes('measure_power') && power.source === 'measure_power'
+        && power.measuredPowerKw !== undefined && power.observedAtMs !== undefined
+        ? { value: power.measuredPowerKw * 1000, atMs: power.observedAtMs, sourceDated: true } : undefined;
+    const meter = capabilities.includes('meter_power') ? power.meterEnergy : undefined;
+    const energy = meter && { kwh: meter.kwh, atMs: meter.observedAtMs };
+    return watts || energy ? { watts, energy } : undefined;
 }

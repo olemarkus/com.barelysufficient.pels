@@ -66,6 +66,7 @@ export const createFencedActuator = (
   base: Actuator,
   isFenced: (deviceId: string) => boolean,
 ): Actuator => ({
+  getNativeRelayBinding: base.getNativeRelayBinding?.bind(base),
   canTurnOnDevice: base.canTurnOnDevice.bind(base),
   resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
@@ -178,6 +179,7 @@ export function createPlanEngineComposition(
     // every cluster field is optional — and would work only for as long as the
     // object stayed physically wider than its type.
     getObservedState: (deviceId: string) => ctx.observer.getObservedRecord(deviceId),
+    getRelayShedObservation: (id) => ctx.observer.getRelayShedObservation(id),
     getObservationRevision: () => ctx.observer.getRevision(),
     actuator,
     getPowerTracker: scope.getPowerTracker,

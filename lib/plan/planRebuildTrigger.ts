@@ -48,6 +48,10 @@ export const POWER_SAMPLE_REBUILD_TRIGGERS = [
   'unknown',
 ] as const;
 
+export function isPowerSampleRebuild(trigger: PlanRebuildTrigger | null): boolean {
+  return POWER_SAMPLE_REBUILD_TRIGGERS.some((sampleTrigger) => sampleTrigger === trigger);
+}
+
 export type PowerSampleRebuildTrigger = (typeof POWER_SAMPLE_REBUILD_TRIGGERS)[number];
 
 export const PLAN_REBUILD_TRIGGERS = [

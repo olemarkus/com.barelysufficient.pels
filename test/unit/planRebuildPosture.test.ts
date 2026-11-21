@@ -29,6 +29,14 @@ const summaryWith = (overrides: Partial<ReturnType<typeof buildEmptyCapacityStat
 });
 
 describe('resolvePlanRebuildPosture', () => {
+  it('bypasses suppression for a failed relay only on meter evidence newer than the previous verdict', () => {
+    const pending = { ...idleState(), relayShedVerdictAfterMs: 100 };
+    for (const atMs of [undefined, 90, 100]) {
+      expect(resolvePlanRebuildPosture(null, pending, false, atMs).relayShedVerdictPending).toBeUndefined();
+    }
+    expect(resolvePlanRebuildPosture(null, pending, false, 101).relayShedVerdictPending).toBe(true);
+  });
+
   it('reads shortfall unrecoverability off remainingActionableControlledLoad alone', () => {
     for (const extra of [
       { blockedByCooldownDevices: 1 },

@@ -300,6 +300,8 @@ export type PlanInputDevice =
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);
 
 export type PlanInputDeviceBase = {
+  /** An exact delivery failure on this home's native shed, until the executor clears the episode. */
+  relayShedNoAck?: { decisionAtMs?: number; retryAtMs: number };
   id: string;
   name: string;
   targets: TargetCapabilitySnapshot[];
@@ -949,6 +951,6 @@ export type PlanDeviceStrippedKey =
   'acknowledgedStep' | 'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
   | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'carCurrentRangeUnavailable'
   | 'chargerPhaseCurrentsA'
-  | 'evChargingState' | 'measuredPowerKw' | 'powerSetupRequired'
+  | 'evChargingState' | 'measuredPowerKw' | 'nativeRelayMeter' | 'powerSetupRequired'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

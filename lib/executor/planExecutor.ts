@@ -1,3 +1,7 @@
+import { resolveLatchedMeterReading } from '../power/lastTotalPower';
+import type { RelayMeterObservation } from '../ports/nativeRelay';
+import { RelayShedRecovery } from './relayShedRecovery';
+import { hasBinaryCommand } from './executablePlan';
 import type { ExecutionPlan } from '../planContract/executionPlan';
 import {
   type ExecutorDeviceReadDeps,
@@ -55,6 +59,7 @@ const logger = getLogger('executor/plan');
  */
 export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & {
   chargingPhaseOwner: ChargingPhaseOwner;
+  getRelayShedObservation?: (id: string) => RelayMeterObservation | undefined;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   /**
    * Observer-owned accepted-write counter, used to tell whether the observed
@@ -96,6 +101,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
 export class PlanExecutor {
   private lastControlledPersistenceDirty = false;
   private controlPersistenceBatchDepth = 0;
+  private readonly relayShed: RelayShedRecovery;
   private readonly shortfallExecutor: ShortfallExecutor;
 
   /** The storage lane; a meter area builds none, and its plans carry no storage decision. */
@@ -110,7 +116,25 @@ export class PlanExecutor {
     private readonly feedback: PlannerExecutionFeedback) {
     this.chargingPhases = new ChargingPhaseExecutor(deps.chargingPhaseOwner);
     this.shortfallExecutor = new ShortfallExecutor(deps);
+    this.relayShed = new RelayShedRecovery({
+      binding: (id) => {
+        const config = deps.getDeviceConfiguration(id);
+        if (!config) return undefined;
+        if (!config.managed || config.controllable === false || 'steppedLoadProfile' in config
+          || config.isEvCharger) return null;
+        if (this.lifecycleFallback.isActive(id)) return undefined;
+        return deps.actuator.getNativeRelayBinding?.(id);
+      },
+      observation: (id) => deps.getRelayShedObservation?.(id),
+      pending: (id) => deps.pendingBinaryCommandStore.peekActive(id) !== undefined,
+      revision: deps.getObservationRevision,
+      noteNoAck: () => feedback.noteRelayShedNoAck(),
+      household: () => resolveLatchedMeterReading(deps.getPowerTracker()),
+      overlappingSheds: (id, atMs) => Object.entries(execution.actuation.lastDeviceShedMs)
+        .some(([otherId, shedMs]) => otherId !== id && shedMs >= atMs),
+    });
     this.ctx = {
+      relayShed: this.relayShed,
       homeId: deps.homeId,
       owner: 'ordinary',
       execution,
@@ -150,6 +174,12 @@ export class PlanExecutor {
       this.ctx.recordRestoreActuation,
     );
   }
+
+  public getRelayShedNoAck(id: string) { return this.relayShed.getNoAck(id); }
+
+  public observeRelayShed(id: string): void { this.relayShed.observe(id); }
+
+  public getRelayShedStatus(id: string) { return this.relayShed.status(id); }
 
   /** Judge the storage lane's setpoints in flight against this reading. */
   public syncStorageCommands(): void {
@@ -215,6 +245,9 @@ export class PlanExecutor {
       reasonCode: resolveConfirmedBinaryCommandReasonCode(pending),
     });
 
+    // Already OFF before the repeat. Its logical echo cannot establish another
+    // capacity actuation; the episode's meter evidence tracks the electrical result.
+    if (pending.relayRepeat) return;
     if (pending.desired) {
       // Any confirmed turn-on undoes PELS's shed at once: an owner who switches
       // the device off again before the next build is not overruled later.
@@ -328,6 +361,7 @@ export class PlanExecutor {
       }, reads.isExternalOffHeld(device.id));
       return [[device.id, {
         ...execution,
+        relayShedPowerEvidence: this.relayShed.status(device.id)?.powerEvidence,
         ...(live && hasObservedMeasuredPower(live) ? { currentDrawKw: live.measuredPowerKw } : {}),
       }] as const];
     }));
@@ -340,7 +374,8 @@ export class PlanExecutor {
    * command, not a correction. Setpoints are compared as the actuator resolves
    * them, which is the value a send carries.
    */
-  public retainContestedCommands(plan: ExecutionPlan): void {
+  public retainContestedCommands(plan: ExecutionPlan, observationRevisionAtBuild?: number): void {
+    this.relayShed.retain(plan, observationRevisionAtBuild);
     this.execution.controlContests.retainPlanned(this.deps.homeId, new Map(plan.devices.map((decision) => {
       const device = decision.commands;
       const planned = resolvePlannedCommandValues(device, this.feedback.isExternalOffHeld(device.id));
@@ -404,6 +439,7 @@ export class PlanExecutor {
     return plan.devices.some((device) => device.stepDownToRetire !== undefined)
       || this.deps.inverterLane.hasWork(plan.inverterDecisions)
       || plan.chargingPhaseDecisions.length > 0
+      || plan.devices.some(({ commands }) => hasBinaryCommand(commands) && this.relayShed.allowsRepeat(commands.binary))
       || hasPlanExecutionDriftAgainstIntent(plan, this.driftObservationDeps());
   }
 

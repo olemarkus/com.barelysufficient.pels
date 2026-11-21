@@ -46,6 +46,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         available: snapshot.available,
         ...projectReportedStepObservation(snapshot),
         ...projectMeasuredPowerObservation(snapshot),
+        ...(snapshot.nativeRelayMeter ? { nativeRelayMeter: copyNativeRelayMeter(snapshot.nativeRelayMeter) } : {}),
         ...projectSteppedLoadProfile(snapshot),
         ...projectHomeBatteryObservation(snapshot),
         ...(snapshot.chargerPhaseCurrentsA ? { chargerPhaseCurrentsA: snapshot.chargerPhaseCurrentsA } : {}),
@@ -138,4 +139,9 @@ function projectReportedStepObservation(snapshot: TransportDeviceSnapshot): Repo
             ? { acknowledgedStep: { ...snapshot.acknowledgedStep } }
             : {}),
     };
+}
+
+
+function copyNativeRelayMeter(meter: NonNullable<TransportDeviceSnapshot['nativeRelayMeter']>) {
+    return { watts: meter.watts && { ...meter.watts }, energy: meter.energy && { ...meter.energy } };
 }

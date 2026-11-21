@@ -14,6 +14,7 @@ import type { HomeScope } from '../homeRuntime/homeScope';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
 import { resolveStandingCommandGrant } from '../../lib/planInput/resolvePlanInputDeviceFacts';
+import { withRelayShedDelivery } from '../../lib/planInput/projectPlanInputDevice';
 import { createPlanInputProjectionSource } from './planInputDeviceProjection';
 
 // How long a home may sit with no meter reading before the gate warns. Matches
@@ -36,7 +37,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // Home-scoped plan-device source (observed-state pre-pass + eviction +
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.
-    getPlanDevices: scope.getPlanDevices,
+    getPlanDevices: () => withRelayShedDelivery(scope.getPlanDevices(), (id) => planEngine.getRelayShedNoAck(id)),
     // The observer's per-device reads, passed as the observer itself. NB: do NOT
     // read them off `ctx.getPlanInputSnapshot()` instead — that getter rebuilds
     // and re-decorates the full runtime projection on every access, so a

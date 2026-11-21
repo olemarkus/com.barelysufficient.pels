@@ -92,13 +92,15 @@ export const applyBinarySheddingToDevice = async (
   ctx: ExecutorCommandContext,
   deviceId: string,
   deviceName: string,
+  capacityShed?: ExecutableBinaryIntent,
 ): Promise<boolean> => {
   if (ctx.getCapacityDryRun()) return false;
   const snapshot = ctx.readDevice(deviceId);
-  if (shouldSkipShedding(ctx.execution.actuation, deviceId, deviceName, snapshot)) return false;
+  const repeat = capacityShed && ctx.relayShed?.allowsRepeat(capacityShed);
+  if (shouldSkipShedding(ctx.execution.actuation, deviceId, deviceName, snapshot, repeat)) return false;
   ctx.execution.actuation.beginShed(deviceId);
   try {
-    return await turnOffDevice(ctx, deviceId, deviceName, snapshot, false, false);
+    return await turnOffDevice(ctx, deviceId, deviceName, snapshot, false, false, capacityShed);
   } finally {
     ctx.execution.actuation.endShed(deviceId);
   }
@@ -181,6 +183,7 @@ const turnOffDevice = async (
   snapshot: ExecutorDeviceSnapshot | undefined,
   lifecycleRelease: boolean,
   forceAgainstReleasedOpposing: boolean,
+  capacityShed?: ExecutableBinaryIntent,
 ): Promise<boolean> => {
   const controlPlan = getBinaryControlPlan(snapshot);
   if (!controlPlan) {
@@ -207,7 +210,7 @@ const turnOffDevice = async (
   try {
     const outcome = await runBinaryControl(
       ctx,
-      { deviceId, name, desired: false, logContext: 'capacity', lifecycleRelease },
+      { deviceId, name, desired: false, logContext: 'capacity', lifecycleRelease, capacityShed },
       snapshot,
       forceAgainstReleasedOpposing,
     );

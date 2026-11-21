@@ -94,6 +94,11 @@ export function applyFreshnessOnlyCapabilityUpdate(
       kind: 'instantaneous', powerKw: measuredKw, observedAtMs,
     };
     snapshot.measuredPowerSource = 'measure_power';
+    if (snapshot.binaryCapabilityId === 'onoff' && !snapshot.flowBackedCapabilityIds?.includes('measure_power')) {
+      snapshot.nativeRelayMeter = {
+        watts: { value: measuredKw * 1000, atMs: nowMs, sourceDated: false }, energy: snapshot.nativeRelayMeter?.energy,
+      };
+    }
     if (Object.is(snapshot.measuredPowerKw, measuredKw)) {
       return { changed: false, observationAdvanced: true, normalizedValue: measuredKw };
     }

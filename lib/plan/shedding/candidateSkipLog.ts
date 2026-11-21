@@ -30,6 +30,7 @@ const debug = getDebugEmitter('plan', 'plan');
 
 export type ShedCandidateSkipReason =
   | 'binary_confirmed_off'
+  | 'relay_no_ack_waiting_for_meter'
   | 'control_not_writable'
   | 'zero_current_draw'
   | 'already_at_shed_temperature'

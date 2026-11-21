@@ -232,7 +232,8 @@ export class PlanService {
   }
 
   /** Consume every trusted observation before status refreshes can coalesce in the plan queue. */
-  observeIdleEvidence(deviceId: string): void {
+  observeDeviceEvidence(deviceId: string): void {
+    this.deps.planEngine.observeRelayShed(deviceId);
     const device = this.getIdleObservation(deviceId);
     if (device) this.idleClassifier.observeDevice(device);
   }

@@ -18,6 +18,7 @@ export class PlanExecutionFeedback implements PlannerExecutionFeedback {
     this.state.setKeepInvariantShedBlock(deviceId, block);
   }
   clearKeepInvariantShedBlock(deviceId: string): void { this.state.clearKeepInvariantShedBlock(deviceId); }
+  noteRelayShedNoAck(): void { this.state.noteRelayShedNoAck(Date.now()); }
   noteInstability(nowMs: number): void { this.state.restoreBackoff.noteInstability(nowMs); }
   noteShedReleased(deviceId: string): void { this.state.shedDecisions.noteShedReleased(deviceId); }
   recordActivationAttemptStarted(deviceId: string, name: string, nowMs: number): void {

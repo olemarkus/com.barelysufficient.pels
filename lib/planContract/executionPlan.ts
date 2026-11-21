@@ -13,7 +13,15 @@ export type PlannedShedTarget =
   | { kind: 'step' }
   | { kind: 'target_value' };
 
-export type PlannedBinaryCommand = {
+/** Correlates an ordinary shed with the credit it banked and authorizes a repeat on one meter decision. */
+export type RelayShedDecision = {
+  /** Preserve this measured hold without dispatching the paced relay. */
+  relayNoAckPosture?: true;
+  shedDecisionAtMs?: number;
+  relayRecoveryMeterAtMs?: number;
+};
+
+export type PlannedBinaryCommand = RelayShedDecision & {
   deviceId: string;
   name: string;
   desiredOn: boolean;

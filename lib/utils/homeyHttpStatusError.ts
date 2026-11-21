@@ -1,3 +1,5 @@
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+
 /**
  * HTTP error status (>= 400, or a response with no status code) from the Homey
  * local Web API transport (`lib/device/transport/managerHomeyApi.ts`). Carries
@@ -5,10 +7,24 @@
  * the message. Own file next to `errorUtils.ts` (max-classes-per-file).
  */
 export class HomeyHttpStatusError extends Error {
-  constructor(readonly statusCode: number | undefined, bodySlice: string) {
-    super(`HTTP ${statusCode}: ${bodySlice}`);
+  /** Homey's structured error fields from the full response, independent of the bounded log message. */
+  readonly errorFields: readonly string[];
+
+  constructor(readonly statusCode: number | undefined, body: string) {
+    super(`HTTP ${statusCode}: ${body.slice(0, 200)}`);
     this.name = 'HomeyHttpStatusError';
+    this.errorFields = readHomeyErrorFields(body);
   }
+}
+
+function readHomeyErrorFields(body: string): string[] {
+  try {
+    const payload: unknown = JSON.parse(body);
+    if (isUnknownRecord(payload)) {
+      return [payload.error, payload.error_description].filter((value): value is string => typeof value === 'string');
+    }
+  } catch { /* Homey can also return an HTML or plain-text HTTP error. */ }
+  return [];
 }
 
 /** Name-based as well as `instanceof` so the classification survives a realm

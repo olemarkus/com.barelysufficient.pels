@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
+import { PENDING_SHED_RELIEF_WINDOW_MS } from '../../lib/plan/shedding/pendingRelief';
+import { connectLiveFeed, emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { drainPending } from '../utils/asyncDrain';
 
 const DEVICE_ID = 'heater';
@@ -52,7 +55,7 @@ const hardCapBreachRecordsSince = (records: StructuredRecord[], fromIndex: numbe
   .slice(fromIndex)
   .filter((record) => typeof record.hardCapHeadroomKw === 'number' && record.hardCapHeadroomKw < 0);
 
-const configureHome = (managedDeviceId: string): void => {
+const configureHome = (...managedDeviceIds: string[]): void => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
@@ -60,8 +63,9 @@ const configureHome = (managedDeviceId: string): void => {
   // without the house being over the cap.
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 1);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-  mockHomeyInstance.settings.set('controllable_devices', { [managedDeviceId]: true });
-  mockHomeyInstance.settings.set('managed_devices', { [managedDeviceId]: true });
+  const enabled = Object.fromEntries(managedDeviceIds.map((id) => [id, true]));
+  mockHomeyInstance.settings.set('controllable_devices', enabled);
+  mockHomeyInstance.settings.set('managed_devices', enabled);
 };
 
 /** Advances poll by poll until `done` holds; fails loudly rather than hanging. */
@@ -126,6 +130,103 @@ describe('Hard-cap alert while electrical relief is pending (SDK-boundary e2e)',
     await heater.setCapabilityValue('measure_power', 0);
     await pollUntil(() => shortfallAlerts().length > 0, 6);
     expect(shortfallAlerts()).toHaveLength(1);
+  });
+
+  it.each([
+    { backup: true, nextWatts: 5650, expected: 'shed backup' },
+    { backup: false, nextWatts: 5650, expected: 'shortfall' },
+    { backup: false, nextWatts: 3500, expected: 'no shortfall' },
+  ])('uses the next household reading after a native NO_ACK to resolve $expected', async ({ backup, nextWatts }) => {
+    const ids = backup ? ['relay', 'backup'] : ['relay'];
+    const devices = ids.map((id) => new MockDevice(id, id, ['onoff', 'measure_power'], 'socket'));
+    for (const device of devices) {
+      await device.setCapabilityValue('onoff', true);
+      await device.setCapabilityValue('measure_power', 2000);
+    }
+    configureHome(...ids);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { relay: 2, backup: 1 } });
+    setMockDrivers({ switches: new MockDriver('switches', devices) });
+    homePowerW = backup ? 4000 : 3500;
+    reportHomePowerThroughHomeyEnergy();
+
+    const writes: { id: string; atMs: number }[] = [];
+    const put = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
+    vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path, body) => {
+      const id = ids.find((candidate) => path === `manager/devices/device/${candidate}/capability/onoff`);
+      if (id && (body as { value: boolean }).value === false) {
+        writes.push({ id, atMs: Date.now() });
+        if (id === 'relay') {
+          throw new HomeyHttpStatusError(500, JSON.stringify({ error: 'Radio error (TRANSMIT_COMPLETE_NO_ACK)' }));
+        }
+      }
+      return put(path, body);
+    });
+
+    const records = await bootApp();
+    await pollUntil(() => records.some((record) => record.event === 'plan_rebuild_completed'
+      && record.controlledDevices === ids.length), 6);
+    homePowerW = 5600;
+    await pollUntil(() => writes.length > 0, 6);
+    expect(writes.map((write) => write.id)).toEqual(['relay']);
+    expect(shortfallAlerts()).toEqual([]);
+
+    homePowerW = nextWatts;
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    await drainPending();
+    expect(Date.now() - writes[0]!.atMs).toBeLessThan(PENDING_SHED_RELIEF_WINDOW_MS);
+    expect(writes.map((write) => write.id)).toEqual(backup ? ['relay', 'backup'] : ['relay']);
+    const isolatedShortfall = !backup && nextWatts > 5000;
+    expect(shortfallAlerts()).toHaveLength(isolatedShortfall ? 1 : 0);
+    if (isolatedShortfall) {
+      const failure = records.findIndex((event) => event.event === 'relay_shed_dispatch' && event.outcome === 'no_ack');
+      expect(failure).toBeGreaterThanOrEqual(0);
+      expect(records.slice(failure + 1)).toContainEqual(expect.objectContaining({
+        event: 'hard_cap_shortfall_detected', remainingActionableControlledLoad: false,
+      }));
+    }
+  });
+
+  it('resends OFF once for a Z-Wave relay with sustained draw and remaining pressure', async () => {
+    const id = 'stuck-relay';
+    const relay = new MockDevice(id, 'Metered switch', ['onoff', 'measure_power'], 'socket');
+    const toDevice = relay.toHomeyApiDevice.bind(relay);
+    vi.spyOn(relay, 'toHomeyApiDevice').mockImplementation(() => ({ ...toDevice(), flags: ['zwave'] }));
+    await relay.setCapabilityValue('onoff', true);
+    await relay.setCapabilityValue('measure_power', 2000);
+    setMockDrivers({ switches: new MockDriver('switches', [relay]) });
+    configureHome(id);
+    homePowerW = 3500;
+    reportHomePowerThroughHomeyEnergy();
+    const writes = vi.spyOn(mockHomeyInstance.api, 'put');
+    const offCount = () => writes.mock.calls.filter(([path, body]) => (
+      path === `manager/devices/device/${id}/capability/onoff` && (body as { value?: unknown }).value === false
+    )).length;
+
+    connectLiveFeed();
+    await bootApp();
+    homePowerW = 4600;
+    await pollUntil(() => offCount() === 1, 12);
+    expect(await relay.getCapabilityValue('onoff')).toBe(false);
+    await vi.advanceTimersByTimeAsync(100_000);
+    relay.setApiCapabilityValue('measure_power', 1900);
+    await vi.advanceTimersByTimeAsync(250);
+    await emitCapability(id, 'measure_power', 1900);
+    emitDeviceUpdate(relay.toHomeyApiDevice());
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(offCount()).toBe(1);
+
+    await relay.setCapabilityValue('measure_power', 1850);
+    emitDeviceUpdate(relay.toHomeyApiDevice());
+    homePowerW = 5600;
+    await pollUntil(() => offCount() === 2, 12);
+    expect(await relay.getCapabilityValue('onoff')).toBe(false);
+
+    await relay.setCapabilityValue('measure_power', 1800);
+    emitDeviceUpdate(relay.toHomeyApiDevice());
+    homePowerW = 5900;
+    await vi.advanceTimersByTimeAsync(120_000);
+    await drainPending();
+    expect(offCount()).toBe(2);
   });
 
   it('fires the hard-cap alert when the only load left is on a device PELS cannot switch', async () => {

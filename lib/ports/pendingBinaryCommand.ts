@@ -17,6 +17,8 @@ export type PendingBinaryCommand = {
    * decision, not capacity pressure.
    */
   lifecycleRelease?: boolean;
+  /** Reasserting an already-OFF relay settles without counting a further shed. */
+  relayRepeat?: true;
   lastObservedValue?: boolean | string;
   lastObservedSource?: PendingObservationSource;
   lastObservedAtMs?: number;

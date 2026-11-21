@@ -42,6 +42,7 @@ export const createTemperatureControlFencedActuator = (
   base: Actuator,
   shouldFence: (command: DeviceCommand) => boolean,
 ): Actuator => ({
+  getNativeRelayBinding: base.getNativeRelayBinding,
   canTurnOnDevice: base.canTurnOnDevice.bind(base),
   resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
@@ -76,6 +77,7 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
   const actuatorTransport: ActuatorTransport = {
     requestChargingPhaseControl: (command) => transport.requestChargingPhaseControl(command),
     requestProductionControl: (command) => transport.requestProductionControl(command),
+    getNativeRelayBinding: (deviceId) => transport.getNativeRelayBinding(deviceId),
     canTurnOnDevice: (deviceId) => transport.canTurnOnDevice(deviceId),
     requestBinaryControl: (deviceId, desired) => transport.requestBinaryControl(
       deviceId,

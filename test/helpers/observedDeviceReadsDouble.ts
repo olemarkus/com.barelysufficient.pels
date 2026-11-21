@@ -63,6 +63,7 @@ export const observedDeviceReadsDouble = (
   hasStartedDrawingSince: vi.fn(() => false),
   getLiveDrawAt: vi.fn(() => null),
   hasDrawnAtLeastSince: vi.fn(() => false),
+  getRelayShedObservation: vi.fn(() => undefined),
   getRevision: vi.fn(() => 0),
   ...overrides,
 });

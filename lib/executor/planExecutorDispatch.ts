@@ -160,7 +160,7 @@ const applyBinaryShedIntent = async (
   // thermostat with an on/off handle and a `set_temperature` floor was written to
   // its setback and left running under a plan that said off, which is how the
   // start-policy hold failed to turn one off at all.
-  return applyBinarySheddingToDevice(ctx, intent.deviceId, intent.name);
+  return applyBinarySheddingToDevice(ctx, intent.deviceId, intent.name, intent);
 };
 
 const dispatchSteppedLoadCommand = async (

@@ -5,6 +5,8 @@ import {
   type ObservedBinaryControlRead,
 } from './binaryControlPreflight';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import type { RelayShedAttempt } from './relayShedRecovery';
+import type { ActuatorOutcome } from '../actuator/deviceCommand';
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
 
@@ -15,7 +17,7 @@ import { getLogger } from '../logging/logger';
  */
 export type DispatchBinaryControlResult =
   | { ok: true }
-  | { ok: false; reason: 'dispatch_failed' | 'not_requested' };
+  | { ok: false; reason: 'dispatch_failed' | 'not_requested' | 'zwave_no_ack' };
 
 /**
  * Outcome of a decide-and-dispatch call, surfaced to executor callers.
@@ -24,7 +26,7 @@ export type DispatchBinaryControlResult =
  * the commanded binary value. Transport routing does not change that lifecycle.
  */
 export type BinaryControlOutcome =
-  | { applied: false }
+  | { applied: false; issued?: true }
   | { applied: true };
 
 /**
@@ -42,6 +44,7 @@ export type BinaryControlOutcome =
  * cleared from the declined/failure arms here as well).
  */
 export type BinaryControlTransport = {
+  relayShed?: import('./relayShedRecovery').RelayShedRecovery;
   getObservedState: ObservedBinaryControlRead;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   /**
@@ -76,7 +79,7 @@ export async function decideAndDispatchBinaryControl(
   const decision = decideBinaryControl(transport, command, snapshot, forceAgainstReleasedOpposing);
   if (!decision) return { applied: false };
   const result = await dispatchBinaryControlDecision({ decision, transport });
-  if (!result.ok) return { applied: false };
+  if (!result.ok) return result.reason === 'zwave_no_ack' ? { applied: false, issued: true } : { applied: false };
   return { applied: true };
 }
 
@@ -111,15 +114,15 @@ export async function dispatchBinaryControlDecision(params: {
   transport: BinaryControlTransport;
 }): Promise<DispatchBinaryControlResult> {
   const { decision, transport } = params;
-  recordPendingForDispatch({
-    store: transport.pendingBinaryCommandStore,
-    decision,
-  });
+  const intent = decision.capacityShed;
+  const attempt = intent && transport.relayShed?.begin(intent);
+  recordPendingForDispatch(transport.pendingBinaryCommandStore, decision, attempt?.sameValue === true);
   try {
     const outcome = await transport.actuator.apply({
       kind: 'binary', deviceId: decision.deviceId, desired: decision.desired,
     });
     if (!outcome.requested) {
+      attempt?.finish('failed');
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
@@ -127,14 +130,13 @@ export async function dispatchBinaryControlDecision(params: {
       throw new Error(`Binary actuator returned ${outcome.kind} outcome for ${decision.deviceId}`);
     }
     if (!transport.isAuthorityCurrent()) {
+      attempt?.finish('failed');
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
-    transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
-    if (outcome.acknowledged) emitBinaryCommandSuccess({ decision });
-    else emitBinaryCommandOutcomeUnknown({ decision, err: outcome.err });
-    return { ok: true };
+    return handleBinaryOutcome(transport, decision, outcome, attempt);
   } catch (caughtError) {
+    attempt?.finish('failed');
     // Everything else is a definite answer from the transport — a rejection, a
     // 4xx/5xx, an actuator that declined. Nothing is in flight, so the entry
     // goes and the next cycle may retry without tripping its own guard.
@@ -148,15 +150,43 @@ export async function dispatchBinaryControlDecision(params: {
   }
 }
 
-function recordPendingForDispatch(params: {
-  store: PendingBinaryCommandStore;
-  decision: BinaryControlDecision;
-}): void {
-  const { store, decision } = params;
+function handleBinaryOutcome(
+  transport: BinaryControlTransport, decision: BinaryControlDecision,
+  outcome: Extract<ActuatorOutcome, { requested: true; kind: 'binary' }>, attempt: RelayShedAttempt | undefined,
+): DispatchBinaryControlResult {
+  if (!outcome.acknowledged && outcome.reason === 'zwave_no_ack') {
+    if (!attempt) throw outcome.err;
+    attempt.finish('no_ack', outcome.relayBinding);
+    return recordNoAck(transport, decision, outcome.err);
+  }
+  transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
+  if (outcome.acknowledged) {
+    attempt?.finish('accepted', outcome.relayBinding, outcome.unflaggedRelay);
+    emitBinaryCommandSuccess({ decision });
+  } else {
+    attempt?.finish('unknown');
+    emitBinaryCommandOutcomeUnknown({ decision, err: outcome.err });
+  }
+  return { ok: true };
+}
+
+function recordNoAck(transport: BinaryControlTransport, decision: BinaryControlDecision, err: unknown)
+  : DispatchBinaryControlResult {
+  transport.pendingBinaryCommandStore.recordDispatchFailed(decision.deviceId, decision);
+  transport.pendingBinaryCommandStore.clear(decision.deviceId);
+  logger.warn({ event: 'binary_command_outcome_unknown', reasonCode: 'zwave_no_ack',
+    deviceId: decision.deviceId, deviceName: decision.name, desired: decision.desired, err });
+  return { ok: false, reason: 'zwave_no_ack' };
+}
+
+function recordPendingForDispatch(
+  store: PendingBinaryCommandStore, decision: BinaryControlDecision, sameValueOff: boolean,
+): void {
   store.record(decision.deviceId, {
     desired: decision.desired,
     startedMs: Date.now(),
     logContext: decision.logContext,
+    ...(sameValueOff ? { relayRepeat: true } : {}),
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
   });
 }

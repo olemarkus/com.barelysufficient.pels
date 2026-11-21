@@ -31,7 +31,7 @@ const buildDeps = (planService: PlanService | undefined) => {
       if (!ctx.planService) throw new Error('PlanService must be initialized before use.');
       return ctx.planService.syncLivePlanState(event.source);
     },
-    observeIdleEvidence: vi.fn(),
+    observeDeviceEvidence: vi.fn(),
     emitter: new ObservedStateEmitter(),
     syncExternalOffHold: vi.fn(),
     invalidateRebuildSuppression: vi.fn(),

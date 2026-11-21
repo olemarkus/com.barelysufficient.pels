@@ -1097,6 +1097,17 @@ describe('PlanExecutor restore logging', () => {
     expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
   });
 
+  it('settles a same-value relay repeat without a second capacity cooldown or instability stamp', () => {
+    const { executor, state } = buildExecutor(createPlanEngineState());
+    executor.handleConfirmedBinaryCommand({
+      liveDevice: { id: 'dev-1', name: 'Heater', binaryCommandConfirmation: { state: 'unavailable' } },
+      pending: { desired: false, dispatchState: 'accepted', startedMs: 100, logContext: 'capacity', relayRepeat: true },
+      source: 'device_update', confirmedAtMs: 150,
+    });
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
+  });
+
   // Every restore actuation stamps the 60-300 s restore cooldown and opens an
   // activation attempt. This used to be gated on `mode === 'plan'`, so a
   // reconcile-driven restore armed no cooldown at all and instead recorded an

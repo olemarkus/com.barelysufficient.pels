@@ -108,6 +108,7 @@ export function buildShedCandidateParams(
   );
   return {
     devices: context.devices,
+    relayRetryMeterAtMs: state.isNewRelayMeterDecision(power.sampledAtMs) ? power.sampledAtMs : undefined,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
     bypassRecentRestore: power.gridBreached,
     // The measured deficit, never the severity sentinel: rung sizing compares
@@ -287,6 +288,10 @@ function addCandidatePower(
     return buildTemperatureCandidate(
       device, priority, recentlyRestored, lever.limitC, target.id, state.pendingTargetCommands, recorder,
     );
+  }
+  if (device.relayShedNoAck && (params.relayRetryMeterAtMs ?? -Infinity) < device.relayShedNoAck.retryAtMs) {
+    recorder.record(device, 'relay_no_ack_waiting_for_meter');
+    return null;
   }
   return buildBinaryCandidate(device, priority, recentlyRestored, deps.pendingBinaryCommandStore, recorder);
 }

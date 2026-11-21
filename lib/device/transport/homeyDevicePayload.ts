@@ -7,6 +7,7 @@ const isNonEmptyString = (value: unknown): value is string => typeof value === '
 const isStringList = (value: unknown): value is string[] => (
   Array.isArray(value) && value.every((entry) => typeof entry === 'string')
 );
+const readFlags = (value: unknown): string[] => isStringList(value) ? value : [];
 const resolveOwnerUri = (payload: Record<string, unknown>): unknown => (
   isNonEmptyString(payload.ownerUri) ? payload.ownerUri : payload.driverUri
 );
@@ -36,6 +37,7 @@ export function parseHomeyDevicePayload(value: unknown): HomeyDeviceLike | null 
     ownerUri,
     driverId: driverId.includes(':') ? driverId : `${ownerUri}:${driverId}`,
     available,
+    flags: readFlags(value.flags),
     capabilities,
     capabilitiesObj: capabilitiesObj as HomeyDeviceLike['capabilitiesObj'],
     data: recordOrNull(value.data) ?? {},

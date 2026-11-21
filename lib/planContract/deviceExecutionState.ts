@@ -13,6 +13,7 @@ export type DeviceExecutionState = {
   physicalState: ObservedCurrentState;
   observedStepId: string | null;
   currentDrawKw?: number;
+  relayShedPowerEvidence?: 'awaiting_power' | 'pre_command' | 'post_command' | 'off_with_draw' | 'relieved';
   desiredBinary: 'on' | 'off' | null;
   desiredStepId: string | null;
   binaryProgress: AxisProgress;

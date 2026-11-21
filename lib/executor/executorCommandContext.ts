@@ -1,3 +1,4 @@
+import type { RelayShedRecovery } from './relayShedRecovery';
 import type { PendingTargetObservationSource } from '../ports/pendingTargetCommand';
 import type { ExecutionState, PendingTargetCommandState } from './executionState';
 import type { PlannerExecutionFeedback } from '../ports/plannerExecutionFeedback';
@@ -44,6 +45,7 @@ export type LifecycleFallbackView = {
  * observer read, the pending store, the actuator and the authority check.
  */
 export type ExecutorCommandContext = {
+  relayShed?: RelayShedRecovery;
   /** The home whose plan both lanes execute; its sends are that home's commands. */
   homeId: HomeId;
   owner: TargetCommandOwner;

@@ -38,6 +38,7 @@ import { resolveContinuousChargeRelief } from './continuousChargeRelief';
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 import { resolveShedPressure, type ShedPressure } from './pressure';
+import { resolveRelayShedDecisions, retainNoAckShedPosture } from './relayShedDecision';
 import { runPhaseShedPass } from '../phase/phaseShedPass';
 import { runPhaseExportPass } from '../phase/phaseExportPass';
 
@@ -64,7 +65,10 @@ export async function buildSheddingPlan(
     decidedIds: new Set([...scalar.shedSet, ...scalar.storageSetpoints.keys()]),
     undeliveredKw: resolveScalarInFlightRelief(context, state, scalar, storage),
   });
+  const relayShedDecisions = resolveRelayShedDecisions(context, power, state, scalar, phase,
+    overshoot.shedActionable || state.capacityPeriodSpentFor(context));
   const phaseMerged = mergeShedDecisions(scalar, { ...phase, reliefByDevice: new Map() });
+  retainNoAckShedPosture(context, power, state, phaseMerged, relayShedDecisions);
   const exportPass = runPhaseExportPass(context, power.phase, new Set([
     ...phaseMerged.shedSet, ...phaseMerged.storageSetpoints.keys(),
   ]));
@@ -83,6 +87,7 @@ export async function buildSheddingPlan(
     context, power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),
   );
   await reportShortfallToGuard(context, power, state, selection, deps, storage);
+  state.noteRelayMeterDecision(power.sampledAtMs);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
   // Read as it stands: with Capacity limit off the build already cleared the
@@ -92,6 +97,7 @@ export async function buildSheddingPlan(
   const guardInShortfall = deps.capacityGuard.isInShortfall();
   const recoveredFromShedding = wasSheddingActive && !sheddingActive;
   return {
+    relayShedDecisions,
     shedSet,
     shedReasons,
     shedStepTargets,
@@ -204,7 +210,10 @@ function planShedding(
   if (isEmptySelection(result)) {
     if (!escalatedSameSample) {
       // Nothing to shed: any retirement the pending answer found still lands.
-      return emptySheddingResult(retainPendingLatch(measurementDecision.pending));
+      return {
+        ...emptySheddingResult(retainPendingLatch(measurementDecision.pending)),
+        remainingDeficitKw: result.remainingKw,
+      };
     }
     return blockEscalation(context, deps, needed, candidates.length, measurement.atMs, nowTs);
   }
@@ -212,6 +221,7 @@ function planShedding(
   // `shedSet` is mutated downstream when holds are merged in).
   const latch = latchShedDecision(result, measurementDecision.pending, measurement.powerW, nowTs, context.devices);
   return {
+    remainingDeficitKw: result.remainingKw,
     shedSet: result.shedSet,
     shedReasons: result.shedReasons,
     shedStepTargets: result.shedStepTargets,
@@ -376,7 +386,7 @@ function shedBeyondPendingRelief(
       escalatedSameSample: false,
     };
   return {
-    ...merged, outcome, pendingReliefKw: pending.totalKw,
+    ...merged, outcome, pendingReliefKw: pending.totalKw, remainingDeficitKw: beyond.remainingKw,
   };
 }
 

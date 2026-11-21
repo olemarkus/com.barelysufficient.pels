@@ -44,6 +44,7 @@ export type ThrottleSampleForTest = {
   planConvergenceActive?: boolean;
   unactionable?: boolean;
   shortfallUnrecoverable?: boolean;
+  relayShedVerdictPending?: boolean;
 };
 
 export const sampleThrottle = (
@@ -66,6 +67,7 @@ export const sampleThrottle = (
       unactionable: sample.unactionable ?? false,
       shortfallUnrecoverable: sample.shortfallUnrecoverable ?? false,
       phaseNothingToLimit: sample.phaseNothingToLimit ?? false,
+      relayShedVerdictPending: sample.relayShedVerdictPending,
     },
   );
 };

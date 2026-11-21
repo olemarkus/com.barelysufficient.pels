@@ -30,6 +30,7 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
   deviceConfigurationStore: DeviceConfigurationStore;
   getSnapshotByDeviceId: (deviceId: string) => (TargetDeviceSnapshot & TransportControlBindingProbe) | undefined;
   getAssociatedCar: (deviceId: string) => AssociatedCarSnapshot | undefined;
+  getNativeRelayBinding: DeviceTransport['getNativeRelayBinding'];
   isWaitingForCarAssociation: (deviceId: string) => boolean;
   getTargetPowerControlClaim: (deviceId: string) => 'needed' | 'refused' | undefined;
   isTargetPowerControlRefused: (deviceId: string) => boolean;
@@ -47,6 +48,7 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
     dispatchObservedStateForDevice: () => {},
     deviceConfigurationStore,
     getAssociatedCar: () => undefined,
+    getNativeRelayBinding: () => undefined,
     isWaitingForCarAssociation: () => false,
     getTargetPowerControlClaim: () => undefined,
     isTargetPowerControlRefused: () => false,

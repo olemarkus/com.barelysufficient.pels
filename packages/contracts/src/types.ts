@@ -1198,8 +1198,15 @@ export type HomeBatteryObservedProbe = {
     batteryLevel?: HomeBatteryLevelObservation;
 };
 
+/** Native device telemetry for comparing a relay command to the electrical result. */
+export type NativeRelayMeter = {
+    watts?: { value: number; atMs: number; sourceDated: boolean };
+    energy?: { kwh: number; atMs: number };
+};
+
 /** Observer-maintained value after transport has projected every observed cluster. */
 export type ProjectedObservedDeviceState = ObservedDeviceState
+    & { nativeRelayMeter?: NativeRelayMeter }
     & { inverterObservation?: import('./inverterControl.js').InverterObservation }
     & ChargerPhaseCurrentsObservedProbe
     & EvObservedProbe

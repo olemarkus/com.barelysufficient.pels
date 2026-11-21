@@ -40,6 +40,10 @@ export type ScalarShedFacts = {
 export type PhaseShedOutcome = Omit<ShedSelection, 'reliefByDevice'> & {
   /** The worst phase still breached with nothing left to limit on it, for the Overview. */
   unrelievedPhase: PhaseName | null;
+  /** Phase pressure still open after the ranked candidates and pending credits. */
+  openPhases: readonly PhaseName[];
+  /** Undelivered phase-only relief that can also cover a scalar deficit. */
+  additionalReliefKw: number;
 };
 
 const EMPTY_OUTCOME = (): PhaseShedOutcome => ({
@@ -48,6 +52,8 @@ const EMPTY_OUTCOME = (): PhaseShedOutcome => ({
   shedStepTargets: new Map(),
   storageSetpoints: new Map(),
   unrelievedPhase: null,
+  openPhases: [],
+  additionalReliefKw: 0,
 });
 
 const touchesPhase = (footprint: PhaseFootprint, phase: PhaseName): boolean => (
@@ -74,6 +80,7 @@ function liveDecisions(
   const byId = new Map(devices.map((device) => [device.id, device]));
   return [...decisions].flatMap(([deviceId, decision]) => {
     const device = byId.get(deviceId);
+    if (device?.relayShedNoAck?.decisionAtMs === decision.atMs) return [];
     const drawKw = device === undefined ? null : currentDrawKw(device);
     const inWindow = nowTs - decision.atMs >= 0 && nowTs - decision.atMs < PENDING_SHED_RELIEF_WINDOW_MS;
     if (!inWindow || drawKw === null) return [];
@@ -210,6 +217,7 @@ function spendCandidate(
   const creditedKw = resolveCreditedKw(candidate, selection, relief.creditedKw);
   recordSpend(cycle, candidate, footprint, selection, reason, creditedKw);
   deductRelief(cycle, footprint, creditedKw);
+  if (candidate.kind === 'binary' && candidate.relayShedNoAck) return;
   cycle.spentOnPhases.add(phase);
   for (const [name] of cycle.deficits) {
     if (phaseShare(footprint, name) > 0) cycle.spentOnPhases.add(name);
@@ -228,13 +236,14 @@ function spendPhase(cycle: PassCycle, phase: PhaseMeasurement): boolean {
     spendCandidate(cycle, name, candidate, footprint, phaseShare(footprint, name));
   }
   if (!open()) return true;
-  const unknown = candidates.find(isUnknown);
-  if (unknown === undefined) return false;
-  if (!cycle.unknownSpent) {
+  for (const candidate of candidates.filter(isUnknown)) {
+    if (cycle.unknownSpent) return true;
+    spendCandidate(cycle, name, candidate, { kind: 'unknown' }, 1);
+    if (candidate.kind === 'binary' && candidate.relayShedNoAck) continue;
     cycle.unknownSpent = true;
-    spendCandidate(cycle, name, unknown, { kind: 'unknown' }, 1);
+    return true;
   }
-  return true;
+  return false;
 }
 
 /** Relief already on its way, per phase: the larger of the pass's own and the scalar credit, per device. */
@@ -263,6 +272,19 @@ function resolveDeficits(
   return new Map(phases.filter((phase) => phase.breached).map((phase) => (
     [phase.phase, Math.max(0, phase.drawKw - phase.targetKw - (credits.get(phase.phase) ?? 0))]
   )));
+}
+
+/** Phase relief beyond the scalar pass's own credit also covers the household deficit. */
+function additionalPhaseReliefKw(
+  decisions: ReadonlyMap<string, PhaseShedDecision>, live: readonly LiveDecision[], scalar: ScalarShedFacts,
+): number {
+  const heldKw = new Map(live.map((entry) => [entry.deviceId, entry.undeliveredKw]));
+  let phaseOnlyReliefKw = 0;
+  for (const [id, decision] of decisions) {
+    const stillDue = heldKw.get(id) ?? decision.reliefKw;
+    phaseOnlyReliefKw += Math.max(0, stillDue - (scalar.undeliveredKw.get(id) ?? 0));
+  }
+  return phaseOnlyReliefKw;
 }
 
 /** Whether the Overview may say nothing is left: open, nothing happening on it, nothing left to try. */
@@ -362,6 +384,9 @@ export function runPhaseShedPass(
     decisions: cycle.nextDecisions.size,
     unrelievedPhase,
   });
-  return { ...outcome, unrelievedPhase };
+  return {
+    ...outcome, unrelievedPhase, additionalReliefKw: additionalPhaseReliefKw(cycle.nextDecisions, live, scalar),
+    openPhases: [...deficits].filter(([, kw]) => kw > PHASE_RELIEF_EPSILON_KW).map(([name]) => name),
+  };
 }
 /* eslint-enable functional/immutable-data, no-param-reassign */

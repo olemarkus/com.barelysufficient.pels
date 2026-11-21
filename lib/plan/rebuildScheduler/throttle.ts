@@ -300,7 +300,7 @@ export class PlanRebuildThrottle {
     // latched incident's recovery clock and alert condition keep moving. A
     // reading, not a verdict: the guard judges it against the last plan's.
     if (
-      posture.shortfallUnrecoverable
+      posture.shortfallUnrecoverable && !posture.relayShedVerdictPending
       && !this.suppressionInvalidated
       && signal.isInShortfall
       && !signal.planConvergenceActive
@@ -313,6 +313,11 @@ export class PlanRebuildThrottle {
     const memory = this.memory();
     const planningPeriod = resolvePlanningPeriod(this.deps.getWallClockMs());
     const decision = resolveRebuildDecision(signal, memory, now, planningPeriod, cadence.maxIntervalMs);
+    // A failed native shed can turn a previously pending electrical option into immediate
+    // shortfall, even on a steady reading. Only this fresh meter decision spends the recheck.
+    if (posture.relayShedVerdictPending) {
+      return this.request(signal, { ...decision, tightUnactionable: false }, 'power_sample_convergence', now);
+    }
     if (!decision.shouldRebuild) {
       this.recordSkip(signal, decision, now);
       // Deliberately NOT telling the guard anything from a throttled skip: entering

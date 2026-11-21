@@ -73,7 +73,9 @@ export type PlanEngine = {
    * for, so a later send of it is a new command rather than a correction
    * (`lib/executor/controlContest.ts`).
    */
-  retainContestedCommands: (plan: ExecutionPlan) => void;
+  retainContestedCommands: (plan: ExecutionPlan, observationRevisionAtBuild: number) => void;
+  observeRelayShed: (deviceId: string) => void;
+  getRelayShedNoAck: (deviceId: string) => PlanInputDevice['relayShedNoAck'];
   syncPendingBinaryCommands: (
     devices: PendingBinaryLiveDevice[],
     source: PendingTargetObservationSource,

@@ -10,6 +10,7 @@ import type { ObservedStorageInput } from '../../../packages/planner-types/src/p
 import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 
 export type SheddingPlan = {
+  relayShedDecisions?: ReadonlyMap<string, import('../../planContract/executionPlan').RelayShedDecision>;
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   /**
@@ -134,6 +135,8 @@ export type SheddingDeps = {
 };
 
 export type PlanSheddingResult = {
+  /** Open scalar demand after this reading's authorized cuts and pending credits. */
+  remainingDeficitKw?: number;
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   shedStepTargets: SheddingPlan['shedStepTargets'];
@@ -148,6 +151,8 @@ export type PlanSheddingResult = {
 };
 
 export type ShedCandidateParams = {
+  /** Present only on a newly observed whole-home reading that can authorize a paced retry. */
+  relayRetryMeterAtMs?: number;
   bypassRecentRestore: boolean;
   devices: PlanInputDevice[];
   /**

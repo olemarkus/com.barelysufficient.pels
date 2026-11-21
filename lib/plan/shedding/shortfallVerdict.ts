@@ -44,6 +44,11 @@ export async function reportShortfallToGuard(
   if (context.capacity.kind === 'off') return;
   const { shortfallThresholdKw } = context.capacity;
   if (!applyShortfallPeriodCoverage(deps.capacityGuard, context.capacityPeriodCoverageComplete)) return;
+  // The previous verdict counted relief from the failed dispatch. Its measurement cannot
+  // establish that the house still needs those watts after the failure.
+  const afterMs = state.relayShedVerdictAfterMs;
+  if (afterMs !== undefined
+    && (power.sampledAtMs <= afterMs || !state.isNewRelayMeterDecision(power.sampledAtMs))) return;
   if (!isOverShortfallThreshold(power.drawKw, shortfallThresholdKw)) {
     await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, shortfallThresholdKw);
     return;
@@ -75,7 +80,9 @@ function buildShortfallCapacityStateSummary(
   const bindingSource = context.binding.kind === 'bound' ? context.binding.source : 'none';
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw(
     // Only a device with a power axis has reducible load to count.
-    devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
+    devices.filter(isMeteredPlanDevice)
+      .filter((device) => !device.relayShedNoAck)
+      .map(toInputRemainingSheddableDevice),
     (device) => shedSet.has(device.id),
     state.capacityPeriodSpentFor(context) ? 'daily' : bindingSource,
     // Capacity only: the hard-cap incident is a capacity question.
@@ -106,7 +113,8 @@ function buildShortfallCapacityStateSummary(
 
 function hasElectricalReliefInFlight(selection: PlanSheddingResult, candidates: readonly ShedCandidate[]): boolean {
   if (selection.pendingReliefKw > 0) return true;
-  const electrical = candidates.filter((candidate) => candidate.kind !== 'temperature');
+  const electrical = candidates.filter((candidate) => candidate.kind !== 'temperature'
+    && !(candidate.kind === 'binary' && candidate.relayShedNoAck));
   return electrical.some((candidate) => candidate.unconfirmedRelief)
     || (selection.outcome.kind === 'shed' && (selection.storageSetpoints.size > 0
       || electrical.some((candidate) => selection.shedSet.has(candidate.id))));
@@ -142,7 +150,7 @@ function walkShedCandidates(
  * nothing left would open an incident with an option in hand.
  */
 function resolveReliefLeftKw(candidate: ShedCandidate, selection: PlanSheddingResult): number {
-  if (candidate.kind === 'temperature') return 0;
+  if (candidate.kind === 'temperature' || (candidate.kind === 'binary' && candidate.relayShedNoAck)) return 0;
   if (candidate.kind === 'storage') {
     // A battery chosen keeps the rest of its ladder below the setpoint it was spent at.
     const chosen = selection.storageSetpoints.get(candidate.id);

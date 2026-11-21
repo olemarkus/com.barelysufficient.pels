@@ -210,10 +210,13 @@ export function resolvePendingShedRelief(
     // Withdraw usable demand credit without losing its earlier claim on a
     // meter fall. Otherwise a fall showing this demand restriction would retire
     // a later electrical command's credit. Withdrawal is one-way.
-    const taken = decisions.filter((decision) => decision.decidedAtMs <= nowTs).map((decision) => (
-      !permitsDemandRelief(pressure) && decision.kind === 'demand'
-        ? { ...decision, kind: 'withdrawn_demand' as const } : decision
-    ));
+    const taken = decisions.filter((decision) => decision.decidedAtMs <= nowTs).map((decision) => {
+      if (decision.kind === 'electrical' && device?.relayShedNoAck?.decisionAtMs === decision.decidedAtMs) {
+        return { ...decision, kind: 'withdrawn_no_ack' as const };
+      }
+      return !permitsDemandRelief(pressure) && decision.kind === 'demand'
+        ? { ...decision, kind: 'withdrawn_demand' as const } : decision;
+    });
     const storageUndeliveredKw = resolveStorageUndeliveredKw(device, storageLevers[deviceId]);
     if (storageUndeliveredKw === 'gone') return [];
     if (storageUndeliveredKw !== 'not_storage') return splitDeviceRelief(deviceId, taken, storageUndeliveredKw);
@@ -239,18 +242,18 @@ export function resolvePendingShedRelief(
   const standing = assessed.filter(({ share, live, outstandingKw }) => (
     share.decision.creditedKw <= 0 ? live : outstandingKw > PENDING_RELIEF_EPSILON_KW
   ));
-  const crediting = standing.filter(({ live, share }) => live && share.decision.kind !== 'withdrawn_demand');
+  const crediting = standing.filter(({ live, share }) => live && isCreditable(share.decision));
   // An expired decision credits nothing, but while a newer one stands on the
   // same reading it keeps the fall its own step can claim: a lagging meter that
   // shows the older step late must not retire the newer one's credit.
-  const liveHistoricalClaim = standing.some(({ live, share }) => live && share.decision.kind === 'withdrawn_demand');
+  const liveHistoricalClaim = standing.some(({ live, share }) => live && !isCreditable(share.decision));
   const kept = crediting.length > 0 || liveHistoricalClaim ? standing : [];
   const held = groupByDevice(crediting.map(({ share }) => [share.deviceId, share.decision] as const));
   const outstandingKw = sumByDevice(crediting
     .filter(({ share }) => share.decision.creditedKw > 0)
     .map(({ share, outstandingKw: kw }) => [share.deviceId, kw] as const));
   const liveShares = assessed
-    .filter(({ live, share }) => live && share.decision.kind !== 'withdrawn_demand')
+    .filter(({ live, share }) => live && isCreditable(share.decision))
     .map(({ share }) => share);
   const retainedDecisions = groupByDevice(kept.map(({ share, seen }) => [share.deviceId, seen
     ? { ...share.decision, creditedKw: Math.min(share.decision.creditedKw, share.undeliveredKw) }
@@ -310,11 +313,12 @@ export function resolveUndeliveredScalarReliefKw(
   if (latch === null) return relief;
   const devicesById = new Map(devices.map((device) => [device.id, device]));
   for (const [deviceId, decisions] of latch.decisions) {
+    const device = devicesById.get(deviceId);
     const creditedKw = sumKw(decisions
-      .filter((decision) => decision.kind === 'electrical' && isWithinWindow(decision, nowTs))
+      .filter((decision) => decision.kind === 'electrical' && isWithinWindow(decision, nowTs)
+        && device?.relayShedNoAck?.decisionAtMs !== decision.decidedAtMs)
       .map((decision) => Math.max(0, decision.creditedKw)));
     if (creditedKw <= 0) continue;
-    const device = devicesById.get(deviceId);
     const setpointW = storageSetpointWByDevice.get(deviceId);
     const storageKw = resolveStorageUndeliveredKw(device, setpointW === undefined ? undefined : { setpointW });
     const stepTarget = latch.stepTargets.get(deviceId);
@@ -324,6 +328,10 @@ export function resolveUndeliveredScalarReliefKw(
     if (undeliveredKw > 0) relief.set(deviceId, Math.min(creditedKw, undeliveredKw));
   }
   return relief;
+}
+
+function isCreditable(decision: ShedLatchDecision): boolean {
+  return decision.kind === 'electrical' || decision.kind === 'demand';
 }
 
 function isWithinWindow(decision: ShedLatchDecision, nowTs: number): boolean {
