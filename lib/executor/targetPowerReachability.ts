@@ -14,7 +14,8 @@ export type TargetPowerProbeCommand = {
 export type TargetPowerReachabilityTransition =
   | { kind: 'waiting' }
   | { kind: 'confirmed'; reachability: TargetPowerReachabilityState }
-  | { kind: 'failed'; reachability: TargetPowerReachabilityState; observedPowerW?: number };
+  | { kind: 'reported_below_request'; reachability: TargetPowerReachabilityState; observation: ExactObservation }
+  | { kind: 'no_post_command_report'; reachability: TargetPowerReachabilityState };
 
 export const resolveTargetPowerProbeRetryAtMs = (
   nowMs: number,
@@ -58,26 +59,21 @@ const buildFailedTransition = (
   profileFingerprint: string,
   currentReachability: TargetPowerReachabilityState | undefined,
   command: TargetPowerProbeCommand,
-  maximumObservation: ExactObservation | undefined,
-  settledObservation: ExactObservation | undefined,
+  postCommandObservation: ExactObservation | undefined,
   nowMs: number,
 ): TargetPowerReachabilityTransition => {
   const failureCount = (currentReachability?.probeFailureCount ?? 0) + 1;
-  const transition: TargetPowerReachabilityTransition = {
-    kind: 'failed',
-    reachability: {
-      profileFingerprint,
-      maxReachedPowerW: Math.max(
-        resolveProvenMaximum(currentReachability, command),
-        maximumObservation?.planningPowerW ?? 0,
-      ),
-      probeFailureCount: failureCount,
-      nextProbeAtMs: resolveTargetPowerProbeRetryAtMs(nowMs, failureCount),
-    },
+  const provenMaximum = resolveProvenMaximum(currentReachability, command);
+  const reachability: TargetPowerReachabilityState = {
+    profileFingerprint,
+    maxReachedPowerW: postCommandObservation
+      ? Math.max(provenMaximum, postCommandObservation.planningPowerW) : provenMaximum,
+    probeFailureCount: failureCount,
+    nextProbeAtMs: resolveTargetPowerProbeRetryAtMs(nowMs, failureCount),
   };
-  return settledObservation
-    ? { ...transition, observedPowerW: settledObservation.planningPowerW }
-    : transition;
+  return postCommandObservation
+    ? { kind: 'reported_below_request', reachability, observation: postCommandObservation }
+    : { kind: 'no_post_command_report', reachability };
 };
 
 /**
@@ -99,11 +95,9 @@ export const resolveTargetPowerReachabilityTransition = (
   const settleAtMs = command.issuedAtMs + command.settleWindowMs;
   if (nowMs < settleAtMs) return { kind: 'waiting' };
 
-  // A lower sample from the ramp-up interval is not settled evidence. Once the
-  // window expires, silence is still a failed probe: retain the proven ceiling
-  // and move this exploratory command out of the foreground retry lifecycle.
-  const settledObservation = resolveObservationAtOrAfter(observation, settleAtMs);
+  // Homey may only date changes. At settlement the latest post-command report
+  // still describes the reported target even if its value did not change again.
   return buildFailedTransition(
-    profileFingerprint, currentReachability, command, postCommandObservation, settledObservation, nowMs,
+    profileFingerprint, currentReachability, command, postCommandObservation, nowMs,
   );
 };

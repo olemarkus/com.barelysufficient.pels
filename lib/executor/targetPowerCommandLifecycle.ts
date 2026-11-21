@@ -117,9 +117,24 @@ export class TargetPowerCommandLifecycle {
         maxReachedPowerW: transition.reachability.maxReachedPowerW });
     } else {
       this.store.deleteDesired(device.id);
-      this.structuredLog.warn({ event: 'target_power_step_settled_below_request', deviceId: device.id,
-        deviceName: device.name, requestedStepId: desired.stepId, requestedPowerW: desired.planningPowerW,
-        observedPowerW: transition.observedPowerW ?? null, ...transition.reachability });
+      const probeDetails = {
+        deviceId: device.id,
+        deviceName: device.name,
+        requestedStepId: desired.stepId,
+        requestedPowerW: desired.planningPowerW,
+        issuedAtMs: desired.targetPowerProbeStartedAtMs,
+        ...transition.reachability,
+      };
+      if (transition.kind === 'reported_below_request') {
+        this.structuredLog.warn({
+          event: 'target_power_step_settled_below_request',
+          ...probeDetails,
+          observedPowerW: transition.observation.planningPowerW,
+          observedAtMs: transition.observation.observedAtMs,
+        });
+      } else {
+        this.structuredLog.warn({ event: 'target_power_probe_no_post_command_report', ...probeDetails });
+      }
     }
     return true;
   }

@@ -362,7 +362,22 @@ describe('resolved device control composition and command lifecycle', () => {
       .not.toHaveProperty('targetPowerProbeConfirmedMaxPowerW');
   });
 
-  it('moves a silent refused probe to background backoff without lowering its proven maximum', () => {
+  it.each([
+    {
+      label: 'no target report after issue',
+      observedAtMs: 500,
+      settlementLog: { event: 'target_power_probe_no_post_command_report' },
+    },
+    {
+      label: 'a below-target report just before settlement',
+      observedAtMs: 90_999,
+      settlementLog: {
+        event: 'target_power_step_settled_below_request',
+        observedPowerW: 5_750,
+        observedAtMs: 90_999,
+      },
+    },
+  ])('backs off and records $label', ({ observedAtMs, settlementLog }) => {
     const baseConfig: TargetPowerSteppedLoadConfig = {
       enabled: true,
       preset: 'ev_charger_1_phase',
@@ -379,16 +394,17 @@ describe('resolved device control composition and command lifecycle', () => {
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, config.reachability?.maxReachedPowerW ?? config.max),
       targetPowerConfig: baseConfig,
       reportedStepPowerW: 5_750,
-      reportedStepObservedAtMs: 500,
+      reportedStepObservedAtMs: observedAtMs,
     });
     const stores = steppedStoresForTest();
+    const warn = vi.fn();
     const helpers = createDeviceControlHelpersForTest(
       () => [snapshot], stores, () => config,
       (_deviceId, reachability) => {
         config = { ...config, reachability };
         return true;
       }, () => {}, () => null,
-      { info: vi.fn(), warn: vi.fn() } as never,
+      { info: vi.fn(), warn } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -405,6 +421,10 @@ describe('resolved device control composition and command lifecycle', () => {
       nextProbeAtMs: 992_000,
     });
     expect(stores.store.getDesired('dev-1')).toBeUndefined();
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      ...settlementLog,
+      issuedAtMs: 1_000,
+    }));
   });
 
   it('ends a refused foreground probe even when its reachability update reports no change', () => {
