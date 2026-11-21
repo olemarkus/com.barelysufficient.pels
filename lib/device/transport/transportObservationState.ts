@@ -25,7 +25,6 @@ export class TransportObservationState {
   private readonly realtimeCapabilityEventTimesByKey = new Map<string, number>();
   private readonly binarySettleEvidenceByDeviceId = new Map<string, BinaryControlObservation>();
   private readonly pendingTemperatureRecoveryDeviceIds = new Set<string>();
-  private readonly temperatureRecoveryRefreshInFlightDeviceIds = new Set<string>();
 
   getObservationState(): DeviceTransportObservationState {
     return this.observations;
@@ -70,15 +69,8 @@ export class TransportObservationState {
     }
   }
 
-  requestTemperatureRecovery(deviceId: string): boolean {
+  markTemperatureRecoveryPending(deviceId: string): void {
     this.pendingTemperatureRecoveryDeviceIds.add(deviceId);
-    if (this.temperatureRecoveryRefreshInFlightDeviceIds.has(deviceId)) return false;
-    this.temperatureRecoveryRefreshInFlightDeviceIds.add(deviceId);
-    return true;
-  }
-
-  finishTemperatureRecoveryRefresh(deviceId: string): void {
-    this.temperatureRecoveryRefreshInFlightDeviceIds.delete(deviceId);
   }
 
   getPendingTemperatureRecoveryDeviceIds(): string[] {
@@ -97,7 +89,6 @@ export class TransportObservationState {
     this.realtimeCapabilityEventTimesByKey.clear();
     this.binarySettleEvidenceByDeviceId.clear();
     this.pendingTemperatureRecoveryDeviceIds.clear();
-    this.temperatureRecoveryRefreshInFlightDeviceIds.clear();
   }
 
   private pruneDuplicateRealtimeCapabilityEvents(nowMs: number): void {

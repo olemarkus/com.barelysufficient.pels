@@ -137,7 +137,8 @@ function requestRemovalOfDroppedViews(
     ingest.notifications.notifyInventoryChanged();
 }
 
-function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiveDevice: HomeyDeviceLike): void {
+/** One view's whole-device update; temperature recovery also re-admits an accepted read through it. */
+export function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiveDevice: HomeyDeviceLike): void {
     const deviceId = getDeviceId(effectiveDevice);
     ingest.observeChargingDevice(effectiveDevice);
     if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, effectiveDevice)) {

@@ -23,7 +23,7 @@ import type { DeviceSnapshotReader } from './deviceSnapshotReader';
 import type { TransportNotifications } from './transportNotifications';
 import type { DeviceConfigurationStore } from '../deviceConfiguration';
 import type { HomeyDeviceLike } from '../../utils/types';
-import { handleRealtimeDeviceUpdateEvent } from './deviceUpdateHandling';
+import { handleRealtimeDeviceUpdateEvent, handleRealtimeViewUpdate } from './deviceUpdateHandling';
 import { handleRealtimeCapabilityUpdateWithProbe } from './realtimeCapabilityHandling';
 import { getIsAvailable } from './managerHelpers';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
@@ -51,6 +51,12 @@ export class RealtimeIngestService {
 
   handleDeviceUpdate(device: HomeyDeviceLike): void {
     handleRealtimeDeviceUpdateEvent(this, device);
+  }
+
+  /** Re-admit a device's facets from its accepted read, as a whole-device update would. */
+  rebuildFromAcceptedRead(deviceId: string): void {
+    const accepted = this.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
+    if (accepted) handleRealtimeViewUpdate(this, accepted);
   }
 
   /** Only a complete, accepted device read may update integration session evidence. */

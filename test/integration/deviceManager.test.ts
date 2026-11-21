@@ -5994,6 +5994,27 @@ describe('DeviceTransport', () => {
                 },
             );
 
+            it('rebuilds the temperature pair only once both halves are valid again, without a refresh', async () => {
+                await deviceManager.init();
+                mockApiGet.mockResolvedValue(buildThermostatDevice());
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                const refreshSpy = vi.spyOn(deviceManager['refreshService'], 'refresh');
+
+                await emitCapability('dev1', 'measure_temperature', Number.NaN);
+                await emitCapability('dev1', 'target_temperature', Number.NaN);
+                await emitCapability('dev1', 'measure_temperature', 21);
+                await Promise.resolve();
+                expect(hasObservedTemperature(deviceManager.getSnapshot()[0] as TransportDeviceSnapshot)).toBe(false);
+
+                await emitCapability('dev1', 'target_temperature', 22);
+                await vi.waitFor(() => {
+                    expect(deviceManager.getSnapshot()[0]).toMatchObject({
+                        temperature: { currentTemperature: 21, target: { value: 22 } },
+                    });
+                });
+                expect(refreshSpy).not.toHaveBeenCalled();
+            });
+
             it('does not start a recovery refresh for temperature reports from a device without a setpoint', async () => {
                 vi.useFakeTimers();
                 try {
@@ -6076,19 +6097,14 @@ describe('DeviceTransport', () => {
                     vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
                     await emitCapability('dev1', 'measure_temperature', 21);
 
+                    // Rebuilt from the accepted read: no refresh and no device read.
                     await vi.waitFor(() => {
-                        expect(refreshSpy).toHaveBeenCalledWith({
-                            targetedRefresh: true,
-                            meterDeviceIds: expect.anything(),
+                        expect(deviceManager.getSnapshot()[0]).toMatchObject({
+                            temperature: { currentTemperature: 21, target: { value: 20 } },
                         });
                     });
-                    const firstRefresh = refreshSpy.mock.results[0];
-                    if (!firstRefresh) throw new Error('Expected an opportunistic recovery refresh');
-                    await firstRefresh.value;
-                    expect(targetedReadCount).toBe(1);
-                    expect(deviceManager.getSnapshot()[0]).toMatchObject({
-                        temperature: { currentTemperature: 21, target: { value: 20 } },
-                    });
+                    expect(refreshSpy).not.toHaveBeenCalled();
+                    expect(targetedReadCount).toBe(0);
 
                     vi.setSystemTime(new Date('2026-04-01T12:04:00.000Z'));
                     await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
@@ -6096,7 +6112,7 @@ describe('DeviceTransport', () => {
                     expect(deviceManager.getSnapshot()[0]).toMatchObject({
                         temperature: { currentTemperature: 22, target: { value: 20 } },
                     });
-                    expect(targetedReadCount).toBe(1);
+                    expect(targetedReadCount).toBe(0);
                     expect(reconcileListener).toHaveBeenCalledOnce();
                 } finally {
                     vi.useRealTimers();
@@ -6195,7 +6211,7 @@ describe('DeviceTransport', () => {
                 });
             });
 
-            it('includes an evicted temperature-only device in its targeted recovery fetch', async () => {
+            it('recovers an evicted temperature-only device from its accepted read without a fetch', async () => {
                 await deviceManager.init();
                 const thermostat = buildThermostatDevice().dev1;
                 const { onoff: _onoff, ...temperatureCapabilities } = thermostat.capabilitiesObj;
@@ -6228,7 +6244,7 @@ describe('DeviceTransport', () => {
                     ) as TransportDeviceSnapshot | undefined;
                     expect(recovered === undefined ? false : hasObservedTemperature(recovered)).toBe(true);
                 });
-                expect(mockApiGet).toHaveBeenCalledWith('manager/devices/device/dev1');
+                expect(mockApiGet).not.toHaveBeenCalledWith('manager/devices/device/dev1');
             });
 
             it('local writes do not advance freshness', async () => {
