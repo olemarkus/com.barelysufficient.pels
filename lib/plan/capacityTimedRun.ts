@@ -55,6 +55,10 @@ export type CapacityTimedRun =
     allowedKw: number;
   };
 
+export type TimedStartDraw =
+  | { kind: 'command_in_flight' }
+  | { kind: 'projected'; outstandingRestoreKw: number };
+
 export type CapacityTimedRunInput = {
   settings: CapacitySettings;
   /** The ordinary capacity pace (`computeDynamicSoftLimit`). */
@@ -66,6 +70,7 @@ export type CapacityTimedRunInput = {
   minutesRemaining: number;
   coverageComplete: boolean;
   drawKw: number;
+  timedStartDraw: TimedStartDraw;
   devices: readonly PlanInputDevice[];
   /** The devices the previous plan held off (`ShedDecisionHistory.lastPlannedShedIds`). */
   heldOffIds: ReadonlySet<string>;
@@ -157,6 +162,11 @@ function resolveKeep(hour: TimedRunHour): CapacityTimedRun {
 /** Under the pace: the held-off device restore would start first may start for a run. */
 function resolveStart(hour: TimedRunHour): CapacityTimedRun {
   const { input } = hour;
+  if (input.timedStartDraw.kind === 'command_in_flight') return { kind: 'none' };
+  const { outstandingRestoreKw } = input.timedStartDraw;
+  const projectedBaseKw = input.drawKw + outstandingRestoreKw;
+  // The house must still fit once the timed device is switched off again.
+  if (projectedBaseKw > input.paceKw) return { kind: 'none' };
   // Only the device restore would start first, so the room goes to it.
   const heldOff = input.devices.filter((device) => (
     isCommandable(device) && input.heldOffIds.has(device.id) && !input.forceShedIds.has(device.id)
@@ -165,13 +175,13 @@ function resolveStart(hour: TimedRunHour): CapacityTimedRun {
   if (device === null || !isTimedRunDevice(device) || device.currentState !== 'off') return { kind: 'none' };
   const deviceKw = device.residualKw.restore.kw;
   if (deviceKw < TIMED_RUN_MIN_DRAW_KW) return { kind: 'none' };
-  const runHours = hour.spareKWh(input.drawKw, deviceKw) / deviceKw;
+  const runHours = hour.spareKWh(projectedBaseKw, deviceKw) / deviceKw;
   if (Math.min(runHours * 60, hour.runWindowMin) < TIMED_RUN_MIN_START_MIN) return { kind: 'none' };
   const allowedKw = input.drawKw + deviceKw + computeRestoreBufferKw(deviceKw);
   // Judged with the restore buffer on top, so the keep that follows, on a
   // reading a few tens of watts higher, still passes: without that margin a
   // start that only just fits is cut again a minute later.
-  if (allowedKw <= input.paceKw || !hour.holdsHardCap(allowedKw)) return { kind: 'none' };
+  if (allowedKw <= input.paceKw || !hour.holdsHardCap(allowedKw + outstandingRestoreKw)) return { kind: 'none' };
   return timedRun('start', device, deviceKw, hour.stopAt(runHours), allowedKw);
 }
 

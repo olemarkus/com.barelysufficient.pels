@@ -25,6 +25,7 @@ const frame = (overrides: Partial<CapacityTimedRunInput>): CapacityTimedRunInput
   minutesRemaining: 60,
   coverageComplete: true,
   drawKw: 4.28,
+  timedStartDraw: { kind: 'projected', outstandingRestoreKw: 0 },
   devices: [heater('small', 1, 0.5, true), heater('mid', 2, 0.8, false)],
   heldOffIds: new Set(['mid']),
   forceShedIds: new Set(),
@@ -42,6 +43,55 @@ describe('resolveCapacityTimedRun', () => {
     expect((run.stopAtMs - NOW) / MIN).toBeCloseTo(18.25, 6);
     // Its draw plus its restore buffer fits under the raised pace.
     expect(run.allowedKw).toBeCloseTo(4.28 + 0.8 + 0.2, 6);
+  });
+
+  it('does not start a timed run while a binary restore is unconfirmed', () => {
+    expect(resolveCapacityTimedRun(frame({
+      timedStartDraw: { kind: 'command_in_flight' },
+    }))).toEqual({ kind: 'none' });
+  });
+
+  it('charges outstanding restore draw to start safety and duration without raising the pace', () => {
+    const blocked = resolveCapacityTimedRun(frame({
+      timedStartDraw: { kind: 'projected', outstandingRestoreKw: 0.5 },
+    }));
+    expect(blocked).toEqual({ kind: 'none' });
+    const hardCapBlocked = resolveCapacityTimedRun(frame({
+      shortfallThresholdKw: 5.5,
+      timedStartDraw: { kind: 'projected', outstandingRestoreKw: 0.1 },
+    }));
+    expect(hardCapBlocked).toEqual({ kind: 'none' });
+    const run = resolveCapacityTimedRun(frame({
+      timedStartDraw: { kind: 'projected', outstandingRestoreKw: 0.1 },
+    }));
+    expect(run).toMatchObject({ kind: 'start', allowedKw: 5.28 });
+    if (run.kind === 'none') throw new Error('expected a run');
+    expect((run.stopAtMs - NOW) / MIN).toBeCloseTo(10.75, 6);
+  });
+
+  it('keeps a timed run when reserved restore draw larger than the start buffer arrives', () => {
+    const usedKWh = 4.7 - 5.3 * 30 / 60;
+    const initial = frame({
+      drawKw: 4.36,
+      paceKw: 5.3,
+      usedKWh,
+      minutesRemaining: 30,
+      shortfallThresholdKw: 5.9,
+      timedStartDraw: { kind: 'projected', outstandingRestoreKw: 0.22 },
+    });
+    const start = resolveCapacityTimedRun(initial);
+    expect(start).toMatchObject({ kind: 'start', deviceId: 'mid' });
+    if (start.kind === 'none') throw new Error('expected a run');
+    expect(start.allowedKw).toBeCloseTo(5.36);
+    // Both increases have arrived. The next build recalculates keep from the
+    // measured draw against the ordinary pace, even above the old start pace.
+    expect(resolveCapacityTimedRun({
+      ...initial,
+      drawKw: 5.38,
+      devices: [heater('small', 1, 0.8, true), heater('mid', 2, 0.8, true)],
+      heldOffIds: new Set(),
+      timedStartDraw: { kind: 'command_in_flight' },
+    })).toMatchObject({ kind: 'keep', deviceId: 'mid', allowedKw: 5.38 });
   });
 
   it('keeps the running heater over the pace and stops it when the hour runs out', () => {

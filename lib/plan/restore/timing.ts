@@ -4,7 +4,10 @@ import type { RestoreBackoff, RestoreCooldownState } from '../restoreBackoff';
 import type { PlanContext, MeasuredPower } from '../planContext';
 import { resolveSheddingClearThresholdKw } from '../powerLimitMath';
 import type { RestoreDeps } from './types';
-import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
+import type { DevicePlanDevice, PlanInputDevice, SteppedPlanDevice } from '../planTypes';
+import type { DrawEvidenceReads } from '../../observer/observedDeviceStateProjection';
+import type { ActuationHistoryRead } from '../../ports/actuationHistory';
+import type { PowerTrackerState } from '../../power/tracker';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
@@ -165,6 +168,35 @@ function hasRestoredDrawArrived(
     (device.planningPowerKw - drawAtStepUpKw) * STARTED_DRAW_FRACTION,
   );
   return deps.drawEvidence.hasDrawnAtLeastSince(device.id, restoredAtMs, measuredAfterMs, drawAtStepUpKw + riseKw);
+}
+
+/**
+ * A half-landed restore can release the ordinary cooldown. Before a timed
+ * start spends extra room, allow for the rest of that draw until the same
+ * restore window expires. Only subtract power known to be in the meter value.
+ */
+export function resolveOutstandingRestoreDrawKw(
+  actuation: ActuationHistoryRead,
+  drawEvidence: DrawEvidenceReads,
+  tracker: PowerTrackerState,
+  devices: readonly PlanInputDevice[],
+  nowMs: number,
+): number {
+  const measuredAfterMs = resolveReadingMeasuredAfterMs(tracker);
+  let outstandingKw = 0;
+  for (const { deviceId, restoredAtMs, drawEvidenceFromMs } of actuation.readRestoreDrawEvidence()) {
+    if (nowMs - restoredAtMs >= RESTORE_COOLDOWN_MS) continue;
+    const device = devices.find(({ id }) => id === deviceId);
+    if (device === undefined || device.currentState !== 'on' || device.isBatteryOrSolar
+      || isSteppedLoadDevice(device)) continue;
+    // Without evidence of a post-command start included in this sample, the
+    // previous draw may predate the restore. Reserve the full expected draw.
+    const includedKw = measuredAfterMs !== null && drawEvidence.hasStartedDrawingSince(
+      deviceId, drawEvidenceFromMs, measuredAfterMs, MIN_ACTIVE_MEASURED_POWER_KW,
+    ) ? (drawEvidence.getLiveDrawAt(deviceId, measuredAfterMs) ?? 0) : 0;
+    outstandingKw += Math.max(0, device.expectedPowerKw - includedKw);
+  }
+  return outstandingKw;
 }
 
 /**

@@ -19,10 +19,12 @@
 // each, as in `capacityEndOfHourDrain.e2e.test.ts`.
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { connectLiveFeed, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   CAPACITY_DRY_RUN,
+  CAPACITY_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
@@ -187,5 +189,89 @@ describe('Capacity timed run of an on/off heater (SDK-boundary e2e)', () => {
     expect(switches.map(({ on }) => on)).toEqual([true, false]);
     expect(hourKWh).toBeGreaterThan(4.6);
     expect(hourKWh).toBeLessThanOrEqual(4.7);
+  });
+
+  it('waits for the meter to account for a partial restore before starting a timed run', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 11, 58));
+    connectLiveFeed();
+    const first = new MockDevice('ramp', 'Ramping heater', ['onoff', 'measure_power'], 'heater');
+    const second = new MockDevice('timed', 'Timed heater', ['onoff', 'measure_power'], 'heater');
+    for (const [device, watts] of [[first, 3000], [second, 800]] as const) {
+      await device.setCapabilityValue('onoff', true);
+      await device.setCapabilityValue('measure_power', watts);
+      device.configureCapabilityBehavior('onoff', { onApiWrite: { emitCapabilityEvent: true } });
+    }
+    setMockDrivers({ driverA: new MockDriver('driverA', [first, second]) });
+    const flags = { ramp: true, timed: true };
+    const settings = mockHomeyInstance.settings;
+    settings.set('power_source', 'homey_energy');
+    settings.set('homey_energy_meter_device_id', 'meter-main');
+    settings.set(CAPACITY_ENABLED, true);
+    settings.set(CAPACITY_LIMIT_KW, 5);
+    settings.set(CAPACITY_MARGIN_KW, 0.2);
+    settings.set(CAPACITY_DRY_RUN, false);
+    settings.set(OPERATING_MODE_SETTING, 'Home');
+    settings.set('managed_devices', flags);
+    settings.set('controllable_devices', flags);
+    settings.set('capacity_priorities', { Home: { ramp: 1, timed: 2 } });
+    settings.set('device_expected_power_overrides', {
+      ramp: { kw: 3, ts: Date.now() }, timed: { kw: 0.8, ts: Date.now() },
+    });
+    settings.set(OVERSHOOT_BEHAVIORS, { ramp: { action: 'turn_off' }, timed: { action: 'turn_off' } });
+    let meterW = 9000;
+    const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
+      if (path === 'manager/energy/live') {
+        return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: meterW } }] };
+      }
+      return originalGet(path);
+    });
+    const app = createApp();
+    await app.onInit();
+    await settleLiveFeed();
+    const log = captureLogger('info', []);
+    onTestFinished(log.restore);
+    const report = async (power: number): Promise<void> => {
+      meterW = power;
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+      await flushDetached();
+    };
+    for (let poll = 0; poll < 6; poll += 1) {
+      await report(9000 + poll % 2 * 100);
+      if (first.getActualCapabilityValue('onoff') === false && second.getActualCapabilityValue('onoff') === false) break;
+    }
+    expect(first.getActualCapabilityValue('onoff')).toBe(false);
+    expect(second.getActualCapabilityValue('onoff')).toBe(false);
+    first.setActualCapabilityValue('measure_power', 0);
+    second.setActualCapabilityValue('measure_power', 0);
+
+    // Let the initial shed and cooldown clear while leaving neither heater
+    // room to restore. At :20 the ordinary pace is about 5 kW.
+    for (let poll = 0; poll < 131; poll += 1) await report(4400 + poll % 2 * 10);
+    for (let poll = 0; poll < 5; poll += 1) {
+      await report(1150);
+      if (first.getActualCapabilityValue('onoff') === true) break;
+    }
+    expect(first.getActualCapabilityValue('onoff')).toBe(true);
+    expect(second.getActualCapabilityValue('onoff')).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    first.setActualCapabilityValue('measure_power', 1550);
+    for (let poll = 0; poll < 5; poll += 1) await report(4100 + poll % 2 * 10);
+    expect(second.getActualCapabilityValue('onoff')).toBe(false);
+    expect(first.getActualCapabilityValue('onoff')).toBe(true);
+
+    // Keep the house's draw the same by reducing background load. The
+    // newer meter values now account for all of the first heater's draw.
+    first.setActualCapabilityValue('measure_power', 3000);
+    for (let poll = 0; poll < 5; poll += 1) {
+      await report(4110 - poll % 2 * 10);
+      if (second.getActualCapabilityValue('onoff') === true) break;
+    }
+    expect(second.getActualCapabilityValue('onoff')).toBe(true);
+    const turnOn = log.findEvents('binary_command_succeeded').find((event) => event.deviceId === 'timed' && event.desired);
+    expect(turnOn?.rebuildId).toBeDefined();
+    expect(log.findEvents('capacity_timed_run_started')).toContainEqual(expect.objectContaining({
+      kind: 'start', deviceId: 'timed', rebuildId: turnOn?.rebuildId,
+    }));
   });
 });
