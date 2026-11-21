@@ -1,3 +1,3 @@
-export { ScheduleService } from './scheduleService';
+export { ScheduleService, type ScheduleRuntimePort } from './scheduleService';
 export { createScheduleReceiptStore } from './scheduleReceipts';
-export { ScheduleActionExecutor } from './scheduleActions';
+export { ScheduleActionExecutor, requireScheduledTaskCandidates } from './scheduleActions';

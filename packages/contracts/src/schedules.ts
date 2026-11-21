@@ -11,7 +11,7 @@ export type ScheduleOverrideAction = {
   setting: { type: 'temperature'; targetC: number };
   minutes: number;
 };
-export type ScheduleAction = { type: 'mode'; mode: string }
+export type ScheduleAction = { type: 'mode'; mode: string; prepare?: true }
   | { type: 'task'; task: Omit<SmartTaskCandidateRequest, 'deadlineAtMs'> }
   | ScheduleOverrideAction;
 export type Schedule = {

@@ -2915,6 +2915,16 @@ in force now, Setup & recommendations shows a recommendation
   selected cars have all been removed from Homey, shows none of this. Activity
   records the same reason. Matching or explicit confirmation ends this message.
 
+## Mode preparation
+
+A mode schedule offers **Have devices ready by then** with the help text
+`Start heating eligible devices early toward their new mode temperatures.`
+Its schedule row adds `Prepare devices` to the mode action. While a device
+uses the early mode target, its reason can read `Getting ready for Home at
+08:00`. A power-limit reason takes precedence. The schedule's last result
+can read `Mode changed. 5 of 6 devices were ready.` A single device reads
+`The device was ready.` or `The device was below its target.`
+
 ## Schedule rows: the last occurrence
 
 A schedule row names its last occurrence and what came of it on one line,

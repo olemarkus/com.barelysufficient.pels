@@ -21,17 +21,18 @@ describe('observation-origin mode edits', () => {
     }));
     const isLimited = vi.fn(() => false);
     const readOverrideC = vi.fn((): number | null => null);
+    const readPreparedC = vi.fn((): number | null => null);
     const service = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, reloadMain, () => [{ reloadModeCatalog: reloadArea }], (_id, value) => value,
-      isLimited, () => [], readOverrideC,
+      isLimited, () => [], readOverrideC, readPreparedC,
     );
-    return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited, readOverrideC };
+    return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited, readOverrideC, readPreparedC };
   };
 
   it('authorizes the normalized saved target rather than an old adjusted target', () => {
     const { settings, resolveMode } = start();
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [], () => null,
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [], () => null, () => null,
     );
     expect(service.allowsTarget('heater', 24)).toBe(true);
     expect(service.allowsTarget('heater', 23.5)).toBe(false);
@@ -47,7 +48,7 @@ describe('observation-origin mode edits', () => {
     const { settings, resolveMode } = start();
     const readLimits = vi.fn(() => [16.4, 26.2]);
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, readLimits, () => null,
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, readLimits, () => null, () => null,
     );
     expect(service.allowsTarget('heater', 16)).toBe(true);
     expect(service.allowsTarget('heater', 26)).toBe(true);
@@ -59,7 +60,7 @@ describe('observation-origin mode edits', () => {
     const { settings, resolveMode } = start();
     const service = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [],
-      () => 18,
+      () => 18, () => null,
     );
     expect(service.allowsTarget('heater', 18)).toBe(true);
     expect(service.allowsTarget('heater', 19)).toBe(false);
@@ -67,7 +68,7 @@ describe('observation-origin mode edits', () => {
     // A stored value off the device's step is commanded on it, so that is what the fence admits.
     const offStep = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [],
-      () => 21.3,
+      () => 21.3, () => null,
     );
     expect(offStep.allowsTarget('heater', 21)).toBe(true);
   });
@@ -109,6 +110,20 @@ describe('observation-origin mode edits', () => {
     expect(settings.get(key)).toEqual({ Home: { heater: 22, other: 19 }, Away: { heater: 15 } });
   });
 
+  it('admits a prepared target without adopting thermostat changes during preparation', () => {
+    const { settings, key, service, readPreparedC, reloadMain } = start();
+    readPreparedC.mockReturnValue(21);
+    expect(service.allowsTarget('heater', 21)).toBe(true);
+    service.accept(adjustment);
+    expect(settings.get(key)).toEqual({ Home: { heater: 23.5, other: 19 }, Away: { heater: 15 } });
+    expect(reloadMain).not.toHaveBeenCalled();
+
+    readPreparedC.mockReturnValue(null);
+    expect(service.allowsTarget('heater', 21)).toBe(false);
+    service.accept(adjustment);
+    expect(settings.get(key)).toEqual({ Home: { heater: 22, other: 19 }, Away: { heater: 15 } });
+  });
+
   it('holds the last good policy through transient settings failures', () => {
     const { service, settings } = start();
     expect(service.allowsAutomaticAdjustments('heater')).toBe(false);
@@ -124,7 +139,7 @@ describe('observation-origin mode edits', () => {
   it('reads a policy never written to an empty store as the default policy', () => {
     const service = new ObservedTemperatureModeUpdates(
       mockHomeyInstance.settings, () => ({ state: 'unavailable' }), () => true, vi.fn(), () => [],
-      (_id, value) => value, () => false, () => [], () => null,
+      (_id, value) => value, () => false, () => [], () => null, () => null,
     );
     expect(service.allowsAutomaticAdjustments('heater')).toBe(true);
     expect(service.allowsLimiting('heater')).toBe(true);

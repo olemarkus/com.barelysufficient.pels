@@ -27,6 +27,7 @@ export type CreatePlanEngineOptions = {
    * absent one — there is no accessor to return `undefined` from.
    */
   capacityGuard: CapacityGuard;
+  getPreparedModeTargets?: Parameters<typeof bindTemperatureSetpoints>[2];
   /**
    * This home's point-of-use actuation fence. When true, every device write
    * no-ops at the single actuator seam. It carries the conditions that can
@@ -158,7 +159,7 @@ export function createPlanEngineComposition(
     // binds `decorateWithoutDeferredObjectives`, the identity bundle in the
     // seam's own shape).
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
-    resolveTemperatureSetpoints: bindTemperatureSetpoints(scope, ctx),
+    resolveTemperatureSetpoints: bindTemperatureSetpoints(scope, ctx, options.getPreparedModeTargets),
     pendingBinaryCommandStore,
   }, state);
   const executor = new PlanExecutor({
