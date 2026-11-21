@@ -19,6 +19,13 @@ const COMMAND_ANSWER_WINDOW_MS = 15 * 60_000;
 const ROUNDED_ANSWER_MAX_C = 1;
 
 type TemperatureCommand = { value: number; atMs: number; supersededAtMs?: number };
+type TimedOutCommand = {
+  command: TemperatureCommand;
+  targetCommandId: string;
+  transactionId: string;
+  timedOutAtMs: number;
+  awaitingSetpointReport: boolean;
+};
 const logger = getLogger('device/temperature');
 
 /** Observation-side attribution; knows no modes, policy, plans or settings. */
@@ -26,13 +33,7 @@ export class TemperatureAdjustmentObserver {
   private readonly commands = new Map<string, TemperatureCommand[]>();
   /** PELS's latest command to each device whose answer has not come yet. */
   private readonly awaitingAnswer = new Map<string, TemperatureCommand>();
-  private readonly timedOutCommands = new Map<string, {
-    command: TemperatureCommand;
-    targetCommandId: string;
-    transactionId: string;
-    timedOutAtMs: number;
-    targetReported: boolean;
-  }>();
+  private readonly timedOutCommands = new Map<string, TimedOutCommand[]>();
 
   recordCommand(deviceId: string, value: number, atMs: number): TemperatureCommand {
     const commands = this.commands.get(deviceId) ?? [];
@@ -42,7 +43,7 @@ export class TemperatureAdjustmentObserver {
     const command = { value, atMs };
     this.commands.set(deviceId, [...recent, command]);
     this.awaitingAnswer.set(deviceId, command);
-    this.timedOutCommands.delete(deviceId);
+    this.recentTimeouts(deviceId, atMs);
     return command;
   }
 
@@ -52,20 +53,24 @@ export class TemperatureAdjustmentObserver {
     targetCommandId: string,
     transactionId: string,
     timedOutAtMs: number,
+    awaitingSetpointReport: boolean,
   ): void {
-    if (this.commands.get(deviceId)?.at(-1) !== command) return;
-    this.timedOutCommands.set(deviceId, {
-      command, targetCommandId, transactionId, timedOutAtMs, targetReported: false,
-    });
+    if (timedOutAtMs >= command.atMs + CONTROL_COMMAND_CONFIRMATION_MS) return;
+    const attempts = this.recentTimeouts(deviceId, timedOutAtMs);
+    this.timedOutCommands.set(deviceId, [
+      ...attempts, { command, targetCommandId, transactionId, timedOutAtMs, awaitingSetpointReport },
+    ]);
   }
 
   /** Only a later non-echo report can show that Homey observed the requested setpoint. */
   observeTimedOutCommand(report: ControlReported): void {
     if (report.setting !== 'temperature') return;
     const { deviceId, reportedAtMs: observedAtMs, value } = report;
-    const attempt = this.getTimedOutCommand(deviceId, observedAtMs);
-    if (attempt === undefined || attempt.targetReported || value !== attempt.command.value) return;
-    this.timedOutCommands.set(deviceId, { ...attempt, targetReported: true });
+    const latest = this.commands.get(deviceId)?.at(-1);
+    const attempt = this.recentTimeouts(deviceId, observedAtMs).find((entry) => entry.command === latest);
+    if (!attempt?.awaitingSetpointReport
+      || observedAtMs < attempt.timedOutAtMs || value !== attempt.command.value) return;
+    attempt.awaitingSetpointReport = false;
     logger.info({
       event: 'target_command_observed_after_timeout',
       targetCommandId: attempt.targetCommandId,
@@ -79,8 +84,8 @@ export class TemperatureAdjustmentObserver {
 
   /** Homey's own-write echo provides acknowledgement, separate from a device report. */
   observeTimedOutEcho(deviceId: string, transactionId: string, atMs: number): void {
-    const attempt = this.getTimedOutCommand(deviceId, atMs);
-    if (attempt === undefined || attempt.transactionId !== transactionId) return;
+    const attempt = this.recentTimeouts(deviceId, atMs).find((entry) => entry.transactionId === transactionId);
+    if (!attempt || atMs < attempt.timedOutAtMs) return;
     logger.info({
       event: 'target_command_echoed_after_timeout',
       targetCommandId: attempt.targetCommandId,
@@ -90,12 +95,12 @@ export class TemperatureAdjustmentObserver {
     });
   }
 
-  private getTimedOutCommand(deviceId: string, atMs: number) {
-    const attempt = this.timedOutCommands.get(deviceId);
-    if (attempt === undefined || atMs < attempt.timedOutAtMs) return undefined;
-    if (atMs < attempt.command.atMs + CONTROL_COMMAND_CONFIRMATION_MS) return attempt;
-    this.timedOutCommands.delete(deviceId);
-    return undefined;
+  private recentTimeouts(deviceId: string, nowMs: number): TimedOutCommand[] {
+    const attempts = this.timedOutCommands.get(deviceId) ?? [];
+    const recent = attempts.filter(({ command }) => nowMs < command.atMs + CONTROL_COMMAND_CONFIRMATION_MS);
+    if (recent.length === 0) this.timedOutCommands.delete(deviceId);
+    else if (recent.length < attempts.length) this.timedOutCommands.set(deviceId, recent);
+    return recent;
   }
 
   forgetTimedOutCommand(deviceId: string): void {
