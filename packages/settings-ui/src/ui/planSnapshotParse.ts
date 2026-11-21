@@ -68,7 +68,7 @@ const isStatus = (value: unknown): boolean => {
   return ['binary', 'temperature', 'stepped'].includes(status.cardKind as string)
     && STATUS_KINDS.has(status.kind) && STATUS_TONES.has(status.tone)
     && typeof status.label === 'string' && isNullableText(status.powerText) && isNullableText(status.factText)
-    && ['live', 'expected', 'reported'].includes(status.powerVariant as string)
+    && ['live', 'expected', 'reported', 'before_switch_off'].includes(status.powerVariant as string)
     && ['limited', 'wouldLimit', 'canEaseOff', 'controlOffDrawing'].every((key) => typeof status[key] === 'boolean')
     && (status.holdCause === null || HOLD_CAUSES.has(status.holdCause))
     && isStatusReason(status.reason) && isStatusRail(status.rail) && isStatusReading(status.reading);

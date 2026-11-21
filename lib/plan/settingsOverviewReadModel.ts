@@ -253,6 +253,7 @@ function buildLoadOverviewDevice(
     currentState: execution.physicalState,
     available: execution.available,
     currentDrawKw: execution.currentDrawKw,
+    powerBeforeSwitchOffKw: deps.observed.getPowerBeforeSwitchOffKw(device.id),
     binaryCommandPending: execution.binaryProgress === 'pending',
     pendingTargetCommand: execution.targetProgress === 'pending' ? true : undefined,
     execution, starvation, idleClassification, stateOfCharge,

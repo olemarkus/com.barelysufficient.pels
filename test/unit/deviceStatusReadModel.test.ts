@@ -7,6 +7,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
   priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, unusedBuiltInControl: 'none', targetPowerControlRefused: false,
   standingCommandGrant: true, hasPowerReading: true, powerSetupRequired: false,
+  powerBeforeSwitchOffKw: undefined,
   carIdentificationState: 'not_waiting',
   execution: {
     available: true, physicalState: 'on', observedStepId: null,
@@ -341,12 +342,26 @@ describe('simulation action previews', () => {
   it.each([false, true])('preserves measured draw from an off binary device in simulation=%s', (dryRun) => {
     const device = runningPowerHold();
     const status = buildDeviceStatus({ ...device, currentState: 'off', currentDrawKw: 0.4,
+      powerBeforeSwitchOffKw: dryRun ? 0.4 : undefined,
       execution: { ...device.execution, physicalState: 'off', binaryProgress: 'settled' },
     }, dryRun, 0);
     expect(status).toMatchObject({
       powerText: dryRun ? '0.4 kW' : 'Reported 0.4 kW', powerVariant: dryRun ? 'live' : 'reported',
     });
     expect(status.reason?.text).not.toContain('Would turn off');
+  });
+
+  it('keeps pending binary commands and thermostat holds out of the switch-off warning', () => {
+    const device = runningPowerHold({ currentState: 'off', powerBeforeSwitchOffKw: 1.2 });
+    const off = { ...device.execution, physicalState: 'off' } as const;
+    const pending = buildDeviceStatus({ ...device, execution: { ...off, binaryProgress: 'pending' } }, false, 0);
+    const thermostat = buildDeviceStatus({ ...device, execution: { ...off, binaryProgress: 'settled' },
+      temperature: { currentTemperature: 20, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
+    }, false, 0);
+    for (const status of [pending, thermostat]) {
+      expect(status.powerVariant).not.toBe('before_switch_off');
+      expect(status.powerText).not.toContain('Last reported');
+    }
   });
 
   it('preserves the live thermostat hold explanation', () => {

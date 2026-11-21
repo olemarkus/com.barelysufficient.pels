@@ -25,7 +25,7 @@ export type DeviceStatus = {
   tone: 'active' | 'idle' | 'held' | 'resuming' | 'neutral' | 'warning';
   label: string;
   powerText: string | null;
-  powerVariant: 'live' | 'expected' | 'reported';
+  powerVariant: 'live' | 'expected' | 'reported' | 'before_switch_off';
   factText: string | null;
   /**
    * For the device page header, when the device's own setpoint differs from the

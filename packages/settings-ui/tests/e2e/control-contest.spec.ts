@@ -1,4 +1,5 @@
 import { expect, renderTest as test, type Page } from './fixtures/test';
+import type { DeviceStatus } from '../../../contracts/src/deviceStatus';
 
 const contested = {
   id: 'dev_mill',
@@ -25,6 +26,46 @@ const stubContestedDevice = async (page: Page, snapshot = contested) => {
     };
   }, snapshot);
 };
+
+test('uses the shared warning dialog for a pre-switch-off power reading', async ({ page }, testInfo) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const card = page.locator('#plan-cards [data-device-id="dev_waterheater"]');
+  await expect(card).toBeVisible();
+  await page.evaluate(() => {
+    type Plan = { devices: Array<{ id: string; status: DeviceStatus }> };
+    const { Homey } = window as unknown as { Homey: { __stub: {
+      getSetting: (key: string) => Plan;
+      setSetting: (key: string, value: boolean) => void;
+      setApiHandler: (key: string, handler: () => { plan: Plan }) => void;
+      emitHomeyEvent: (event: string, value: Plan) => void;
+    } } };
+    Homey.__stub.setSetting('capacity_dry_run', false);
+    const plan = Homey.__stub.getSetting('plan_snapshot');
+    const devices = plan.devices.map((device) => device.id === 'dev_waterheater'
+      ? { ...device, status: { ...device.status, label: 'Limited · Off', powerText: 'Last reported 2.8 kW',
+        powerVariant: 'before_switch_off' as const, reason: { text: 'Waiting to resume' } } }
+      : device);
+    const updated = { ...plan, devices };
+    Homey.__stub.setApiHandler('GET /ui_plan', () => ({ plan: updated }));
+    Homey.__stub.emitHomeyEvent('plan_updated', updated);
+  });
+  const title = 'Power reading is from before switch-off';
+  const warning = card.getByRole('button', { name: title, exact: true });
+  await expect(warning).toBeVisible();
+  await expect(card).toContainText('Last reported 2.8 kW');
+  await expect(card).toContainText('Waiting to resume');
+  await card.screenshot({ path: testInfo.outputPath('overview-power-reading-warning.png') });
+  await warning.click();
+  const dialog = page.locator('.plan-card__control-warning-dialog');
+  const modal = page.getByRole('dialog');
+  await expect(modal).toBeVisible();
+  await expect(dialog).toContainText(title);
+  expect(await modal.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await modal.screenshot({ path: testInfo.outputPath('overview-power-reading-dialog.png') });
+  await expect(page.locator('#device-detail-overlay')).not.toBeVisible();
+  await dialog.getByRole('button', { name: 'Open device', exact: true }).click();
+  await expect(page.locator('#device-detail-overlay')).toBeVisible();
+});
 
 test.describe('A device that does not keep what PELS sets', () => {
   test('keeps the warning keyboard actions separate from a planned device card', async ({ page }, testInfo) => {

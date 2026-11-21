@@ -35,6 +35,7 @@ import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
 import { OverviewControlWarningIcon } from './OverviewControlWarning.tsx';
+import { OverviewDeviceWarningIcon } from './OverviewDeviceWarning.tsx';
 import { openContextualProblemReport } from '../problemReportAction.ts';
 
 const stopActivation = (event: Event): void => {
@@ -277,7 +278,7 @@ const PlanCardStatusChipView = ({
 };
 
 type ProgressEl = HTMLElement & { value?: number };
-type PowerReadout = { text: string; variant: 'live' | 'expected' | 'reported' };
+type PowerReadout = { text: string; variant: PlanDeviceSnapshot['status']['powerVariant'] };
 
 const CooldownProgress = ({
   remainingSec,
@@ -357,6 +358,13 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, 
         </div>
         <div class="plan-card__chips">
           {warning && <OverviewControlWarningIcon key={warning.recommendation.version} warning={warning} />}
+          {dev.status.powerVariant === 'before_switch_off' && (
+            <OverviewDeviceWarningIcon
+              title="Power reading is from before switch-off"
+              body="The device reported this power before Homey showed it was off. The figure updates when the device sends another reading."
+              onOpenDevice={() => dispatchOpenDeviceDetail(dev.id, 'top')}
+            />
+          )}
           {leadingChip}
           <PlanCardStatusChipView dev={dev} displayKind={stateKind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />

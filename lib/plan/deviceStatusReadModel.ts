@@ -59,6 +59,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   standingCommandGrant: boolean;
   /** The plan had a power reading for the device (`isMeteredPlanDevice`), which authority also takes. */
   hasPowerReading: boolean;
+  /** The observer's last live device power reading when it predates switch-off. */
+  powerBeforeSwitchOffKw: number | undefined;
   /** The device owner's resolved Homey Energy setup requirement. */
   powerSetupRequired: boolean;
   carIdentificationState: CarIdentificationState;
@@ -118,11 +120,7 @@ function resolveReportedLoadReason(device: DeviceStatusInput, held: boolean, dry
     detail: readDeviceReasonDetail(device.reason), dryRun });
 }
 
-function resolveBinaryReason(
-  device: DeviceStatusInput, kind: PlanStateKind, held: boolean, dryRun: boolean,
-): string | null {
-  const reported = resolveReportedLoadReason(device, held, dryRun);
-  if (reported) return reported;
+function resolveBinaryReason(device: DeviceStatusInput, kind: PlanStateKind, held: boolean): string | null {
   const surplus = resolveBinarySurplusReasonLine(device, kind);
   if (surplus) return surplus;
   if (device.reason.code === PLAN_REASON_CODES.externalOffHold && device.currentState !== 'off') return null;
@@ -156,7 +154,7 @@ function resolveUnansweredStepLine(device: DeviceStatusInput, dryRun: boolean): 
   return UNANSWERED_STEP_LINES[device.unusedBuiltInControl];
 }
 
-function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | null {
+function resolveReason(device: DeviceStatusInput, dryRun: boolean, powerPredatesSwitchOff: boolean): string | null {
   const kind = resolveBaseKind(device);
   const held = resolveIntentStateKind({ kind, reasonCode: device.reason.code,
     starved: device.starvation?.isStarved === true }) === 'held';
@@ -175,7 +173,8 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
       ) : null);
   }
   if (device.temperature) return resolveTemperatureReasonLine(resolved, dryRun);
-  return resolveBinaryReason(device, kind, held, dryRun);
+  const reported = powerPredatesSwitchOff ? null : resolveReportedLoadReason(device, held, dryRun);
+  return reported ?? resolveBinaryReason(device, kind, held);
 }
 
 const ADDITIONAL_SIMULATION_POWER_HOLDS: ReadonlySet<string> = new Set([
@@ -243,12 +242,14 @@ const resolvePhaseSettingOffer = (device: DeviceStatusInput): { offersPhaseSetti
     ? { offersPhaseSetting: true } : {}
 );
 
-function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
+function buildReason(
+  device: DeviceStatusInput, dryRun: boolean, nowMs: number, powerPredatesSwitchOff: boolean,
+): DeviceStatus['reason'] {
   const simulatedAction = dryRun ? resolveSimulatedActionLine(device) : null;
   if (simulatedAction) {
     return { text: simulatedAction, ...resolvePhaseSettingOffer(device), ...resolveCarConfirmationOffer(device) };
   }
-  const ordinary = buildOrdinaryReason(device, dryRun, nowMs);
+  const ordinary = buildOrdinaryReason(device, dryRun, nowMs, powerPredatesSwitchOff);
   if (!dryRun || ordinary !== null) return ordinary;
   const target = resolveOrdinarySimulatedTargetLine(device);
   return target === null ? null : { text: target };
@@ -306,12 +307,14 @@ function buildUnansweredStepReason(device: DeviceStatusInput, dryRun: boolean, n
   };
 }
 
-function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
+function buildOrdinaryReason(
+  device: DeviceStatusInput, dryRun: boolean, nowMs: number, powerPredatesSwitchOff: boolean,
+): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
   if (kind === 'unavailable' || kind === 'manual') return resolveNotControlledReason(device, kind);
   const unansweredStep = buildUnansweredStepReason(device, dryRun, nowMs);
   if (unansweredStep) return unansweredStep;
-  let text = resolveReason(device, dryRun);
+  let text = resolveReason(device, dryRun, powerPredatesSwitchOff);
   const identification = resolveCarIdentificationReason(device, text);
   if (identification) return identification;
   let idle;
@@ -377,9 +380,12 @@ function resolvePhysicalFact(device: DeviceStatusInput): string | null {
 }
 
 function resolvePower(
-  device: DeviceStatusInput, limited: boolean, dryRun: boolean,
+  device: DeviceStatusInput, limited: boolean, dryRun: boolean, previousPower: number | undefined,
 ): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
   if (device.powerSetupRequired) return { powerText: null, powerVariant: 'expected' };
+  if (previousPower !== undefined) {
+    return { powerText: `Last reported ${previousPower.toFixed(1)} kW`, powerVariant: 'before_switch_off' };
+  }
   const measuredOnly = device.steppedLoad !== undefined || device.temperature !== undefined;
   const draw = device.currentDrawKw;
   if (limited && !measuredOnly && draw !== undefined && draw > 0.05) {
@@ -395,6 +401,17 @@ function resolvePower(
   }
   return { powerText: device.expectedPowerKw > 0.05
     ? `≈ ${device.expectedPowerKw.toFixed(1)} kW when active` : null, powerVariant: 'expected' };
+}
+
+function resolvePowerBeforeSwitchOff(
+  device: DeviceStatusInput, kind: DeviceStatus['kind'], dryRun: boolean,
+): number | undefined {
+  if (dryRun || kind !== 'held' || !device.binaryControllable || device.isEvCharger
+    || device.powerSetupRequired || device.temperature || device.steppedLoad || device.execution.physicalState !== 'off'
+    || device.execution.binaryProgress === 'pending'
+    || device.reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) return undefined;
+  const power = device.powerBeforeSwitchOffKw;
+  return power !== undefined && power > 0.05 ? power : undefined;
 }
 
 function resolveRail(device: DeviceStatusInput): DeviceStatus['rail'] {
@@ -554,15 +571,17 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');
   const presented = withPresentedTarget(device);
   const draw = device.currentDrawKw;
+  const previousPower = resolvePowerBeforeSwitchOff(device, kind, dryRun);
+  const powerPredatesSwitchOff = previousPower !== undefined;
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
-    ...resolvePower(device, limited, dryRun),
+    ...resolvePower(device, limited, dryRun, previousPower),
     factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reading: resolveReading(presented),
     ...optionalTargetDetail(resolveTargetDetail(presented, dryRun)),
-    reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
+    reason: buildReason(device, dryRun, nowMs, powerPredatesSwitchOff), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
-    canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),
+    canEaseOff: device.controllable && (kind === 'active' || (limited && !powerPredatesSwitchOff && (draw ?? 0) > 0)),
     controlOffDrawing: !device.controllable && (draw ?? 0) > 0,
     holdCause: resolveHoldCause(device),
     ...(device.reason.code === PLAN_REASON_CODES.phaseLimit ? { heldForPhase: device.reason.phase } : {}),

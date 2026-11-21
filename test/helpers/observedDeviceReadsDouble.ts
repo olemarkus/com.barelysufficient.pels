@@ -28,6 +28,7 @@ export const noPlanServiceObservedReads: PlanServiceObservedReads = {
   getObservedEvChargingState: () => ({ kind: 'absent' }),
   getObservedStateOfCharge: () => ({ kind: 'absent' }),
   getObservedTemperature: () => ({ kind: 'absent' }),
+  getPowerBeforeSwitchOffKw: () => undefined,
   getThermalDirection: () => 'heating',
 };
 
@@ -49,6 +50,7 @@ export const observedDeviceReadsDouble = (
   getObservedRecord: vi.fn(getRecord),
   getObservedStateOfCharge: vi.fn((deviceId: string) => readObservedStateOfCharge(getRecord(deviceId))),
   getObservedTemperature: vi.fn((deviceId: string) => readObservedTemperatureState(getRecord(deviceId))),
+  getPowerBeforeSwitchOffKw: vi.fn(() => undefined),
   getObservedEvChargingState: vi.fn((deviceId: string) => readObservedEvChargingState(getRecord(deviceId))),
   getThermalDirection: vi.fn((deviceId: string): ThermalDirection => {
     const record = getRecord(deviceId);

@@ -682,14 +682,41 @@ describe('settingsOverviewReadModel', () => {
     expect(wire.status.factText).toBe(factText);
   });
 
-  it('keeps the cooldown ring when the reported-load line replaces the timed reason', () => {
-    const device = buildPlanDevice({ id: 'heater', currentState: 'on', plannedState: 'shed', currentDrawKw: 1.2,
-      reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30, countdownStartedAtMs: 0,
-        countdownTotalSec: 60 } });
-    const wire = buildDeviceCard(device, absentTemperature);
-    expect(wire.status.reason?.text).not.toMatch(/\d+s/);
-    expect(wire.status.reason?.countdown).toEqual({ kind: 'beside_text', endsAtMs: 60_000, totalSec: 60 });
+  it('offers an Overview warning when the device power predates its switch-off', () => {
+    const heldOff = (currentDrawKw: number) => buildPlanDevice({
+      id: 'heater', currentState: 'off', plannedState: 'shed', currentDrawKw,
+      reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 1 },
+    });
+    const device = heldOff(2.817);
+    const observed = { ...noPlanServiceObservedReads,
+      getPowerBeforeSwitchOffKw: (id: string) => id === device.id ? 2.817 : undefined };
+    const stale = buildDeviceCard(device, { ...absentTemperature, observed });
+    expect(stale.status).toMatchObject({
+      label: 'Limited · Off', powerText: 'Last reported 2.8 kW', powerVariant: 'before_switch_off',
+      reason: { text: 'Waiting to resume — 1.0 kW more needed' }, canEaseOff: false,
+    });
+
+    const fresh = buildDeviceCard(device, absentTemperature);
+    expect(fresh.status.reason?.text).toBe('Still drawing 2.8 kW — this still counts toward your usage');
+    expect(fresh.status).toMatchObject({ powerVariant: 'reported', canEaseOff: true });
+
+    const stopped = buildDeviceCard(heldOff(0), absentTemperature);
+    expect(stopped.status.reason?.text).not.toMatch(/^Still drawing|Power reading is from/u);
   });
+
+  it.each([false, true])('keeps the cooldown ring on a reported-load line (reading predates switch-off: %s)',
+    (powerPredatesSwitchOff) => {
+      const device = buildPlanDevice({ id: 'heater', currentState: powerPredatesSwitchOff ? 'off' : 'on',
+        plannedState: 'shed', currentDrawKw: 1.2,
+        reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30, countdownStartedAtMs: 0,
+          countdownTotalSec: 60 } });
+      const observed = { ...noPlanServiceObservedReads,
+        getPowerBeforeSwitchOffKw: () => powerPredatesSwitchOff ? 1.2 : undefined };
+      const wire = buildDeviceCard(device, { ...absentTemperature, observed });
+      expect(wire.status.reason?.countdown).toMatchObject({
+        kind: powerPredatesSwitchOff ? 'in_text' : 'beside_text', endsAtMs: 60_000, totalSec: 60,
+      });
+    });
 
   it('reads an off device the plan would resume, held by a hold reason, as limited', () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'keep',
