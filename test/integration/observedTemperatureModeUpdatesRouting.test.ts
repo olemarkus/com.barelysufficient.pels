@@ -51,6 +51,7 @@ describe('observed temperature mode updates ask the owning home whether a device
       getOwningHomeRouteForDevice: () => route,
     });
     const wiring = new AppServiceWiring(partialDouble<AppServiceWiringDeps>({
+      readPreparedTemperatureC: () => null,
       ctx,
       getHomeOperatingMode: () => getHomeModeCatalogForTest(ctx).getOperatingMode(),
       getPrioritiesForDevices: (ids) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(ids),

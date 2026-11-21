@@ -331,7 +331,7 @@ function createBundlePlanningRuntime(
     scope,
     // Home-battery control is Main only (v1): a meter area builds no storage lane.
     { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' }, controlContests,
-      getChargingPhasePauseTarget: () => undefined },
+      getPreparedModeTargets: () => new Map(), getChargingPhasePauseTarget: () => undefined },
   );
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline(
     ctx, scope, timerKey, planEngine, planService, guard, tracker,

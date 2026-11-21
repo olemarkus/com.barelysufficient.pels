@@ -23,6 +23,17 @@ const ENERGY: SmartTaskCandidateDevice = {
 const MODES = ['Home', 'Away', 'Night'];
 
 describe('Schedule composition', () => {
+  it('saves mode preparation as an opt-in and restores it when editing', () => {
+    const draft = createScheduleDraft(undefined, 'Home', '2026-11-02', []);
+    expect(buildScheduleFromDraft(draft, [], MODES, [])).toMatchObject({
+      ok: true, schedule: { action: { type: 'mode', mode: 'Home' } },
+    });
+    const saved = buildScheduleFromDraft({ ...draft, prepareMode: true }, [], MODES, []);
+    if (!saved.ok) throw new Error(saved.error);
+    expect(saved.schedule.action).toEqual({ type: 'mode', mode: 'Home', prepare: true });
+    expect(editScheduleDraft(saved.schedule, '2026-11-03').prepareMode).toBe(true);
+  });
+
   it('keeps selected action days separate from an overnight ready-by time', () => {
     const draft = createScheduleDraft(HEATER, 'Home', '2026-11-02', []);
     draft.repeat = 'custom';

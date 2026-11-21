@@ -1,5 +1,5 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type { PreparedModeTarget, PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 import type {
   DevicePlanDevice, LooseDevicePlanDevice, MeteredDiscriminantProbe, PlanInputDevice, ShedAction, ShedBehavior,
   SteppedLoadKind, TemperatureKind,
@@ -226,6 +226,7 @@ export type BasePlanDeviceInputs = {
   priceTargetShift: PriceTargetShift;
   /** A temperature override is in force (`DevicePlanDevice.temporaryTemperatureActive`). */
   temporaryTemperatureActive: boolean;
+  modePreparation?: PreparedModeTarget;
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
    * or undefined for every other device. A ceiling on the keep step, never a
@@ -237,7 +238,8 @@ export type BasePlanDeviceInputs = {
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const {
-    dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift, temporaryTemperatureActive,
+    dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift,
+    temporaryTemperatureActive, modePreparation,
   } = inputs;
   const { currentState } = dev;
   const decision = resolvePlannedDeviceDecision(inputs);
@@ -320,6 +322,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
       plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
     } satisfies TemperatureKind);
     loose.temporaryTemperatureActive = temporaryTemperatureActive;
+    loose.modePreparation = modePreparation;
   }
   // The stepped cluster as a UNIT, for the reason above: `SteppedLoadKind`
   // requires all three, so dropping one here is a local compile error rather

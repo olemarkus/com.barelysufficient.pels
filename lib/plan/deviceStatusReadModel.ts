@@ -10,7 +10,7 @@ import type { DeviceExecutionState } from '../planContract/deviceExecutionState'
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
-import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type { PreparedModeTarget, PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { AdapterUnavailableStatus, DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
 import { isBuiltInSteppedLoadControlEnabled } from '../device/deviceActionProjection';
 import type { UnusedBuiltInControl } from '../device/builtInControlFlowGate';
@@ -72,6 +72,7 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   priceTargetShift: PriceTargetShift;
   /** The plan device's own fact (`DevicePlanDevice.temporaryTemperatureActive`), spread in with it. */
   temporaryTemperatureActive?: boolean;
+  modePreparation?: PreparedModeTarget;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
 } & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>
@@ -187,7 +188,11 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean, powerPredates
         resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
       ) : null);
   }
-  if (device.temperature) return resolveTemperatureReasonLine(resolved, dryRun);
+  if (device.temperature) {
+    const reason = resolveTemperatureReasonLine(resolved, dryRun);
+    if (reason !== null || dryRun || held || device.execution.externalOffHeld || !device.modePreparation) return reason;
+    return `Getting ready for ${device.modePreparation.mode} at ${device.modePreparation.at}`;
+  }
   const reported = powerPredatesSwitchOff ? null : resolveReportedLoadReason(device, held, dryRun);
   return reported ?? resolveBinaryReason(device, kind, held);
 }
