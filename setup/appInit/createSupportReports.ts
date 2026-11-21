@@ -15,6 +15,8 @@ import {
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import type { AppContext } from '../../lib/app/appContext';
+import { readMainMeterSelection } from '../mainMeterSettings';
+import { readPowerSourceChoice } from '../powerSourceChoice';
 import { requireDeviceManager, requireHomeMembership, requirePlanService } from './contextGuards';
 
 export type SupportReportApp = Pick<PelsHost,
@@ -48,6 +50,8 @@ export const createSupportReportReads = (
   getDeviceLogUiPayload: () => app.getDeviceLogUiPayload(),
   getLatestPlanSnapshotForUi: () => app.getLatestPlanSnapshotForUi(),
   getCapacityScalars: () => app.getCapacityScalars(),
+  readPowerSourceChoice: () => readPowerSourceChoice(objectiveSettings),
+  readMainMeterSelection: () => readMainMeterSelection(objectiveSettings),
   getPhaseReadingEvidence: () => ({
     reading: app.capacityGuard.phaseReadings.current(),
     meterCapabilityIds: app.capacityGuard.phaseReadings.meterCapabilityIds(),

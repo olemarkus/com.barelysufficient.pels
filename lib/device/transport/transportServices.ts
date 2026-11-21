@@ -113,6 +113,9 @@ export class RealtimeIngestService {
     const { deviceId, capabilityId } = source
       ? getDeviceAdapter(source).routeReport(source, reportedCapabilityId)
       : { deviceId: homeyDeviceId, capabilityId: reportedCapabilityId };
+    if (echoed !== undefined && this.reader.shouldTrackRealtimeDevice(deviceId)) {
+      this.observationProducers.temperature.observeTimedOutEcho(deviceId, echoed.transactionId, Date.now());
+    }
     // Keep accepted source fields current before a later whole-device read can
     // retain them. Follow the step lane's echo policy: native current echoes
     // are accepted observations; other local writes are not.

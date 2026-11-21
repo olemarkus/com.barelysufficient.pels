@@ -108,7 +108,16 @@ boot `console.error` (`setup/api/defineRoutes.ts`) is the one exemption, by name
   nor `succeeded` is true. The command stays pending and telemetry settles it.
 - `target_command_applied`
 - `target_command_skipped`
-- `target_command_failed`
+- `target_command_failed` — `control_request_rejected` carries Homey's HTTP
+  status. `device_manager_write_failed` covers other command errors whose HTTP
+  outcome is unknown.
+- `target_command_outcome_unknown` — the target write timed out, with
+  `targetCommandId` for joining Homey's late response to the attempt.
+- `target_command_echoed_after_timeout` — Homey echoed the matching write
+  transaction. The echo acknowledges the request.
+- `target_command_observed_after_timeout` — an independent realtime capability
+  report matched the target after the latest attempt timed out. Matching
+  observations show what the device reported and do not identify who set it.
 - `stepped_load_command_requested`
 - `stepped_load_command_skipped`
 - `stepped_load_command_failed`
@@ -123,7 +132,9 @@ boot `console.error` (`setup/api/defineRoutes.ts`) is the one exemption, by name
 - `homey_request_late_response` — a request the caller abandoned was answered
   anyway. `failed_after_abandon` carries the owning app's own error body (this is
   the only place a cloud device's real failure is visible); `landed_after_abandon`
-  means the write went through after PELS stopped waiting.
+  means Homey acknowledged the request after PELS stopped waiting. In a
+  temperature write, `targetCommandId` and `transactionId` identify that
+  request. The HTTP response alone does not confirm the device's setpoint.
 - `homey_request_late_failure` — the abandoned request never produced a response.
 - `stepped_load_flow_trigger_unacknowledged` — emitted by the transport for the
   Flow half of the above. Deliberately a distinct name so one occurrence is not

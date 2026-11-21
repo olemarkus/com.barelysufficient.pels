@@ -20,8 +20,10 @@ export type {
   PowerSourceSettingSuspectReason,
 } from '../ports/configuredPowerSource';
 
+export const DEFAULT_POWER_SOURCE: PowerSource = 'flow';
+
 export const normalizePowerSource = (value: unknown): PowerSource => (
-  value === 'homey_energy' ? 'homey_energy' : 'flow'
+  value === 'homey_energy' ? 'homey_energy' : DEFAULT_POWER_SOURCE
 );
 
 // There is deliberately NO source→capability predicate here any more.
@@ -56,14 +58,16 @@ export type PowerSourceSettingEvidence = {
  * malformed non-null value counts as a choice and normalizes to Flow);
  * `unset` is a key the key list does not carry, so never written;
  * `suspect` is a listed key that reads back empty. This
- * is the one question `classifyPowerSourceSetting` collapses (unset runs as
- * Flow), asked by the one caller that must not collapse it: the boot-time
- * sole-meter adoption adopts only where nothing was chosen.
+ * is the distinction `classifyPowerSourceSetting` collapses (unset runs as
+ * Flow) and that onboarding and diagnostics retain.
  */
 export type PowerSourceChoiceClassification =
   | { state: 'chosen'; value: PowerSource }
   | { state: 'unset' }
   | { state: 'suspect'; reason: PowerSourceSettingSuspectReason };
+
+/** Owner's source choice, including a failure at the settings I/O boundary. */
+export type PowerSourceChoiceRead = PowerSourceChoiceClassification | { state: 'suspect'; reason: 'read_failed' };
 
 export const classifyPowerSourceChoice = (
   evidence: PowerSourceSettingEvidence,
@@ -86,5 +90,5 @@ export const classifyPowerSourceSetting = (
 ): PowerSourceSettingClassification => {
   const choice = classifyPowerSourceChoice(evidence);
   if (choice.state === 'suspect') return choice;
-  return { state: 'resolved', value: choice.state === 'chosen' ? choice.value : 'flow' };
+  return { state: 'resolved', value: choice.state === 'chosen' ? choice.value : DEFAULT_POWER_SOURCE };
 };

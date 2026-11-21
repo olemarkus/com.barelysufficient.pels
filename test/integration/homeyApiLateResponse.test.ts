@@ -4,6 +4,7 @@ import type Homey from 'homey';
 import type { MockInstance } from 'vitest';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { initHomeyHttpClient, setRawCapabilityValue } from '../../lib/device/transport/managerHomeyApi';
+import { runWithContext } from '../../lib/logging/alsContext';
 
 /**
  * The caller's deadline is not the point at which PELS stops listening.
@@ -81,7 +82,7 @@ describe('Homey HTTP transport — answers that arrive after the caller gave up'
     }, { timeout: 3_000 });
   });
 
-  it('distinguishes a write that LANDED after PELS stopped waiting', async () => {
+  it('correlates a late thermostat acknowledgement to the request that timed out', async () => {
     respond = (_req, res) => {
       setTimeout(() => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -89,15 +90,18 @@ describe('Homey HTTP transport — answers that arrive after the caller gave up'
       }, 250);
     };
 
-    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2', 'pels-tx')).rejects.toThrow(/timed out/);
+    const context = { targetCommandId: 'thermostat-attempt', transactionId: 'pels-tx' };
+    await expect(runWithContext(context, () => (
+      setRawCapabilityValue('dev-1', 'target_temperature', 20, context.transactionId)
+    ))).rejects.toThrow(/timed out/);
 
-    // A late 2xx is the one fact an unknown outcome cannot otherwise learn: the
-    // hub was slow, not refusing, and the device did move.
+    // The HTTP answer is independent of any later device setpoint evidence.
     await vi.waitFor(() => {
       expect(logCapture.events).toContainEqual(expect.objectContaining({
         event: 'homey_request_late_response',
         reasonCode: 'landed_after_abandon',
         statusCode: 200,
+        ...context,
       }));
     }, { timeout: 3_000 });
   });

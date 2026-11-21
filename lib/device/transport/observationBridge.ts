@@ -38,6 +38,7 @@ export class ObservationBridge {
 
   /** Admission withdrew the device; no fabricated observation replaces it. */
   dispatchStateRemoved(deviceId: string): void {
+    this.temperatureAdjustments.forgetTimedOutCommand(deviceId);
     this.dispatchStateChanged({
       source: 'device_update', deviceId, removed: true, ...this.nextCursor(deviceId),
     });
@@ -79,6 +80,7 @@ export class ObservationBridge {
   }
 
   dispatchControlReported(report: ControlReported): void {
+    this.temperatureAdjustments.observeTimedOutCommand(report);
     this.dispatcher.controlReported(report);
   }
 

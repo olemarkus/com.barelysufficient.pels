@@ -55,6 +55,29 @@ const describeEnergySettings = (device: HomeyDeviceLike): { [key: string]: Suppo
 
 const optionalText = (value: unknown): SupportReportValue => (typeof value === 'string' ? toReportValue(value) : null);
 
+export type HomeyDeviceInventoryRead =
+  | { state: 'available'; devices: readonly HomeyDeviceLike[] }
+  | { state: 'unavailable' };
+
+export const readHomeyDeviceInventory = async (
+  list: () => Promise<readonly HomeyDeviceLike[]>,
+): Promise<HomeyDeviceInventoryRead> => {
+  try {
+    return { state: 'available', devices: await list() };
+  } catch {
+    return { state: 'unavailable' };
+  }
+};
+
+/** Only the identifying fields needed to associate a configured meter with its integration. */
+export const describeSupportReportMeter = (inventory: HomeyDeviceInventoryRead, deviceId: string) => {
+  const device = inventory.state === 'available' ? inventory.devices.find((entry) => entry.id === deviceId) : undefined;
+  return {
+    deviceId,
+    ...(device ? { name: toReportValue(device.name), ownerUri: toReportValue(device.ownerUri) } : {}),
+  };
+};
+
 /** A device support request's account of one device: its name and what Homey reports about it. */
 export type HomeyDeviceSupportDescription = { name: string; section: SupportReportSection };
 

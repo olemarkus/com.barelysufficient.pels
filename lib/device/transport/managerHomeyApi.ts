@@ -5,6 +5,7 @@ import type { Logger, RawHomeyDeviceLike } from '../../utils/types';
 import { HomeyRequestTimeoutError, normalizeError } from '../../utils/errorUtils';
 import { HomeyHttpStatusError } from '../../utils/homeyHttpStatusError';
 import { getLogger } from '../../logging/logger';
+import { bindCurrentContext } from '../../logging/alsContext';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
 export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
@@ -62,10 +63,9 @@ const lateResponseLogger = getLogger('device/transport');
  * The answer to a request the caller already gave up on.
  *
  * This is the only place a cloud-backed device's real failure is observable, so
- * it is logged at warn even when the status is a success: a late 2xx means the
- * write LANDED after PELS stopped waiting, which is the one fact an unknown
- * outcome can never learn on its own, and it is the difference between "the hub
- * refused" and "the hub was merely slow".
+ * it is logged at warn even when the status is a success. An HTTP response
+ * distinguishes a rejection from a slow acknowledgement. It does not report
+ * the device's actual setpoint.
  */
 function logLateResponse(params: {
   method: string;
@@ -75,10 +75,10 @@ function logLateResponse(params: {
   startedAtMs: number;
 }): void {
   const { method, urlPath, statusCode, raw, startedAtMs } = params;
-  const landed = statusCode !== undefined && statusCode < 400;
+  const accepted = statusCode !== undefined && statusCode < 400;
   lateResponseLogger.warn({
     event: 'homey_request_late_response',
-    reasonCode: landed ? 'landed_after_abandon' : 'failed_after_abandon',
+    reasonCode: accepted ? 'landed_after_abandon' : 'failed_after_abandon',
     method,
     urlPath,
     statusCode: statusCode ?? null,
@@ -286,6 +286,8 @@ function homeyHttpRequest(
     };
 
     const startedAtMs = Date.now();
+    // A reused socket can invoke a callback under a different operation's context.
+    const logInRequestContext = bindCurrentContext();
     let abandoned = false;
     let abandonTimer: ReturnType<typeof setTimeout> | undefined;
     const stopListening = (): void => {
@@ -305,9 +307,9 @@ function homeyHttpRequest(
         // owning app's real error is ever visible — so log it and stop.
         if (abandoned) {
           stopListening();
-          logLateResponse({
+          logInRequestContext(() => logLateResponse({
             method, urlPath, statusCode: res.statusCode, raw, startedAtMs,
-          });
+          }));
           return;
         }
         if (!res.statusCode || res.statusCode >= 400) {
@@ -329,7 +331,7 @@ function homeyHttpRequest(
     req.on('error', (error: Error) => {
       if (abandoned) {
         stopListening();
-        logLateFailure({ method, urlPath, error, startedAtMs });
+        logInRequestContext(() => logLateFailure({ method, urlPath, error, startedAtMs }));
         return;
       }
       reject(error);
@@ -346,9 +348,8 @@ function homeyHttpRequest(
       // killing the request at our own deadline meant that error never reached
       // a log. Nothing downstream waits on this — the promise is already
       // rejected and the caller has moved on — it stays open purely so the
-      // answer can be recorded, and a late 2xx tells us the write LANDED after
-      // we stopped waiting, which is the one thing an unknown outcome cannot
-      // otherwise learn.
+      // answer can be recorded. A late 2xx tells us Homey acknowledged the
+      // request after we stopped waiting.
       abandonTimer = setTimeout(() => {
         req.destroy();
       }, LATE_RESPONSE_ABANDON_MS);

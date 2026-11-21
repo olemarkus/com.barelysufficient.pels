@@ -23,6 +23,9 @@ import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceAc
 import { makeFlowBackedBinaryTrigger } from '../../setup/appInit/buildDeviceActuator';
 import { NativeSteppedLoadCommandAdapters } from '../../lib/device/managerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
+import { getCurrentContext } from '../../lib/logging/alsContext';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
@@ -1460,6 +1463,55 @@ describe('PlanExecutor pending target commands', () => {
       desired: 23,
       skipContext: 'plan',
     }));
+  });
+
+  it.each([
+    {
+      label: 'timeout',
+      error: new HomeyRequestTimeoutError('PUT', '/target'),
+      event: 'target_command_outcome_unknown',
+      reasonCode: 'control_request_timed_out',
+    },
+    {
+      label: 'HTTP rejection',
+      error: new HomeyHttpStatusError(500, 'Rejected'),
+      event: 'target_command_failed',
+      reasonCode: 'control_request_rejected',
+      statusCode: 500,
+    },
+  ])('distinguishes a target $label without changing retry suppression', async ({
+    error, event, reasonCode, statusCode,
+  }) => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'Heater',
+      expectedPowerKw: 1,
+      binaryCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      binaryControl: { on: true },
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    }]);
+    let targetCommandId: unknown;
+    deviceManager.setCapability.mockImplementation(async () => {
+      targetCommandId = getCurrentContext().targetCommandId;
+      throw error;
+    });
+    const plan = buildExecutionPlan(buildTargetPlan());
+
+    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(plan);
+
+    expect(targetCommandId).toEqual(expect.any(String));
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({ status: 'temporary_unavailable', retryCount: 0 });
+    const outcome = logCapture.findEvent(event);
+    expect(outcome).toMatchObject({ reasonCode, targetCommandId, desired: 23 });
+    expect(outcome?.statusCode).toBe(statusCode);
+    if (event === 'target_command_outcome_unknown') {
+      expect(logCapture.findEvent('target_command_failed')).toBeUndefined();
+    }
   });
 
   it('logs restore skips when the target snapshot is missing', async () => {

@@ -1,6 +1,7 @@
 import type { PowerFigureCheckEntry } from '../device/powerFigureCheck';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetUiRead } from '../../packages/contracts/src/dailyBudgetTypes';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import type {
   SettingsUiDeviceActivityEntry,
@@ -16,7 +17,9 @@ import type {
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 import type { DeviceObjectiveProfile } from '../../packages/contracts/src/objectiveProfileTypes';
-import { reportHomeyDevices, type HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
+import {
+  readHomeyDeviceInventory, reportHomeyDevices, type HomeyDeviceInventoryRead, type HomeyDeviceSupportDescription,
+} from './homeyDeviceSupportSection';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
 import {
   captureDeviceDiagnosticConfiguration,
@@ -28,10 +31,12 @@ import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../home/membership';
 import type { DevicePlan } from '../plan/planTypes';
+import type { PowerSourceChoiceRead } from '../power/powerSource';
 import type { HomeyDeviceLike } from '../utils/types';
 import { selectSupportReportActivity, supportReportWindow } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
 import { LEARNED_RATES_REPORT_TITLE, reportLearnedRates } from './supportReportLearnedRates';
+import { reportAreaPowerSource, reportMainPowerSource } from './supportReportPowerSource';
 import {
   reportCapacitySettings, reportEvChargers, reportPhaseReading, type PhaseReadingEvidence,
   reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
@@ -75,6 +80,8 @@ export type SupportReportReads = {
   getDeviceLogUiPayload(): SettingsUiDeviceLogPayload;
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null;
   getCapacityScalars(): CapacityScalarSettings;
+  readPowerSourceChoice(): PowerSourceChoiceRead;
+  readMainMeterSelection(): MainMeterSelection;
   getPhaseReadingEvidence(): PhaseReadingEvidence;
   getDailyBudgetUiPayload(): DailyBudgetUiRead;
   readPriceSetup(): PriceSetupRead;
@@ -159,22 +166,14 @@ const readInventoryConfiguration = (
   }
 };
 
-const readHomeyDevicesSection = async (
-  host: SupportReportReads, subject: SupportReportSubject,
-): Promise<SectionRead> => {
-  try {
-    const devices = await host.listHomeyDevices();
-    return {
-      state: 'available',
-      section: reportHomeyDevices(
-        devices, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed),
-        (deviceId) => readInventoryConfiguration(host, subject, deviceId),
-      ),
-    };
-  } catch {
-    return { state: 'unavailable', reason: 'Current Homey devices is unavailable.' };
-  }
-};
+const readHomeyDevicesSection = (
+  host: SupportReportReads, subject: SupportReportSubject, inventory: HomeyDeviceInventoryRead,
+): SectionRead => readSection('Current Homey devices', () => (
+  inventory.state === 'available' ? reportHomeyDevices(
+    inventory.devices, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed),
+    (deviceId) => readInventoryConfiguration(host, subject, deviceId),
+  ) : null
+));
 
 /** The device's latest retained activity row at or before `atMs`. */
 const latestActivity = (
@@ -581,7 +580,7 @@ export class SupportReportEvidenceSource {
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
     // Read before the log, which gives up the room these take.
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
-    const homeyDevices = await readHomeyDevicesSection(host, request.subject);
+    const inventory = await readHomeyDeviceInventory(() => host.listHomeyDevices());
     const appMemory = await readAppMemorySection(host);
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
@@ -591,8 +590,11 @@ export class SupportReportEvidenceSource {
       ...heating,
       ...readPowerFigureChecksSection(host, request, capturedAtMs),
       ...readHomeSections(host, request.subject.homeId, plan, area),
+      readSection('Current power source', () => request.subject.homeId === MAIN_HOME_ID
+        ? reportMainPowerSource(host.readPowerSourceChoice(), host.readMainMeterSelection, inventory)
+        : reportAreaPowerSource(area, inventory)),
       ...readPriceSections(host, capturedAtMs),
-      homeyDevices,
+      readHomeyDevicesSection(host, request.subject, inventory),
       ...appMemory,
     ];
     return {

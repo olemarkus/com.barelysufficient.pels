@@ -48,6 +48,7 @@ import type { TransportObservationState } from './transportObservationState';
 import { resolveInverterControl } from './solarInverterObservation';
 import { inverterBindingsMatch, inverterRestorationLimitW } from '../../planContract/inverterDecision';
 import { FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS, awaitFlowTriggerAcceptance } from './flowTriggerAcceptance';
+import { sendWithTemperatureWriteEvidence } from './temperatureCapabilityWrite';
 
 const emitTransportDebug = getDebugEmitter('devices', 'devices');
 
@@ -262,9 +263,6 @@ export class DeviceWriteService {
     }
     const { write, readBackAsWritten } = sdkWrite;
 
-    if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
-        this.observationProducers.temperature.recordCommand(deviceId, normalizedValue, Date.now());
-    }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
     // The Homey device behind the view: the write and its echo are the Homey device's.
@@ -277,7 +275,10 @@ export class DeviceWriteService {
         normalizedValue,
         write,
     );
-    await this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId);
+    await sendWithTemperatureWriteEvidence(
+      this.observationProducers.temperature, this.snapshotStore, deviceId, requested, ownWrite,
+      () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId),
+    );
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,
