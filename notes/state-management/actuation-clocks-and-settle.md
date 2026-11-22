@@ -324,8 +324,8 @@ respond, not a promise of zero electrical draw. Grid pressure and draw above the
 actual-cap projection permanently withdraw that credit and continue to direct
 electrical controls. The withdrawn latch still owns its historical place in
 aggregate-fall attribution while later credits need ordering; this cannot restore
-its usable credit. A target echo changes neither this policy nor command
-confirmation. Urgent selection answers the physical deficit first; a larger
+its usable credit. A target echo confirms the setpoint command
+(`echoSettlesWrite`) but does not change this policy. Urgent selection answers the physical deficit first; a larger
 daily-pace deficit remains for the next meter-driven decision. The exhausted
 period's directive retains its own sizing.
 

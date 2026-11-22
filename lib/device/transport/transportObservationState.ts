@@ -5,7 +5,8 @@
  */
 import type { BinaryControlObservation } from '../../../packages/contracts/src/types';
 import { createObservationState, type DeviceTransportObservationState } from './observationState';
-import { OwnCapabilityWrites } from './ownCapabilityWrites';
+import { OwnCapabilityWrites, type OwnCapabilityWrite } from './ownCapabilityWrites';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { cloneBinaryControlObservation } from './transportTypes';
 
 /**
@@ -80,8 +81,18 @@ export class TransportObservationState {
     }
   }
 
-  /** A device PELS wrote, once Homey answered the write, for the read that confirms it landed. */
-  noteDeviceWritten(deviceId: string): void {
+  /**
+   * A write to `deviceId`'s `capabilityId` that Homey answered. Unless its echo
+   * already settled it (`OwnCapabilityWrites.settledByEcho`), the device waits
+   * for the read that confirms the write landed.
+   */
+  noteWriteAnswered(
+    deviceId: string,
+    write: OwnCapabilityWrite,
+    snapshot: TransportDeviceSnapshot | undefined,
+    capabilityId: string,
+  ): void {
+    if (snapshot !== undefined && this.ownWrites.settledByEcho(write, snapshot, capabilityId)) return;
     this.writtenDeviceIdsSinceRead.add(deviceId);
   }
 
@@ -92,6 +103,11 @@ export class TransportObservationState {
    */
   noteCommandOnUnnamedDevices(): void {
     this.commandOnUnnamedDevicesSinceRead = true;
+  }
+
+  /** Whether a command since the last read still needs one to confirm it: one its echo did not settle. */
+  hasCommandAwaitingRead(): boolean {
+    return this.commandOnUnnamedDevicesSinceRead || this.writtenDeviceIdsSinceRead.size > 0;
   }
 
   /** What PELS commanded since the last call (`WrittenSinceRead`), which empties it. */

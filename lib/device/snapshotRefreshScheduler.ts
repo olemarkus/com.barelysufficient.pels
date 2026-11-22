@@ -162,11 +162,26 @@ export class SnapshotRefreshScheduler {
     return this.timers.has('postActuationRefresh');
   }
 
+  /**
+   * Read the devices a command needs confirmed. A switch or setpoint write is
+   * confirmed by Homey's echo, which arrives before the write returns, so the
+   * read runs only for what an echo did not settle: a command a Flow card or a
+   * battery app carried out, a write a vendor adapter routed elsewhere, or a
+   * write with no echo (`DeviceTransport.hasCommandAwaitingRead`).
+   */
   schedulePostActuationRefresh(): void {
     if (this.timers.has('postActuationRefresh')) {
       getDebugEmitter('snapshot', 'plan')({
         event: 'post_actuation_refresh_skipped',
         reason: 'already_scheduled',
+      });
+      return;
+    }
+    if (this.getTransport()?.hasCommandAwaitingRead() !== true) {
+      countRefreshCaller('post_actuation_settled_by_echo');
+      getDebugEmitter('snapshot', 'plan')({
+        event: 'post_actuation_refresh_skipped',
+        reason: 'settled_by_echo',
       });
       return;
     }

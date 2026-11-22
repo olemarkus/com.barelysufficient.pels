@@ -5527,7 +5527,37 @@ describe('DeviceTransport', () => {
                 ).toBe(23.5);
             });
 
-            it('suppresses capability echo for own recent writes', async () => {
+            it('needs no read after a setpoint write Homey echoed before answering', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.init();
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                // Homey sends the echo when the driver's listener returns, before the PUT resolves.
+                mockApiPut.mockImplementation(async (_path: string, body: { value: unknown; transactionId: string }) => {
+                    await emitCapability('dev1', 'target_temperature', body.value, body.transactionId);
+                    return {};
+                });
+
+                await deviceManager.setCapability('dev1', 'target_temperature', 16);
+
+                expect(deviceManager.hasCommandAwaitingRead()).toBe(false);
+                expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value)
+                    .toBe(16);
+            });
+
+            it('still needs a read after a setpoint write Homey answered without an echo', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.init();
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                mockApiPut.mockResolvedValue({});
+
+                await deviceManager.setCapability('dev1', 'target_temperature', 16);
+
+                expect(deviceManager.hasCommandAwaitingRead()).toBe(true);
+                await deviceManager.refreshSnapshot({ targetedRefresh: true, writtenDevicesOnly: true, meterDeviceIds: [] });
+                expect(deviceManager.hasCommandAwaitingRead()).toBe(false);
+            });
+
+            it('settles its own setpoint write from the echo, marked as PELS\'s', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
@@ -5544,7 +5574,10 @@ describe('DeviceTransport', () => {
                     'dev1', 'target_temperature', 16, ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature'),
                 );
 
-                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'dev1', pelsEcho: true }));
+                expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value)
+                    .toBe(16);
             });
 
             it('records a timeout echo separately from a later matching thermostat report', async () => {
@@ -5612,7 +5645,7 @@ describe('DeviceTransport', () => {
                         'dev1', 'target_temperature', 16, ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature'),
                     );
 
-                    expect(realtimeListener).not.toHaveBeenCalled();
+                    expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({ pelsEcho: true }));
                 } finally {
                     vi.useRealTimers();
                 }
@@ -5664,7 +5697,7 @@ describe('DeviceTransport', () => {
                 ).toBe(16);
             });
 
-            it('ignores normalized target_temperature echoes until device.update confirms the write', async () => {
+            it('takes the setpoint a target_temperature echo reports, not the value PELS sent', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
@@ -5676,15 +5709,15 @@ describe('DeviceTransport', () => {
                 onObservedControlState(deviceManager, realtimeListener);
 
                 await emitCapability(
-                    'dev1', 'target_temperature', 21.49, ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature'),
+                    'dev1', 'target_temperature', 21, ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature'),
                 );
 
-                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({ pelsEcho: true }));
                 expect(
                     deviceManager.getSnapshot()
                         .find((d) => d.id === 'dev1')
                         ?.targets.find((t) => t.id === 'target_temperature')?.value,
-                ).toBe(20);
+                ).toBe(21);
             });
 
             it('ignores capability events for untracked devices', async () => {
@@ -5837,7 +5870,7 @@ describe('DeviceTransport', () => {
                 }
             });
 
-            it('keeps target_temperature capability echoes suppressed until device.update confirms the write', async () => {
+            it('settles a target_temperature write from its echo, dated when Homey sent it', async () => {
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -5866,27 +5899,15 @@ describe('DeviceTransport', () => {
                     );
 
                     const snapshot = deviceManager.getSnapshot()[0];
-                    expect(snapshot.targets.find((t) => t.id === 'target_temperature')?.value).toBe(23);
-                    // The suppressed echo is no observation: freshness stays at the refresh.
-                    expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:00:00.000Z').getTime());
-                    expect(liveStateListener).not.toHaveBeenCalled();
-                    expect(reconcileListener).not.toHaveBeenCalled();
-
-                    emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
-                        measure_power: 1000,
-                        measure_temperature: celsius(21),
-                        target_temperature: celsius(18),
-                        onoff: true,
-                    }, stampedNow()));
-
-                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value)
-                        .toBe(18);
-                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs)
-                        .toBe(new Date('2026-04-01T12:01:00.000Z').getTime());
-                    expect(liveStateListener).toHaveBeenCalledOnce();
+                    expect(snapshot.targets.find((t) => t.id === 'target_temperature')?.value).toBe(18);
+                    expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:01:00.000Z').getTime());
                     expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
-                        source: 'device_update',
+                        source: 'realtime_capability',
                         deviceId: 'dev1',
+                    }));
+                    expect(reconcileListener).toHaveBeenCalledWith(expect.objectContaining({
+                        deviceId: 'dev1',
+                        pelsEcho: true,
                     }));
                 } finally {
                     vi.useRealTimers();
