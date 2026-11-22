@@ -18,9 +18,10 @@
  *   uses up reads Supplying, and an unread selling hold has stepped to 0 W
  *   (`plan_wait`), so it never reads as selling.
  * - **Not following**: a battery PELS can drive that left a setpoint
- *   unanswered says so in its reason line, whatever its hold, until it answers
- *   one: through the back-off, where PELS holds nothing and its word is Own
- *   mode, and the re-probe after it. Where its app reports running a mode of
+ *   unanswered says so in its reason line, whatever its hold but Power-limit
+ *   control off (PELS asks it nothing then), until it answers one: through
+ *   the back-off, where PELS holds nothing and its word is Own mode, and the
+ *   re-probe after it. Where its app reports running a mode of
  *   its own, the line names it (`HomeBatteryControlMode`).
  * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
  *   control off, the reason line says so: PELS never takes it over, and its
@@ -231,12 +232,14 @@ const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: bool
   // A battery PELS cannot drive says why: its app refused control, or gives
   // Homey no power setting. The same line its device page and device-list
   // row show in place of a Power-limit control.
-  const undrivableLine = isOwnModeHold(hold) ? resolveBatteryUndrivableLine(battery.control) : null;
+  const ownMode = isOwnModeHold(hold);
+  const undrivableLine = ownMode ? resolveBatteryUndrivableLine(battery.control) : null;
   if (undrivableLine !== null) return { text: undrivableLine };
-  // Simulation sends nothing, so nothing goes unanswered.
-  const notFollowingLine = dryRun ? null : resolveNotFollowingLine(battery);
+  // Simulation sends nothing, so nothing goes unanswered. With its Power-limit
+  // control off PELS sends it nothing either, so it is never asked again.
+  const notFollowingLine = dryRun || hold.kind === 'power_limit_off' ? null : resolveNotFollowingLine(battery);
   if (notFollowingLine !== null) return { text: notFollowingLine };
-  if (isOwnModeHold(hold)) {
+  if (ownMode) {
     // One PELS is only simulating has nothing more to say than its own reading.
     if (dryRun) return null;
   } else if (dryRun) {

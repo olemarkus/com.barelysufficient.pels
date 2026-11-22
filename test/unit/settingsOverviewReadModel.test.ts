@@ -1113,6 +1113,13 @@ describe('settingsOverviewReadModel home battery card', () => {
     expect(card.status).toMatchObject({ reason: { text: "Did not follow PELS's request: its app runs AI mode" } });
   });
 
+  it('keeps the Power-limit-off line over a not-following one', () => {
+    const card = buildDeviceCard(batteryDevice({ kind: 'power_limit_off' }), battery({
+      delivery: { kind: 'not_following', controlMode: { kind: 'own', mode: 'AI mode' } },
+    }));
+    expect(card.status).toMatchObject({ reason: { text: 'Power-limit control is off: its own app is in charge' } });
+  });
+
   it('keeps the watch-only line over a not-following one', () => {
     const card = buildDeviceCard(batteryDevice({ kind: 'none' }), battery({
       control: 'watch_only', delivery: { kind: 'not_following', controlMode: { kind: 'unreported' } },
