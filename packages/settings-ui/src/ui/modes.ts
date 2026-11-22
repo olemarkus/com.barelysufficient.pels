@@ -208,7 +208,6 @@ const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number 
     tempInput.setAttribute('max', tempInput.max);
   }
   tempInput.placeholder = 'Desired';
-  tempInput.setAttribute('inputmode', tempInput.inputMode);
   tempInput.setAttribute('placeholder', tempInput.placeholder);
   tempInput.setAttribute('label', 'Target');
   tempInput.setAttribute('aria-label', `Target temperature for ${formatDisplayDeviceName(device.name)}`);
