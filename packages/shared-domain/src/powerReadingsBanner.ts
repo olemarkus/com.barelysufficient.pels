@@ -19,7 +19,7 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from './powerFreshness';
 
 export type PowerReadingsBannerContent = { text: string; actionLabel: string };
 
-type BannerPowerSource = 'homey_energy' | 'flow';
+export type BannerPowerSource = 'homey_energy' | 'flow';
 
 const NONE_YET_LEAD = 'No power readings yet.';
 // Meter first: it is the path with nothing to build, and most homes have one.
@@ -38,6 +38,15 @@ type BannerHintInput = {
   neverReceived: boolean;
 };
 
+/**
+ * The remedy once readings that had arrived stop, for a source whose meter
+ * name is not to hand: the banner without a Homey Energy name, and the
+ * runtime's timeline notice (`lib/power/meterSilenceNotice.ts`).
+ */
+export const resolveStoppedReadingsHint = (source: BannerPowerSource): string => (
+  resolveHint({ source, meterChosen: true, neverReceived: false })
+);
+
 const resolveHint = (input: BannerHintInput): string => {
   if (input.source === 'homey_energy') {
     return input.meterChosen ? HINT_METER_CHOSEN : HINT_METER_NOT_CHOSEN;
@@ -48,7 +57,7 @@ const resolveHint = (input: BannerHintInput): string => {
 };
 
 // The power owner also ages a reading that repeats while the load changes.
-const readingAge = (elapsedMs: number): string => {
+export const readingAge = (elapsedMs: number): string => {
   const minutes = Math.floor(elapsedMs / 60_000);
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);

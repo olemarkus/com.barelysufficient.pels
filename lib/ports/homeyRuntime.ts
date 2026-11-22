@@ -37,7 +37,7 @@ export type HomeyRuntime = {
   settings: SettingsPort;
 };
 
-/** Homey's app notification API, used for the one-time setup reminder. */
+/** Homey's app notification API: the setup and simulation reminders and the meter-outage notice. */
 export type NotificationsPort = {
   createNotification(options: { excerpt: string }): Promise<unknown>;
 };

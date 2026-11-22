@@ -1,4 +1,6 @@
 import { MeterSilenceEscalation } from '../lib/power/meterSilenceEscalation';
+import { MeterSilenceNotice } from '../lib/power/meterSilenceNotice';
+import { readConfiguredPowerSource } from './powerSourceSettings';
 import { requireDeviceManager, requirePlanService } from './appInit/contextGuards';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import type { AppContext } from '../lib/app/appContext';
@@ -30,4 +32,23 @@ export function installMainFreshnessEscalation(
     isSnapshotWarm: () => requireDeviceManager(ctx).hasWarmSnapshot(),
     isActuationFenced,
   }).start();
+}
+
+const MAIN_METER_SILENCE_NOTICE_CHECK_MS = 30 * 1000;
+
+/** Main's timeline notice for the fail-closed pass and its end (`lib/power/meterSilenceNotice.ts`). */
+export function installMainMeterSilenceNotice(ctx: AppContext, isTornDown: () => boolean): void {
+  const notice = new MeterSilenceNotice({
+    meterSilence: ctx.meterSilenceMonitor,
+    notifications: ctx.homey.notifications,
+    readPowerSource: () => {
+      const read = readConfiguredPowerSource(ctx.homey.settings);
+      return read.state === 'resolved' ? read.value : null;
+    },
+    nowMs: () => Date.now(),
+    logger: () => ctx.getStructuredLogger('power'),
+  });
+  ctx.timers.registerInterval('mainMeterSilenceNotice', setInterval(() => {
+    if (!isTornDown()) void notice.check();
+  }, MAIN_METER_SILENCE_NOTICE_CHECK_MS));
 }

@@ -2558,6 +2558,17 @@ from tracker fields or persisted-blob fallbacks.
 - Before the first reading, **Check power source** opens the source setting.
   After readings stop, **Check meter** opens the whole-home meter picker for a meter
   source, or the power source setting for a Flow source.
+- **Timeline notice (owner ruling 2026-11-22):** inside settings the banner
+  stays the one surface, but an owner who is not looking at PELS is told on
+  Homey's timeline when the fail-closed pass limits their devices, and again
+  when readings return (`lib/power/meterSilenceNotice.ts`). It says what
+  happened and how long ago (`PELS has had no new power reading for 10 min and
+  has limited your managed devices to stay within your limits. They resume when
+  a new reading arrives.`), or for a reading frozen under moving load `Your power
+  reading has not changed for 25 min while your devices' own readings did, so
+  PELS no longer trusts it and has limited…`, then the banner's stopped-readings
+  hint for the source. The return reads `PELS has new power readings again and
+  is resuming your managed devices.`
 - Retired: the onboarding arm ("PELS needs to know where to read your home's
   power use") — an install with no source chosen is the never-received Flow
   arm, which already names both remedies; and the hero's "Power

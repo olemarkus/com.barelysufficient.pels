@@ -73,7 +73,7 @@ import type { AppPowerTracker } from './appPowerTracker';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import type { SupportReportApp } from './appInit/createSupportReports';
 import type { HeatingShadowCollector } from '../lib/diagnostics/heatingShadowCollector';
-import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
+import { installMainFreshnessEscalation, installMainMeterSilenceNotice } from './appMainFreshnessEscalation';
 import {
   invalidateOwningHomeRebuildSuppression, syncOwningHomeLivePlanState, syncExternalOffHoldForObservation,
   observeOwningHomeDeviceEvidence,
@@ -485,6 +485,7 @@ export class AppServiceWiring {
       () => this.deps.shutdown.isStopped(),
       () => this.isMainActuationFenced(),
     );
+    installMainMeterSilenceNotice(ctx, () => this.deps.shutdown.isStopped());
   }
 
   initDeviceDiagnosticsService(): void {
