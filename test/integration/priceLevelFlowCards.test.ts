@@ -126,6 +126,7 @@ describe('Price level flow cards', () => {
     const planService = new PlanService({
       ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
+      isCapacityControlEnabled: () => false,
       getDevicePowerSetupRequired: () => false,
       getDeviceControlAdapter: () => undefined,
       getUnusedBuiltInControl: () => 'none' as const,

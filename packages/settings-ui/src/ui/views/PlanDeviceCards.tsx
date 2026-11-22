@@ -365,6 +365,13 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, 
               onOpenDevice={() => dispatchOpenDeviceDetail(dev.id, 'top')}
             />
           )}
+          {dev.status.powerLimitingNeedsReading === true && (
+            <OverviewDeviceWarningIcon
+              title="Power limiting unavailable"
+              body="PELS needs a power reading from this device to limit it."
+              onOpenDevice={() => dispatchOpenDeviceDetail(dev.id, 'top')}
+            />
+          )}
           {dev.status.needsChargerAppUpdate === true && (
             <OverviewDeviceWarningIcon
               title="Update the charger’s app"

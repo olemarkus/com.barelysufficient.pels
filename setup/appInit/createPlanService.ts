@@ -46,6 +46,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // boot snapshot to Observer before the warmup gate admits the first plan cycle.
     observed: ctx.observer,
     hasStandingCommandGrant: (deviceId) => resolveStandingCommandGrant(planInputSource, deviceId),
+    isCapacityControlEnabled: planInputSource.isCapacityControlEnabled,
     getDevicePowerSetupRequired: (deviceId) => ctx.deviceConfiguration.get(deviceId)?.powerSetupRequired === true,
     // Explicit observer projection: transport capability and Flow bindings must
     // never cross into the plan-owned service merely because structural typing

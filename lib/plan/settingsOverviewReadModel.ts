@@ -49,6 +49,7 @@ export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'observed' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
   | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'getUnusedBuiltInControl' | 'isTargetPowerControlRefused'
   | 'hasStandingCommandGrant'
+  | 'isCapacityControlEnabled'
   | 'getDevicePowerSetupRequired'
   | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'> & {
@@ -245,6 +246,7 @@ function buildLoadOverviewDevice(
     unusedBuiltInControl: deps.getUnusedBuiltInControl(device.id),
     targetPowerControlRefused: deps.isTargetPowerControlRefused(device.id),
     standingCommandGrant: deps.hasStandingCommandGrant(device.id),
+    powerLimitControlEnabled: deps.isCapacityControlEnabled(device.id),
     hasPowerReading: isMeteredPlanDevice(device),
     powerSetupRequired: deps.getDevicePowerSetupRequired(device.id),
     controllable: device.control.commandAuthority,

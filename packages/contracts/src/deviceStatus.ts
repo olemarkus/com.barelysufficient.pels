@@ -67,4 +67,6 @@ export type DeviceStatus = {
    * the owner updates the app. The card shows an amber warning.
    */
   needsChargerAppUpdate?: true;
+  /** Temperature control works, but power limiting needs a device reading. */
+  powerLimitingNeedsReading?: true;
 };
