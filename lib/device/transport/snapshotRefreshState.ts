@@ -5,10 +5,11 @@ import { ZoneTreeCache } from './zoneTreeCache';
 const UNKNOWN_ZONE_REFRESH_MIN_INTERVAL_MS = 10_000;
 /**
  * How long a zone tree stands before a refresh fetches it again. Zones change
- * rarely and a targeted read follows every command; this keeps a renamed or
- * moved zone visible within the device poll's own 5-minute cadence.
+ * rarely and a targeted read follows every command. Shorter than the device
+ * poll's 5 minutes, so every poll fetches a tree the last poll fetched and a
+ * renamed or moved zone shows within one poll.
  */
-export const ZONE_TREE_MAX_AGE_MS = 5 * 60_000;
+export const ZONE_TREE_MAX_AGE_MS = 4 * 60_000;
 
 type EmptySnapshotGrace = {
   firstSeenMs: number;
