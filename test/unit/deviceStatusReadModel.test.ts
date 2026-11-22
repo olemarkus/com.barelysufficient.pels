@@ -6,7 +6,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
   priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, unusedBuiltInControl: 'none', targetPowerControlRefused: false,
-  standingCommandGrant: true, hasPowerReading: true, powerSetupRequired: false,
+  standingCommandGrant: true, powerLimitControlEnabled: true, hasPowerReading: true, powerSetupRequired: false,
   powerBeforeSwitchOffKw: undefined,
   carIdentificationState: 'not_waiting',
   execution: {

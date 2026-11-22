@@ -548,6 +548,32 @@ describe('settingsOverviewReadModel', () => {
     expect(card(false)).toMatchObject({ kind: 'manual', reason: { text: 'Power-limit control is off' } });
   });
 
+  it('warns when a driven thermostat needs a reading for enabled Power-limit control', () => {
+    const thermostat = {
+      id: 'mode-heater', deviceType: 'temperature', controllable: false,
+      binaryCapabilityId: undefined, currentState: 'not_applicable', plannedState: 'keep',
+      currentTarget: 22, currentTemperature: 20, plannedTarget: 22,
+      reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    } as const;
+    const unmetered = buildPlanDevice({ ...thermostat, unmetered: true });
+    const deps = { ...observedTemperature(22, 20), hasStandingCommandGrant: () => true,
+      isCapacityControlEnabled: () => true };
+    expect(buildDeviceCard(unmetered, deps).status).toMatchObject({
+      label: 'Running', powerText: null, reason: null, powerLimitingNeedsReading: true,
+    });
+    const taskWithAuthority = buildPlanDevice({ ...thermostat, unmetered: true, controllable: true });
+    expect(buildDeviceCard(taskWithAuthority, deps).status.powerLimitingNeedsReading).toBe(true);
+
+    const zeroWatts = buildPlanDevice({ ...thermostat, controllable: true, currentDrawKw: 0 });
+    expect(buildDeviceCard(zeroWatts, deps).status.powerLimitingNeedsReading).toBeUndefined();
+    expect(buildDeviceCard(unmetered, { ...deps, isCapacityControlEnabled: () => false })
+      .status.powerLimitingNeedsReading).toBeUndefined();
+    expect(buildDeviceCard(unmetered, { ...deps, getDevicePowerSetupRequired: () => true })
+      .status.powerLimitingNeedsReading).toBeUndefined();
+    expect(buildDeviceCard({ ...unmetered, available: false }, deps)
+      .status.powerLimitingNeedsReading).toBeUndefined();
+  });
+
   it('publishes the device owner’s Homey Energy setup requirement without a command grant', () => {
     const device = buildPlanDevice({ controllable: false, unmetered: true });
     const card = buildDeviceCard(device, {

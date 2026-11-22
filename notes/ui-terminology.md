@@ -1003,6 +1003,13 @@ says that PELS limits the charger by pausing and resuming charging until the
 app is updated. The warning has no **Hide warning** button and clears when the
 app reports the current writable or the owner selects Flow control.
 
+An available thermostat with an active temperature target and Power-limit
+control enabled shows the amber **Power limiting unavailable** warning when
+PELS needs a device power reading. Its dialog says `PELS needs a power reading
+from this device to limit it.` and offers **Open device**. The temperature
+status stays visible. The warning clears when a plan has a power reading or
+the owner turns Power-limit control off.
+
 ### Device-page "Power when running" — one line about the present source
 
 The device's Setup section carries **Power when running** (watts, `suffix-text="W"`)

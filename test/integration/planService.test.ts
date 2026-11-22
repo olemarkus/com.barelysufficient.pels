@@ -207,6 +207,7 @@ const buildPlan = (
 // engine, Homey, device reads and whatever it overrides.
 const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServiceDeps,
   | 'hasStandingCommandGrant'
+  | 'isCapacityControlEnabled'
   | 'getDevicePowerSetupRequired'
   | 'getHomeBatteryCard'
   | 'getDeviceControlAdapter'
@@ -222,6 +223,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'getLastPowerUpdate'> => ({
   ...planServiceWiring(),
   hasStandingCommandGrant: () => false,
+  isCapacityControlEnabled: () => false,
   getDevicePowerSetupRequired: () => false,
   getDeviceControlAdapter: () => undefined,
   getUnusedBuiltInControl: () => 'none' as const,

@@ -57,6 +57,7 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
    * Read now, from the settings that seed the plan's authority.
    */
   standingCommandGrant: boolean;
+  powerLimitControlEnabled: boolean;
   /** The plan had a power reading for the device (`isMeteredPlanDevice`), which authority also takes. */
   hasPowerReading: boolean;
   /** The observer's last live device power reading when it predates switch-off. */
@@ -583,12 +584,13 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const limited = intentKind === 'held';
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
   const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');
+  const cardKind = resolveCardKind(device);
   const presented = withPresentedTarget(device);
   const draw = device.currentDrawKw;
   const previousPower = resolvePowerBeforeSwitchOff(device, kind, dryRun);
   const powerPredatesSwitchOff = previousPower !== undefined;
   return {
-    cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
+    cardKind, kind, tone: displayStateTone(kind), label,
     ...resolvePower(device, limited, dryRun, previousPower),
     factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reading: resolveReading(presented),
@@ -598,15 +600,20 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     canEaseOff: device.controllable && (kind === 'active' || (limited && !powerPredatesSwitchOff && (draw ?? 0) > 0)),
     controlOffDrawing: !device.controllable && (draw ?? 0) > 0,
     holdCause: resolveHoldCause(device),
-    ...resolveCardMarks(device),
+    ...resolveCardMarks(device, cardKind),
   };
 }
 
-/** The card's optional marks: the phase that holds it, an override, an app update it needs. */
+/** The card's optional marks for holds, overrides and control warnings. */
 function resolveCardMarks(
   device: DeviceStatusInput,
-): Pick<DeviceStatus, 'heldForPhase' | 'override' | 'needsChargerAppUpdate'> {
+  cardKind: DeviceStatus['cardKind'],
+): Pick<DeviceStatus, 'heldForPhase' | 'override' | 'needsChargerAppUpdate' | 'powerLimitingNeedsReading'> {
+  const powerLimitingNeedsReading = cardKind === 'temperature'
+    && device.execution.available && device.execution.targetProgress !== 'undriven'
+    && device.powerLimitControlEnabled && !device.hasPowerReading && !device.powerSetupRequired;
   return {
+    ...(powerLimitingNeedsReading ? { powerLimitingNeedsReading: true as const } : {}),
     ...(device.reason.code === PLAN_REASON_CODES.phaseLimit ? { heldForPhase: device.reason.phase } : {}),
     ...(device.temporaryTemperatureActive === true ? { override: true as const } : {}),
     ...(device.unusedBuiltInControl === 'needs_app_update' ? { needsChargerAppUpdate: true as const } : {}),

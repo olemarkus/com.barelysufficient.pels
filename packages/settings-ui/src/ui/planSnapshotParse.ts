@@ -61,7 +61,7 @@ const isStatusReading = (value: unknown): boolean => {
   return reading.kind === 'temperature' && isFiniteNumber(reading.currentC) && isFiniteNumber(reading.targetC);
 };
 
-const HOLD_CAUSES = new Set<unknown>(['smart_task', 'smart_task_done', 'daily_budget']);
+const HOLD_CAUSES = new Set<unknown>([null, 'smart_task', 'smart_task_done', 'daily_budget']);
 const isStatus = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const status = value as Record<string, unknown>;
@@ -70,7 +70,8 @@ const isStatus = (value: unknown): boolean => {
     && typeof status.label === 'string' && isNullableText(status.powerText) && isNullableText(status.factText)
     && ['live', 'expected', 'reported', 'before_switch_off'].includes(status.powerVariant as string)
     && ['limited', 'wouldLimit', 'canEaseOff', 'controlOffDrawing'].every((key) => typeof status[key] === 'boolean')
-    && (status.holdCause === null || HOLD_CAUSES.has(status.holdCause))
+    && HOLD_CAUSES.has(status.holdCause)
+    && isOptionalOffer(status.powerLimitingNeedsReading)
     && isStatusReason(status.reason) && isStatusRail(status.rail) && isStatusReading(status.reading);
 };
 

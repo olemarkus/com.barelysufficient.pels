@@ -67,6 +67,60 @@ test('uses the shared warning dialog for a pre-switch-off power reading', async 
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
 });
 
+for (const theme of ['light', 'dark'] as const) {
+  test.describe(`Overview in ${theme} mode`, () => {
+    test.use({ hasTouch: theme === 'dark' });
+
+    test('explains missing thermostat power alongside another warning', async ({ page }, testInfo) => {
+      await stubContestedDevice(page, { ...contested, id: 'dev_heatpump' });
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      const card = page.locator('#plan-cards [data-device-id="dev_heatpump"]');
+      await expect(card).toBeVisible();
+
+      const publish = (missingReading: boolean) => page.evaluate((missing) => {
+        type Plan = { devices: Array<{ id: string; status: DeviceStatus }> };
+        const { Homey } = window as unknown as { Homey: { __stub: {
+          getSetting: (key: string) => Plan;
+          setApiHandler: (key: string, handler: () => { plan: Plan }) => void;
+          emitHomeyEvent: (event: string, value: Plan) => void;
+        } } };
+        const plan = Homey.__stub.getSetting('plan_snapshot');
+        const devices = plan.devices.map((device) => {
+          if (device.id !== 'dev_heatpump' || !missing) return device;
+          const status: DeviceStatus = { ...device.status, kind: 'active', label: 'Running',
+            powerText: null, reason: null, powerLimitingNeedsReading: true };
+          return { ...device, status };
+        });
+        const updated = { ...plan, devices };
+        Homey.__stub.setApiHandler('GET /ui_plan', () => ({ plan: updated }));
+        Homey.__stub.emitHomeyEvent('plan_updated', updated);
+      }, missingReading);
+
+      await publish(true);
+      const warning = card.getByRole('button', { name: 'Power limiting unavailable' });
+      await expect(warning).toBeVisible();
+      const warningIcons = card.locator('.plan-card__control-warning-icon');
+      await expect(warningIcons).toHaveCount(2);
+      await expect(card.locator('.plan-card__state-label')).toHaveText('Running');
+      await card.screenshot({ path: testInfo.outputPath('thermostat-warning.png') });
+      await warning.click();
+      const modal = page.getByRole('dialog');
+      const dialog = page.locator('.plan-card__control-warning-dialog');
+      await expect(modal).toBeVisible();
+      await expect(dialog).toContainText('PELS needs a power reading from this device to limit it.');
+      await expect(dialog.getByRole('button', { name: 'Hide warning' })).toHaveCount(0);
+      expect(await modal.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await modal.screenshot({ path: testInfo.outputPath('thermostat-warning-dialog.png') });
+      await dialog.getByRole('button', { name: 'Open device' }).click();
+      await expect(page.locator('#device-detail-overlay')).toBeVisible();
+
+      await publish(false);
+      await expect(warning).toHaveCount(0);
+      await expect(warningIcons).toHaveCount(1);
+    });
+  });
+}
+
 test.describe('A device that does not keep what PELS sets', () => {
   test('keeps the warning keyboard actions separate from a planned device card', async ({ page }, testInfo) => {
     await stubContestedDevice(page, { ...contested, id: 'dev_heatpump' });
