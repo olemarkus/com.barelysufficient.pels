@@ -877,5 +877,8 @@
   },
   "3.46.0": {
     "en": "Zaptec chargers now use the Zaptec app's own current control, so built-in control no longer needs a Homey API key. With an older Zaptec app that cannot set the current, PELS pauses and resumes charging instead, and the charger's card on Overview asks you to update the app. When a Z-Wave switch does not confirm that it turned off, PELS covers the difference with other devices and tries the switch again at a steady pace. Overview marks a power reading that was taken before a device switched off.\n\nFixed: A device whose Flow sets its level but does not report it back now says so on its card, and PELS waits longer before asking such a Flow again. Devices that come back while PELS reads a few of them are kept. PELS reads all devices less often for heaters and plugs that report a temperature but have no setpoint."
+  },
+  "3.47.0": {
+    "en": "A home battery that does not follow PELS's request now says so on its card, and names the mode its own app is running when the app reports it, such as a Sigenergy plant in AI mode. Tomorrow's prices from Homey Energy are picked up within half an hour of being published. PELS uses less memory and reads less from Homey.\n\nFixed: Decimal settings fields accept a decimal comma, so a value such as 0,25 can be typed on a phone keypad that offers only a comma. When PELS lets a device run for part of an hour, it now allows for the power of devices it has just turned back on, so the hour stays under your limit."
   }
 }
