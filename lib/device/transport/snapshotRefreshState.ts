@@ -3,6 +3,12 @@ import type { TargetedMissState } from './targetedSnapshotMerge';
 import { ZoneTreeCache } from './zoneTreeCache';
 
 const UNKNOWN_ZONE_REFRESH_MIN_INTERVAL_MS = 10_000;
+/**
+ * How long a zone tree stands before a refresh fetches it again. Zones change
+ * rarely and a targeted read follows every command; this keeps a renamed or
+ * moved zone visible within the device poll's own 5-minute cadence.
+ */
+export const ZONE_TREE_MAX_AGE_MS = 5 * 60_000;
 
 type EmptySnapshotGrace = {
   firstSeenMs: number;
@@ -17,6 +23,7 @@ export class SnapshotRefreshState {
   private lastRefreshMetricsKey: string | null = null;
   private warm = false;
   private lastUnknownZoneRefreshAtMs = Number.NEGATIVE_INFINITY;
+  private lastZoneTreeFetchAtMs = Number.NEGATIVE_INFINITY;
 
   getTargetedMisses(): Map<string, TargetedMissState> {
     return this.targetedMisses;
@@ -56,6 +63,17 @@ export class SnapshotRefreshState {
     if (generation <= this.zoneTree.getLastCommittedGeneration()) return false;
     this.zoneTree.set(tree, generation);
     return true;
+  }
+
+  /**
+   * Whether a committed snapshot refresh should fetch the zone tree: after a
+   * full device read, while no tree is held, or once the last fetch is
+   * `ZONE_TREE_MAX_AGE_MS` old.
+   */
+  claimZoneTreeRefresh(fullRead: boolean, nowMs: number): boolean {
+    const due = fullRead || this.zoneTree.get() === null || nowMs - this.lastZoneTreeFetchAtMs >= ZONE_TREE_MAX_AGE_MS;
+    if (due) this.lastZoneTreeFetchAtMs = nowMs;
+    return due;
   }
 
   /**

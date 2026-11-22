@@ -541,12 +541,13 @@ export class SnapshotRefreshService {
   }
 
   /**
-   * Only a full read carries the zone tree: zones change rarely, a targeted
-   * read follows every command, and a device moved into an unknown zone
-   * refetches the tree at once (`refreshZoneTreeIfUnknown`).
+   * The zone tree rides a refresh only when it is due
+   * (`SnapshotRefreshState.claimZoneTreeRefresh`): a targeted read follows
+   * every command, and a device moved into an unknown zone refetches the tree
+   * at once (`refreshZoneTreeIfUnknown`).
    */
   private refreshZoneTreeAfterRead(fetchSource: DeviceFetchSource): void {
-    if (fetchSource === 'raw_manager_devices' || this.refreshState.getZoneTree() === null) {
+    if (this.refreshState.claimZoneTreeRefresh(fetchSource === 'raw_manager_devices', Date.now())) {
         void refreshZoneTreeCache(this);
     }
   }
