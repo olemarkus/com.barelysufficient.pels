@@ -1,3 +1,4 @@
+import { hasGenericSetupControls } from './externalDevicePower';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import type { ChargingCurrentControl, ChargingCurrentParseRead } from '../chargingCurrentControl';
 import type { ChargingPhaseTransport } from '../chargingPhaseTransport';
@@ -58,6 +59,8 @@ export class DeviceSnapshotReader {
     readonly batteryAppActions: HomeBatteryAppActions,
   ) {}
 
+  get externalPower() { return this.snapshotStore.externalPower; }
+
   /**
    * The device as the battery control owner reads it (`toBatteryControlRead`);
    * a battery driven through its app's actions as their host reads it now.
@@ -83,7 +86,7 @@ export class DeviceSnapshotReader {
       now,
       livePowerWByDeviceId,
       this.snapshotStore.getSnapshotIndex().get(getDeviceId(device)),
-      this.parseDependencies(),
+      { ...this.parseDependencies(), externalPower: this.externalPower?.read(device) },
       'runtime',
     );
     return parsed && this.snapshotStore.nativeSteppedAdapters.projectObservation(
@@ -100,24 +103,32 @@ export class DeviceSnapshotReader {
     list: HomeyDeviceLike[],
     readAtMs: number,
     livePowerWByDeviceId: LiveDevicePowerWatts,
+    fullRead = false,
   ): TransportDeviceSnapshot[] {
     this.chargingCurrentControl.observeDevices(list, readAtMs);
     this.batteryAppActions.observeDevices(list, readAtMs);
-    return this.parseDeviceList(list, livePowerWByDeviceId);
+    return this.parseDeviceList(list, livePowerWByDeviceId, 'runtime', fullRead);
   }
 
   parseDeviceList(
     list: readonly HomeyDeviceLike[],
     livePowerWByDeviceId: LiveDevicePowerWatts = {},
     purpose: ParseDevicePurpose = 'runtime',
+    fullRead = false,
   ): TransportDeviceSnapshot[] {
     const now = Date.now();
     const deps = this.parseDependencies();
     const previous = this.snapshotStore.getSnapshotIndex();
+    const batch = new Map(list.map((entry) => [entry.id, entry]));
+    const lookup = (id: string) => batch.get(id) ?? (fullRead
+      ? undefined : this.snapshotStore.getLastAcceptedRawDevice(id));
     const parsed = list.flatMap((read) => {
       if (getDeviceAdapter(read).retainsPlugObservation(read)) return [];
       const device = this.chargingCurrentControl.sessions.withholdCapabilities(read);
-      const snapshot = parseDevice(device, now, livePowerWByDeviceId, previous.get(getDeviceId(device)), deps, purpose);
+      const snapshot = parseDevice(
+        device, now, livePowerWByDeviceId, previous.get(getDeviceId(device)),
+        { ...deps, externalPower: this.externalPower?.read(device, lookup) }, purpose,
+      );
       return snapshot ? [this.snapshotStore.nativeSteppedAdapters.projectObservation(
         this.chargingCurrentControl.projectControl(snapshot), device,
       )] : [];
@@ -152,7 +163,9 @@ export class DeviceSnapshotReader {
   }
 
   applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
-    return applyDeviceDriverOverride(device, this.sources.settings);
+    const effective = applyDeviceDriverOverride(device, this.sources.settings);
+    const selected = this.externalPower?.setupSelected(device.id) === true && hasGenericSetupControls(effective);
+    return selected || effective.genericSetupEnabled ? { ...effective, genericSetupEnabled: selected } : effective;
   }
 
   /**
@@ -173,14 +186,22 @@ export class DeviceSnapshotReader {
       || this.isTracked(deviceId, isHomeBatteryDevice(device) || this.isKnownHomeBattery(deviceId));
   }
 
-  syncTrackedDevices(devices: HomeyDeviceLike[]): void {
-    const tracked = devices.filter((device) => {
+  syncTrackedDevices(devices: HomeyDeviceLike[], keepUnreadSockets = false): void {
+    const candidates = keepUnreadSockets ? this.withUnreadSockets(devices) : devices;
+    const tracked = candidates.filter((device) => {
       const deviceId = getDeviceId(device);
       return deviceId !== undefined && (this.chargingCurrentControl.sessions.observes(deviceId)
         || this.isTracked(deviceId, isHomeBatteryDevice(device)));
     });
     this.snapshotStore.replaceTrackedRawDevices(tracked);
     this.syncNativeSteppedLoadCommandAdapters();
+  }
+
+  private withUnreadSockets(devices: HomeyDeviceLike[]): HomeyDeviceLike[] {
+    const seen = new Set(devices.map(({ id }) => id));
+    const unread = [...this.snapshotStore.getTrackedRawDevicesById().values()]
+      .filter(({ id }) => !seen.has(id) && this.externalPower?.targetForSocket(id) !== undefined);
+    return [...devices, ...unread];
   }
 
   syncNativeSteppedLoadCommandAdapters(): void {
@@ -191,7 +212,7 @@ export class DeviceSnapshotReader {
   }
 
   private isTracked(deviceId: string, isHomeBattery: boolean): boolean {
-    return isRuntimeTrackedDevice(
+    return Boolean(this.externalPower?.targetForSocket(deviceId)) || isRuntimeTrackedDevice(
       resolveManagedFilterDecision(this.sources.management, deviceId),
       isHomeBattery,
     );

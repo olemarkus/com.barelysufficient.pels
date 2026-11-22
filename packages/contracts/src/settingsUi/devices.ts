@@ -84,7 +84,21 @@ export type ChargerPhasePresetsRead =
   | { state: 'resolved'; presets: ChargerPhasePresets }
   | { state: 'unavailable' };
 
+export type DevicePowerSetupEntry = {
+  id: string;
+  name: string;
+  configured: boolean;
+  sourceId: string | null;
+  usedBy: string | null;
+  sourceReady: boolean;
+  sources: { id: string; name: string; state: 'selectable' | 'managed' | 'assigned' | 'unavailable' }[];
+};
+
+export type DevicePowerSetupRead = { devices: DevicePowerSetupEntry[] };
+
 export type SettingsUiDevicesPayload = {
+  /** Generic device setup inventory, separate from the controllable roster. */
+  devicePowerSetup?: DevicePowerSetupRead;
   /** Owner-resolved schedules for Main; unavailable for a scoped read. */
   schedules: SchedulesResponse;
   // Served from the app-layer managed-device join of DeviceReads metadata,

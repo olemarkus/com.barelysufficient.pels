@@ -95,6 +95,7 @@ export type DeviceTransportParseDeps = {
     management: DeviceManagement;
     powerState: ResolvedTransportPowerState;
     measuredPowerResolver: DeviceMeasuredPowerResolver;
+    externalPower?: ReturnType<import('./externalDevicePower').ExternalDevicePower['read']>;
     getCapabilityObj: (device: HomeyDeviceLike) => DeviceCapabilityMap;
     isPowerCapable: (
         device: HomeyDeviceLike,

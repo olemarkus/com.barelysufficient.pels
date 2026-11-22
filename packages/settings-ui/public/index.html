@@ -143,6 +143,18 @@
         </ul>
       </details>
       <div id="device-card-list"></div>
+      <details id="device-power-setup" class="pels-surface-card" hidden>
+        <summary>Add device or change its power source</summary>
+        <div class="field">
+          <md-filled-select id="device-power-setup-target" label="Device"></md-filled-select>
+        </div>
+        <div class="field">
+          <md-filled-select id="device-power-setup-source" label="Power source"
+            aria-describedby="device-power-setup-help"></md-filled-select>
+          <small class="field__hint" id="device-power-setup-help"></small>
+        </div>
+        <md-filled-tonal-button type="button" id="device-power-setup-save">Save device setup</md-filled-tonal-button>
+      </details>
       <p id="empty-state" class="muted" hidden>No compatible devices found. Choose <strong>Request support</strong> below to ask for a device PELS does not support.</p>
       <section class="pels-surface-card missing-device-card" id="missing-device-card" aria-labelledby="missing-device-title">
         <span class="missing-device-card__icon" aria-hidden="true">

@@ -324,6 +324,17 @@ export class HomeMembershipService implements HomeMembershipPort {
     }
   }
 
+  /** Receipt-time zone check for a physical device that may be telemetry only. */
+  resolvePowerSourceHome(deviceId: string, deviceZoneId: string | null): HomeId | undefined {
+    if (!this.isOwnershipReady() || this.hasPendingOwnershipGeneration()) return undefined;
+    const meters = this.getConfiguredMeterSources();
+    if (meters.state === 'unavailable' || meters.deviceIds.has(deviceId)) return undefined;
+    const membership = resolveDeviceHome({
+      zones: this.zoneTree, subHomes: this.subHomes, pins: this.pins, deviceId, deviceZoneId,
+    });
+    return membership.state === 'member' ? membership.homeId : undefined;
+  }
+
   isDeviceZoneUnknown(deviceId: string): boolean {
     return this.membershipByDeviceId[deviceId]?.state === 'held_out';
   }

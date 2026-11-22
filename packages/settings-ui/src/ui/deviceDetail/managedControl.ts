@@ -1,9 +1,17 @@
+import { resolveDeviceDetailKind } from '../deviceKind.ts';
+import { DEVICE_POWER_SUPPORT_HINT } from '../deviceControlAvailability.ts';
+import { resolveBatteryManagedHint, BATTERY_WATCH_MANAGED_HINT } from './batterySection.ts';
+import type { resolveDeviceDetailControlState } from './controlState.ts';
+import {
+  HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT, needsHomeyEnergySetup,
+} from '../../../../shared-domain/src/homeyEnergySetup.ts';
+import { devicePowerSetupHint, isSocketReservedForPower } from '../devicePowerSetup.ts';
 import {
   deviceDetailControllable,
   deviceDetailManaged,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
-import { isHomeBatteryDeviceId, state } from '../state.ts';
+import { isHomeBatteryDeviceId, state, type SettingsUiDeviceView } from '../state.ts';
 import { writeBatteryManaged } from '../batteryManaged.ts';
 import { showToast } from '../toast.ts';
 import { ensureChargerPhasePresetsRead } from '../chargerPhasePresets.ts';
@@ -23,6 +31,48 @@ import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
 } from '../../../../shared-domain/src/settings/settingsKeys.ts';
+
+export const renderManagedControl = (
+  device: SettingsUiDeviceView | null,
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
+): void => {
+  const setupHint = device ? devicePowerSetupHint(device.id) : null;
+  const reservedSocket = device ? isSocketReservedForPower(device.id) : false;
+  if (deviceDetailManaged) {
+    deviceDetailManaged.selected = controlState.isManaged && !reservedSocket;
+    deviceDetailManaged.disabled = !controlState.canManageDevice || reservedSocket
+      || (!controlState.isManaged && setupHint !== null);
+  }
+  const managedHint = document.getElementById('device-detail-managed-hint');
+  if (managedHint) {
+    managedHint.textContent = setupHint ?? resolveManagedHint(device, controlState);
+    managedHint.dataset.tone = device && needsHomeyEnergySetup(device) ? 'warning' : 'neutral';
+  }
+  const energySetupLink = document.getElementById('device-detail-homey-energy-setup');
+  if (energySetupLink) {
+    energySetupLink.hidden = !device || !needsHomeyEnergySetup(device);
+    energySetupLink.setAttribute('href', HOMEY_ENERGY_SETUP_DOCS_URL);
+    energySetupLink.setAttribute('target', '_blank');
+    energySetupLink.setAttribute('rel', 'noopener noreferrer');
+  }
+};
+
+const resolveManagedHint = (
+  device: SettingsUiDeviceView | null,
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
+): string => {
+  if (controlState.isHomeBattery) {
+    return controlState.isDrivableBattery ? resolveBatteryManagedHint() : BATTERY_WATCH_MANAGED_HINT;
+  }
+  if (device && needsHomeyEnergySetup(device)) return HOMEY_ENERGY_SETUP_HINT;
+  if (!controlState.supportsPower && !controlState.supportsTemperature) return DEVICE_POWER_SUPPORT_HINT;
+  // An unmanaged charger's page hides its Charging and Power limiting cards
+  // (chargingCard.ts), so this switch names what they hold.
+  if (!controlState.isManaged && resolveDeviceDetailKind(device) === 'ev_charger') {
+    return 'Turn on to set how this charger charges and how PELS limits it.';
+  }
+  return 'Include this device in modes and optimization plans.';
+};
 
 const runSerializedManagedWrite = createSerializedAsyncRunner();
 
@@ -71,6 +121,10 @@ export function initDeviceDetailManagedControlHandlers(
     if (!deviceId || !deviceDetailManaged) return;
 
     const nextChecked = deviceDetailManaged.selected;
+    if (nextChecked && devicePowerSetupHint(deviceId)) {
+      refreshCurrentDeviceControlStates();
+      return;
+    }
     const intentGeneration = beginManagedControlIntent(deviceId);
     if (isHomeBatteryDeviceId(deviceId)) {
       await writeBatteryManaged(deviceId, nextChecked, 'device detail', () => {

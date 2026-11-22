@@ -161,12 +161,13 @@ function resolveDeviceSnapshotControl(params: {
     measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
     previousSnapshot?: TransportDeviceSnapshot;
     retainedReading: RetainedMeasurement | undefined;
+    admittedTemperature: boolean;
     purpose: ParseDevicePurpose;
     managedDecision: ManagedFilterDecision;
 }): DeviceSnapshotControl | null {
     const {
         identity, deps, overlay, capsStatus, binaryCapabilityId, measuredPower,
-        previousSnapshot, retainedReading, purpose, managedDecision,
+        previousSnapshot, retainedReading, admittedTemperature, purpose, managedDecision,
     } = params;
     const { effectiveDevice, deviceClassKey } = identity;
     const { logger, isPowerCapable } = deps;
@@ -178,6 +179,7 @@ function resolveDeviceSnapshotControl(params: {
     );
     if (shouldDropAfterControlState({
         purpose, decision: managedDecision, currentOn: resolvedOn, deviceClassKey,
+        admittedTemperature: effectiveDevice.genericSetupEnabled && admittedTemperature,
     })) {
         return null;
     }
@@ -197,6 +199,21 @@ function resolveDeviceSnapshotControl(params: {
         binaryCapabilityId, evCharging, evChargingState, binaryControl, canSetControl,
         hasObservedBinaryControl: observedCurrentOn !== undefined, available, powerCapable,
     };
+}
+
+function resolveExternalPowerSocketId(power: DeviceTransportParseDeps['externalPower']): string | undefined {
+    return power?.kind === 'external' ? power.socketId : undefined;
+}
+
+function resolveSameSourceRetainedReading(
+    deviceId: string,
+    deps: DeviceTransportParseDeps,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+): RetainedMeasurement | undefined {
+    if (resolveExternalPowerSocketId(deps.externalPower) !== undefined || previousSnapshot?.externalPowerSocketId) {
+        return undefined;
+    }
+    return resolveRetainedReading(previousSnapshot, deps.getRestoredPowerReading(deviceId));
 }
 
 export function assembleDeviceSnapshot(params: {
@@ -227,7 +244,7 @@ export function assembleDeviceSnapshot(params: {
     );
     // Keep the last trusted measurement when a refresh has no newer sample.
     // In particular, re-reading one `meter_power` sample must not drop admission.
-    const retainedReading = resolveRetainedReading(previousSnapshot, deps.getRestoredPowerReading(deviceId));
+    const retainedReading = resolveSameSourceRetainedReading(deviceId, deps, previousSnapshot);
     const resolvedMeasuredPower = resolveRetainedMeasuredPower(
         effectiveDevice, capsStatus, measuredPower, retainedReading,
     );
@@ -239,7 +256,7 @@ export function assembleDeviceSnapshot(params: {
     const control = resolveDeviceSnapshotControl({
         identity, deps, overlay, capsStatus, binaryCapabilityId,
         measuredPower: resolvedMeasuredPower,
-        previousSnapshot, retainedReading, purpose, managedDecision,
+        previousSnapshot, retainedReading, admittedTemperature: temperature !== undefined, purpose, managedDecision,
     });
     if (!control) return null;
     // A rejected member gates its temperature facet, not valid sibling controls.
@@ -291,6 +308,7 @@ export function assembleDeviceSnapshot(params: {
         measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
         measuredPowerReading: resolvedMeasuredPower.reading,
         measuredPowerSource: resolvedMeasuredPower.source,
+        externalPowerSocketId: resolveExternalPowerSocketId(deps.externalPower),
         zone: resolveZoneLabel(effectiveDevice),
         zoneId: resolveZoneId(effectiveDevice),
         capabilities: overlay.capabilities,

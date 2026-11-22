@@ -9,7 +9,6 @@ import { renderDeviceDetailSectionSummaries, resetDeviceDetailSectionDisclosures
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailOverlay,
-  deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
   deviceDetailSurplusOpt,
@@ -113,7 +112,7 @@ import {
   applyDeviceDetailSectionLayout,
   autoExpandSetupWhenUnmanaged,
 } from './sectionLayout.ts';
-import { resolveSelectedDeviceDetailControlMode, resolveDeviceDetailKind } from '../deviceKind.ts';
+import { resolveSelectedDeviceDetailControlMode } from '../deviceKind.ts';
 import { initSteppedLoadFlowCheck, renderSteppedLoadFlowSetup } from './steppedLoadFlowSetup.ts';
 import { createPendingDeviceDetailOpen, type DeviceDetailFocus } from './focus.ts';
 import {
@@ -128,20 +127,14 @@ import {
   initTemperatureControlDisabledHandler,
   syncTemperatureControlDisabledRow,
 } from './temperatureControlDisabled.ts';
-import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
-import { resolveBatteryManagedHint, BATTERY_WATCH_MANAGED_HINT, renderDeviceDetailBattery } from './batterySection.ts';
+import { initDeviceDetailManagedControlHandlers, renderManagedControl } from './managedControl.ts';
+import { renderDeviceDetailBattery } from './batterySection.ts';
 import {
   initDeviceDetailOverlayChrome,
   initDeviceDetailOverlaySubscriptions,
   noteDeviceDetailOpened,
 } from './overlayHandlers.ts';
 import { setDeviceDetailTitle } from './title.ts';
-import { DEVICE_POWER_SUPPORT_HINT } from '../deviceControlAvailability.ts';
-import {
-  HOMEY_ENERGY_SETUP_DOCS_URL,
-  HOMEY_ENERGY_SETUP_HINT,
-  needsHomeyEnergySetup,
-} from '../../../../shared-domain/src/homeyEnergySetup.ts';
 import { syncPriceOptRow } from './priceSourceHint.ts';
 
 let currentDetailDeviceId: string | null = null;
@@ -195,45 +188,6 @@ const syncSwitchRowStates = () => {
       hint.toggleAttribute('hidden', switchEl?.selected !== true);
     });
   });
-};
-
-const renderManagedControl = (
-  device: SettingsUiDeviceView | null,
-  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
-): void => {
-  if (deviceDetailManaged) {
-    deviceDetailManaged.selected = controlState.isManaged;
-    deviceDetailManaged.disabled = !controlState.canManageDevice;
-  }
-  const managedHint = document.getElementById('device-detail-managed-hint');
-  if (managedHint) {
-    managedHint.textContent = resolveManagedHint(device, controlState);
-    managedHint.dataset.tone = device && needsHomeyEnergySetup(device) ? 'warning' : 'neutral';
-  }
-  const energySetupLink = document.getElementById('device-detail-homey-energy-setup');
-  if (energySetupLink) {
-    energySetupLink.hidden = !device || !needsHomeyEnergySetup(device);
-    energySetupLink.setAttribute('href', HOMEY_ENERGY_SETUP_DOCS_URL);
-    energySetupLink.setAttribute('target', '_blank');
-    energySetupLink.setAttribute('rel', 'noopener noreferrer');
-  }
-};
-
-const resolveManagedHint = (
-  device: SettingsUiDeviceView | null,
-  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
-): string => {
-  if (controlState.isHomeBattery) {
-    return controlState.isDrivableBattery ? resolveBatteryManagedHint() : BATTERY_WATCH_MANAGED_HINT;
-  }
-  if (device && needsHomeyEnergySetup(device)) return HOMEY_ENERGY_SETUP_HINT;
-  if (!controlState.supportsPower && !controlState.supportsTemperature) return DEVICE_POWER_SUPPORT_HINT;
-  // An unmanaged charger's page hides its Charging and Power limiting cards
-  // (chargingCard.ts), so this switch names what they hold.
-  if (!controlState.isManaged && resolveDeviceDetailKind(device) === 'ev_charger') {
-    return 'Turn on to set how this charger charges and how PELS limits it.';
-  }
-  return 'Include this device in modes and optimization plans.';
 };
 
 const renderDeviceDetailElectricalSetup = (deviceId: string, device: SettingsUiDeviceView | null) => {

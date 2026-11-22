@@ -123,6 +123,13 @@ or planned-period read.
 and provenance in `packages/shared-domain/src/settings/priceOptimization.ts`.
 The same owner defines the adjustment range and stored sign. The runtime and settings
 UI retain their accepted map when that parser reports an unavailable read.
+`device_power_sources` holds explicit generic setup selections, keyed by device
+ID. A socket ID chooses another device's live watts. An entry with value
+`null` chooses the device's own reading. The settings UI writes the map, and
+`DeviceControlSettings` validates and retains its accepted generation.
+`ExternalDevicePower` resolves socket eligibility and links observations.
+See [external device power](state-management/external-device-power.md).
+
 `capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
 Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders

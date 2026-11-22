@@ -51,6 +51,11 @@ export class RealtimeIngestService {
 
   handleDeviceUpdate(device: HomeyDeviceLike): void {
     handleRealtimeDeviceUpdateEvent(this, device);
+    const target = this.reader.externalPower?.targetForSocket(device.id);
+    if (target) {
+      this.reader.externalPower?.noteRealtimeSocketUpdate(device.id, Date.now());
+      this.rebuildFromAcceptedRead(target);
+    }
   }
 
   /** Re-admit a device's facets from its accepted read, as a whole-device update would. */
@@ -107,6 +112,16 @@ export class RealtimeIngestService {
     else this.deviceConfiguration.remove(deviceId);
   }
 
+  private handleExternalPowerReport(deviceId: string, capabilityId: string): boolean {
+    const power = this.reader.externalPower;
+    if (!power) return false;
+    if (capabilityId === 'meter_power') return power.sourceForDevice(deviceId) !== undefined;
+    if (capabilityId !== 'measure_power' && capabilityId !== 'onoff') return false;
+    const target = power.targetForSocket(deviceId);
+    if (target) this.rebuildFromAcceptedRead(target);
+    return target !== undefined || (capabilityId === 'measure_power' && power.sourceForDevice(deviceId) !== undefined);
+  }
+
   handleCapabilityUpdate(
     homeyDeviceId: string, reportedCapabilityId: string, value: unknown, transactionId: string | undefined,
   ): void {
@@ -131,6 +146,7 @@ export class RealtimeIngestService {
         withAcceptedCapabilityReport(raw, capabilityId, value, Date.now()),
       );
     }
+    if (this.handleExternalPowerReport(deviceId, capabilityId)) return;
     const session = this.reader.chargingCurrentControl.sessions;
     this.reader.chargingCurrentControl.synchronizeTrust();
     session.observeCapability(deviceId, capabilityId, value);

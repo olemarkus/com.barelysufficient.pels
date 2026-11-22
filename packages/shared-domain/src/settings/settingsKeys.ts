@@ -43,6 +43,7 @@ export const MODE_ALIASES = 'mode_aliases';
 export const CAPACITY_PRIORITIES = 'capacity_priorities';
 export const MODE_DEVICE_TARGETS = 'mode_device_targets';
 export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
+export const DEVICE_POWER_SOURCES = 'device_power_sources';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';

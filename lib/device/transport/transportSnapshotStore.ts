@@ -9,8 +9,18 @@ import { getDeviceId } from './managerHelpers';
 import { NativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { PolledMeterReads } from './polledMeterReads';
+import { ExternalDevicePower } from './externalDevicePower';
+import type { DeviceTransportOptions } from './transportTypes';
 
 export class TransportSnapshotStore {
+  readonly externalPower: ExternalDevicePower | undefined;
+
+  constructor(externalPower?: DeviceTransportOptions['externalPower']) {
+    this.externalPower = externalPower && new ExternalDevicePower(
+      externalPower.settings, this, externalPower.resolveHome,
+    );
+  }
+
   /** The Homey Energy poll's meter reads, reused by the same sample's phase read. */
   readonly polledMeters = new PolledMeterReads();
 

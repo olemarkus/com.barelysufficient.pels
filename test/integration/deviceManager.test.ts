@@ -137,6 +137,50 @@ describe('DeviceTransport', () => {
         );
     });
 
+    it('attributes a metering-only socket to an explicitly added device through realtime and refresh', async () => {
+        deviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
+            settings: { isManaged: (id) => id === 'appliance', isControllable: (id) => id === 'appliance' },
+        }, undefined, {
+            externalPower: {
+                settings: {
+                    devicePowerSources: { appliance: 'socket' },
+                    managedDevices: { appliance: true },
+                    isPowerSourceWriteCurrent: () => true,
+                    isMainFusePhaseMeter: () => false,
+                },
+                resolveHome: () => 'main',
+            },
+        });
+        const rawDevices = {
+            appliance: homeyDevice({ id: 'appliance', name: 'Appliance', class: 'other' }, {
+                onoff: setable(true),
+                measure_power: 5,
+            }, stampedNow(BASELINE_OFFSET_MS)),
+            socket: homeyDevice({ id: 'socket', name: 'Metering socket', class: 'socket' }, {
+                onoff: setable(true),
+                measure_power: 1800,
+            }, stampedNow(BASELINE_OFFSET_MS)),
+        };
+        await deviceManager.init();
+        mockApiGet.mockResolvedValue(rawDevices);
+        await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
+        const appliance = () => deviceManager.getSnapshot().find(({ id }) => id === 'appliance');
+        expect(appliance()).toMatchObject({ measuredPowerKw: 1.8, externalPowerSocketId: 'socket' });
+        expect(deviceManager.getSnapshot().map(({ id }) => id)).toEqual(['appliance']);
+
+        await emitCapability('socket', 'measure_power', 0);
+        expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
+        await emitCapability('appliance', 'measure_power', 300);
+        expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
+        await emitCapability('socket', 'onoff', false);
+        expect(appliance()?.measuredPowerKw).toBeUndefined();
+        await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
+        expect(appliance()?.measuredPowerKw).toBeUndefined();
+        await expect(deviceManager.requestBinaryControl('socket', false, async () => {})).rejects.toThrow(
+            'Device control is unavailable for the configured power source',
+        );
+    });
+
     describe('init', () => {
         it('marks SDK ready and logs initialization when checks pass', async () => {
             await deviceManager.init();

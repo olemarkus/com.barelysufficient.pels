@@ -58,6 +58,8 @@ export type CapabilityValue<T> = {
 };
 
 export type HomeyDeviceLike = {
+    /** Device-layer opt-in, populated after the SDK boundary. */
+    genericSetupEnabled?: boolean;
     id: string;
     name: string;
     class: string;

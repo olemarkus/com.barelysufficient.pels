@@ -1,3 +1,5 @@
+import { readDevicePowerSources, type DevicePowerSources }
+  from '../../packages/shared-domain/src/settings/devicePowerSources';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeEvChargingSessionSmoothingSettings, type EvChargingSessionSmoothingSettings }
   from '../../packages/shared-domain/src/settings/evChargingSessionSmoothing';
@@ -59,6 +61,7 @@ import {
   BUDGET_EXEMPT_DEVICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_POWER_SOURCES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_PHASE_CONNECTIONS,
   DEVICE_START_POLICIES,
@@ -70,6 +73,7 @@ import {
   EV_CAR_ASSOCIATIONS,
   EV_CAR_CURRENT_LIMITS,
   EV_CHARGER_CURRENT_LIMITS,
+  MAIN_FUSE_PHASE_METER_DEVICE_ID,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
@@ -99,6 +103,7 @@ type BooleanMap = Readonly<Record<string, boolean>>;
 type DeviceControlMaps = {
   readonly controllable: BooleanMap;
   readonly managed: BooleanMap;
+  readonly powerSources: DevicePowerSources;
   readonly managedFilterActive: boolean;
   readonly budgetExempt: BooleanMap;
   readonly phaseConnections: Readonly<Record<string, DevicePhaseConnection>>;
@@ -203,6 +208,7 @@ export class DeviceControlSettings {
   private maps: DeviceControlMaps = {
     controllable: {},
     managed: {},
+    powerSources: {},
     managedFilterActive: false,
     budgetExempt: {},
     phaseConnections: {},
@@ -228,6 +234,20 @@ export class DeviceControlSettings {
 
   /** The runtime-held Power-limit control map (`controllable_devices`), the one the planner reads. */
   get controllableDevices(): BooleanMap { return this.maps.controllable; }
+  get devicePowerSources(): DevicePowerSources { return this.maps.powerSources; }
+  isMainFusePhaseMeter(deviceId: string): boolean {
+    return this.settings.get(MAIN_FUSE_PHASE_METER_DEVICE_ID) === deviceId;
+  }
+  isPowerSourceDevice(deviceId: string): boolean {
+    return Object.values(this.maps.powerSources).includes(deviceId);
+  }
+
+  /** Close the write fence while a newly persisted assignment awaits refresh. */
+  isPowerSourceWriteCurrent(deviceId: string): boolean {
+    const current = this.maps.powerSources;
+    const persisted = this.readPowerSources();
+    return current[deviceId] === persisted[deviceId] && !Object.values(persisted).includes(deviceId);
+  }
   get managedDevices(): BooleanMap { return this.maps.managed; }
   /** Per-device start authority; absence reads as `'unrestricted'`. */
   get deviceStartPolicies(): Readonly<Record<string, DeviceStartPolicy>> { return this.maps.startPolicies; }
@@ -239,7 +259,9 @@ export class DeviceControlSettings {
   get temperatureControlPolicyState(): TemperatureControlPolicyState { return this.maps.temperatureControl.state; }
 
   /** The owner's Managed choice for an ordinary device; batteries and solar answer in `resolveDeviceManagedState`. */
-  isManaged(deviceId: string): boolean { return this.maps.managed[deviceId] === true; }
+  isManaged(deviceId: string): boolean {
+    return this.maps.managed[deviceId] === true && !this.isPowerSourceDevice(deviceId);
+  }
   /** The owner's Power-limit control choice (`resolveCapacityControlEnabled` decides). */
   isControllable(deviceId: string): boolean { return this.maps.controllable[deviceId] === true; }
   /**
@@ -396,10 +418,13 @@ export class DeviceControlSettings {
     // not an owner who cleared every limit.
     const shedBehaviors = settings.get(OVERSHOOT_BEHAVIORS);
     const managed = acceptManagedDevices(settings.get(MANAGED_DEVICES), current.managed);
-    const managedFilterActive = Object.values(managed).some((value) => value === true);
+    const powerSources = this.readPowerSources();
+    const managedFilterActive = Object.entries(managed).some(([id, value]) =>
+      value === true && !Object.values(powerSources).includes(id));
     this.maps = {
       controllable: keep(settings.get(CONTROLLABLE_DEVICES), isBooleanMap, current.controllable),
       managed,
+      powerSources,
       managedFilterActive,
       budgetExempt: keep(settings.get(BUDGET_EXEMPT_DEVICES), isBooleanMap, current.budgetExempt),
       phaseConnections: readPhaseConnections(settings.get(DEVICE_PHASE_CONNECTIONS), current.phaseConnections),
@@ -437,6 +462,16 @@ export class DeviceControlSettings {
       powerControlModes: this.readPowerControlModes(),
       shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
+  }
+
+  private readPowerSources(): DevicePowerSources {
+    try {
+      const value = this.settings.get(DEVICE_POWER_SOURCES);
+      const sources = readDevicePowerSources(value);
+      if (sources) return sources;
+      if (this.isAbsentSetting(DEVICE_POWER_SOURCES, value)) return {};
+    } catch { /* Keep the accepted assignments on an unreadable setting. */ }
+    return this.maps.powerSources;
   }
 
   private readTemperatureControlPolicy(): TemperatureControlPolicy {

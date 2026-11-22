@@ -136,7 +136,7 @@ export class DeviceTransport {
     private readonly logger: Logger;
     // Owner-side widened shape: these stored objects are mutated in place across
     // kinds (incl. the EV plug-state the consumer-facing snapshot type omits).
-    private readonly snapshotStore = new TransportSnapshotStore();
+    private readonly snapshotStore: TransportSnapshotStore;
     private readonly refreshState = new SnapshotRefreshState();
     private readonly runtimeConfiguration: RuntimeDeviceConfiguration;
     get deviceConfigurationStore(): DeviceConfigurationStore { return this.runtimeConfiguration; }
@@ -239,6 +239,7 @@ export class DeviceTransport {
         options: DeviceTransportOptions,
     ) {
         this.logger = logger;
+        this.snapshotStore = new TransportSnapshotStore(options.externalPower);
         this.getFlowTriggerCard = options.getFlowTriggerCard;
         // Late-bound: the refresh service is built below, and a zone change can
         // only arrive once the transport is running.
@@ -508,13 +509,15 @@ export class DeviceTransport {
      * because the object happens to be physically wider, which is the failure
      * `deviceDescriptorProjection.ts` was written to stop repeating.
      */
-    getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined {
-        return this.snapshotStore.getSnapshotByDeviceId(id);
-    }
+    getSnapshotByDeviceId(id: string) { return this.snapshotStore.getSnapshotByDeviceId(id); }
     getEvChargingCurrentDiagnostics(deviceId: string, nowMs: number): EvChargingCurrentDiagnostics | undefined {
         const configuration = this.runtimeConfiguration.get(deviceId);
         return configuration && this.runtimeConfiguration.currentLimits.describe(configuration, nowMs);
     }
+    readDevicePowerSetup() { return this.snapshotStore.externalPower?.readSetup(); }
+
+    refreshExternalDevicePowers(): void { this.refreshService.requestExternalPowerRefresh(); }
+
     getUiPickerDevices(): TransportDeviceSnapshot[] { return this.reader.getUiPickerDevices(); }
     getHomeyDeviceIds(): ReadonlySet<string> { return this.snapshotStore.getHomeyDeviceIds(); }
     /** Only a warm accepted full inventory proves removal; a missing snapshot does not. */

@@ -605,8 +605,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
   const host = readPelsHost(homey);
   if (!host) {
     return {
-      devices: [],
-      inverterDevices: [], continuousBatteryPlans: {}, batteryEfficiencyMeasurements: {},
+      devices: [], inverterDevices: [], continuousBatteryPlans: {}, batteryEfficiencyMeasurements: {},
       schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
       chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
       hasManagedSolarDevice: false,
@@ -621,6 +620,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // switch; a solar device and a meter area's battery ride the backend
     // snapshot for telemetry only.
     devices,
+    devicePowerSetup: host.deviceManager?.readDevicePowerSetup(),
     continuousBatteryPlans: readSettingsUiBatteryPlans(host, devices),
     batteryEfficiencyMeasurements: readSettingsUiBatteryEfficiency(host, devices),
     inverterDevices: readSettingsUiInverterDevices(host),

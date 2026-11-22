@@ -1,3 +1,4 @@
+import { devicePowerSetupHint, isSocketReservedForPower } from './devicePowerSetup.ts';
 import { HOMEY_ENERGY_SETUP_REASON, HOMEY_ENERGY_SETUP_DOCS_URL } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { setTooltip } from './tooltips.ts';
 import {
@@ -145,7 +146,8 @@ export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => 
   const supportsPower = supportsPowerDevice(device);
   const supportsManage = supportsPower || supportsTemperature || device.binaryControllable;
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
-  const canManage = supportsManage && !nativeWiringRequired;
+  const canManage = supportsManage && !nativeWiringRequired && !isSocketReservedForPower(device.id)
+    && (resolveManagedState(device.id) || devicePowerSetupHint(device.id) === null);
   return {
     supportsTemperature,
     supportsPower,
