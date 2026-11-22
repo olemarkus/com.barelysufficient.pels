@@ -880,5 +880,8 @@
   },
   "3.47.0": {
     "en": "A home battery that does not follow PELS's request now says so on its card, and names the mode its own app is running when the app reports it, such as a Sigenergy plant in AI mode. Tomorrow's prices from Homey Energy are picked up within half an hour of being published. PELS uses less memory and reads less from Homey.\n\nFixed: Decimal settings fields accept a decimal comma, so a value such as 0,25 can be typed on a phone keypad that offers only a comma. When PELS lets a device run for part of an hour, it now allows for the power of devices it has just turned back on, so the hour stays under your limit."
+  },
+  "3.48.0": {
+    "en": "When your power readings stop and PELS limits your managed devices to stay within your limits, Homey's timeline now tells you, and tells you again when readings return. PELS learns how fast each switch answers, so it notices sooner when a switch does not turn on or off, and it reads less from Homey after switching devices."
   }
 }
