@@ -148,15 +148,15 @@ describe('createSettingsHandler', () => {
     expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
   });
 
-  it('fans an overshoot behavior update out to sub-home plans', async () => {
+  it('replans an overshoot behavior update from cached observations and fans it out to sub-homes', async () => {
     const rebuildHomeRuntimePlansForModeChange = vi.fn();
     const deps = buildDeps({ rebuildHomeRuntimePlansForModeChange });
     const handler = createSettingsHandler(deps);
 
     await handler(OVERSHOOT_BEHAVIORS);
 
-    expect(deps.loadCapacitySettings).toHaveBeenCalled();
-    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.loadCapacitySettings).toHaveBeenCalledBefore(vi.mocked(deps.rebuildPlanFromCache));
+    expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(OVERSHOOT_BEHAVIORS);
     expect(rebuildHomeRuntimePlansForModeChange).toHaveBeenCalledTimes(1);
   });
@@ -338,14 +338,14 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(DEVICE_TARGET_POWER_CONFIGS);
   });
 
-  it('reloads price settings, refreshes snapshot, and rebuilds when a device\'s price adjustment changes', async () => {
+  it('replans a device price adjustment from cached observations', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
 
     await handler(PRICE_OPTIMIZATION_SETTINGS);
 
-    expect(deps.priceService.loadPriceOptimizationSettings).toHaveBeenCalled();
-    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.priceService.loadPriceOptimizationSettings).toHaveBeenCalledBefore(vi.mocked(deps.rebuildPlanFromCache));
+    expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS);
   });
 
