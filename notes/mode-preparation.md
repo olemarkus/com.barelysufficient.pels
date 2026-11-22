@@ -64,3 +64,12 @@ trigger, PELS counts participating devices that report at least their target
 minus 0.5 °C. The last result can read **Mode changed. 5 of 6 devices were
 ready.** The stored result describes what PELS observed when running the
 schedule. Preparation uses the existing schedule settings and route.
+
+## Starting from a Flow
+
+**Prepare operating mode** creates a one-off mode schedule named **Mode
+preparation from Flow**. Each successful run replaces the previous request in
+that schedule. Ordinary mode schedules still apply. A ready-by time uses
+Homey's local clock and rolls to tomorrow if today's occurrence has passed or
+does not exist. During a repeated hour, only the first occurrence is used. If
+tomorrow's time does not exist, the Flow reports an error.

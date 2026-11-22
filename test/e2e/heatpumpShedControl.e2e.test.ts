@@ -115,7 +115,8 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     expect(turnedOff).toBe(false);
   });
 
-  it('prepares a scheduled mode on meter readings and keeps the target through the handoff', async () => {
+  it.each(['a saved schedule', 'a Flow'])(
+    'prepares a mode from %s on meter readings and keeps its target through the handoff', async (source) => {
     vi.setSystemTime(Date.UTC(2026, 0, 15, 9, 59));
     const device = await buildHeatpumpDevice(17, 500);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
@@ -123,17 +124,23 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set('operating_mode', 'Night');
     mockHomeyInstance.settings.set('temperature_control_modes', { 'heatpump-a': 'update_mode' });
     mockHomeyInstance.settings.set('mode_device_targets', { Night: { 'heatpump-a': 17 }, Home: { 'heatpump-a': 22 } });
-    mockHomeyInstance.settings.set('schedule.morning', {
-      id: 'morning', name: 'Morning', enabled: true, at: '13:00',
-      repeat: { type: 'once', date: '2026-01-15' }, condition: { type: 'include', modes: ['Night'] },
-      action: { type: 'mode', mode: 'Home', prepare: true },
-    });
+    if (source === 'a saved schedule') {
+      mockHomeyInstance.settings.set('schedule.morning', {
+        id: 'morning', name: 'Morning', enabled: true, at: '13:00',
+        repeat: { type: 'once', date: '2026-01-15' }, condition: { type: 'include', modes: ['Night'] },
+        action: { type: 'mode', mode: 'Home', prepare: true },
+      });
+    }
     reportHomePower(500);
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const targetPath = cap('heatpump-a', 'target_temperature');
 
     const app = createApp();
     await app.onInit();
+    if (source === 'a Flow') {
+      const prepareMode = mockHomeyInstance.flow._actionCardListeners.prepare_operating_mode;
+      await expect(prepareMode({ mode: { id: 'Home', name: 'Home' }, ready_by: '13:00' })).resolves.toBe(true);
+    }
     await vi.advanceTimersByTimeAsync(30_000);
     expect(putSpy).not.toHaveBeenCalledWith(targetPath, pelsCapabilityWrite(22));
     const unscoped = await api.ui_devices({ homey: app.homey });

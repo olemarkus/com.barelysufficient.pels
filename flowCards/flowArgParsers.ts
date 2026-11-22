@@ -13,6 +13,8 @@
  */
 import { getDeviceIdFromFlowArg } from './deviceArgs';
 
+const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
 export type FlowAutocompleteOption = { id?: unknown; name?: unknown };
 
 /**
@@ -29,6 +31,14 @@ export function readFlowStringArg(args: unknown, key: string): string {
   }
   return '';
 }
+
+export const validateReadyBy = (raw: unknown): string => {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!LOCAL_TIME_PATTERN.test(value)) {
+    throw new Error('Ready by must be HH:mm in 24-hour local time (e.g. "07:00").');
+  }
+  return value;
+};
 
 /**
  * Read a finite numeric argument from a flow payload. Returns `null` when

@@ -10,10 +10,12 @@ import {
   parseScheduleCommand, scheduleActionDeviceId, scheduleConflict, scheduleConflictOnDate, scheduleEligibilityIssue,
   scheduleEligibilityReason, type ScheduleEligibilityIssue,
 } from '../../packages/shared-domain/src/settings/schedules';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { getLogger } from '../logging/logger';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { TimerRegistry } from '../utils/timerRegistry';
+import { currentResultWording, formatScheduleTime, occurrenceLabel } from './scheduleDisplay';
 import { ScheduleSkip } from './scheduleSkip';
 import type { ScheduleReceipt, ScheduleReceiptStore } from './scheduleReceipts';
 import { dueScheduleOccurrence, nextScheduleOccurrence, scheduleInstant } from './scheduleTime';
@@ -24,6 +26,8 @@ import {
 export const SCHEDULE_PREFIX = 'schedule.';
 export const SCHEDULE_MODES_ENABLED = 'schedule_modes_enabled';
 export const SCHEDULE_TASK_ENABLED_PREFIX = 'schedule_task_enabled.';
+// Reuse one schedule across Flow runs, including its durable occurrence receipt.
+const FLOW_MODE_PREPARATION_ID = '5f7c0330-fee9-4c97-89e5-4225140fe063';
 const logger = getLogger('schedules');
 // What an occurrence records when its schedule could not run as saved.
 const ELIGIBILITY_SKIP_RESULTS: Record<ScheduleEligibilityIssue, string> = {
@@ -40,33 +44,6 @@ const PAUSED_REASONS: Record<Schedule['action']['type'], string> = {
 };
 const SUCCESS_RESULTS: Record<Schedule['action']['type'], string> = {
   mode: 'Mode changed.', task: 'Smart task created.', override: 'Override started.',
-};
-
-// Results stored by earlier versions read "Skipped: …" and "Could not run: …", and the
-// two successes had no full stop. A row reads them in today's wording, so its
-// "Last: … · …" line keeps one colon.
-const LEGACY_RESULT_PREFIXES: ReadonlyArray<readonly [string, string]> = [
-  ['Skipped: ', 'Skipped because '], ['Could not run: ', 'Could not run. '],
-];
-const LEGACY_RESULTS: Readonly<Record<string, string>> = {
-  'Mode changed': 'Mode changed.', 'Smart task created': 'Smart task created.',
-  "Waiting for the device's current Smart task to end.": 'Skipped because this device already has a Smart task.',
-};
-const currentResultWording = (result: string): string => {
-  const legacy = LEGACY_RESULTS[result];
-  if (legacy) return legacy;
-  const prefix = LEGACY_RESULT_PREFIXES.find(([old]) => result.startsWith(old));
-  return prefix ? `${prefix[1]}${result.slice(prefix[0].length)}` : result;
-};
-
-const formatScheduleTime = (atMs: number, timeZone: string): string => new Intl.DateTimeFormat('en-GB', {
-  timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-}).format(new Date(atMs));
-
-const occurrenceLabel = (localOccurrence: string, timeZone: string): string => {
-  const [date, at] = localOccurrence.split('|');
-  const atMs = date && at ? scheduleInstant(date, at, timeZone) : undefined;
-  return atMs === undefined ? '' : formatScheduleTime(atMs, timeZone);
 };
 
 /** One catalog generation for a complete settings projection. */
@@ -207,6 +184,24 @@ export class ScheduleService {
     return structuredClone(this.requireSchedule(id));
   }
 
+  listModes(): string[] {
+    return this.port.listModes();
+  }
+
+  /** Arm one future mode change and replace the previous request from a Flow. */
+  prepareModeBy(mode: string, readyBy: string): void {
+    const now = this.port.getNowMs();
+    const timeZone = this.port.clock.getTimezone();
+    const today = getDateKeyInTimeZone(new Date(now), timeZone);
+    const todayAt = scheduleInstant(today, readyBy, timeZone);
+    const date = todayAt !== undefined && todayAt > now ? today : shiftDateKey(today, 1);
+    this.write({ type: 'save', schedule: {
+      id: FLOW_MODE_PREPARATION_ID, name: 'Mode preparation from Flow', enabled: true, at: readyBy,
+      repeat: { type: 'once', date }, condition: { type: 'any' },
+      action: { type: 'mode', mode, prepare: true },
+    } });
+  }
+
   read(includeModePreparation = false): SchedulesSnapshot {
     this.load();
     const schedules = [...this.schedules.values()];
@@ -219,7 +214,7 @@ export class ScheduleService {
   }
 
   private readCatalog(schedules: readonly Schedule[]): ScheduleCatalog {
-    const modes = this.port.listModes();
+    const modes = this.listModes();
     if (!schedules.some((schedule) => schedule.enabled && schedule.action.type === 'task')) {
       return { modes, taskDevices: { state: 'ready', devices: [] } };
     }
@@ -318,7 +313,7 @@ export class ScheduleService {
 
   private eligibility(schedule: Schedule): ScheduleEligibilityIssue | null {
     const devices = schedule.action.type === 'mode' ? [] : this.port.listTaskDevices();
-    return scheduleEligibilityIssue(this.resolveModes(schedule), this.port.listModes(), devices);
+    return scheduleEligibilityIssue(this.resolveModes(schedule), this.listModes(), devices);
   }
 
   private save(schedule: Schedule): void {
