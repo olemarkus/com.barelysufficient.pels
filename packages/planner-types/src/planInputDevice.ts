@@ -928,7 +928,7 @@ export type DeviceControlPosture = {
  * together, and here they do not.
  */
 export type PlanDeviceCarriedKey =
-  'associatedCar' | 'available' | 'binaryControllable' | 'budgetExempt'
+  'associatedCar' | 'available' | 'binaryControllable' | 'binarySwitchGeneration' | 'budgetExempt'
   | 'isEvCharger' | 'isBatteryOrSolar' | 'starvationSupported'
   | 'canSetControl' | 'capabilities' | 'controlAdapter' | 'controlModel'
   | 'controllable' | 'desiredStepId'
