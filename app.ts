@@ -604,8 +604,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     () => filterDevicesForHome(this.ctx.homeMembership, this.getPlanInputSnapshot(), MAIN_HOME_ID), {
       smartTaskState: (deviceId) => readSmartTaskOpen(this.homey.settings, deviceId, this.getNow().getTime()),
       leadMs: (device, fromC, targetC) => resolveModePreparationLeadMs(this.powerTracker, device, fromC, targetC),
-    },
-  );
+    });
   // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
@@ -654,10 +653,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   private readonly scheduleSettingsChanged = (key: string): void => { this.scheduleService?.onSettingsChanged(key); };
 
   protected startSchedules(): void {
-    const schedules = createAppSchedules(
-      this, this.homeModeCatalog, this.modePreparation.preview,
-      (occurrence) => this.modePreparation.result(this.planService.getPlanDevices(), occurrence),
-    );
+    const schedules = createAppSchedules(this, this.homeModeCatalog, this.modePreparation.preview,
+      (occurrence) => this.modePreparation.result(this.planService.getPlanDevices(), occurrence));
     this.scheduleService = schedules;
     for (const owner of [this.norwayMonthlyCapacity, this.powerHistoryRecovery]) owner.attach(this.homey.settings);
     this.homey.settings.on('set', this.scheduleSettingsChanged);
