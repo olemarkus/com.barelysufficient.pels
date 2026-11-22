@@ -54,6 +54,10 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
       powerFigureChecks: partialDouble<FlowBackedDeviceState['powerFigureChecks']>({
         read: () => undefined, readAll: () => [],
       }),
+      meterResponseTimings: partialDouble<FlowBackedDeviceState['meterResponseTimings']>({
+        commandDispatched: () => undefined, commandSettled: () => undefined, commandFailed: () => undefined,
+        readAll: () => [],
+      }),
     }),
     planService: undefined,
     priceCoordinator: undefined,

@@ -53,6 +53,8 @@ describe('createMainBatteryControl', () => {
       deviceManager: { readBatteryControl: () => battery, requestSteppedLoadStep: vi.fn() },
       homeMembership: membership,
       capacityDryRun: false,
+      // No write is sent here; the meter response witness only has to be there.
+      flowBacked: { meterResponseTimings: {} },
     } as unknown as AppContext;
     const owner = createMainBatteryControl(ctx, () => false);
 

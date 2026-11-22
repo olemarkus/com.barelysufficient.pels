@@ -89,6 +89,9 @@ export const createSupportReportReads = (
     const transport = requireDeviceManager(app);
     return transport.writeAnswerTimes.describe(nowMs, (id) => transport.getSnapshotByDeviceId(id)?.name ?? null);
   },
+  readMeterResponseTimings: (nowMs) => (
+    app.flowBacked.meterResponseTimings.readAll(app.getSettingsUiManagedDevices(), nowMs)
+  ),
   readAppMemory: () => captureAppMemorySnapshot(appMemory),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (

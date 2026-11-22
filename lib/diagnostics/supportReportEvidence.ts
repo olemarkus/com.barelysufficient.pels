@@ -1,5 +1,6 @@
 import type { PowerFigureCheckEntry } from '../device/powerFigureCheck';
 import type { WriteAnswerTimesEntry } from '../device/transport/writeAnswerTimes';
+import type { MeterResponseTimingSummary } from '../device/meterResponseTimings';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetUiRead } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
@@ -111,6 +112,8 @@ export type SupportReportReads = {
   readPowerFigureChecks(nowMs: number): readonly PowerFigureCheckEntry[];
   /** How fast Homey answers PELS's writes to each device (`lib/device/transport/writeAnswerTimes.ts`). */
   readWriteAnswerTimes(nowMs: number): readonly WriteAnswerTimesEntry[];
+  /** How long devices' lone switches took to show on the home meter (`lib/device/meterResponseTimings.ts`). */
+  readMeterResponseTimings(nowMs: number): readonly MeterResponseTimingSummary[];
 };
 
 type ReportSubject = {
@@ -527,12 +530,12 @@ const readHeatingShadowSection = (
 
 export const POWER_FIGURE_CHECKS_REPORT_TITLE = 'Power figure checks';
 
-export const WRITE_ANSWER_TIMES_REPORT_TITLE = 'Device write answer times';
 
 /**
  * An app report lists the devices of one readout, none when it names none:
- * the devices whose figure PELS doubts, and how fast Homey answered PELS's
- * writes to each device since the app started.
+ * the devices whose figure PELS doubts, how fast Homey answered PELS's writes
+ * to each device since the app started, and how long devices' lone switches
+ * took to show on the home meter.
  */
 const readAppDevicesSection = (
   request: SupportReportRequest, title: string, readDevices: () => readonly SupportReportSection['values'][],
@@ -593,7 +596,8 @@ export class SupportReportEvidenceSource {
       ...readCarLinkSection(carLink),
       ...heating,
       ...readAppDevicesSection(request, POWER_FIGURE_CHECKS_REPORT_TITLE, () => host.readPowerFigureChecks(at)),
-      ...readAppDevicesSection(request, WRITE_ANSWER_TIMES_REPORT_TITLE, () => host.readWriteAnswerTimes(at)),
+      ...readAppDevicesSection(request, 'Device write answer times', () => host.readWriteAnswerTimes(at)),
+      ...readAppDevicesSection(request, 'Meter response times', () => host.readMeterResponseTimings(at)),
       ...readHomeSections(host, request.subject.homeId, plan, area),
       readSection('Current power source', () => request.subject.homeId === MAIN_HOME_ID
         ? reportMainPowerSource(host.readPowerSourceChoice(), host.readMainMeterSelection, inventory)

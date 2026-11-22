@@ -352,6 +352,9 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
     recordBatteryDemandSample: (netW, genW, nowMs) => this.batteryLearning.recordNetSample(netW, genW, nowMs),
     recordHeatingObservations: (devices, nowMs) => this.heatingShadow.record(devices, nowMs),
+    recordMeterResponseSample: (sample, nowMs, readDevices) => (
+      this.flowBacked.meterResponseTimings.recordWholeHomeSample(sample, nowMs, readDevices)
+    ),
     // Production for samples that do not carry their own; the factory bounds its
     // freshness. Main home only — a sub-home must not adopt this production.
     observedHomePower: this.observedHomePower,

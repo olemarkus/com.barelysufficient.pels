@@ -1,4 +1,5 @@
 import { createPowerFigureChecks, type PowerFigureChecks } from './powerFigureCheck';
+import { createMeterResponseTimings, type MeterResponseTimings } from './meterResponseTimings';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
@@ -132,6 +133,13 @@ export class FlowBackedDeviceState {
    */
   readonly powerFigureChecks: PowerFigureChecks;
 
+  /**
+   * How long each device's lone switch-ons and switch-offs take to show on the
+   * home meter: every device write and Main's readings are reported here, and
+   * the diagnostics report reads it (`meterResponseTimings.ts`). Capture only.
+   */
+  readonly meterResponseTimings: MeterResponseTimings;
+
   constructor(private readonly deps: FlowBackedDeviceStateDeps) {
     this.learnedPowerPeakState = createLearnedPowerPeakState({
       getStore: () => deps.getLearnedPowerPeakStore(),
@@ -143,6 +151,7 @@ export class FlowBackedDeviceState {
       expectedPowerKwOverrides: deps.getExpectedPowerKwOverrides(),
       lastKnownPowerKw: deps.getLearnedPowerPeaks(),
     }));
+    this.meterResponseTimings = createMeterResponseTimings(() => deps.getUserdataDatabase());
   }
 
   /** The capability values Flow cards reported for one device. */

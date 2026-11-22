@@ -205,6 +205,33 @@ describe('daily heating observations', () => {
   });
 });
 
+describe('meter response times', () => {
+  const appRequest: SupportReportRequest = { ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day' };
+  const timing = {
+    deviceId: 'heater', deviceName: 'Hall heater', direction: 'on' as const, samples: 5, medianResponseMs: 20_000,
+    agreeing: 5, agreedResponseMs: 20_000, trusted: true, noChange: 1, medianResolutionMs: 10_000,
+    medianAcceptedAfterMs: 600,
+  };
+  const withTimings = (readAll: () => (typeof timing)[]): SupportReportApp => {
+    const host = currentHost();
+    return {
+      ...host,
+      flowBacked: partialDouble<PelsHost['flowBacked']>({
+        powerFigureChecks: host.flowBacked.powerFigureChecks,
+        meterResponseTimings: partialDouble<PelsHost['flowBacked']['meterResponseTimings']>({ readAll }),
+      }),
+    };
+  };
+
+  it('lists each device direction in an app report, and states a failed read as an omission', async () => {
+    const report = await source(withTimings(() => [timing])).capture(appRequest, now);
+    expect(values(report, 'Meter response times')).toEqual({ devices: [timing] });
+    const failed = await source(withTimings(() => { throw new Error('private error'); })).capture(appRequest, now);
+    expect(failed.omissions).toContain('Meter response times is unavailable.');
+    expect(JSON.stringify(failed)).not.toContain('private error');
+  });
+});
+
 describe('support report evidence capture', () => {
   it('captures owner-resolved charging limits separately from observation steps at the capture time', async () => {
     const host = currentHost();
