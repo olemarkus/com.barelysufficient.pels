@@ -82,6 +82,7 @@ const createMembershipPort = (options: {
   pendingGeneration?: boolean;
 }): HomeMembershipPort => ({
   getHomeIdForDevice: (id) => options.membership[id] ?? 'main',
+  resolvePowerSourceHome: (id) => options.membership[id],
   isDeviceZoneUnknown: () => false,
   getMembershipMap: () => ({ ...options.membership }),
   getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set<string>() }),
@@ -161,7 +162,7 @@ const installBoundary = (options: {
     getUiPickerDevices: () => [],
   });
   const app: ScopedApiApp = pelsHostDouble<ScopedApiApp>({
-    deviceManager: partialDouble<DeviceTransport>({ getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true, readInverterControlOptions: () => [], getZoneTree: () => null }),
+    deviceManager: partialDouble<DeviceTransport>({ readDevicePowerSetup: () => undefined, getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true, readInverterControlOptions: () => [], getZoneTree: () => null }),
     getModePrioritiesForUi: createFixturePriorityQuery(),
     settingsUiDeviceReads,
     latestTargetSnapshot: [

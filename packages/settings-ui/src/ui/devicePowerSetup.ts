@@ -3,7 +3,7 @@ import { readDevicePowerSources, type DevicePowerSources }
   from '../../../shared-domain/src/settings/devicePowerSources.ts';
 import { DEVICE_POWER_SOURCES } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { createSelectOption } from './advanced.ts';
+import { createSelectOption } from './materialSelectOption.ts';
 import type { MaterialSelectOptionElement } from './components.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './deviceDetail/settingsWrite.ts';
 

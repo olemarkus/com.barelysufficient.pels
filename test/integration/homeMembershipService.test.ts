@@ -3192,6 +3192,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3260,6 +3261,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers: new TimerRegistry(),
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3317,6 +3319,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers: new TimerRegistry(),
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3378,6 +3381,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3439,6 +3443,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3521,6 +3526,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3589,6 +3595,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3673,6 +3680,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),
@@ -3769,6 +3777,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       timers,
       deviceManager: {
         getZoneTree: () => ZONES,
+        refreshExternalDevicePowers: () => undefined,
         getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
         setOnZoneTreeCommitted: vi.fn(),
         setOnDeviceZoneChanged: vi.fn(),

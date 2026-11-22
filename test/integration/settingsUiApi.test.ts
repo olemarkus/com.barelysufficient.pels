@@ -293,6 +293,7 @@ describe('settingsUiApi', () => {
         return latestDevices;
       },
       deviceManager: partialDouble<DeviceTransport>({
+        readDevicePowerSetup: () => undefined,
         getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
         getZoneTree: () => options.zoneTree ?? null,
       }),
@@ -419,6 +420,7 @@ describe('settingsUiApi', () => {
     const homey = createHomey();
     Object.assign(homey.app, {
       deviceManager: partialDouble<DeviceTransport>({
+        readDevicePowerSetup: () => undefined,
         getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true,
         getZoneTree: () => null,
         readInverterControlOptions: () => [{ id: 'pv-main', name: 'Roof' }, { id: 'pv-area', name: 'Garage' }],

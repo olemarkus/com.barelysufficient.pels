@@ -164,7 +164,7 @@ describe('DeviceTransport', () => {
         await deviceManager.init();
         mockApiGet.mockResolvedValue(rawDevices);
         await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
-        const appliance = () => deviceManager.getSnapshot().find(({ id }) => id === 'appliance');
+        const appliance = () => deviceManager.getSnapshotByDeviceId('appliance');
         expect(appliance()).toMatchObject({ measuredPowerKw: 1.8, externalPowerSocketId: 'socket' });
         expect(deviceManager.getSnapshot().map(({ id }) => id)).toEqual(['appliance']);
 
