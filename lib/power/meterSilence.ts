@@ -33,7 +33,7 @@ export type MeterSilence = {
   cause: 'no_samples' | 'frozen_reading';
 };
 
-const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean => (
+export const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean => (
   a !== null && a.silentSinceMs === b.silentSinceMs && a.cause === b.cause
 );
 
@@ -166,6 +166,15 @@ export class MeterSilenceMonitor {
     this.deps.structuredLog().warn({
       event: 'meter_silence_shed_pass_completed', homeId: this.deps.homeId, ...silence,
     });
+  }
+
+  /**
+   * The silence the block holds for right now, or `null` when it is not
+   * engaged. A pure read: the gate's `isBlocked` is the one that logs.
+   */
+  blockedSilence(): MeterSilence | null {
+    const silence = this.currentSilence();
+    return silence !== null && isSameSilence(this.shedPassDoneFor, silence) ? silence : null;
   }
 
   private logBlockCleared(): void {
