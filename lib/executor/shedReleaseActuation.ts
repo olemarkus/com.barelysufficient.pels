@@ -103,9 +103,10 @@ const applyShedReleaseBinaryOff = async (
   // recorder and bypasses the capacity precheck / pendingSheds bookkeeping, for both
   // the direct write here and any deferred flow-backed confirmation in
   // handleConfirmedBinaryCommand.
-  return applyBinaryLifecycleRelease(
-    ctx, intent.deviceId, intent.name, observed.snapshot, false, intent.binarySwitchGeneration,
-  );
+  const generation = intent.binarySwitchGeneration;
+  return generation === undefined
+    ? applyBinaryLifecycleRelease(ctx, intent.deviceId, intent.name, observed.snapshot, false)
+    : applyBinaryLifecycleRelease(ctx, intent.deviceId, intent.name, observed.snapshot, false, generation);
 };
 
 const emitShedReleaseSkipped = (
