@@ -46,7 +46,15 @@ export const applyBinaryRestore = async (
   const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (snapshot && isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity') || !snapshot) return false;
-  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration);
+  if (intent.lastResortMaximumW !== undefined) {
+    const off = snapshot.binaryControlObservation;
+    if (!off || off.observedValue !== false || !ctx.pendingBinaryCommandStore.ownsLastResortOff(
+      intent.deviceId, off.observedAtMs, intent.binarySwitchGeneration,
+    )) return false;
+  }
+  return applyBinaryRestoreWithSnapshot(
+    ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration, intent.lastResortMaximumW,
+  );
 };
 
 export const applyUncontrolledBinaryRestore = async (
@@ -107,6 +115,7 @@ export const applyBinarySheddingToDevice = async (
     return await turnOffDevice(ctx, {
       deviceId, name: deviceName, desired: false, logContext: 'capacity', capacityShed,
       binarySwitchGeneration: capacityShed?.binarySwitchGeneration,
+      lastResortMaximumW: capacityShed?.lastResortMaximumW,
     }, snapshot, false);
   } finally {
     ctx.execution.actuation.endShed(deviceId);

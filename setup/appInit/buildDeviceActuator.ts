@@ -83,11 +83,12 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
     requestProductionControl: (command) => transport.requestProductionControl(command),
     getNativeRelayBinding: (deviceId) => transport.getNativeRelayBinding(deviceId),
     canTurnOnDevice: (deviceId) => transport.canTurnOnDevice(deviceId),
-    requestBinaryControl: (deviceId, desired, generation) => transport.requestBinaryControl(
+    requestBinaryControl: (deviceId, desired, generation, lastResortMaximumW) => transport.requestBinaryControl(
       deviceId,
       desired,
       makeFlowBackedBinaryTrigger(ctx.homey.flow),
       generation,
+      lastResortMaximumW,
     ),
     requestTemperatureTarget: (deviceId, desired) => transport.requestTemperatureTarget(deviceId, desired),
     resolveTemperatureTarget: (deviceId, desired) => transport.resolveTemperatureTarget(deviceId, desired),

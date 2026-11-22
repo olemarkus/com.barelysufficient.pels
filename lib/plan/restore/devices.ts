@@ -23,6 +23,7 @@ export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_COD
 
 export type RestoreCandidate =
   | { kind: 'binary' | 'stepped' | 'charging_phase'; device: MeteredDevicePlanDevice }
+  | { kind: 'last_resort'; device: DevicePlanDevice }
   | { kind: 'storage'; device: DevicePlanDevice; lever: StorageLeverState };
 
 function isEligibleForLivePowerControl(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
@@ -211,6 +212,9 @@ export function getRestoreCandidates(
   shedDecisions: ShedDecisions,
 ): RestoreCandidate[] {
   const candidates: RestoreCandidate[] = [
+    ...planDevices.filter((device) => device.lastResortOwnedOffAtMs !== undefined && device.currentState === 'off'
+      && device.control.commandAuthority && !device.externalOffHoldActive && device.plannedState === 'keep')
+      .map((device) => ({ kind: 'last_resort' as const, device })),
     ...planDevices
       .filter((device): device is MeteredDevicePlanDevice => (
         !isSteppedLoadDevice(device) && isShedPostureBinaryRestoreCandidate(device, shedDecisions)

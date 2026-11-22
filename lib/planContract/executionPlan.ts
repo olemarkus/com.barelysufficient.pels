@@ -25,6 +25,7 @@ export type PlannedBinaryCommand = RelayShedDecision & {
   deviceId: string;
   name: string;
   desiredOn: boolean;
+  lastResortMaximumW?: number;
   binarySwitchGeneration?: number;
   source: 'controlled' | 'uncontrolled';
 };

@@ -216,6 +216,10 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.execution.hasPendingTargetCommandsOlderThan(thresholdMs);
   }
 
+  public hasLastResortOffOwnership(): boolean {
+    return this.pendingBinaryCommandStore.hasLastResortOwnership();
+  }
+
   public hasPendingBinaryCommands(): boolean {
     return this.pendingBinaryCommandStore.hasAny();
   }

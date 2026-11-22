@@ -76,7 +76,7 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
 } & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>
-  & Partial<Pick<DevicePlanDevice, 'phaseFootprint'>>;
+  & Partial<Pick<DevicePlanDevice, 'phaseFootprint' | 'lastResort' | 'lastResortOwnedOffAtMs'>>;
 
 /** The reason line of a card Homey reports unavailable, as the Tesla adapter words it. */
 export const HOMEY_UNAVAILABLE_REASON_TEXT = 'Homey reports this device unavailable';
@@ -108,6 +108,8 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
 }
 
 function hasDeviceControl(device: DeviceStatusInput): boolean {
+  if (device.lastResort && device.currentState === 'off'
+    && device.lastResortOwnedOffAtMs === undefined && device.plannedState !== 'shed') return false;
   return device.controllable || (device.temperature !== undefined && device.execution.targetProgress !== 'undriven');
 }
 
@@ -310,8 +312,14 @@ function resolveNotControlledReason(
  * owner has already turned on.
  */
 function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] {
+  if (device.lastResort) return { text: 'Turn on the device manually to resume control' };
   if (device.powerSetupRequired) {
-    return { text: HOMEY_ENERGY_SETUP_REASON, tone: 'warning', offersHomeyEnergySetup: true };
+    const lastResortOffered = device.binaryControllable && !device.isEvCharger && !device.temperature
+      && !device.steppedLoad;
+    const text = lastResortOffered
+      ? `${HOMEY_ENERGY_SETUP_REASON} or set up last-resort control in Devices`
+      : HOMEY_ENERGY_SETUP_REASON;
+    return { text, tone: 'warning', offersHomeyEnergySetup: true };
   }
   if (!device.standingCommandGrant) return { text: MANUAL_REASON_TEXT };
   return device.hasPowerReading ? null : { text: NO_POWER_READING_REASON_TEXT };
@@ -405,10 +413,13 @@ function resolvePhysicalFact(device: DeviceStatusInput): string | null {
   return stepId === null ? null : formatStepDisplayLabel(stepId);
 }
 
+const hidesDevicePower = (device: DeviceStatusInput): boolean => device.powerSetupRequired
+  || device.lastResort !== undefined;
+
 function resolvePower(
   device: DeviceStatusInput, limited: boolean, dryRun: boolean, previousPower: number | undefined,
 ): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
-  if (device.powerSetupRequired) return { powerText: null, powerVariant: 'expected' };
+  if (hidesDevicePower(device)) return { powerText: null, powerVariant: 'expected' };
   if (previousPower !== undefined) {
     return { powerText: `Last reported ${previousPower.toFixed(1)} kW`, powerVariant: 'before_switch_off' };
   }
@@ -594,7 +605,8 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     satisfiedTemperature: reportsSatisfiedTemperature(device) });
   const limited = intentKind === 'held';
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
-  const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');
+  const stateLabel = device.lastResort && kind === 'active' ? 'On' : displayStateLabel(kind);
+  const label = [stateLabel, physicalFact].filter(Boolean).join(' · ');
   const cardKind = resolveCardKind(device);
   const presented = withPresentedTarget(device);
   const draw = device.currentDrawKw;

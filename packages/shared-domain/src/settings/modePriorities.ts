@@ -159,10 +159,16 @@ export class ModePriorityCatalog {
     mode: string,
     deviceIds: readonly string[],
     sortsLastWhenUnranked: (deviceId: string) => boolean,
+    isLastResort?: (deviceId: string) => boolean,
   ): ModePriorityOrder {
-    return createPriorityOrder(rankActiveDevicePriorities(
+    const ordinaryOrder = rankActiveDevicePriorities(
       deviceIds, (deviceId) => this.preferences[mode]?.[deviceId], sortsLastWhenUnranked,
-    ));
+    );
+    if (!isLastResort) return createPriorityOrder(ordinaryOrder);
+    const sorted = Object.entries(ordinaryOrder).sort((left, right) => left[1] - right[1]).map(([id]) => id);
+    return createPriorityOrder(Object.fromEntries([
+      ...sorted.filter(isLastResort), ...sorted.filter((id) => !isLastResort(id)),
+    ].map((id, index) => [id, index + 1])));
   }
 
   /** Compact relative ranks for the current home/device roster, without stale entries. */

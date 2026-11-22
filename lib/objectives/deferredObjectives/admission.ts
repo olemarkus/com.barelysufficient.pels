@@ -170,7 +170,9 @@ export const applyDeferredObjectiveAdmission = (
   const deviceById = new Map(devices.map((device) => [device.id, device]));
   const decisions = new Map<string, DeferredAdmissionDecision>();
   for (const evaluation of evaluations) {
-    decisions.set(evaluation.deviceId, resolveDecision(evaluation, deviceById.get(evaluation.deviceId)));
+    const device = deviceById.get(evaluation.deviceId);
+    if (device?.lastResort) continue;
+    decisions.set(evaluation.deviceId, resolveDecision(evaluation, device));
   }
   return decisions;
 };

@@ -136,6 +136,8 @@ the device's default binary control. Device transport validates the exact
 capability against the accepted read and relates plan intents and write
 confirmations to the current binding generation.
 
+`last_resort_devices` is the device-control owner's map of device IDs to positive maximum watts. The Settings UI writes it from device setup. It grants a managed unmetered relay last-resort control and supplies the restore reservation, never measured equipment draw. The accepted setting participates in the switch binding revision so stale commands and OFF ownership cannot survive a setting change.
+
 `capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
 Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders

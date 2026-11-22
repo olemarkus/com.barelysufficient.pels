@@ -1,3 +1,4 @@
+import { markUnrestoredLastResort } from './lastResort';
 import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
@@ -44,6 +45,10 @@ import type {
 
 export type { RestoreDeps, RestorePlanResult } from './types';
 
+const canStartRestore = (lastResortPending: boolean, guardInShortfall: boolean): boolean => (
+  !lastResortPending && !guardInShortfall
+);
+
 export function applyRestorePlan(
   planDevices: DevicePlanDevice[],
   context: PlanContext,
@@ -65,13 +70,15 @@ export function applyRestorePlan(
   // whether a waiting swap reservation is charged for it. Ordering used to
   // carry that relationship implicitly: cleanup ran here and the gate was
   // re-evaluated thirty lines down, with nothing connecting them.
-  const restoresPlannable = !guardInShortfall
+  const lastResortPending = planDevices.some((device) => device.lastResort && device.binaryCommandPending);
+  const newRestoresAllowed = canStartRestore(lastResortPending, guardInShortfall);
+  const restoresPlannable = newRestoresAllowed
     && shouldPlanRestores(sheddingActive, effectiveTiming, state.capacityPeriodSpentFor(context));
   // The exempt lane admits restores too, and reaches `blockingTarget` through
   // `applyRestoreCandidates` — so a cycle it runs in is serviceable for a
   // reservation whose target that lane can actually consider.
   // Raw timing keeps startup stabilization while the budget-shedding latch is active.
-  const exemptRestoresPlannable = !guardInShortfall
+  const exemptRestoresPlannable = newRestoresAllowed
     && shouldPlanBudgetExemptRestores(context, power, state, timing, sheddingActive);
   // Per target, not once per cycle: the exempt lane filters its candidates to
   // budget-exempt devices (`exemptRestoreLane.ts`), so counting it as
@@ -134,10 +141,11 @@ export function applyRestorePlan(
   ) {
     markOffDevicesStayOff(cycle);
     markSteppedDevicesStayAtCurrentLevel(cycle);
-  } else if (effectiveTiming.inRestoreCooldown) {
+  } else if (effectiveTiming.inRestoreCooldown || lastResortPending) {
     applyRestorePlanInCooldown(cycle);
   }
 
+  markUnrestoredLastResort(cycle, guardInShortfall || sheddingActive);
   return {
     planDevices: Array.from(deviceMap.values()),
     restoredThisCycle,

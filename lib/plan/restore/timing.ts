@@ -48,6 +48,11 @@ export const buildRestoreEvidenceLogFields = (timing: RestoreTiming): { powerSam
   timing.measurementTs === null ? {} : { powerSampleAgeMs: Math.max(0, timing.nowTs - timing.measurementTs) }
 );
 
+const canEndRestoreCooldownEarly = (
+  actuation: ActuationHistoryRead, cooldownMs: number, nowTs: number,
+): boolean => cooldownMs === RESTORE_COOLDOWN_MS && !actuation.readRestoreDrawEvidence()
+  .some(({ lastResortReserve }) => lastResortReserve !== undefined && nowTs < lastResortReserve.untilMs);
+
 const ceilSecondsOrNull = (ms: number | null): number | null =>
   (ms !== null ? Math.ceil(ms / 1000) : null);
 
@@ -64,7 +69,7 @@ export const buildRestoreTiming = (
   const cooldown = getShedCooldownState(state.restoreBackoff, nowTs, SHED_COOLDOWN_MS);
   const cooldownRemainingMs = cooldown.cooldownRemainingMs;
   const inCooldown = cooldown.inCooldown;
-  const releasedByPower = cooldownState.restoreCooldownMs === RESTORE_COOLDOWN_MS
+  const releasedByPower = canEndRestoreCooldownEarly(state.actuation, cooldownState.restoreCooldownMs, nowTs)
     && recentRestoresHavePowerEvidence(state, deps, planDevices, nowTs);
   const inRestoreCooldown = sinceRestore !== null && sinceRestore < cooldownState.restoreCooldownMs
     && !releasedByPower;
@@ -145,7 +150,7 @@ function recentRestoresHavePowerEvidence(
     .filter(({ restoredAtMs }) => nowTs - restoredAtMs < RESTORE_COOLDOWN_MS);
   return recentRestores.length > 0 && recentRestores.every(({ deviceId, restoredAtMs, drawEvidenceFromMs }) => {
     const device = planDevices.find((candidate) => candidate.id === deviceId);
-    return device !== undefined && device.stepCommandPending !== true
+    return device !== undefined && !device.lastResort && device.stepCommandPending !== true
       && state.pendingTargetCommands[deviceId] === undefined
       && (lastInstabilityMs === null || lastInstabilityMs < restoredAtMs)
       && hasRestoredDrawArrived(deps, device, drawEvidenceFromMs, measuredAfterMs);
@@ -184,7 +189,11 @@ export function resolveOutstandingRestoreDrawKw(
 ): number {
   const measuredAfterMs = resolveReadingMeasuredAfterMs(tracker);
   let outstandingKw = 0;
-  for (const { deviceId, restoredAtMs, drawEvidenceFromMs } of actuation.readRestoreDrawEvidence()) {
+  for (const { deviceId, restoredAtMs, drawEvidenceFromMs, lastResortReserve } of actuation.readRestoreDrawEvidence()) {
+    if (lastResortReserve) {
+      if (nowMs < lastResortReserve.untilMs) outstandingKw += lastResortReserve.maximumW / 1000;
+      continue;
+    }
     if (nowMs - restoredAtMs >= RESTORE_COOLDOWN_MS) continue;
     const device = devices.find(({ id }) => id === deviceId);
     if (device === undefined || device.currentState !== 'on' || device.isBatteryOrSolar

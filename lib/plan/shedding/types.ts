@@ -10,6 +10,8 @@ import type { ObservedStorageInput } from '../../../packages/planner-types/src/p
 import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 
 export type SheddingPlan = {
+  lastResortCutIds?: ReadonlySet<string>;
+  lastResortOwnedOffAtMs?: ReadonlyMap<string, number>;
   relayShedDecisions?: ReadonlyMap<string, import('../../planContract/executionPlan').RelayShedDecision>;
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;

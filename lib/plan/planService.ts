@@ -384,15 +384,16 @@ export class PlanService {
     );
 
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands();
-    const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands();
-    if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
+    const syncBinaryObservation = this.deps.planEngine.hasPendingBinaryCommands()
+      || this.deps.planEngine.hasLastResortOffOwnership?.() === true;
+    if (!hasPendingTargetCommands && !syncBinaryObservation) {
       return this.refreshDeviceStatus() || steppedChanged;
     }
 
     const pendingTargetChanged = hasPendingTargetCommands
       ? this.deps.planEngine.syncPendingTargetCommands(this.deps.getPlanDevices(), source)
       : false;
-    const pendingBinaryChanged = hasPendingBinaryCommands
+    const pendingBinaryChanged = syncBinaryObservation
       ? this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), source)
       : false;
     const pendingChanged = pendingTargetChanged || pendingBinaryChanged || steppedChanged;

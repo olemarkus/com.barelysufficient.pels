@@ -25,6 +25,7 @@ export function readNativeRelayBinding(
 }
 
 /** Resolve the switch from the current binding at dispatch, including its accepted Flow routing. */
+// eslint-disable-next-line max-params -- Preserve optional authority values on the existing transport seam.
 export async function requestBinaryControl(
     store: TransportSnapshotStore,
     writes: DeviceWriteService,
@@ -33,8 +34,10 @@ export async function requestBinaryControl(
     desired: boolean,
     triggerFlow: (id: string, capabilityId: string, desired: boolean) => Promise<void>,
     binarySwitchGeneration?: number,
+    lastResortMaximumW?: number,
 ): Promise<NativeRelayOffResult | void | false> {
-    if (!store.binarySwitches.allows(deviceId, binarySwitchGeneration)) return false;
+    if (!store.binarySwitches.allows(deviceId, binarySwitchGeneration)
+        || !store.binarySwitches.allowsLastResortWrite(deviceId, lastResortMaximumW)) return false;
     store.externalPower?.assertAllowsWrite(deviceId);
     const snapshot = store.getSnapshotByDeviceId(deviceId);
     const capabilityId = snapshot?.binaryCapabilityId;

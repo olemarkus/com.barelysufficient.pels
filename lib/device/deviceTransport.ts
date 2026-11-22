@@ -643,9 +643,10 @@ export class DeviceTransport {
         desired: boolean,
         triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
         binarySwitchGeneration?: number,
+        lastResortMaximumW?: number,
     ): Promise<NativeRelayOffResult | void | false> {
         return requestBinaryControl(this.snapshotStore, this.writeService, this.observationProducers.evCarLink,
-            deviceId, desired, triggerFlow, binarySwitchGeneration);
+            deviceId, desired, triggerFlow, binarySwitchGeneration, lastResortMaximumW);
     }
 
     /** Resolve the exact semantic setpoint before executor pending/retry preflight. */

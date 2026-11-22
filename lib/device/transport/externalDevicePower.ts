@@ -69,7 +69,7 @@ export class ExternalDevicePower {
   constructor(
     private readonly settings: Pick<
       DeviceControlSettings, 'devicePowerSources' | 'managedDevices' | 'isMainFusePhaseMeter'
-    > & Partial<Pick<DeviceControlSettings, 'isMeteringSocketReserved'>>,
+    > & Partial<Pick<DeviceControlSettings, 'isMeteringSocketReserved' | 'lastResortDevices'>>,
     private readonly inventory: TransportSnapshotStore,
     private readonly resolveHome: PowerSourceHome,
   ) {}
@@ -166,6 +166,8 @@ export class ExternalDevicePower {
     const devices: DevicePowerSetupEntry[] = eligible.map((device) => ({
       id: device.id, name: device.name, configured: this.setupSelected(device.id),
       sourceId: this.sourceForDevice(device.id) ?? null,
+      lastResortMaximumW: this.settings.lastResortDevices?.[device.id],
+      lastResortAvailable: this.canSetUpLastResort(device),
       binarySwitchId: configuredSwitch(device.id) ?? null,
       binarySwitches: this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
         ? [] : availableBinarySwitches(device),
@@ -177,6 +179,15 @@ export class ExternalDevicePower {
       sourceReady: this.isSourceReady(device),
     }));
     return { devices };
+  }
+
+  private canSetUpLastResort(device: HomeyDeviceLike): boolean {
+    const standardSwitch = device.capabilitiesObj.onoff;
+    const readableSwitch = standardSwitch?.setable === true && standardSwitch.getable !== false;
+    return !device.capabilities.includes('target_temperature')
+      && !this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
+      && (availableBinarySwitches(device).length > 0 || readableSwitch)
+      && this.inventory.getSnapshotByDeviceId(device.id)?.measuredPowerKw === undefined;
   }
 
   private sourceState(

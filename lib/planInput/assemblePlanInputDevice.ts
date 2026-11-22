@@ -85,6 +85,6 @@ export const assemblePlanInputDevice = (
   ...facts,
   targetPowerConfig: withoutTargetPowerReachability(device.targetPowerConfig),
   ...(device.binaryControl !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
-  ...resolvePlanPowerAxis(rawDevice),
+  ...(facts.lastResort ? {} : resolvePlanPowerAxis(rawDevice)),
   ...resolveTemperatureInputFields(device),
 });

@@ -21,14 +21,21 @@ export type Actuator = {
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
 };
 
+const requestBinaryActuation = (transport: ActuatorTransport, command: Extract<DeviceCommand, { kind: 'binary' }>) => {
+  const { deviceId, desired, binarySwitchGeneration, lastResortMaximumW } = command;
+  if (lastResortMaximumW !== undefined) {
+    return transport.requestBinaryControl(deviceId, desired, binarySwitchGeneration, lastResortMaximumW);
+  }
+  return binarySwitchGeneration === undefined ? transport.requestBinaryControl(deviceId, desired)
+    : transport.requestBinaryControl(deviceId, desired, binarySwitchGeneration);
+};
+
 const applyBinary = async (
   transport: ActuatorTransport,
   command: Extract<DeviceCommand, { kind: 'binary' }>,
 ): Promise<ActuatorOutcome> => {
   try {
-    const relay = command.binarySwitchGeneration === undefined
-      ? await transport.requestBinaryControl(command.deviceId, command.desired)
-      : await transport.requestBinaryControl(command.deviceId, command.desired, command.binarySwitchGeneration);
+    const relay = await requestBinaryActuation(transport, command);
     if (relay === false) return { requested: false };
     if (relay) return { requested: true, kind: 'binary', ...relay };
     return { requested: true, kind: 'binary', acknowledged: true };

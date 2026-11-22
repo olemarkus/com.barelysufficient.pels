@@ -1,4 +1,6 @@
-import { DeviceBinarySwitchSettings, readDevicePowerSources, type DevicePowerSources } from './deviceSetupSettings';
+import {
+  DeviceBinarySwitchSettings, readDevicePowerSources, type DevicePowerSources, type LastResortDevices,
+} from './deviceSetupSettings';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeEvChargingSessionSmoothingSettings, type EvChargingSessionSmoothingSettings }
   from '../../packages/shared-domain/src/settings/evChargingSessionSmoothing';
@@ -103,6 +105,7 @@ type DeviceControlMaps = {
   readonly controllable: BooleanMap;
   readonly managed: BooleanMap;
   readonly powerSources: DevicePowerSources;
+  readonly lastResortDevices: LastResortDevices;
   readonly managedFilterActive: boolean;
   readonly budgetExempt: BooleanMap;
   readonly phaseConnections: Readonly<Record<string, DevicePhaseConnection>>;
@@ -183,7 +186,7 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
   | 'getTemperatureBoostConfig'
   | 'getEvBoostConfig'
   | 'getEvChargeTargetConfig'
-  | 'deviceStartPolicies'
+  | 'deviceStartPolicies' | 'lastResortDevices' | 'devicePowerSources'
   | 'controllableDevices'
   | 'isBudgetExempt'
   | 'getDevicePhaseConnection'
@@ -208,6 +211,7 @@ export class DeviceControlSettings {
     controllable: {},
     managed: {},
     powerSources: {},
+    lastResortDevices: {},
     managedFilterActive: false,
     budgetExempt: {},
     phaseConnections: {},
@@ -244,6 +248,7 @@ export class DeviceControlSettings {
   /** The runtime-held Power-limit control map (`controllable_devices`), the one the planner reads. */
   get controllableDevices(): BooleanMap { return this.maps.controllable; }
   get devicePowerSources(): DevicePowerSources { return this.maps.powerSources; }
+  get lastResortDevices(): LastResortDevices { return this.maps.lastResortDevices; }
   isMainFusePhaseMeter(deviceId: string): boolean {
     return this.settings.get(MAIN_FUSE_PHASE_METER_DEVICE_ID) === deviceId;
   }
@@ -432,6 +437,7 @@ export class DeviceControlSettings {
       controllable: keep(settings.get(CONTROLLABLE_DEVICES), isBooleanMap, current.controllable),
       managed,
       powerSources,
+      lastResortDevices: this.binarySwitchSettings.readLastResortDevices(),
       managedFilterActive,
       budgetExempt: keep(settings.get(BUDGET_EXEMPT_DEVICES), isBooleanMap, current.budgetExempt),
       phaseConnections: readPhaseConnections(settings.get(DEVICE_PHASE_CONNECTIONS), current.phaseConnections),
@@ -469,7 +475,7 @@ export class DeviceControlSettings {
       powerControlModes: this.readPowerControlModes(),
       shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
-    this.binarySwitchSettings.reload();
+    this.binarySwitchSettings.reload(this.maps.lastResortDevices, this.maps.managed);
   }
 
   private readPowerSources(): DevicePowerSources {

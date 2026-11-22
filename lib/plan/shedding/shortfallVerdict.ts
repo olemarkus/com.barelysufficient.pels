@@ -38,6 +38,7 @@ export async function reportShortfallToGuard(
   deps: SheddingDeps,
   /** This cycle's storage stage: the holds a battery's candidate is priced from. */
   storage: StorageRelief,
+  lastResortCutId?: string,
 ): Promise<void> {
   // The capacity axis owns both its pace and shortfall threshold. An off axis
   // has no hard-cap question to ask.
@@ -57,7 +58,7 @@ export async function reportShortfallToGuard(
     power.drawKw,
     shortfallThresholdKw,
     // Walked only over the threshold, not on every rebuild.
-    buildShortfallCapacityStateSummary(context, power, state, selection, deps, storage),
+    buildShortfallCapacityStateSummary(context, power, state, selection, deps, storage, lastResortCutId),
   );
 }
 
@@ -68,6 +69,7 @@ function buildShortfallCapacityStateSummary(
   selection: PlanSheddingResult,
   deps: SheddingDeps,
   storage: StorageRelief,
+  lastResortCutId: string | undefined,
 ): PlanInputCapacityStateSummary {
   const { devices } = context;
   const { shedSet } = selection;
@@ -102,10 +104,14 @@ function buildShortfallCapacityStateSummary(
     remainingReducibleControlledLoadW,
     remainingReducibleControlledLoad: remainingReducibleControlledLoadW > 0,
     remainingActionableControlledLoadW,
-    remainingActionableControlledLoad: remainingActionableControlledLoadW > 0,
+    remainingActionableControlledLoad: remainingActionableControlledLoadW > 0 || devices.some((device) => (
+      device.lastResort && device.control.commandAuthority && device.commandableNow && device.currentState === 'on'
+      && !state.lastResortShedAttempts.has(device.id)
+    )),
     // Over the actual-cap projection a requested temperature target is not
     // electrical relief in flight, even while its command awaits confirmation.
-    shedReliefInFlight: hasElectricalReliefInFlight(selection, candidates),
+    shedReliefInFlight: lastResortCutId !== undefined || hasElectricalReliefInFlight(selection, candidates)
+      || devices.some((device) => device.lastResort && deps.pendingBinaryCommandStore.hasActiveTurnOff(device.id)),
     summarySource: 'plan_input',
     summarySourceAtMs: context.nowTs,
   };

@@ -158,6 +158,16 @@
             aria-describedby="device-power-setup-binary-help"></md-filled-select>
           <small class="field__hint" id="device-power-setup-binary-help"></small>
         </label>
+        <div class="field" id="device-power-setup-last-resort" hidden>
+          <label class="setting-row">
+            <span>Turn off as a last resort</span>
+            <md-switch id="device-power-setup-last-resort-toggle"
+              aria-label="Turn off as a last resort"></md-switch>
+          </label>
+          <small class="field__hint">PELS uses the household meter. It turns this device off after limiting other devices, then makes room for its maximum power before turning it back on.</small>
+          <md-filled-text-field id="device-power-setup-maximum" type="number" min="1" step="1"
+            label="Maximum power" suffix-text="W"></md-filled-text-field>
+        </div>
         <md-filled-tonal-button type="button" id="device-power-setup-save">Save device setup</md-filled-tonal-button>
       </details>
       <p id="empty-state" class="muted" hidden>No compatible devices found. Choose <strong>Request support</strong> below to ask for a device PELS does not support.</p>

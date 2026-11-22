@@ -183,7 +183,7 @@ export class ShedDecisions {
       }
     }
     this.standingShedIds = new Set(planDevices
-      .filter((device) => !isSteppedLoadDevice(device)
+      .filter((device) => !device.lastResort && !isSteppedLoadDevice(device)
         && !postureById.has(device.id) && !decoration.lentAuthorityDeviceIds.has(device.id))
       .filter((device) => (actuating && isShedSwitchingOff(device))
         || (this.standingShedIds.has(device.id)

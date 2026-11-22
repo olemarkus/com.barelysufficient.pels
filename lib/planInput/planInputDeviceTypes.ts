@@ -70,7 +70,7 @@ export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
   | 'carCurrentRangeUnavailable' | 'targetPowerClaimNeeded' | 'phaseFootprint'
-  | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt'>
+  | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt' | 'lastResort'>
   & SteppedClusterFields
   // Not `StorageClusterFields`: its empty member is `Record<string, never>`,
   // which no object carrying the fields above can satisfy.

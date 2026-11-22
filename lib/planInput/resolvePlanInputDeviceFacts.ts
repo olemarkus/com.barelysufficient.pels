@@ -1,7 +1,9 @@
 import {
   hasStandingCommandGrant, resolveDeviceControlPosture, resolveStartPolicyInForce,
 } from '../device/temperatureControlPosture';
-import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import { resolveDeviceStartPolicy, type DeviceStartPolicy }
+  from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { resolveObservedCurrentState } from '../observer/observedState';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCanSetControl } from '../device/deviceActionProjection';
@@ -130,6 +132,41 @@ const resolveSteppedPlanInputFields = (
 };
 
 /** Resolve configuration and observation into the facts used by plan input. */
+function resolveLastResortSetup(source: PlanInputProjectionSource, device: ToPlanDeviceInput) {
+  const maximumW = source.deviceControl.lastResortDevices?.[device.id];
+  if (maximumW === undefined || device.temperature !== undefined || device.isBatteryOrSolar
+    || isEvDevice(device) || isSteppedLoadSnapshot(device)) return undefined;
+  const observation = device.binaryControlObservation;
+  return {
+    maximumW,
+    ...(observation?.observedValue === false ? { observedOffAtMs: observation.observedAtMs } : {}),
+  };
+}
+
+function resolveLastResortControl(managed: boolean, source: PlanInputProjectionSource, device: ToPlanDeviceInput) {
+  return {
+    managed,
+    commandAuthority: managed && device.binaryControl !== undefined && !hasObservedMeasuredPower(device)
+      && !source.deviceControl.devicePowerSources?.[device.id],
+  };
+}
+
+function resolvePlanControlPolicy(
+  source: PlanInputProjectionSource, device: ToPlanDeviceInput, capacityControlEnabled: boolean,
+  lastResort: boolean, startPolicy: DeviceStartPolicy,
+) {
+  const managed = source.resolveManagedState(device.id);
+  return lastResort ? {
+    control: resolveLastResortControl(managed, source, device),
+    startPolicyInForce: 'unrestricted' as const,
+    budgetExempt: false,
+  } : {
+    control: resolveDeviceControlPosture(device, managed, capacityControlEnabled, startPolicy),
+    startPolicyInForce: resolveStartPolicyInForce(startPolicy, capacityControlEnabled),
+    budgetExempt: source.deviceControl.isBudgetExempt(device.id),
+  };
+}
+
 export const resolvePlanInputDeviceFacts = (
   source: PlanInputProjectionSource,
   device: ToPlanDeviceInput,
@@ -167,16 +204,14 @@ export const resolvePlanInputDeviceFacts = (
   const evBoost = source.deviceControl.getEvBoostConfig(device.id);
   const startPolicy = resolveDeviceStartPolicy(source.deviceControl.deviceStartPolicies, device.id);
   const capacityControlEnabled = source.isCapacityControlEnabled(device.id);
-  const control = resolveDeviceControlPosture(
-    device,
-    source.resolveManagedState(device.id),
-    capacityControlEnabled,
-    startPolicy,
+  const lastResort = resolveLastResortSetup(source, device);
+  const { control, startPolicyInForce, budgetExempt } = resolvePlanControlPolicy(
+    source, device, capacityControlEnabled, lastResort !== undefined, startPolicy,
   );
-  const startPolicyInForce = resolveStartPolicyInForce(startPolicy, capacityControlEnabled);
   const externalOffHoldActive = source.isExternalOffHoldActive(device.id, device);
   const hasStandingDemand = !isEvDevice(device);
-  const { surplusOnly, surplusTracking } = resolveSurplusPostureForDevice(
+  const { surplusOnly, surplusTracking } = lastResort ? { surplusOnly: false, surplusTracking: false }
+    : resolveSurplusPostureForDevice(
     source,
     device,
     options,
@@ -204,6 +239,7 @@ export const resolvePlanInputDeviceFacts = (
     ...steppedCluster,
     ...resolvePresenceFlags(resolveSteppedLadderMissing(device, steppedCluster), surplusOnly, externalOffHoldActive),
     currentState: observedCurrentState,
+    ...(lastResort ? { lastResort } : {}),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     confirmedNotDrawing,
     commandableNow: commandability.commandableNow,
@@ -220,7 +256,7 @@ export const resolvePlanInputDeviceFacts = (
     surplusTracking,
     hasStandingDemand,
     residualKw,
-    budgetExempt: source.deviceControl.isBudgetExempt(device.id),
+    budgetExempt,
     phaseFootprint: resolvePhaseFootprint({
       ownerConnection: source.deviceControl.getDevicePhaseConnection(device.id),
       isEvCharger: device.isEvCharger,

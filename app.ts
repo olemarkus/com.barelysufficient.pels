@@ -610,7 +610,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     ctx: this.ctx,
     getDailyKwh: (dateKey) => this.powerTrackerHelpers.readDailyKwh(dateKey, this.getTimeZone()),
     getHomeOperatingMode: this.getHomeOperatingMode,
-    getPrioritiesForDevices: (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
+    getPrioritiesForDevices: this.homeModeCatalog.getPrioritiesForDevices,
     getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),
     getPreparedModeTargets: this.modePreparation.getPreparedModeTargets,
     readPreparedTemperatureC: this.modePreparation.readPreparedTemperatureC,

@@ -28,6 +28,7 @@ export class ActuationRecord {
 
   /** Binary power may arrive between dispatch and the ON confirmation that starts pacing. */
   private readonly binaryRestoreDrawEvidenceFromMs: Record<string, number> = {};
+  private readonly lastResortRestoreReserve = new Map<string, { maximumW: number; untilMs: number }>();
 
   /** The last restore of any device — the restore cooldown's anchor. */
   lastRestoreMs: number | null = null;
@@ -102,6 +103,7 @@ export class ActuationRecord {
     this.lastRestoreMs = nowMs;
     this.lastDeviceRestoreMs[deviceId] = nowMs;
     delete this.binaryRestoreDrawEvidenceFromMs[deviceId];
+    this.lastResortRestoreReserve.delete(deviceId);
   }
 
   /** Confirmation starts pacing; the corresponding dispatch starts its power-evidence window. */
@@ -115,9 +117,14 @@ export class ActuationRecord {
     this.binaryRestoreDrawEvidenceFromMs[deviceId] = evidenceFromMs;
   }
 
+  reserveLastResortRestore(deviceId: string, maximumW: number, untilMs: number): void {
+    this.lastResortRestoreReserve.set(deviceId, { maximumW, untilMs });
+  }
+
   readRestoreDrawEvidence(): readonly RestoreDrawEvidence[] {
     return Object.entries(this.lastDeviceRestoreMs).map(([deviceId, restoredAtMs]) => ({
       deviceId, restoredAtMs, drawEvidenceFromMs: this.resolveDrawEvidenceFromMs(deviceId, restoredAtMs),
+      lastResortReserve: this.lastResortRestoreReserve.get(deviceId),
     }));
   }
 

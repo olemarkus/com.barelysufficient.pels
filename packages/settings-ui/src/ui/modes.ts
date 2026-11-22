@@ -1,3 +1,4 @@
+import { allowLastResortPriorityMove, appendLastResortLabel, isLastResortConfigured } from './devicePowerSetup.ts';
 import Sortable from 'sortablejs';
 import { currentSetupJourney } from './setupJourneyState.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
@@ -236,6 +237,7 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   nameText.className = 'mode-row__name-text';
   nameText.textContent = formatDisplayDeviceName(device.name);
   name.appendChild(nameText);
+  appendLastResortLabel(name, device.id);
 
   const desired = getDesiredTarget(device);
   const input = buildModeTargetInput(device, desired);
@@ -270,11 +272,8 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   priorityEmpty.hidden = true;
 
   const editingMode = state.editingMode || DEFAULT_MODE_NAME;
-  const order = state.modePriorityCatalog.getOrder(
-    editingMode,
-    managedDevices.map(({ id }) => id),
-    isHomeBatteryDeviceId,
-  );
+  const order = state.modePriorityCatalog.getOrder(editingMode, managedDevices.map(({ id }) => id),
+    isHomeBatteryDeviceId, isLastResortConfigured);
   [...managedDevices].sort((a, b) => order.getPriority(a.id) - order.getPriority(b.id))
     .forEach((d) => priorityList.appendChild(buildPriorityRow(d)));
 
@@ -342,6 +341,7 @@ const initSortable = () => {
     delay: 150,
     delayOnTouchOnly: true,
     touchStartThreshold: 5,
+    onMove: ({ dragged, related }) => allowLastResortPriorityMove(dragged, related),
     onEnd: async () => {
       refreshPriorityBadges();
       const outcome = await savePriorities();
