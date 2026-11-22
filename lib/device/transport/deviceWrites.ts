@@ -170,8 +170,9 @@ export class DeviceWriteService {
     return snapshot !== undefined && this.chargingCurrentControl.sessions.controls(snapshot);
   }
 
-  private assertControlAllowed(deviceId: string): HomeyDeviceLike | undefined {
+  private assertControlAllowed(deviceId: string, requiresLivePower = true): HomeyDeviceLike | undefined {
     const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
+    this.snapshotStore.externalPower?.assertAllowsWrite(deviceId, raw, requiresLivePower);
     if (!raw && this.requiresAdapterControl(deviceId)) {
       throw new Error('Device control metadata is unavailable.');
     }
@@ -183,6 +184,7 @@ export class DeviceWriteService {
   canTurnOnDevice(deviceId: string): boolean {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     return snapshot !== undefined
+      && this.snapshotStore.externalPower?.allowsWrite(deviceId) !== false
       && snapshot.available !== false
       && isCanSetControl(snapshot)
       && snapshot.binaryControlObservation !== undefined
@@ -236,9 +238,9 @@ export class DeviceWriteService {
 
   async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
-    this.assertControlAllowed(deviceId);
-    const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    this.assertControlAllowed(deviceId, value !== false || snapshotBefore?.binaryCapabilityId !== capabilityId);
+    const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);
     if (snapshotBefore?.binaryCapabilityId === capabilityId && normalizedValue === true) {
@@ -558,9 +560,7 @@ export class DeviceWriteService {
   }
 
   /** Whether the device's app refused Homey's control of its watt target, until the claim is retried. */
-  isTargetPowerControlRefused(deviceId: string): boolean {
-    return this.getTargetPowerControlClaim(deviceId) === 'refused';
-  }
+  isTargetPowerControlRefused(deviceId: string) { return this.getTargetPowerControlClaim(deviceId) === 'refused'; }
 
   /** Write `target_power_mode = homey`. */
   async requestTargetPowerControlClaim(

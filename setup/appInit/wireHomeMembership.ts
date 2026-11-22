@@ -55,7 +55,10 @@ export const wireHomeMembership = (
     settings: ctx.homey.settings,
     sampledMeterIdentity: createSampledMeterIdentity(ctx),
     subscribeToObservedStateRefresh,
-    onZoneTreeCommitReady,
+    onZoneTreeCommitReady: () => {
+      ctx.deviceManager?.refreshExternalDevicePowers();
+      onZoneTreeCommitReady?.();
+    },
     onMainOwnershipReady: recovery.applyNow,
     onMainAuthorityUnresolved: recovery.schedule,
     // A repaired sampled-meter fence still leaves a committed plan derived
@@ -89,6 +92,7 @@ export const wireHomeMembership = (
       // and reconcile. Do not enqueue duplicate stale-plan work from the
       // intermediate semantic recompute.
       if (service?.hasPendingOwnershipGeneration()) return;
+      ctx.deviceManager?.refreshExternalDevicePowers();
       if (onSubHomeMembershipChanged?.() === false) return;
       const planService = ctx.planService;
       if (!planService) {

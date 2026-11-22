@@ -49,6 +49,7 @@ export function shouldDropAfterControlState(params: {
   decision: ManagedFilterDecision;
   currentOn: boolean | undefined;
   deviceClassKey?: string;
+  admittedTemperature?: boolean;
 }): boolean {
   const { purpose, decision, currentOn, deviceClassKey } = params;
   // A home battery or solar device has no on/off control capability, so its
@@ -60,6 +61,7 @@ export function shouldDropAfterControlState(params: {
   //     dropping it here keeps it rendered exactly once in the settings UI, never
   //     twice.
   if (isBatteryOrSolarClassKey(deviceClassKey)) return purpose === 'ui_picker';
+  if (params.admittedTemperature) return purpose === 'ui_picker' && decision.isManaged;
   if (purpose !== 'ui_picker') return currentOn === undefined;
   // Drop managed devices with a resolved `currentOn` in the picker — they are
   // already in the runtime snapshot. One whose `currentOn` is undefined is not

@@ -1,3 +1,4 @@
+import { acceptDevicePowerSetup, devicePowerSetupHint, renderDevicePowerSetup } from './devicePowerSetup.ts';
 import { render } from 'preact';
 import { SetupDevicePicker } from './views/SetupJourney.tsx';
 import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
@@ -123,6 +124,7 @@ export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> =>
   // price-device pickers, and Advanced after /ui_devices already resolved.
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
   const devices = parseDeviceList(payload?.devices);
+  acceptDevicePowerSetup(payload?.devicePowerSetup);
   // Membership changes arrive as `homes_config` / `device_home_assignments`
   // settings events, which refresh the badges themselves
   // (`refreshHomeBadgesForUi`), and with the runtime's `devices_updated` push,
@@ -192,6 +194,10 @@ const rollbackManagedIntent = (deviceId: string, generation: number, previous: b
 };
 
 const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('managed', async (checked) => {
+  if (checked && devicePowerSetupHint(deviceId)) {
+    renderDevices(state.latestDevices);
+    return;
+  }
   const previousManaged = state.managedMap[deviceId];
   const intentGeneration = beginManagedControlIntent(deviceId);
   if (isHomeBatteryDeviceId(deviceId)) {
@@ -398,7 +404,11 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
 
   const nameCell = buildRedesignNameCell(device);
   const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
-  const visibleReasons = needsHomeyEnergySetup(device) ? { ...reasons, limit: null } : reasons;
+  const setupHint = devicePowerSetupHint(device.id);
+  const visibleReasons = { ...reasons,
+    managed: setupHint ?? reasons.managed,
+    limit: needsHomeyEnergySetup(device) ? null : reasons.limit,
+  };
   appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)
     ? resolveBatteryRowReasons(device, manageability.isManaged, visibleReasons)
     : visibleReasons);
@@ -479,6 +489,7 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
     return;
   }
   render(null, target);
+  renderDevicePowerSetup(refreshDevices);
   target.replaceChildren();
   if (!devices.length) {
     emptyState.hidden = false;
@@ -500,15 +511,18 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   target.appendChild(fragment);
 };
 
+const deriveRefreshedDevices = (response: SettingsUiDevicesPayload | null | undefined) => {
+  acceptDevicePowerSetup(response?.devicePowerSetup);
+  return Array.isArray(response?.devices) ? parseDeviceList(response.devices) : null;
+};
+
 export const refreshDevices = async (options?: { render?: boolean }) => {
   if (state.isBusy) return;
   setBusy(true);
   const shouldRender = options?.render ?? true;
   try {
     const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
-    const refreshedDevices = Array.isArray(response?.devices)
-      ? parseDeviceList(response.devices)
-      : null;
+    const refreshedDevices = deriveRefreshedDevices(response);
     if (refreshedDevices) {
       // The refresh endpoint answers for the WHOLE home, so it may only re-seed
       // the bare entry; every home-scoped entry it did not refresh is dropped
@@ -550,8 +564,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
       renderPriorities(devices);
       renderPriceConfigDevices();
     }
-    const devicesUpdated = new CustomEvent('devices-updated', { detail: { devices } });
-    document.dispatchEvent(devicesUpdated);
+    document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
     await refreshPlan();
   } catch (error) {

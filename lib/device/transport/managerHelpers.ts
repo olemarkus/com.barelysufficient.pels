@@ -80,7 +80,7 @@ export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null =>
   const deviceClass = resolved.class.trim();
   if (!deviceClass) return null;
   const deviceClassKey = deviceClass.toLowerCase();
-  if (!SUPPORTED_DEVICE_CLASSES.has(deviceClassKey)) return null;
+  if (!SUPPORTED_DEVICE_CLASSES.has(deviceClassKey) && !device.genericSetupEnabled) return null;
   return deviceClassKey;
 };
 

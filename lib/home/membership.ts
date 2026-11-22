@@ -107,6 +107,8 @@ export type HomeMembershipPort = {
    * device or one held out of every home ({@link isDeviceZoneUnknown}).
    */
   getHomeIdForDevice(deviceId: string): HomeId;
+  /** Area of an explicitly observed physical device, including telemetry-only devices. */
+  resolvePowerSourceHome(deviceId: string, deviceZoneId: string | null): HomeId | undefined;
   /**
    * While meter areas run, whether the device's membership resolved as held
    * out: it follows the zone rule and the committed zone tree does not contain

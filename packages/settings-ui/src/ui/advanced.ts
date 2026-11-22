@@ -32,6 +32,7 @@ type MaterialSelectOptionElement = HTMLElement & {
   selected: boolean;
   displayText: string;
   typeaheadText: string;
+  disabled: boolean;
 };
 
 // Exported for other dynamic-list pickers (e.g. the whole-home meter select).

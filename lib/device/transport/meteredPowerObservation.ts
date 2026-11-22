@@ -11,6 +11,7 @@ export function preserveNewerMeteredPowerReading(
   previous: TransportDeviceSnapshot,
   next: TransportDeviceSnapshot,
 ): void {
+  if (previous.externalPowerSocketId !== next.externalPowerSocketId) return;
   const retained = previous.measuredPowerReading;
   const incoming = next.measuredPowerReading;
   // Admission/absence is resolved by the parser; a removed meter stays removed.

@@ -97,6 +97,13 @@ export type SteppedLoadFlowTriggerCard = {
 
 
 export type DeviceTransportOptions = {
+    externalPower?: {
+      settings: Pick<
+        DeviceControlSettings,
+        'devicePowerSources' | 'managedDevices' | 'isPowerSourceWriteCurrent' | 'isMainFusePhaseMeter'
+      >;
+      resolveHome: import('./externalDevicePower').PowerSourceHome;
+    };
     /**
      * Persistence port for the EV car-link probe, supplied by the wiring layer.
      * Omitted in tests and any construction path that does not persist: the probe

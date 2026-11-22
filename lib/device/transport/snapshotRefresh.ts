@@ -222,6 +222,7 @@ function commitRefreshedSnapshot(
         ...new Set(snapshot.map((d) => refresh.reader.snapshotStore.sourceDeviceId(d.id))),
         ...refresh.reader.chargingCurrentControl.sessions.observedIds(),
         ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
+        ...(refresh.reader.externalPower?.sourcesForTargets(snapshot.map(({ id }) => id)) ?? []),
     ]);
     fireSnapshotMutatedForRefresh(refresh, snapshot, previousSnapshot);
 }
@@ -301,7 +302,7 @@ function adoptCommittedDeviceList(
             committedSnapshot,
             priorRawById: refresh.reader.snapshotStore.getTrackedRawDevicesById(),
         });
-    refresh.reader.syncTrackedDevices(trackingList);
+    refresh.reader.syncTrackedDevices(trackingList, !isFullRead);
     if (isFullRead) {
         refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList, fetchedList);
     }
@@ -435,7 +436,7 @@ function retainUnreadHomeyEnergyPower(
     const previousById = new Map(previous.map((device) => [device.id, device]));
     for (const device of next) {
         const retained = previousById.get(device.id);
-        if (retained?.measuredPowerSource !== 'homey_energy'
+        if (device.externalPowerSocketId !== undefined || retained?.measuredPowerSource !== 'homey_energy'
             || device.measuredPowerReading !== undefined || device.measuredPowerObservedAtMs !== undefined) continue;
         Object.assign(device, {
             measuredPowerReading: retained.measuredPowerReading,
@@ -471,6 +472,7 @@ export class SnapshotRefreshService {
     const store = this.reader.snapshotStore;
     const ids = new Set([
       ...[...viewIds].map((id) => store.sourceDeviceId(id)),
+      ...(this.reader.externalPower?.sourcesForTargets(viewIds) ?? []),
       ...this.observationProducers.evCarLink.getObservedCarDeviceIds(),
       ...this.temperatureRecovery.getPendingDeviceIds().map((id) => store.sourceDeviceId(id)),
     ]);
@@ -490,6 +492,12 @@ export class SnapshotRefreshService {
     this.inventoryRefreshPending = true;
     countRefreshCaller('inventory');
     await this.refresh({ includeLivePower: false, meterDeviceIds: [] });
+  }
+
+  requestExternalPowerRefresh(): void {
+    if (this.reader.snapshotStore.getSnapshot().some((device) => device.externalPowerSocketId !== undefined)) {
+      this.requestInventoryRefresh();
+    }
   }
 
   /** A full inventory read, detached: a failure is logged, never thrown at the caller. */
@@ -593,7 +601,7 @@ export class SnapshotRefreshService {
         'device_fetch',
         this.reader.logger.structuredLog,
         this.reader.snapshotStore.getLastAcceptedRawDevice,
-    ));
+    ).map((source) => this.reader.externalPower?.mergeSocketRefreshRead(source, start) ?? source));
     // Only a full inventory can remove companions. Resolve membership before
     // parsing publishes eligibility.
     if (fetchSource === 'raw_manager_devices') {
@@ -610,7 +618,9 @@ export class SnapshotRefreshService {
         acceptedRawDevices,
         fetchSource,
     );
-    const presentSnapshot = this.reader.parseFetchedDeviceList(effectiveList, start, livePowerByDeviceId);
+    const presentSnapshot = this.reader.parseFetchedDeviceList(
+        effectiveList, start, livePowerByDeviceId, fetchSource === 'raw_manager_devices',
+    );
     retainUnreadHomeyEnergyPower(previousSnapshot, presentSnapshot, options.includeLivePower !== false);
     // Carry the observations the realtime path made since the last refresh
     // over a read that may be older than them.
@@ -661,6 +671,7 @@ export class SnapshotRefreshService {
         (deviceIds) => this.deviceSdk.updateTrackedDevices([...new Set([
             ...deviceIds.map((id) => this.reader.snapshotStore.sourceDeviceId(id)),
             ...this.reader.chargingCurrentControl.sessions.observedIds(),
+            ...(this.reader.externalPower?.sourcesForTargets(deviceIds) ?? []),
         ])]),
         acceptedRawDevices,
         fetchSource,

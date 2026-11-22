@@ -243,7 +243,8 @@ export function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiv
 
 /** The facets a whole-device update can change with no capability event of their own. */
 type ObservedFlushFacets = Pick<TransportDeviceSnapshot,
-    'available' | 'binaryCapabilityId' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'>;
+    'available' | 'binaryCapabilityId' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'
+    | 'externalPowerSocketId' | 'measuredPowerKw' | 'measuredPowerObservedAtMs'>;
 
 // Dispatch the reconcile's deferred observed-state events — and when it emitted
 // none, still dispatch for an availability flip or a reported-step change. Availability is not a
@@ -287,7 +288,11 @@ function observedFlushFacetsUnchanged(
     current: ObservedFlushFacets,
 ): boolean {
     if (!previous) return false;
-    return previous.available === current.available
+    const externalPowerUnchanged = previous.externalPowerSocketId === current.externalPowerSocketId
+        && (current.externalPowerSocketId === undefined
+            || (previous.measuredPowerKw === current.measuredPowerKw
+                && previous.measuredPowerObservedAtMs === current.measuredPowerObservedAtMs));
+    return externalPowerUnchanged && previous.available === current.available
         && previous.binaryCapabilityId === current.binaryCapabilityId
         && previous.reportedStepId === current.reportedStepId
         && previous.reportedStepObservedAtMs === current.reportedStepObservedAtMs

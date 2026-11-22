@@ -101,6 +101,10 @@ export function buildDeviceTransport(
     deviceJournal: createDeviceEventStore(ctx.getUserdataDatabase()),
     acceptedFlowWrites: ctx.getChargingFlowWritesStore(),
     settings: ctx.deviceControlSettings,
+    externalPower: {
+      settings: ctx.deviceControlSettings,
+      resolveHome: (id, zoneId) => ctx.homeMembership?.resolvePowerSourceHome(id, zoneId),
+    },
     nativeWiring: ctx.builtInControlFlowConflicts,
     // Also where a moved learned peak is persisted: driven off the learned-peak
     // mutation, NOT the snapshot-mutation seam above. That seam fires on a changed
