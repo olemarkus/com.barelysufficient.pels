@@ -211,6 +211,17 @@ The actuator is the single write seam. It forwards channel-blind intent to
 transport; transport performs the SDK translation. Executor consumes only the
 semantic outcome (`requested`, normalized target, and actuation-accounting timing).
 
+Because every write passes here, the seam is also where a write can be
+watched. `createWitnessedActuator` (`lib/actuator/commandWitness.ts`) tells a
+`DeviceCommandWitness` when each command goes out and how it ended (its
+outcome, or that it threw). `buildDeviceActuator` puts it directly around the
+base actuator and inside every fence: the temperature-control fence, and each
+home's fence in `createPlanEngine`. A fenced command never reaches it, so it
+sees only writes that were sent. It cannot change, delay or refuse a write: the
+command and outcome pass through unchanged, and a witness that throws is
+ignored. The one witness today is the home meter's response timing capture
+(`lib/device/meterResponseTimings.ts`), which only records.
+
 ### The boundary test
 
 - Field names a **Homey capability ID, flow card, or native/synthetic

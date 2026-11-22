@@ -28,13 +28,17 @@ import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import type { GenerationSegment } from '../../lib/power/trackerTypes';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import type { MeterPowerSample } from '../../lib/ports/homeMeterReadings';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
+
+type MeterResponseTap = (sample: MeterPowerSample, nowMs: number, readDevices: () => readonly DeviceSurfaces[]) => void;
 
 type Taps = {
   curtailment: ReturnType<typeof vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>>;
   pvForecast: ReturnType<typeof vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>>;
   heating: ReturnType<typeof vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>>;
+  meterResponse: ReturnType<typeof vi.fn<MeterResponseTap>>;
 };
 
 const buildPipeline = (
@@ -46,6 +50,7 @@ const buildPipeline = (
     curtailment: vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>(),
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
     heating: vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>(),
+    meterResponse: vi.fn<MeterResponseTap>(),
   };
   // The scheduler stub executes every accepted intent at once by calling back
   // into the throttle, so the ingest path settles like production.
@@ -66,7 +71,7 @@ const buildPipeline = (
   );
   const pipeline = new PowerSamplePipeline({
     ingestQueue: createSampleIngestQueue(),
-    // Never called here: these samples carry no meter identity.
+    // A no-op: only the meter response tap's case carries a meter identity.
     noteResolvedHomeMeter: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
@@ -101,6 +106,7 @@ const buildPipeline = (
     recordCurtailmentSample: taps.curtailment,
     recordPvGenerationSample: taps.pvForecast,
     recordHeatingObservations: taps.heating,
+    recordMeterResponseSample: taps.meterResponse,
     getCoSampledGenerationW: () => coSampledGenerationW,
     getObservedGenerationSegments: () => observedSegments,
   });
@@ -200,5 +206,26 @@ describe('PowerSamplePipeline heating observations tap', () => {
 
     expect(taps.heating.mock.calls).toEqual([[[], T0], [[], T0 + 10_000]]);
     expect(getTracker().lastTimestamp).toBe(T0 + 10_000);
+  });
+});
+
+describe('PowerSamplePipeline meter response tap', () => {
+  it('hands each reading read from a meter, with its own production, and never a Flow-reported one', async () => {
+    const { pipeline, taps } = buildPipeline(500);
+    await pipeline.recordPowerSample(1_500, T0);
+    await pipeline.recordPowerSample(1_600, T0 + 10_000, { meterDeviceId: 'meter-1' });
+    await pipeline.recordPowerSample(1_700, T0 + 20_000, { meterDeviceId: 'meter-1', generationW: 900 });
+
+    expect(taps.meterResponse.mock.calls).toEqual([
+      [{ powerW: 1_600, meterDeviceId: 'meter-1' }, T0 + 10_000, expect.any(Function)],
+      [{ powerW: 1_700, meterDeviceId: 'meter-1', generationW: 900 }, T0 + 20_000, expect.any(Function)],
+    ]);
+  });
+
+  it('keeps ingesting when the capture throws', async () => {
+    const { pipeline, taps, getTracker } = buildPipeline(undefined);
+    taps.meterResponse.mockImplementation(() => { throw new Error('capture failed'); });
+    await pipeline.recordPowerSample(1_600, T0, { meterDeviceId: 'meter-1' });
+    expect(getTracker().lastTimestamp).toBe(T0);
   });
 });

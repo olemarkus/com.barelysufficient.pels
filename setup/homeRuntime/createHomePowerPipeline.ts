@@ -40,6 +40,7 @@ export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
   | 'recordCurtailmentSample'
   | 'recordBatteryDemandSample'
   | 'recordHeatingObservations'
+  | 'recordMeterResponseSample'
   | 'noteResolvedHomeMeter'
 > & {
   ctx: AppContext;
@@ -103,6 +104,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     recordCurtailmentSample: deps.recordCurtailmentSample,
     recordBatteryDemandSample: deps.recordBatteryDemandSample,
     recordHeatingObservations: deps.recordHeatingObservations,
+    recordMeterResponseSample: deps.recordMeterResponseSample,
     noteResolvedHomeMeter: deps.noteResolvedHomeMeter,
   });
 }

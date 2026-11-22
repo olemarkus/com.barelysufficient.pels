@@ -1,6 +1,7 @@
 import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
+import { createWitnessedActuator } from '../../lib/actuator/commandWitness';
 import type { ActuatorTransport, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import { resolveFlowBackedBinaryTriggerCardId } from '../../flowCards/flowBackedDeviceCards';
 
@@ -69,6 +70,9 @@ const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand):
 // without a planner-owned write path, so both lifecycle fallback and ordinary
 // plan execution route their writes through one actuator.
 //
+// Every write is also reported to the home meter's response timing capture,
+// which only watches (`lib/device/meterResponseTimings.ts`).
+//
 // Returns null when the device manager is absent (startup / snapshot flicker) so
 // callers can guard before actuating.
 export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
@@ -92,7 +96,7 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
     releaseStorageControl: (command) => transport.releaseStorageControl(command),
   };
   return createTemperatureControlFencedActuator(
-    createDeviceActuator(actuatorTransport),
+    createWitnessedActuator(createDeviceActuator(actuatorTransport), ctx.flowBacked.meterResponseTimings),
     (command) => shouldFenceTemperatureCommand(ctx, command),
   );
 };

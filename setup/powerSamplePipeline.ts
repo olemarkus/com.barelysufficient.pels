@@ -21,7 +21,7 @@ import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import { configuredPowerLimits, type HeldPowerLimitSettings } from '../lib/power/heldCapacityLimit';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
-import type { MeterImportCounter } from '../lib/ports/homeMeterReadings';
+import type { MeterImportCounter, MeterPowerSample } from '../lib/ports/homeMeterReadings';
 import type { ThermalDirection } from '../packages/contracts/src/types';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
@@ -97,6 +97,17 @@ export type PowerSamplePipelineDeps = {
    * `getDeviceSurfaces` resolves them; meter areas omit it.
    */
   recordHeatingObservations?: (devices: readonly DeviceSurfaces[], nowMs: number) => void;
+  /**
+   * Main meter tap for the home meter's response timing capture
+   * (`lib/device/meterResponseTimings.ts`): each reading read from a meter,
+   * before the rebuild the reading may trigger, with a read of this home's
+   * devices as `getDeviceSurfaces` resolves them, which the capture calls only
+   * when it needs them. Flow-reported readings never reach it. Capture only;
+   * meter areas omit it.
+   */
+  recordMeterResponseSample?: (
+    sample: MeterPowerSample, nowMs: number, readDevices: () => readonly DeviceSurfaces[],
+  ) => void;
   /**
    * Publish the identity of the meter an INGESTED whole-home sample came from
    * (multi-home: membership's sampled-meter ownership fence). Called only after
@@ -275,6 +286,25 @@ export class PowerSamplePipeline {
     }
   }
 
+  /**
+   * Only a reading read from a meter is timed; its own production, never a
+   * held one. Contained like the identity publication: the capture only
+   * watches, so it must never hold up the reading's ingest.
+   */
+  private recordMeterResponseSample(request: PowerSampleRequest): void {
+    const record = this.deps.recordMeterResponseSample;
+    if (!record || request.meterDeviceId === undefined) return;
+    try {
+      record({
+        powerW: request.currentPowerW,
+        meterDeviceId: request.meterDeviceId,
+        ...(request.coTemporalGenerationW === undefined ? {} : { generationW: request.coTemporalGenerationW }),
+      }, request.nowMs, () => this.deps.getDeviceSurfaces());
+    } catch {
+      incPerfCounter('power_sample_meter_response_failed_total');
+    }
+  }
+
   private async runPowerSample(request: PowerSampleRequest): Promise<void> {
     const { currentPowerW, nowMs, generationW, generationSegments } = request;
     const sampleStart = Date.now();
@@ -299,6 +329,7 @@ export class PowerSamplePipeline {
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
+    this.recordMeterResponseSample(request);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

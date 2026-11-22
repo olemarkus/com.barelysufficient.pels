@@ -19,6 +19,13 @@ const profile: SteppedLoadProfile = {
   ],
 };
 
+/** No write here is timed against a meter; the witness only has to be there. */
+const flowBacked = partialDouble<AppContext['flowBacked']>({
+  meterResponseTimings: partialDouble<AppContext['flowBacked']['meterResponseTimings']>({
+    commandDispatched: vi.fn(), commandSettled: vi.fn(), commandFailed: vi.fn(),
+  }),
+});
+
 describe('buildDeviceActuator', () => {
   it('returns an actuator whose step command routes to deviceManager.requestSteppedLoadStep', async () => {
     type StepParams = Parameters<NonNullable<ActuatorTransport['requestSteppedLoadStep']>>[0];
@@ -37,6 +44,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
         requestSteppedLoadStep,
       },
       homey: { flow: { getTriggerCard: vi.fn() } },
+      flowBacked,
       isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
 
@@ -70,6 +78,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     const ctx = {
       deviceManager: undefined,
       homey: { flow: {} },
+      flowBacked,
       isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
     expect(buildDeviceActuator(ctx)).toBeNull();
@@ -89,6 +98,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
         requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
       },
       homey: { flow: { getTriggerCard: vi.fn() } },
+      flowBacked,
       deviceControlSettings: { temperatureControlPolicyState: 'unavailable' },
       isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
@@ -120,7 +130,7 @@ describe('native metered relay OFF through the actuator', () => {
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get: vi.fn(), put });
     const actuator = buildDeviceActuator(partialDouble<AppContext>({
-      deviceManager, homey: mockHomeyInstance as unknown as AppContext['homey'],
+      deviceManager, homey: mockHomeyInstance as unknown as AppContext['homey'], flowBacked,
     }));
     if (!actuator) throw new Error('Expected a device actuator');
     return { put, actuator, relay };
