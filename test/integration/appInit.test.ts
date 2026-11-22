@@ -69,9 +69,14 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), { getChargingPhasePauseTarget: () => undefined, capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' }, controlContests: controlContestsForTest().contests })).toThrow(
-      'DeviceTransport must be initialized before use.',
-    );
+    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), {
+      getPreparedModeTargets: () => new Map(),
+      getChargingPhasePauseTarget: () => undefined,
+      capacityGuard: ctx.capacityGuard,
+      isActuationFenced: () => false,
+      storageLane: { kind: 'none' },
+      controlContests: controlContestsForTest().contests,
+    })).toThrow('DeviceTransport must be initialized before use.');
   });
 
   it('fences writes on this home\'s own fence, and on nothing else', async () => {
@@ -110,6 +115,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       key === 'temperature_control_modes' ? {} : null
     ));
     createPlanEngineComposition(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false), {
+      getPreparedModeTargets: () => new Map(),
       getChargingPhasePauseTarget: () => undefined,
       capacityGuard: engineCtx.capacityGuard,
       isActuationFenced: () => fenced,
