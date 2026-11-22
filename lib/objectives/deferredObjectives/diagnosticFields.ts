@@ -1,5 +1,5 @@
 import { buildUnallocatedTaskEvaluation, taskPermissionsForObjective } from './taskEvaluationProducer';
-import { inactiveTaskEvaluation, NO_TASK_PERMISSIONS } from './taskEvaluation';
+import { inactiveTaskEvaluation, NO_TASK_PERMISSIONS, type TaskEvaluation } from './taskEvaluation';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,
@@ -248,7 +248,7 @@ export const buildWaitingForPlanDiagnostic = (
   base: DeferredObjectiveDiagnostic,
   objective: DeferredObjectiveSettingsEntry,
   progress: DeferredObjectiveProgressResolution,
-  device: 'held' | 'unchanged',
+  device: Extract<TaskEvaluation['planning'], { kind: 'awaiting_plan' }>['device'],
 ): DeferredObjectiveDiagnostic => {
   const evaluation = buildUnallocatedTaskEvaluation(base.deviceId, objective, progress);
   return withUnavailableTrajectory({

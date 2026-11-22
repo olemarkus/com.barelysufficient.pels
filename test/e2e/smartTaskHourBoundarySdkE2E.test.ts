@@ -8,6 +8,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PRIORITIES,
   CONTROLLABLE_DEVICES,
   DEBUG_LOGGING_TOPICS,
   MANAGED_DEVICES,
@@ -135,6 +136,98 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
       await expect(heater.getCapabilityValue('target_temperature')).resolves.toBe(TARGET_C);
     },
   );
+
+  it('leaves a running lower-priority heater untouched while its hourly replan waits', async () => {
+    const nowMs = DAY_MS + 54 * 60_000 + 8_000;
+    vi.setSystemTime(nowMs);
+    vi.spyOn(mockHomeyInstance.clock, 'getTimezone').mockReturnValue('UTC');
+    const heaterIds = ['first', 'second'];
+    const enabled = { first: true, second: true };
+    const settings = mockHomeyInstance.settings;
+    settings.set(DEBUG_LOGGING_TOPICS, ['deferred_objectives', 'plan']);
+    settings.set('power_source', 'homey_energy');
+    settings.set('homey_energy_meter_device_id', 'meter-main');
+    settings.set(OPERATING_MODE_SETTING, 'Home');
+    settings.set(CAPACITY_LIMIT_KW, 20);
+    settings.set(CAPACITY_MARGIN_KW, 0);
+    settings.set(CAPACITY_DRY_RUN, false);
+    settings.set('daily_budget_enabled', false);
+    settings.set('price_optimization_enabled', true);
+    settings.set(MANAGED_DEVICES, enabled);
+    settings.set(CONTROLLABLE_DEVICES, enabled);
+    settings.set(CAPACITY_PRIORITIES, { Home: { first: 1, second: 2 } });
+    seedHourlyFlowPricesForTests(DAY_MS, Array.from({ length: 24 }, (_, hour) => 70 + hour));
+    for (const id of heaterIds) {
+      settings.set(`deferred_objective.${id}`, {
+        enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 23,
+        deadlineAtMs: DAY_MS + 5 * HOUR_MS,
+      });
+    }
+    seedStoredPowerTrackerForTests({
+      objectiveProfiles: Object.fromEntries(heaterIds.map((id) => [id, {
+        updatedAtMs: nowMs,
+        lastSample: { observedAtMs: nowMs, value: 20 },
+        kwhPerUnit: {
+          sampleCount: 50, mean: 1, m2: 0, min: 1, max: 1,
+          confidence: 'high', lastUpdatedMs: nowMs,
+        },
+        acceptedSamples: 50, rejectedSamples: 0,
+      }])),
+    });
+    const heaters = await Promise.all(heaterIds.map(async (id) => {
+      const heater = new MockDevice(id, id, ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'], 'thermostat');
+      heater.setCapabilityMetadata('target_temperature', { min: 4, max: 40, step: 0.5 });
+      await heater.setCapabilityValue('onoff', true);
+      await heater.setCapabilityValue('measure_power', 1000);
+      await heater.setCapabilityValue('measure_temperature', 20);
+      await heater.setCapabilityValue('target_temperature', 23);
+      return heater;
+    }));
+    setMockDrivers({ heaters: new MockDriver('heaters', heaters) });
+    const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    let homePowerW = 2000;
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => (
+      path === 'manager/energy/live'
+        ? { items: [{ type: 'cumulative', id: 'meter-main', values: { W: homePowerW } }] }
+        : originalGet(path)
+    ));
+    const app = createApp();
+    const writes = vi.spyOn(mockHomeyInstance.api, 'put');
+    const handoffTimes: number[] = [];
+    const originalLog = app.log.bind(app);
+    app.log = (...args: unknown[]) => {
+      for (const arg of args) {
+        if (typeof arg !== 'string' || !arg.startsWith('{')) continue;
+        const entry = JSON.parse(arg) as { event?: string; deviceId?: string };
+        if (entry.event === 'deferred_task_running_during_handoff' && entry.deviceId === 'second') {
+          handoffTimes.push(Date.now());
+        }
+      }
+      return originalLog(...args);
+    };
+    const revision = (id: string) => app.deferredObjectiveActivePlanRecorder?.getActivePlan(id)?.latest?.revision;
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(3 * 60_000 + 30_000);
+    await drainPending();
+    const before = heaterIds.map(revision);
+    expect(before.every((value) => value !== undefined)).toBe(true);
+    await expect(heaters[1]!.getCapabilityValue('onoff')).resolves.toBe(true);
+    writes.mockClear();
+
+    await heaters[0]!.setCapabilityValue('measure_temperature', 19);
+    await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
+    homePowerW = 2200;
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    await drainPending();
+
+    expect(revision('first')).toBeGreaterThan(before[0]!);
+    const writtenPaths = writes.mock.calls.map(([path]) => path);
+    const lowerCapability = (capability: string) => `manager/devices/device/second/capability/${capability}`;
+    expect(writtenPaths).not.toContain(lowerCapability('onoff'));
+    expect(writtenPaths).not.toContain(lowerCapability('target_temperature'));
+    expect(handoffTimes.length).toBeGreaterThan(0);
+    await expect(heaters[1]!.getCapabilityValue('onoff')).resolves.toBe(true);
+  });
 
   it('still releases the heater when a genuinely cheaper booked hour is ahead', async () => {
     const nowMs = DAY_MS + 57 * 60_000 + 48_000;

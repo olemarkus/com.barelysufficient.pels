@@ -657,6 +657,8 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * parking it `inactive` with the start policy's.
    */
   deferredHoldActive?: true;
+  /** A keep during the task handoff produces no device write. */
+  continueRunningDuringTaskHandoff?: true;
   /**
    * This cycle's reduction is NOT capacity pressure: "Only PELS starts this
    * device", a smart task's deferred hour, a solar hold, or a keep step lowered

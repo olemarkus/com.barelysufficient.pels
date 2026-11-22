@@ -5,6 +5,10 @@
  * commands. Execution consumes that decision without reading policy.
  */
 import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
+import { MIN_ACTIVE_MEASURED_POWER_KW } from '../observer/observedPower';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import { isMeteredPlanDevice } from './planMeteredDevice';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -44,6 +48,58 @@ export function decorateWithoutDeferredObjectives(input: DeferredDecorationInput
   return buildIdentityDecorationBundle(input.devices);
 }
 
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
+
+const canContinueWhileWaiting = (device: PlanInputDevice, pending: PendingBinaryCommandStore): boolean => (
+  isBinaryPlanDevice(device) && !isSteppedLoadDevice(device) && device.currentOn && device.available !== false
+  && device.commandableNow && device.control.commandAuthority && !device.externalOffHoldActive
+  && !pending.hasActiveTurnOff(device.id)
+  // Do not raise a setpoint based on the uncommitted allocation.
+  && isTemperaturePlanDevice(device) && device.currentTarget === device.deadlineFloorTargetC
+  && isMeteredPlanDevice(device) && device.currentDrawKw > MIN_ACTIVE_MEASURED_POWER_KW
+);
+
+/** A waiting task can preserve an existing draw, but cannot start or reserve one. */
+export function resolveDeferredRunningHolds(
+  decoration: DeferredDecorationBundle,
+  pending: PendingBinaryCommandStore,
+): DeferredDecorationBundle {
+  const { admittedDevices } = decoration;
+  if (!admittedDevices.some((device) => device.deferredHold === 'off_unless_running')) return decoration;
+
+  const forceShedSet = new Set(decoration.forceShedSet);
+  const deferredHoldCauseByDeviceId = new Map(decoration.deferredHoldCauseByDeviceId);
+  const continuingDeviceIds = new Set<string>();
+  let firstPriorityWaitingForPower = Number.POSITIVE_INFINITY;
+  for (const device of admittedDevices) {
+    if ((device.reservesStartupPower || device.forceBoostActive)
+      && (!isMeteredPlanDevice(device) || device.currentDrawKw <= MIN_ACTIVE_MEASURED_POWER_KW)) {
+      firstPriorityWaitingForPower = Math.min(firstPriorityWaitingForPower, device.priority);
+    }
+  }
+  const devices = admittedDevices.map((device): PlanInputDevice => {
+    if (device.deferredHold !== 'off_unless_running') return device;
+    if (device.priority > firstPriorityWaitingForPower || !canContinueWhileWaiting(device, pending)) {
+      return { ...device, deferredHold: 'off' };
+    }
+    forceShedSet.delete(device.id);
+    deferredHoldCauseByDeviceId.delete(device.id);
+    continuingDeviceIds.add(device.id);
+    const { deferredHold: _hold, ...running } = device;
+    emitPlanDebug({ event: 'deferred_task_running_during_handoff', deviceId: device.id });
+    return { ...running, continueRunningDuringTaskHandoff: true };
+  });
+  return {
+    ...decoration,
+    admittedDevices: devices,
+    forceShedSet,
+    deferredHoldCauseByDeviceId,
+    deferredReleaseIntentByDeviceId: Object.fromEntries(
+      Object.entries(decoration.deferredReleaseIntentByDeviceId).filter(([id]) => !continuingDeviceIds.has(id)),
+    ),
+  };
+}
+
 /**
  * `binaryRestoreAllowed` is the seam between the two passes: `binary_restore`
  * is the only intent that drives a positive (turn-on) command, so it rides only
@@ -70,8 +126,6 @@ export function attachDeferredReleaseIntents(
     return posture ? { ...device, deferredReleaseIntent: { kind: 'shed_release', posture } } : device;
   });
 }
-
-const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 /** The idle-task lane honors its configured policy even after task authority ends. */
 function resolveShedReleasePosture(device: DevicePlanDevice, behavior: ShedBehavior): ShedReleasePosture | undefined {

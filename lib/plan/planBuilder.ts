@@ -90,7 +90,7 @@ import { requireLatchedMeterReading } from '../power/lastTotalPower';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
-import { attachDeferredReleaseIntents } from './planBuilderDecoration';
+import { attachDeferredReleaseIntents, resolveDeferredRunningHolds } from './planBuilderDecoration';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 
@@ -155,7 +155,10 @@ export class PlanBuilder {
   ): DeferredDecorationBundle {
     this.state.beginChargingPhaseCycle(this.deps.getChargingPhasePlanningRead(nowTs));
     const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
-      this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
+      resolveDeferredRunningHolds(
+        this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs }),
+        this.deps.pendingBinaryCommandStore,
+      )
     ));
     this.state.chargingPhaseCycle.setRequirements(decoration.chargingPhaseRequirements);
     this.state.externalOffHoldLiftedIds = decoration.externalOffHoldLiftedDeviceIds;
