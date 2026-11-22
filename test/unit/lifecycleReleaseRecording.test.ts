@@ -5,6 +5,7 @@ import {
 import { resolveConfirmedBinaryCommandReasonCode } from '../../lib/executor/planExecutorPredicates';
 import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { ActuationRecorder } from '../../lib/executor/executorCommandContext';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 type PendingBinaryCommand = PlanEngineState['pendingBinaryCommands'][string];
 
@@ -12,6 +13,7 @@ const offPending = (over: Partial<PendingBinaryCommand>): PendingBinaryCommand =
   dispatchState: 'accepted',
   desired: false,
   startedMs: 0,
+  confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
   ...over,
 });
 

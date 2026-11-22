@@ -64,6 +64,7 @@ import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabi
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { FlowActionCardInventory } from '../../lib/device/flowActionCardInventory';
+import { newWriteAnswerTimes } from '../helpers/confirmationWindows';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -1137,7 +1138,7 @@ describe('native stepped-load wiring', () => {
     const logger = createLogger();
     const control = new ChargingCurrentControl(settings, new HomeyActionAccess({ settings,
       api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
-    }, logger), new FlowActionCardInventory(logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
+    }, logger, newWriteAnswerTimes()), new FlowActionCardInventory(logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
     createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
       headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),
@@ -1286,7 +1287,7 @@ describe('native stepped-load wiring', () => {
     const logger = createLogger();
     const control = new ChargingCurrentControl(settings, new HomeyActionAccess({ settings,
       api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
-    }, logger), new FlowActionCardInventory(logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
+    }, logger, newWriteAnswerTimes()), new FlowActionCardInventory(logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
     createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
       headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),

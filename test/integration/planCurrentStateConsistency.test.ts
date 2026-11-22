@@ -16,6 +16,8 @@ import type {
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -96,6 +98,7 @@ describe('planner current-state consistency', () => {
         dispatchState: 'accepted',
         desired: true,
         startedMs: Date.now(),
+        confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
       };
     }
 
@@ -110,7 +113,7 @@ describe('planner current-state consistency', () => {
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100, lastPowerW: cycle.drawKw * 1000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       },
       { actionable: true, shedActionable: true },
     );

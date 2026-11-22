@@ -33,6 +33,7 @@ import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { setMockSteppedLoadFlow } from '../helpers/mockSteppedLoadFlow';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -396,6 +397,7 @@ describe('Device plan snapshot', () => {
       dispatchState: 'dispatching',
       desired: true,
       startedMs: pendingStartedMs,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
     getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-cooldown'] = Date.now();
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
@@ -521,6 +523,7 @@ describe('Device plan snapshot', () => {
       dispatchState: 'dispatching',
       desired: false,
       startedMs: Date.now(),
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
     await reportDevicePower(app, [[heater, 1300]]);
 
@@ -561,6 +564,7 @@ describe('Device plan snapshot', () => {
       dispatchState: 'dispatching',
       desired: true,
       startedMs: Date.now(),
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
 
     // The meter sees the heater draw before its on/off state is reported.

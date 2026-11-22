@@ -12,6 +12,7 @@ import { stampSteppedFairnessHolds } from '../../lib/plan/planSteppedFairnessHol
 import { resolveSteppedShedHypotheticalStepId } from '../../lib/plan/planSteppedShedResolution';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isSteppedRecoveryLimited } from '../../lib/plan/planShedRecovery';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-01-01T12:30:00Z')); });
 afterEach(() => vi.useRealTimers());
@@ -62,7 +63,7 @@ it.each([30, 1, 60].flatMap((minutesRemaining) => scenarios.map((scenario) => ({
     budgetKWh: 5, usedKWh: 1, minutesRemaining: scenario.minutesRemaining,
     headroomRaw: -0.25, headroom: -0.25,
   });
-  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
   const getShedBehavior = () => ({ action: 'set_step' as const });
   expect(resolveSteppedShedHypotheticalStepId(charger, context.devices, state,
     getShedBehavior())).toBe(scenario.selectedStep);

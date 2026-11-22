@@ -27,6 +27,7 @@ import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/pla
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture, NO_STORAGE_SURPLUS, buildInitialPlanDevicesForSpec, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -110,7 +111,7 @@ const defaultDeps: PlanDevicesDeps = {
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationSettings: () => ({}),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
 };
 
 describe('solar device as managed observe-only — control-path exclusion lock', () => {
@@ -144,7 +145,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
       },
     }, context.nowTs);
     const candidateIds = candidates.map((c) => c.id);

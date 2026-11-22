@@ -79,6 +79,7 @@ import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
 import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const SHED_REASON = fixtureDeviceReason('shed due to daily budget')!;
 const DEVICE_ID = 'elbillader-1';
@@ -225,7 +226,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     )),
   });
 
-  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
   const deps: PlanExecutorDeps = {
     chargingPhaseOwner: NO_CHARGING_PHASE_OWNER,
     getHomeDisplayName: () => 'Main home',

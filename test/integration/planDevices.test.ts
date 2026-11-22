@@ -26,6 +26,8 @@ import {
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -115,9 +117,9 @@ const buildContext = (
 // Shared empty pending-binary-command store for the many cases that do not
 // seed pending state. Tests that DO seed `state.pendingBinaryCommands` bind a
 // store to their own state (see `pendingStoreFor`).
-const emptyPendingStore = createPendingBinaryCommandStore({});
+const emptyPendingStore = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
 const pendingStoreFor = (state: PlanEngineState) =>
-  createPendingBinaryCommandStore(state.pendingBinaryCommands);
+  createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
 
 const defaultDeps: PlanDevicesDeps = {
   getInferredSurplusKw: () => 0,
@@ -670,6 +672,7 @@ describe('buildInitialPlanDevices', () => {
       dispatchState: 'accepted',
       desired: true,
       startedMs: Date.now(),
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
 
     const [planDevice] = buildInitialPlanDevicesForSpec({
@@ -711,6 +714,7 @@ describe('buildInitialPlanDevices', () => {
       dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now(),
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
 
     const [planDevice] = buildInitialPlanDevicesForSpec({

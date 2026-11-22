@@ -20,6 +20,7 @@ import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const CHARGER_ID = 'charger';
 // steppedProfile rungs: off 0 W, low 1250 W, medium 2000 W, max 3000 W — so the
@@ -518,7 +519,7 @@ describe('a solar stop that lands on a device capacity already priced', () => {
       state.shedDecisions,
       () => undefined,
       () => 'released',
-      createPendingBinaryCommandStore({}),
+      createPendingBinaryCommandStore({}, fixedConfirmationWindows),
     );
 
     expect(shedSet.has(CHARGER_ID)).toBe(true);
@@ -536,7 +537,7 @@ describe('a solar stop that lands on a device capacity already priced', () => {
       state.shedDecisions,
       () => undefined,
       () => 'released',
-      createPendingBinaryCommandStore({}),
+      createPendingBinaryCommandStore({}, fixedConfirmationWindows),
     );
 
     expect(shedStepTargets.get(CHARGER_ID)).toBe('medium');

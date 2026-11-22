@@ -36,6 +36,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -157,7 +158,7 @@ describe('external-off hold — plan-device propagation', () => {
     getInferredSurplusKw: () => 0,
     getShedBehavior: () => ({ action: 'turn_off' }),
     getPriceOptimizationSettings: () => ({}),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
   };
 
   const buildFor = (externalOffHoldActive?: true): DevicePlanDevice => buildInitialPlanDevicesForSpec({

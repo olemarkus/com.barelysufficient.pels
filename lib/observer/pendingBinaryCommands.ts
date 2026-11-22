@@ -26,10 +26,10 @@
  */
 import { isPendingBinaryCommandActive } from './pendingBinaryCommandTypes';
 import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
-import {
-  CONTROL_COMMAND_CONFIRMATION_MS,
-  type PendingBinaryLiveDevice,
-  type PendingObservationSource,
+import type {
+  ConfirmationWindows,
+  PendingBinaryLiveDevice,
+  PendingObservationSource,
 } from '../ports/controlCommandConfirmation';
 import { getDebugEmitter } from '../logging/logger';
 
@@ -47,6 +47,8 @@ export type BinaryCommandDispatchAcceptedEvent = {
   deviceId: string;
   desired: boolean;
   startedAtMs: number;
+  /** The window the command was sent with; it is due for confirmation at `startedAtMs` plus this. */
+  confirmationWindowMs: number;
 };
 
 export type BinaryCommandLifecycleListener = {
@@ -72,6 +74,7 @@ export class PendingBinaryCommandStore {
 
   constructor(
     private readonly backing: Record<string, PendingBinaryCommand>,
+    private readonly confirmationWindows: ConfirmationWindows,
     private readonly lifecycle?: BinaryCommandLifecycleListener,
   ) {}
 
@@ -91,6 +94,7 @@ export class PendingBinaryCommandStore {
       deviceId,
       desired: command.desired,
       startedAtMs: pending.startedMs,
+      confirmationWindowMs: pending.confirmationWindowMs,
     });
     // Nothing is replayed here. An echo that arrived before acceptance is not a
     // consumed event — `binaryCommandConfirmation` is a projection of the
@@ -128,6 +132,7 @@ export class PendingBinaryCommandStore {
   }
 
   lifecycleTimedOut(deviceId: string, command: PendingBinaryCommand): void {
+    this.confirmationWindows.unconfirmed(deviceId);
     this.lifecycle?.onTimedOut?.({
       deviceId,
       desired: command.desired,
@@ -136,9 +141,16 @@ export class PendingBinaryCommandStore {
     });
   }
 
-  /** Record a freshly issued command keyed by `deviceId`; replaces any prior entry. */
-  record(deviceId: string, command: Omit<PendingBinaryCommand, 'dispatchState'>): void {
-    this.backing[deviceId] = { ...command, dispatchState: 'dispatching' };
+  /**
+   * Record a freshly issued command keyed by `deviceId`; replaces any prior
+   * entry. The command takes the device's confirmation window now and keeps it.
+   */
+  record(deviceId: string, command: Omit<PendingBinaryCommand, 'dispatchState' | 'confirmationWindowMs'>): void {
+    this.backing[deviceId] = {
+      ...command,
+      confirmationWindowMs: this.confirmationWindows.windowMs(deviceId, command.desired, command.startedMs),
+      dispatchState: 'dispatching',
+    };
   }
 
   /** Whether transport accepted the request and observer settlement may commit it. */
@@ -255,7 +267,7 @@ export class PendingBinaryCommandStore {
       deviceId,
       desired: entry.desired,
       ageMs: nowMs - entry.startedMs,
-      timeoutMs: CONTROL_COMMAND_CONFIRMATION_MS,
+      timeoutMs: entry.confirmationWindowMs,
     });
     return undefined;
   }
@@ -319,9 +331,10 @@ export class PendingBinaryCommandStore {
 
 export function createPendingBinaryCommandStore(
   backing: Record<string, PendingBinaryCommand>,
+  confirmationWindows: ConfirmationWindows,
   lifecycle?: BinaryCommandLifecycleListener,
 ): PendingBinaryCommandStore {
-  return new PendingBinaryCommandStore(backing, lifecycle);
+  return new PendingBinaryCommandStore(backing, confirmationWindows, lifecycle);
 }
 
 /** A pending binary command telemetry just confirmed. */
@@ -387,7 +400,7 @@ function reconcilePendingEntry(
       controlAxis: 'binary',
       desired: pending.desired,
       ageMs: nowMs - pending.startedMs,
-      timeoutMs: CONTROL_COMMAND_CONFIRMATION_MS,
+      timeoutMs: pending.confirmationWindowMs,
       lastObservedValue: pending.lastObservedValue,
       lastObservedSource: pending.lastObservedSource,
     });

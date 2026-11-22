@@ -13,6 +13,7 @@ import {
   invalidateOwningHomeRebuildSuppression,
   syncExternalOffHoldForObservation,
 } from '../../setup/appObservedControlStateRuntime';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 // Integration coverage for R7b owning-home routing of everything a realtime
 // device observation now touches (`HomeRuntimeRegistry.getOwningHomeRouteForDevice`).
 // Main's answer to any of these is wrong for a sub-home device in a way that looks
@@ -82,7 +83,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       clearRecentBinaryOffCommand: vi.fn(),
     } as unknown as AppContext['planEngine'];
     const hooks: OwningHomeHooks = {
-      pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+      pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
       observeDeviceEvidence: vi.fn(),
       syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: subPending,
@@ -166,7 +167,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
-            pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+            pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
             observeDeviceEvidence: vi.fn(),
             syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
@@ -206,7 +207,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
-            pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+            pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
             observeDeviceEvidence: vi.fn(),
             syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
@@ -250,7 +251,7 @@ describe('actionable-load routing', () => {
       'sub-dev': {
         homeId: 'h_sub',
         hooks: {
-            pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+            pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
           observeDeviceEvidence: vi.fn(),
           syncLivePlanState: vi.fn().mockResolvedValue(false),
           hasPendingBinaryCommand: () => false,
@@ -288,7 +289,7 @@ describe('owning-home idle evidence', () => {
     const ctx = createAppContextMock({ planService: { observeDeviceEvidence: mainObserve,
       syncLivePlanState, rebuildPlanFromCache: rebuildPlan } as unknown as PlanService });
     const router = routerFor({ 'sub-device': { homeId: 'sub-home', hooks: {
-      pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+      pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
       observeDeviceEvidence: subObserve, syncLivePlanState, rebuildPlan,
       hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,
       invalidateRebuildSuppression: () => undefined, isDeviceLimited: () => false,
@@ -311,7 +312,7 @@ describe('owning-home live-status refresh', () => {
     const subRefresh = vi.fn().mockResolvedValue(true);
     const ctx = createAppContextMock({ planService: { syncLivePlanState: mainRefresh } as unknown as PlanService });
     const hooks: OwningHomeHooks = {
-      pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+      pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
       observeDeviceEvidence: vi.fn(),
       syncLivePlanState: subRefresh,
       hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,

@@ -2,10 +2,12 @@ import { HomeyActionAccess, HOMEY_FLOW_API_KEY, type HomeyActionAccessHomey } fr
 import { getLogger } from '../../lib/logging/logger';
 import { HomeyActionAccessError } from '../../lib/device/transport/homeyActionAccessError';
 import { HomeyRequestInFlightError } from '../../lib/utils/homeyRequestInFlightError';
+import { newWriteAnswerTimes } from '../helpers/confirmationWindows';
+import { WARM_UP_MS, WriteAnswerTimes } from '../../lib/device/transport/writeAnswerTimes';
 
 const KEY = 'private-test-credential';
 const action = { ownerUri: 'homey:device:charger', cardId: 'homey:device:charger:charge_current', args: { current: 6 } };
-function fixture() {
+function fixture(answerTimes: WriteAnswerTimes = newWriteAnswerTimes()) {
   const values = new Map<string, unknown>();
   const homey: HomeyActionAccessHomey = {
     settings: {
@@ -15,7 +17,7 @@ function fixture() {
     api: { getLocalUrl: async () => 'http://homey.local' },
     cloud: { getHomeyId: async () => 'test-homey' },
   };
-  return { values, homey, access: new HomeyActionAccess(homey, { structuredLog: getLogger('test') }) };
+  return { values, homey, access: new HomeyActionAccess(homey, { structuredLog: getLogger('test') }, answerTimes) };
 }
 function response(body: unknown, status = 200) {
   return { status, ok: status < 400, headers: { get: () => 'test-homey' }, json: async () => body };
@@ -93,6 +95,42 @@ test('caller timeout retains the per-device lock, refusing the next action as bu
   expect(access.isActionInFlight('charger')).toBe(false);
   await access.runAction('charger', action, 'charging_current', () => {});
   expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+test('times an action by its own answer, also when it answers after the caller stopped waiting', async () => {
+  vi.useFakeTimers();
+  const answerTimes = new WriteAnswerTimes(Date.now() - WARM_UP_MS, () => true);
+  const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
+    .mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve(response({ error: null })), 40_000);
+    }));
+  vi.stubGlobal('fetch', fetchMock);
+  const { access } = fixture(answerTimes);
+  await access.save({ key: KEY });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const timedOut = expect(access.runAction('car', action, 'charging_current', () => {})).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(15_000);
+    await timedOut;
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(access.isActionInFlight('car')).toBe(false);
+  }
+  // Kept for diagnostics only: an action never sets an on/off window.
+  expect(answerTimes.describe(Date.now(), () => null)).toEqual([expect.objectContaining({
+    deviceId: 'car', kind: 'other', samples: 3, medianAnswerMs: 40_000, confirmationWindowMs: null,
+  })]);
+});
+
+test('learns nothing from an action that fails', async () => {
+  vi.useFakeTimers();
+  const answerTimes = new WriteAnswerTimes(Date.now() - WARM_UP_MS, () => true);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
+    .mockResolvedValue(response({ error: 'Vehicle unavailable' })));
+  const { access } = fixture(answerTimes);
+  await access.save({ key: KEY });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await expect(access.runAction('car', action, 'charging_current', () => {})).rejects.toThrow();
+  }
+  expect(answerTimes.describe(Date.now(), () => null)).toEqual([]);
 });
 
 test('does not leak failed response bodies or network errors', async () => {

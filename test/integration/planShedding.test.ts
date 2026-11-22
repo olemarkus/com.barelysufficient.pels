@@ -30,6 +30,8 @@ import {
 } from '../utils/planTestUtils';
 import { capacityGuardSpy, sheddingWiring } from '../helpers/sheddingWiring';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 let capture: LoggerCapture;
 beforeEach(() => { capture = captureLogger('info', ['plan']); });
@@ -50,7 +52,7 @@ const lastVerdictDeficitKw = (guard: CapacityGuard): number => {
   return totalKw - shortfallThresholdKw;
 };
 
-const emptyPendingStore = createPendingBinaryCommandStore({});
+const emptyPendingStore = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe
@@ -1935,6 +1937,7 @@ describe('buildSheddingPlan', () => {
       dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now() - 5_000,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
 
     const devices = [
@@ -1979,6 +1982,7 @@ describe('buildSheddingPlan', () => {
       dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now() - 5_000,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
 
     const devices = [
@@ -2035,6 +2039,7 @@ describe('buildSheddingPlan', () => {
       dispatchState: 'accepted',
       desired: true,
       startedMs: Date.now() - 5_000,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
 
     const capacityGuard = capacityGuardSpy();
@@ -2980,7 +2985,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 501, lastPowerW: 4_800 } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       },
     );
 
@@ -3000,7 +3005,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 501, lastPowerW: 4_800 } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       },
     );
 
@@ -3102,7 +3107,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: 3.073,
           powerTracker: { lastTimestamp: 1_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
       expect([...result.shedSet]).toEqual(['vvb']);
@@ -3134,7 +3139,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
 
@@ -3167,7 +3172,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W - 3 } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
 
@@ -3191,7 +3196,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
 
@@ -3217,7 +3222,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
 
@@ -3240,7 +3245,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 3_000, lastPowerW: 3_271 } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
 
@@ -3263,7 +3268,7 @@ describe('buildSheddingPlan', () => {
           {
             ...deps,
             powerTracker: { lastTimestamp, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
-            pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+            pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
           },
         );
         expect(heldResult.shedSet.size).toBe(0);
@@ -3284,7 +3289,7 @@ describe('buildSheddingPlan', () => {
           capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 4_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       );
 
@@ -3584,7 +3589,7 @@ describe('buildSheddingPlan', () => {
       expect([...first.shedSet]).toEqual(['heater']);
       state.applySheddingOutcome(first.outcome, first.recoveredAtMs);
       // The executor's record of the off it sent, still unconfirmed.
-      state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: Date.now() };
+      state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: Date.now() , confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS};
 
       vi.setSystemTime(new Date(Date.now() + 3_000));
       // The heater still draws, and a 0.3 kW load has started.
@@ -3628,7 +3633,7 @@ describe('buildSheddingPlan', () => {
       // The heater is shed for 1.8 kW, and its off write is lost: it keeps drawing,
       // and the executor's record of the off stays unconfirmed.
       expect([...(await cycle(0, 1.8)).shedSet]).toEqual(['heater']);
-      state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: shedAtMs };
+      state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: shedAtMs , confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS};
       // 20 s on, a 0.3 kW load starts: the hall covers it and the decision re-latches.
       const residual = await cycle(20_000, 2.1);
       expect(residual.shedSet.has('hall')).toBe(true);

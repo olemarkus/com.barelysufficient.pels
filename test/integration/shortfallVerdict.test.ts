@@ -9,6 +9,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 const guardDouble = () => ({
   recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
@@ -47,7 +49,7 @@ describe('reportShortfallToGuard', () => {
         structuredLog: testLogger,
         capacityGuard,
         powerTracker: {},
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         getShedBehavior: () => ({ action: 'turn_off' }),
       },
       NO_STORAGE_RELIEF,
@@ -71,7 +73,7 @@ describe('reportShortfallToGuard', () => {
         structuredLog: testLogger,
         capacityGuard,
         powerTracker: {},
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         getShedBehavior: () => ({ action: 'turn_off' }),
       },
       NO_STORAGE_RELIEF,
@@ -83,7 +85,7 @@ describe('reportShortfallToGuard', () => {
 
   it('reports shed relief in flight while the limit PELS sent is unconfirmed', async () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: Date.now() - 5_000 };
+    state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: Date.now() - 5_000 , confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS};
     const capacityGuard = guardDouble();
 
     await reportShortfallToGuard(
@@ -97,7 +99,7 @@ describe('reportShortfallToGuard', () => {
         structuredLog: testLogger,
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         getShedBehavior: () => ({ action: 'turn_off' }),
       },
       NO_STORAGE_RELIEF,
@@ -124,7 +126,7 @@ describe('reportShortfallToGuard', () => {
         structuredLog: testLogger,
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         getShedBehavior: () => ({ action: 'turn_off' }),
       },
       NO_STORAGE_RELIEF,
@@ -152,7 +154,7 @@ describe('reportShortfallToGuard', () => {
         structuredLog: testLogger,
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         getShedBehavior: () => ({ action: 'turn_off' }),
       },
       NO_STORAGE_RELIEF,

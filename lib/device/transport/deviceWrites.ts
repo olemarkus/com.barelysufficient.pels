@@ -31,8 +31,7 @@ import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
 import type { HomeBatteryCapabilityBinding, SwitchWrite } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { HomeyDeviceLike } from '../../utils/types';
-import type { Logger } from '../../utils/types';
+import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { ObservationProducers } from '../observationProducers';
 import { isCanSetControl } from '../deviceActionProjection';
 import {
@@ -49,6 +48,7 @@ import { resolveInverterControl } from './solarInverterObservation';
 import { inverterBindingsMatch, inverterRestorationLimitW } from '../../planContract/inverterDecision';
 import { FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS, awaitFlowTriggerAcceptance } from './flowTriggerAcceptance';
 import { sendWithTemperatureWriteEvidence } from './temperatureCapabilityWrite';
+import type { WriteAnswerKind, WriteAnswerTimes } from './writeAnswerTimes';
 
 const emitTransportDebug = getDebugEmitter('devices', 'devices');
 
@@ -162,6 +162,7 @@ export class DeviceWriteService {
     private readonly observationProducers: ObservationProducers,
     private readonly getFlowTriggerCard: (cardId: string) => SteppedLoadFlowTriggerCard | undefined,
     private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
+    private readonly answerTimes: Pick<WriteAnswerTimes, 'timeWrite' | 'kindOf'>,
   ) {}
 
   private requiresAdapterControl(deviceId: string): boolean {
@@ -279,7 +280,8 @@ export class DeviceWriteService {
     // read started while the write was on its way does not take it.
     await sendWithTemperatureWriteEvidence(
       this.observationProducers.temperature, this.snapshotStore, deviceId, requested, ownWrite,
-      () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId),
+      () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId,
+        this.answerTimes.kindOf(snapshotBefore, requested, write, readBackAsWritten)),
     ).finally(() => this.observationState.noteWriteAnswered(deviceId, ownWrite, snapshotBefore, capabilityId));
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
@@ -582,10 +584,11 @@ export class DeviceWriteService {
 
   /** Send `write`; a session that reads the device differently after the answer has it published again. */
   private async sendCapabilityWrite(
-    deviceId: string, homeyDeviceId: string, write: CapabilityWrite, transactionId: string,
+    deviceId: string, homeyDeviceId: string, write: CapabilityWrite, transactionId: string, kind: WriteAnswerKind,
   ): Promise<void> {
-    const failure = await setRawCapabilityValue(homeyDeviceId, write.capabilityId, write.value, transactionId)
-      .then(() => null, (error: unknown) => ({ error }));
+    const failure = await this.answerTimes.timeWrite(deviceId, kind, () => setRawCapabilityValue(
+      homeyDeviceId, write.capabilityId, write.value, transactionId,
+    )).then(() => null, (error: unknown) => ({ error }));
     try {
       const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
       if (this.chargingCurrentControl.observeWriteOutcome(deviceId, write, failure) && snapshot) {

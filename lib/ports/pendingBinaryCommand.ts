@@ -7,6 +7,11 @@ export type PendingBinaryCommand = {
   dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
   startedMs: number;
+  /**
+   * How long the command waits to be confirmed: the device's window when it
+   * was sent (`ConfirmationWindows`), kept for the command's whole life.
+   */
+  confirmationWindowMs: number;
   logContext?: PendingBinaryCommandLogContext;
   /**
    * True for a planned off that is not capacity pressure: a smart-task

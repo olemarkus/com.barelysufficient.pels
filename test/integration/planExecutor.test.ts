@@ -77,6 +77,8 @@ import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import type { BatteryControlOwner } from '../../lib/ports/batteryControlOwner';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
@@ -360,7 +362,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       stepCommandPending: false,
       unansweredStepCommands: { kind: 'none' as const },
     }),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
     storageLane: { kind: 'none' },
     inverterLane: NO_INVERTER_EXECUTION,
     ...depsOverrides,
@@ -976,7 +978,7 @@ describe('PlanExecutor restore logging', () => {
       const pending = state.pendingBinaryCommands['dev-1'];
       expect(pending).toMatchObject({ desired: true });
       syncPendingBinaryCommands(
-        createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         [{
           id: 'dev-1',
           name: 'Heater',
@@ -1000,7 +1002,7 @@ describe('PlanExecutor restore logging', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     const acceptedPending = state.pendingBinaryCommands['dev-1'];
     syncPendingBinaryCommands(
-      createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       [{
         id: 'dev-1', name: 'Heater',
         binaryCommandConfirmation: {
@@ -1102,7 +1104,7 @@ describe('PlanExecutor restore logging', () => {
     const { executor, state } = buildExecutor(createPlanEngineState());
     executor.handleConfirmedBinaryCommand({
       liveDevice: { id: 'dev-1', name: 'Heater', binaryCommandConfirmation: { state: 'unavailable' } },
-      pending: { desired: false, dispatchState: 'accepted', startedMs: 100, logContext: 'capacity', relayRepeat: true },
+      pending: { desired: false, dispatchState: 'accepted', startedMs: 100, confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS, logContext: 'capacity', relayRepeat: true },
       source: 'device_update', confirmedAtMs: 150,
     });
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
@@ -1127,7 +1129,7 @@ describe('PlanExecutor restore logging', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     const restorePending = nextState.pendingBinaryCommands['dev-1'];
     syncPendingBinaryCommands(
-      createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
+      createPendingBinaryCommandStore(nextState.pendingBinaryCommands, fixedConfirmationWindows),
       [{
         id: 'dev-1',
         name: 'Heater',
@@ -1195,7 +1197,7 @@ describe('PlanExecutor restore logging', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     const shedPending = nextState.pendingBinaryCommands['dev-1'];
     syncPendingBinaryCommands(
-      createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
+      createPendingBinaryCommandStore(nextState.pendingBinaryCommands, fixedConfirmationWindows),
       [{
         id: 'dev-1',
         name: 'Heater',
@@ -1916,7 +1918,8 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     if (!isSteppedLoadDeviceFixture(device)) throw new Error('expected stepped fixture');
     const state = createPlanEngineState();
-    const expired = { dispatchState: 'accepted' as const, desired: true, startedMs: Date.now() - 10 * 60 * 1000 };
+    const expired = { dispatchState: 'accepted' as const, desired: true, startedMs: Date.now() - 10 * 60 * 1000,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS };
     state.pendingBinaryCommands[device.id] = expired;
     const { executor } = buildExecutor(state, [{ id: device.id, name: device.name,
       available: true, binaryControl: { on: false }, binaryCapabilityId: 'onoff',
@@ -5400,7 +5403,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       const pending = state.pendingBinaryCommands['dev-1'];
       syncPendingBinaryCommands(
-        createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         [{
           id: 'dev-1', name: 'Charger',
           binaryCommandConfirmation: {
@@ -5432,7 +5435,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       const pending = state.pendingBinaryCommands['dev-1'];
       syncPendingBinaryCommands(
-        createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         [{
           id: 'dev-1', name: 'Charger',
           binaryCommandConfirmation: {

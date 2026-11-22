@@ -66,6 +66,7 @@ import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/pl
 import { testLogger } from '../utils/testLogger';
 import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
 import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -93,6 +94,7 @@ const buildRig = (): Rig => {
     // throws and resolves `{ failed: true }`, masking the ready-edge/status paths.
     deviceManager: {
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+      writeAnswerTimes: fixedConfirmationWindows,
       getSnapshot: () => [],
       // The silent-meter escalation spends its pass only on a committed full read.
       hasWarmSnapshot: () => true,
@@ -1428,6 +1430,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const setCapability = vi.fn(async (..._args: unknown[]) => undefined);
     const deviceManager = withGetSnapshotByDeviceId({
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+      writeAnswerTimes: fixedConfirmationWindows,
       getSnapshot: () => [load],
       hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],

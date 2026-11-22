@@ -67,6 +67,7 @@ import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import { buildPlanInputDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { captureLogger } from '../utils/loggerCapture';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 type LegacyLifecycleFallbackDevice = Omit<
 LifecycleFallbackDevice,
@@ -1751,7 +1752,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
     };
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
     store.record(snapshot.id, {
       desired: true, startedMs: Date.now(),
     });
@@ -1783,7 +1784,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
     };
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
     let current = true;
     let resolveWrite: ((value: { requested: true }) => void) | undefined;
     const actuator = createTestActuator(
@@ -1827,7 +1828,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
     };
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
     let current = true;
     let rejectWrite: ((reason: unknown) => void) | undefined;
     const actuator = createTestActuator(

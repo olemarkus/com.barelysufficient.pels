@@ -2,7 +2,6 @@ import type {
   BinaryCommandLifecycleEvent,
   BinaryCommandLifecycleListener,
 } from '../../observer/pendingBinaryCommands';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../ports/controlCommandConfirmation';
 import { getLogger } from '../../logging/logger';
 
 const logger = getLogger('plan/binary-command-reachability');
@@ -97,7 +96,7 @@ export function createBinaryCommandReachability(
     lifecycle: {
       onDispatchAccepted: (event) => {
         if (disposed || !event.desired) return;
-        const dueAtMs = event.startedAtMs + CONTROL_COMMAND_CONFIRMATION_MS;
+        const dueAtMs = event.startedAtMs + event.confirmationWindowMs;
         const current = stateByDevice.get(event.deviceId);
         stateByDevice.set(event.deviceId, {
           failures: current?.failures ?? 0,
@@ -147,7 +146,7 @@ export function createBinaryCommandReachability(
       // device that stopped answering emits no observation.
       //
       // Nor does the confirmation deadline cover it. The timer `onDispatchAccepted`
-      // arms for `startedAtMs + CONTROL_COMMAND_CONFIRMATION_MS` usually fires at
+      // arms for `startedAtMs + confirmationWindowMs` usually fires at
       // this instant, but is not guaranteed to be there: a Flow-backed binary write
       // awaits an SDK trigger with no timeout, so its entry can reach expiry still
       // `dispatching` and never accepted; `project` below calls `clear` —
@@ -156,7 +155,7 @@ export function createBinaryCommandReachability(
       // both share the timer key `binaryCommandReachability:<homeId>:<deviceId>`
       // and the registry clears the old handle on register. That replacement
       // loses at most the deadline's own rebuild: a command times out only once
-      // its age reaches `CONTROL_COMMAND_CONFIRMATION_MS`, when that deadline is
+      // its age reaches its `confirmationWindowMs`, when that deadline is
       // due, so a sweep that gets there first (the observation lane's, say) has
       // already recorded the failure the rebuild was for, and what is deferred is
       // the cosmetic part below. The reverse order needs PELS to dispatch a

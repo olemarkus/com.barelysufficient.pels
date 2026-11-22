@@ -6,6 +6,7 @@ import type { ExecutorCommandContext } from '../../lib/executor/executorCommandC
 import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createCommandClaim } from '../../lib/executor/commandClaim';
+import { fixedConfirmationWindows } from './confirmationWindows';
 
 /**
  * The command session of a device that was already commanded a step: no unknown
@@ -37,7 +38,7 @@ export const createTestExecutorCommandContext = (
     apply: async () => ({ requested: false }),
     resolveTemperatureTarget: (_deviceId, desired) => desired,
   },
-  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
   getObservedState: () => undefined,
   readDevice: () => undefined,
   getCapacityDryRun: () => false,

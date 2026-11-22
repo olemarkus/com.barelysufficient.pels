@@ -19,6 +19,7 @@ import { steppedInputDevice, steppedPlanDevice, sheddingPlanFixture, buildInitia
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { capacityGuardSpy } from '../helpers/sheddingWiring';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const chargerProfile = {
   steps: [
@@ -99,7 +100,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       capacityGuard,
       shortfallThresholdKw: 10,
       powerTracker: { lastTimestamp: 900, lastPowerW: 8_770 } as PowerTrackerState,
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       getShedBehavior,
     });
 
@@ -117,7 +118,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
         getInferredSurplusKw: () => 0,
         getShedBehavior,
         getPriceOptimizationSettings: () => ({}),
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       },
     });
 

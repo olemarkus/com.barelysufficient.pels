@@ -6,6 +6,7 @@ import type { PlanBuilderDeps } from '../../lib/plan/planBuilderDeps';
 import { fixtureTemperatureSetpoints } from './temperatureSetpointsFixture';
 import { testLogger } from '../utils/testLogger';
 import { noDrawEvidence } from './observedDeviceReadsDouble';
+import { fixedConfirmationWindows } from './confirmationWindows';
 
 type PlanBuilderWiring = Omit<PlanBuilderDeps,
   | 'capacityGuard'
@@ -33,7 +34,7 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   getDailyBudgetSnapshot: () => null,
   getShedBehavior: () => ({ action: 'turn_off' }),
   drawEvidence: noDrawEvidence,
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints(),
   structuredLog: testLogger,

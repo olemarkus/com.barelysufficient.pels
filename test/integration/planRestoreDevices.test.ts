@@ -26,6 +26,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanDevice, restoreCycleFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const makeDevice = (
   overrides: Partial<DevicePlanDevice>
@@ -141,7 +142,7 @@ describe('plan restore device helpers', () => {
     const offDevice = makeDevice({ id: 'off-at-start', currentState: 'off' as const });
     const onDevice = makeDevice({ id: 'already-on-at-start', currentState: 'on' as const });
     const history = new ShedDecisions();
-    history.recordPlannedShed([], buildIdentityDecorationBundle([]), createPendingBinaryCommandStore({}), true);
+    history.recordPlannedShed([], buildIdentityDecorationBundle([]), createPendingBinaryCommandStore({}, fixedConfirmationWindows), true);
 
     expect(getRestoreCandidates([offDevice, onDevice], history).map(({ device }) => device.id))
       .toEqual(['off-at-start']);

@@ -10,6 +10,7 @@ import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // Two managed devices that were never assigned a stored priority, drawing the
 // SAME effective power. Without a deterministic final tiebreak their relative
@@ -58,7 +59,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
     powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
     getShedBehavior: () => ({ action: 'turn_off' }),
     // No stored priority for any device → caller-side default for the whole bucket.
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
   },
 });
 

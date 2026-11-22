@@ -11,6 +11,7 @@ import type { ChargingCurrentSetup } from '../../packages/contracts/src/charging
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { FlowActionCardInventory } from '../../lib/device/flowActionCardInventory';
+import { newWriteAnswerTimes } from '../helpers/confirmationWindows';
 
 const selected: ChargingCurrentSetup = { method: 'built_in', confirmation: 'single_charger' };
 const zaptec = (writable = false): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'charger', name: 'Zaptec', class: 'evcharger',
@@ -28,7 +29,7 @@ function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesSt
   setRestClient({ get, put: vi.fn() });
   const logger = { structuredLog: getLogger('test') };
   const homeyAccess = new HomeyActionAccess({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
-    cloud: { getHomeyId: async () => 'test' } }, logger);
+    cloud: { getHomeyId: async () => 'test' } }, logger, newWriteAnswerTimes());
   const control = new ChargingCurrentControl(settings, homeyAccess, new FlowActionCardInventory(logger), logger, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
   deviceControlSettingsFixture({ devicePowerControlModes: { charger: 'automatic' } }));
   const access = control.access;

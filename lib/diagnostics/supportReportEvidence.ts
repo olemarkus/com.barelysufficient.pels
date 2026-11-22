@@ -1,4 +1,5 @@
 import type { PowerFigureCheckEntry } from '../device/powerFigureCheck';
+import type { WriteAnswerTimesEntry } from '../device/transport/writeAnswerTimes';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetUiRead } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
@@ -108,6 +109,8 @@ export type SupportReportReads = {
   readAppMemory(): Promise<AppMemorySnapshot>;
   /** Managed devices PELS sees draw well above the figure it plans them with (`lib/device/powerFigureCheck.ts`). */
   readPowerFigureChecks(nowMs: number): readonly PowerFigureCheckEntry[];
+  /** How fast Homey answers PELS's writes to each device (`lib/device/transport/writeAnswerTimes.ts`). */
+  readWriteAnswerTimes(nowMs: number): readonly WriteAnswerTimesEntry[];
 };
 
 type ReportSubject = {
@@ -524,18 +527,18 @@ const readHeatingShadowSection = (
 
 export const POWER_FIGURE_CHECKS_REPORT_TITLE = 'Power figure checks';
 
-/** An app report lists the devices whose figure PELS doubts, none when it doubts none. */
-const readPowerFigureChecksSection = (
-  host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number,
-): SectionRead[] => {
-  if (request.subject.kind !== 'app') return [];
-  try {
-    const devices = [...host.readPowerFigureChecks(capturedAtMs)];
-    return [{ state: 'available', section: { title: POWER_FIGURE_CHECKS_REPORT_TITLE, values: { devices } } }];
-  } catch {
-    return [{ state: 'unavailable', reason: `${POWER_FIGURE_CHECKS_REPORT_TITLE} is unavailable.` }];
-  }
-};
+export const WRITE_ANSWER_TIMES_REPORT_TITLE = 'Device write answer times';
+
+/**
+ * An app report lists the devices of one readout, none when it names none:
+ * the devices whose figure PELS doubts, and how fast Homey answered PELS's
+ * writes to each device since the app started.
+ */
+const readAppDevicesSection = (
+  request: SupportReportRequest, title: string, readDevices: () => readonly SupportReportSection['values'][],
+): SectionRead[] => (request.subject.kind === 'app'
+  ? [readSection(title, () => ({ title, values: { devices: [...readDevices()] } }))]
+  : []);
 
 export const APP_MEMORY_REPORT_TITLE = 'App memory';
 
@@ -582,13 +585,15 @@ export class SupportReportEvidenceSource {
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
     const inventory = await readHomeyDeviceInventory(() => host.listHomeyDevices());
     const appMemory = await readAppMemorySection(host);
+    const at = capturedAtMs;
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
       ...readAppSmartTaskSections(host, request, deviceNames(host, history, capturedAtMs), capturedAtMs),
       ...readCarLinkSection(carLink),
       ...heating,
-      ...readPowerFigureChecksSection(host, request, capturedAtMs),
+      ...readAppDevicesSection(request, POWER_FIGURE_CHECKS_REPORT_TITLE, () => host.readPowerFigureChecks(at)),
+      ...readAppDevicesSection(request, WRITE_ANSWER_TIMES_REPORT_TITLE, () => host.readWriteAnswerTimes(at)),
       ...readHomeSections(host, request.subject.homeId, plan, area),
       readSection('Current power source', () => request.subject.homeId === MAIN_HOME_ID
         ? reportMainPowerSource(host.readPowerSourceChoice(), host.readMainMeterSelection, inventory)

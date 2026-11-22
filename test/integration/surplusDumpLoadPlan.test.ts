@@ -53,6 +53,7 @@ import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -122,7 +123,7 @@ const makeHarness = (params: {
   const decorate = params.decorate;
   const builder = new PlanBuilder({
       ...planBuilderWiring(),
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       leaveOffOnRelease: params.leaveOffOnRelease ?? ((): ReleaseHoldOutcome => 'released'),
     capacityGuard: guard,
     getCapacitySettings: () => configuredHardCap(capacitySettings),
@@ -229,7 +230,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
     const h = makeHarness({ totalKw, leaveOffOnRelease });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
-    const pending = createPendingBinaryCommandStore(h.state.pendingBinaryCommands);
+    const pending = createPendingBinaryCommandStore(h.state.pendingBinaryCommands, fixedConfirmationWindows);
     pending.record(PUMP, { desired: false, startedMs: Date.now() });
 
     await vi.advanceTimersByTimeAsync(1000);

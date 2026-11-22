@@ -131,6 +131,8 @@ export class DeviceTransport {
     /** The host of every home battery driven through its app's Flow actions, on the shared API key. */
     readonly batteryAppActions: HomeBatteryAppActions;
     private readonly deviceSdk: DeviceHomeySdk;
+    /** How fast Homey answers PELS's writes to each device, and the on/off confirmation window from it. */
+    readonly writeAnswerTimes: HomeyActionOwners['answerTimes'];
     private readonly logger: Logger;
     // Owner-side widened shape: these stored objects are mutated in place across
     // kinds (incl. the EV plug-state the consumer-facing snapshot type omits).
@@ -256,6 +258,7 @@ export class DeviceTransport {
         // One key owner, and the two owners that run actions on it, shared by the reads and writes below.
         const actionOwners = createHomeyActionOwners(this.deviceSdk, this.snapshotStore, logger, options);
         this.chargingAccess = actionOwners.access;
+        this.writeAnswerTimes = actionOwners.answerTimes;
         this.batteryAppActions = actionOwners.batteryAppActions;
         this.chargingCurrentControl = actionOwners.chargingCurrentControl;
         this.chargingPhases = this.createChargingPhaseTransport(actionOwners);
@@ -362,6 +365,7 @@ export class DeviceTransport {
             this.observationProducers,
             (cardId) => this.getFlowTriggerCard?.(cardId),
             (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
+            this.writeAnswerTimes,
         );
     }
 
@@ -661,9 +665,7 @@ export class DeviceTransport {
         return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
     }
 
-    async requestSteppedLoadStep(
-        request: SteppedLoadWrite,
-    ): Promise<SteppedLoadStepRequestResult> {
+    requestSteppedLoadStep(request: SteppedLoadWrite): Promise<SteppedLoadStepRequestResult> {
         return this.writeService.requestSteppedLoadStep(request);
     }
 
@@ -689,9 +691,7 @@ export class DeviceTransport {
     }
 
     getLiveFeedHealth(): LiveFeedHealth | null { return this.deviceSdk.getHealth(); }
-    private shouldTrackRealtimeDevice(deviceId: string): boolean {
-        return this.reader.shouldTrackRealtimeDevice(deviceId);
-    }
+    private shouldTrackRealtimeDevice(id: string): boolean { return this.reader.shouldTrackRealtimeDevice(id); }
 
     public destroy(): void {
         this.refreshService.stop();

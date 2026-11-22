@@ -85,6 +85,10 @@ export const createSupportReportReads = (
   readPowerFigureChecks: (nowMs) => (
     app.flowBacked.powerFigureChecks.readAll(app.getSettingsUiManagedDevices(), nowMs)
   ),
+  readWriteAnswerTimes: (nowMs) => {
+    const transport = requireDeviceManager(app);
+    return transport.writeAnswerTimes.describe(nowMs, (id) => transport.getSnapshotByDeviceId(id)?.name ?? null);
+  },
   readAppMemory: () => captureAppMemorySnapshot(appMemory),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (

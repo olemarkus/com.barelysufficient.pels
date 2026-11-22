@@ -61,6 +61,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { transportSnapshotFixture, transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
@@ -560,7 +561,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     const forgetDevice = vi.fn();
     const setCapability = vi.fn().mockResolvedValue(undefined);
     const applyDeviceTargets = vi.fn().mockResolvedValue(undefined);
-    const pendingBinaryCommandStore = createPendingBinaryCommandStore({});
+    const pendingBinaryCommandStore = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
     let fenced = initiallyFenced;
     let deviceOn = true;
     let lifecycleOwnsTarget = true;
