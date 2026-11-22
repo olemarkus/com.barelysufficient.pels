@@ -15,6 +15,7 @@ import {
 } from '../helpers/deviceTransportHarness';
 import Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
+import { ZONE_TREE_MAX_AGE_MS } from '../../lib/device/transport/snapshotRefreshState';
 import {
   MockDevice,
   MockDriver,
@@ -200,6 +201,35 @@ describe('zone tree fetch riding the snapshot refresh', () => {
 
     await refreshAndSettleZones(transport);
     expect(zoneReads()).toBe(2);
+  });
+
+  it('reads the tree on a targeted refresh once the last read is five minutes old', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const heater = new MockDevice('dev1', 'Heater', ['target_temperature', 'onoff']);
+      await heater.setCapabilityValue('onoff', true);
+      setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+      setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
+      const get = vi.spyOn(mockHomeyInstance.api, 'get');
+      const zoneReads = (): number => get.mock.calls.filter(([path]) => path === 'manager/zones/zone').length;
+      const transport = createTestDeviceTransport(homeyMock, loggerMock);
+      await refreshAndSettleZones(transport);
+      expect(zoneReads()).toBe(1);
+
+      // A zone renamed since: a targeted read picks it up once the tree is due.
+      setMockZones({ z1: { id: 'z1', name: 'House', parent: null } });
+      vi.setSystemTime(Date.now() + ZONE_TREE_MAX_AGE_MS - 1);
+      await transport.refreshSnapshot({ meterDeviceIds: [], targetedRefresh: true });
+      await settleDetachedZoneFetches();
+      expect(zoneReads()).toBe(1);
+      vi.setSystemTime(Date.now() + 1);
+      await transport.refreshSnapshot({ meterDeviceIds: [], targetedRefresh: true });
+      await settleDetachedZoneFetches();
+      expect(zoneReads()).toBe(2);
+      expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'House', parent: null } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('normalizes a good payload into the typed tree', async () => {
