@@ -461,7 +461,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     },
     [OVERSHOOT_BEHAVIORS]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'overshoot_behavior_change');
+      // The plan reads the current shed policy from configuration.
       await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
       // The global behavior map is also read by every sub-home plan. This is
       // especially important when a deferred temperature-only-device seed
@@ -544,10 +544,8 @@ function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerM
     [EXPORT_FIXED]: async () => refreshPriceDerivedState(deps),
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.priceService.loadPriceOptimizationSettings();
-      await refreshSnapshotWithLog(deps, 'price_optimization_settings_change');
-      // A device's price adjustment changes its setpoint this hour, so the owner's
-      // edit is decided now; a snapshot refresh alone waits for the next meter
-      // reading, which under Flow-reported power may be a long way off.
+      // The plan reads the current price settings when resolving setpoints.
+      // Apply the edit immediately, including homes with infrequent Flow meter readings.
       await rebuildPlanFromSettings(deps, PRICE_OPTIMIZATION_SETTINGS);
     },
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
