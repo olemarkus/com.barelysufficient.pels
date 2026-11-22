@@ -9,6 +9,8 @@ export type RefreshCaller =
   | 'snapshot_cycle'
   | 'device_poll'
   | 'post_actuation'
+  /** A post-actuation read not run: every write's echo confirmed it. */
+  | 'post_actuation_settled_by_echo'
   | 'stuck_confirmation'
   | 'inventory'
   | 'temperature_recovery';

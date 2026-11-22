@@ -58,6 +58,13 @@ import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { setMockSteppedLoadFlow } from '../helpers/mockSteppedLoadFlow';
+import type { DeviceTransportPort } from '../../lib/device/deviceTransport';
+
+/** The transport reports a command no echo settled, so the post-actuation read arms. */
+const awaitReadAfterCommand = (app: MyApp): void => {
+  vi.spyOn(app.snapshotHelpers['refreshScheduler'] as unknown as { getTransport: () => DeviceTransportPort },
+    'getTransport').mockReturnValue(partialDouble<DeviceTransportPort>({ hasCommandAwaitingRead: () => true }));
+};
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -2211,7 +2218,7 @@ describe('MyApp initialization', () => {
     }));
   });
 
-  it('ignores target_temperature capability echoes and clears pending commands on device.update', async () => {
+  it('confirms a pending target command from the echo of its write', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('measure_power', 360);
@@ -2251,10 +2258,6 @@ describe('MyApp initialization', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
       await emitCapability('dev-1', 'target_temperature', 18, echoTransactionId);
-      expect(getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1']).toBeDefined();
-
-      heater.setApiCapabilityValue('target_temperature', 18);
-      emitDeviceUpdate(heater.toHomeyApiDevice());
       await waitFor(() => getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1'] === undefined);
     } finally {
       nowSpy.mockRestore();
@@ -3220,6 +3223,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const capture = captureLogger();
     try {
       const app = createApp();
+      awaitReadAfterCommand(app);
       const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
 
       app.snapshotHelpers.schedulePostActuationRefresh();
@@ -3238,6 +3242,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('clears post-actuation timer state on stop so it can be armed again', () => {
     const app = createApp();
+    awaitReadAfterCommand(app);
 
     app.snapshotHelpers.schedulePostActuationRefresh();
     expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
@@ -3251,6 +3256,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
     const app = createApp();
+    awaitReadAfterCommand(app);
     const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
 
     app.snapshotHelpers.schedulePostActuationRefresh();
@@ -3260,12 +3266,32 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false, writtenDevicesOnly: true });
   });
 
+  it('skips the post-actuation read when every write was settled by its echo', async () => {
+    const capture = captureLogger();
+    try {
+      const app = createApp();
+      vi.spyOn(app.snapshotHelpers['refreshScheduler'] as unknown as { getTransport: () => DeviceTransportPort },
+        'getTransport').mockReturnValue(partialDouble<DeviceTransportPort>({ hasCommandAwaitingRead: () => false }));
+      const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
+
+      app.snapshotHelpers.schedulePostActuationRefresh();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(false);
+      expect(refreshSpy).not.toHaveBeenCalled();
+      expect(capture.findEvent('post_actuation_refresh_skipped')).toMatchObject({ reason: 'settled_by_echo' });
+    } finally {
+      capture.restore();
+    }
+  });
+
   it('detaches the global post-actuation refresh from the scheduling home context', async () => {
     // The root logger mixes the async context into every line, so each event
     // carries the context it was emitted in.
     const capture = captureLogger();
     try {
       const app = createApp();
+      awaitReadAfterCommand(app);
       const refreshContexts: Array<Record<string, unknown>> = [];
       const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh')
         .mockImplementation(async () => { refreshContexts.push(getCurrentContext()); });

@@ -573,14 +573,13 @@ export class DeviceTransport {
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);
     }
-    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> {
-        return (await this.deviceSdk.fetchDevices()).devices;
-    }
+    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return (await this.deviceSdk.fetchDevices()).devices; }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationBridge.state.getObservationState(), deviceId);
     }
     getBinarySettleEvidenceByDeviceId(id: string): BinaryControlObservation | undefined {
         return this.observationBridge.state.getBinarySettleEvidence(id); }
+    hasCommandAwaitingRead(): boolean { return this.observationBridge.state.hasCommandAwaitingRead(); }
 
     async init(): Promise<void> {
         await this.deviceSdk.initialize();

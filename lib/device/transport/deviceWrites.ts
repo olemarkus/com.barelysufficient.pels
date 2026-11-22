@@ -280,7 +280,7 @@ export class DeviceWriteService {
     await sendWithTemperatureWriteEvidence(
       this.observationProducers.temperature, this.snapshotStore, deviceId, requested, ownWrite,
       () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId),
-    ).finally(() => this.observationState.noteDeviceWritten(deviceId));
+    ).finally(() => this.observationState.noteWriteAnswered(deviceId, ownWrite, snapshotBefore, capabilityId));
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,

@@ -30,6 +30,7 @@ import {
   updateTemperatureTarget,
 } from './temperatureObservation';
 import { handleThermostatModeCapabilityUpdate } from './thermostatModeRealtime';
+import { echoSettlesWrite } from './ownCapabilityWrites';
 import { handleAcknowledgedCurrentUpdate } from './acknowledgedStepRealtime';
 import {
     handleHomeBatteryClaimCapabilityUpdate,
@@ -276,13 +277,13 @@ function handleSteppedSourceCapabilityUpdate(
 }
 
 /**
- * Whether an event goes on to update the snapshot. A binary write is never
- * observed optimistically, so its echo settles the switch PELS asked for. A
- * target write's value is already held as PELS's own write
- * (`recordLocalWriteObservation`): its echo adds nothing. Any other event is
- * the device's own report, and its switch or setpoint goes to the control
- * contest record. PELS never writes `measure_power`, so one in an echo is a
- * draw the adapter read from it (an Adax heater's setback), and stands.
+ * Whether an event goes on to update the snapshot. The echo of a switch or
+ * setpoint write settles what PELS asked for (`echoSettlesWrite`). Other target
+ * writes are held as PELS's own write (`recordLocalWriteObservation`), and
+ * their echo adds nothing. Any other event is the device's own report, and its
+ * switch or setpoint goes to the control contest record. PELS never writes
+ * `measure_power`, so one in an echo is a draw the adapter read from it (an
+ * Adax heater's setback), and stands.
  */
 function admitControlEvent(
     ingest: RealtimeIngestService,
@@ -291,7 +292,7 @@ function admitControlEvent(
     value: unknown,
     pelsEcho: boolean,
 ): boolean {
-    if (pelsEcho) return capabilityId === snapshot.binaryCapabilityId || capabilityId === 'measure_power';
+    if (pelsEcho) return echoSettlesWrite(snapshot, capabilityId) || capabilityId === 'measure_power';
     const report = resolveControlReport(snapshot, capabilityId, value, Date.now());
     if (report) ingest.observationBridge.dispatchControlReported(report);
     return true;

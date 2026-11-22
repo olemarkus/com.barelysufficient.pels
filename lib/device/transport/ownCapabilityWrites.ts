@@ -1,4 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
+
+/**
+ * Whether Homey's echo of a write to `capabilityId` settles it: the device's
+ * switch or its setpoint. Homey sends the echo once the driver has taken the
+ * write and holds the value, which is the value a read would return then, so
+ * the echo confirms the write as a read would and the write needs no read.
+ */
+export function echoSettlesWrite(snapshot: TransportDeviceSnapshot, capabilityId: string): boolean {
+  return capabilityId === snapshot.binaryCapabilityId || capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID;
+}
 
 /**
  * How long an unanswered write waits for its echo. Homey answers a write when
@@ -52,6 +64,18 @@ export class OwnCapabilityWrites {
     }
     this.byTransactionId.delete(transactionId);
     return write;
+  }
+
+  /**
+   * Whether Homey's echo has already settled `write`, sent for `snapshot`'s
+   * `capabilityId` (`echoSettlesWrite`). Homey echoes before it answers, so
+   * this holds once the write returns. A write a vendor adapter routed to
+   * another capability or Homey device is settled by what the adapter reads,
+   * never by its echo.
+   */
+  settledByEcho(write: OwnCapabilityWrite, snapshot: TransportDeviceSnapshot, capabilityId: string): boolean {
+    return write.deviceId === snapshot.id && write.writtenCapabilityId === capabilityId
+      && echoSettlesWrite(snapshot, capabilityId) && !this.byTransactionId.has(write.transactionId);
   }
 
   clear(): void {

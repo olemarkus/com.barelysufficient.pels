@@ -427,6 +427,13 @@ PELS just wrote. Homey does not say who else wrote a value: a write without an
 id and the driver's own reports get random ids. A driver that sets a value the
 capability already holds produces no event and leaves `lastUpdated` alone.
 
+The echo of a switch or setpoint write confirms it (`echoSettlesWrite`): Homey
+sends it once it holds the value, which is what a read would return then. The
+read after a command (`SnapshotRefreshScheduler.schedulePostActuationRefresh`)
+therefore runs only for what no echo settled: a command a Flow card or a battery
+app carried out, a write a vendor adapter routed to another capability or
+device, and a write Homey answered without an echo.
+
 Do not assume:
 
 - unchanged fields in the event are fresh
