@@ -84,7 +84,8 @@ import {
   buildFreshDiagnostic, buildHorizonUnavailableDiagnostic, withAwaitingPricesPlanning,
 } from './freshDiagnostic';
 import {
-  isFreshTaskEvaluation, isReviewedTurn, isSelectedFreshTurn, readAllocationContext, resolveReportedContext,
+  isFreshTaskEvaluation, isInHourlyHandoff, isReviewedTurn, isSelectedFreshTurn, readAllocationContext,
+  resolveReportedContext,
   resolveTaskAllocationMode, shouldWaitForPlanningTurn, taskReplanRequested,
   type TaskAllocationMode, type TaskPlanningTurns,
 } from './taskPlanningTurns';
@@ -253,7 +254,7 @@ const governsItsDevice = (
   nowMs: number,
 ): boolean => task.objective.deadlineAtMs > nowMs
   && (evaluation.planning.kind === 'allocated'
-    || (evaluation.planning.kind === 'awaiting_plan' && evaluation.planning.device === 'held'));
+    || (evaluation.planning.kind === 'awaiting_plan' && evaluation.planning.device !== 'unchanged'));
 
 export const buildDeferredObjectiveTaskResults = (
   snapshot: TaskEvaluationSnapshot,
@@ -440,15 +441,13 @@ const buildDeferredObjectiveDiagnostic = (
   const frozenFallback = resolveDeadlineBoundFrozenReadInputs(
     deviceId, objective, progress.progressDirection, nowMs, activePlans,
   );
-  if (shouldWaitForPlanningTurn(allocation, frozenFallback !== null, snapshot, progress)) {
-    return buildWaitingForPlanDiagnostic(buildTaskDiagnosticBase(snapshot, task), objective, progress, 'held');
-  }
+  const waiting = shouldWaitForPlanningTurn(allocation, frozenFallback !== null, snapshot, progress);
   const horizonInputs: DeferredObjectivePolicyHorizonInputs = {
     nowMs,
     deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled: snapshot.priceOptimizationEnabled,
     // Allocation-horizon price source, resolved by the wiring-injected producer.
-    priceHorizon: allocation === 'serve' && frozenFallback ? []
+    priceHorizon: (waiting || allocation === 'serve') && frozenFallback ? []
       : readers.buildPriceHorizon(nowMs, objective.deadlineAtMs),
     dailyBudgetSnapshot: snapshot.dailyBudgetSnapshot,
     powerLimits: snapshot.powerLimits,
@@ -459,6 +458,12 @@ const buildDeferredObjectiveDiagnostic = (
   };
   const scheduledTask = { ...task,
     prefersContinuousCharging: isEvDevice(task.device) && readers.prefersContinuousCharging(deviceId) };
+  if (waiting) {
+    return buildWaitingForPlanDiagnostic(
+      buildTaskDiagnosticBase(snapshot, task), objective, progress,
+      resolveWaitingDevice(snapshot, scheduledTask, progress, horizonInputs, frozenFallback),
+    );
+  }
   if (isObjectiveProgressSatisfied(progress)) {
     const satisfied = buildDiagnosticWithPolicyHorizon(
       snapshot, scheduledTask, progress, horizonInputs, null, true,
@@ -526,6 +531,26 @@ const buildDeferredObjectiveDiagnostic = (
   return buildDiagnosticWithPolicyHorizon(
     snapshot, planningTask, progress, horizonInputs, frozenFallback, replan,
   );
+};
+
+// Consult the saved interval solely to decide whether an existing heating run
+// may continue. Waiting still grants no booking or task permissions.
+const resolveWaitingDevice = (
+  snapshot: TaskEvaluationSnapshot,
+  task: ScheduledDeferredObjective & { device: ObjectiveDeviceInput },
+  progress: DeferredObjectiveProgressResolution,
+  horizonInputs: DeferredObjectivePolicyHorizonInputs,
+  frozenFallback: FrozenReadInputs | null,
+): 'held' | 'keep_running' => {
+  if (!frozenFallback || task.objective.kind !== 'temperature' || task.device.thermalDirection !== 'heating'
+    || !task.device.control.commandAuthority
+    || task.device.currentDrawKw <= 0 || !isInHourlyHandoff(snapshot.nowMs)) return 'held';
+  const { evaluation: { planning } } = buildDiagnosticWithPolicyHorizon(
+    snapshot, task, progress, horizonInputs, frozenFallback, false,
+  );
+  return planning.kind === 'allocated' && planning.plan.currentHourClaim === 'claimed'
+    && planning.plan.currentBucket?.booked === true
+    ? 'keep_running' : 'held';
 };
 
 // Which frozen read (if any) this cycle serves. Normal path: the caller's replan

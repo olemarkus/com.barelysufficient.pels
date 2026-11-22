@@ -16,7 +16,8 @@ export type TaskEvaluation = {
    * Once the rate is known the task is allocated as usual.
    *
    * `awaiting_plan`: queued allocation work. A new task leaves normal control
-   * intact; an incompatible saved commitment holds its device until replanned.
+   * intact. An incompatible commitment holds until replanned, with bounded
+   * continuation for an already-running heater.
    *
    * `awaiting_prices`: prices do not yet reach the deadline, so nothing can be
    * allocated. The task holds its device until the latest start that still
@@ -25,7 +26,7 @@ export type TaskEvaluation = {
   planning:
     | { kind: 'inactive' }
     | { kind: 'learning' }
-    | { kind: 'awaiting_plan'; device: 'held' | 'unchanged' }
+    | { kind: 'awaiting_plan'; device: 'held' | 'unchanged' | 'keep_running' }
     | { kind: 'awaiting_prices'; device: 'held' | 'running' }
     | { kind: 'allocated'; plan: DeferredObjectiveHorizonPlan };
   permissions: { budgetExempt: boolean; limitLowerPriority: boolean; pauseLowerPriority: boolean };

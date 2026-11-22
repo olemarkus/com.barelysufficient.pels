@@ -24,6 +24,7 @@ export type DeferredAdmissionDecision =
       kind: 'idle';
       budgetExempt: boolean;
       holdCause: DeferredHoldCause;
+      keepRunningWhileWaiting?: true;
       deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_release' | 'shed_release';
     };
@@ -75,6 +76,9 @@ const resolvePlanningWait = (
   if (evaluation.planning.kind === 'awaiting_plan' && evaluation.planning.device === 'unchanged') {
     return { kind: 'inactive', budgetExempt: false };
   }
+  const keepRunningWhileWaiting = evaluation.planning.kind === 'awaiting_plan'
+    && evaluation.planning.device === 'keep_running'
+    && device?.control.commandAuthority && !isTaskSatisfied(evaluation.completion);
   const releaseIntent = resolveReleaseIntent(usesBinaryReleaseControl(device), device);
   return {
     kind: 'idle',
@@ -82,6 +86,7 @@ const resolvePlanningWait = (
     holdCause: evaluation.planning.kind === 'awaiting_plan' ? 'waiting_for_plan' : 'cheaper_hours',
     ...resolveTaskTargetFloor(evaluation),
     ...(releaseIntent ? { releaseIntent } : {}),
+    ...(keepRunningWhileWaiting ? { keepRunningWhileWaiting: true as const } : {}),
   };
 };
 
@@ -270,7 +275,7 @@ const resolveDeferredHold = (
 ): PlanInputDevice['deferredHold'] => {
   if (decision.kind !== 'idle') return undefined;
   if (followsSurplusWhileWaiting(device)) return undefined;
-  if (device.control.commandAuthority) return 'off';
+  if (device.control.commandAuthority) return decision.keepRunningWhileWaiting ? 'off_unless_running' : 'off';
   return contributesCommandAuthority(decision, device) ? 'configured' : undefined;
 };
 

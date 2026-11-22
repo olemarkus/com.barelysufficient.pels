@@ -36,8 +36,10 @@ Previewing a task does not consume a live turn.
 
 Meter-driven plan rebuilds serve saved commitments and update live admission without allocating.
 An unplanned task reports waiting for a plan and leaves normal device control in place until its
-first allocation. When a higher task commits a changed revision, incompatible lower tasks hold
-their devices until their queued turn; their previous schedule and history remain stored.
+first allocation. When a higher task commits a changed revision, incompatible lower tasks normally
+hold their devices until their queued turn. The previous schedule and history remain stored. An
+already-drawing on/off heater can continue through the bounded hourly handoff under live limits,
+without a new command or task permission.
 Stable committed revision identity tracks those changes, so passage of time alone cannot invalidate
 a lower plan. A transient price or step gap keeps a compatible saved plan in use and queues a retry.
 When an incompatible lower task's own turn cannot allocate through such a gap, the turn records that

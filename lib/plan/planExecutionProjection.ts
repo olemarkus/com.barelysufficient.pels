@@ -24,6 +24,12 @@ export function buildExecutablePlan(plan: DevicePlan): PlannedCommandPlan {
 }
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
+  if (planDevice.plannedState === 'keep' && planDevice.continueRunningDuringTaskHandoff) {
+    return {
+      id: planDevice.id, name: planDevice.name,
+      commandAuthority: planDevice.control.commandAuthority, projection: 'decided',
+    };
+  }
   const target = planDevice.targetCommand;
   const binary = buildPlannedBinaryCommand(planDevice);
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
@@ -170,6 +176,7 @@ export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
   if (dev.plannedState === 'shed') return buildExecutableBinaryShedIntent(dev);
+  if (dev.continueRunningDuringTaskHandoff) return undefined;
   return { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'controlled' };
 };
 

@@ -779,7 +779,10 @@ export type PlanInputDeviceBase = {
    * active reads its presence (starvation eligibility, and the shed side's recovery
    * rule `isNonSteppedDeviceRecovering`).
    */
-  deferredHold?: 'off' | 'configured';
+  // The planner resolves 'off_unless_running' before shedding and restoration.
+  deferredHold?: 'off' | 'configured' | 'off_unless_running';
+  /** Existing draw may continue under live limits while its task awaits a replan. */
+  continueRunningDuringTaskHandoff?: true;
   /**
    * The charger's target battery level, resolved against what PELS knows about
    * the car right now: does the target ask PELS to hold this device OFF, and is

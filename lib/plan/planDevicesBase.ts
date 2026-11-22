@@ -377,7 +377,8 @@ function resolveHoldDecisions(
   inputs: BasePlanDeviceInputs,
   decision: PlannedDeviceDecision,
 ): Pick<LooseDevicePlanDevice,
-  'startPolicyHoldActive' | 'chargeTargetHeld' | 'carCurrentRangeHeld' | 'deferredHoldActive' | 'nonCapacityHoldShed'> {
+  'startPolicyHoldActive' | 'chargeTargetHeld' | 'carCurrentRangeHeld' | 'deferredHoldActive'
+  | 'nonCapacityHoldShed' | 'continueRunningDuringTaskHandoff'> {
   const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
@@ -393,6 +394,7 @@ function resolveHoldDecisions(
     ...(isCarCurrentRangeHeldDevice(dev) ? { carCurrentRangeHeld: true as const } : {}),
     ...(dev.deferredHold !== undefined ? { deferredHoldActive: true as const } : {}),
     ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
+    ...(dev.continueRunningDuringTaskHandoff ? { continueRunningDuringTaskHandoff: true as const } : {}),
   };
 }
 
