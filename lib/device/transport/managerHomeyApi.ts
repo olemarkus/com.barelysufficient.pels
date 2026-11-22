@@ -6,6 +6,7 @@ import { HomeyRequestTimeoutError, normalizeError } from '../../utils/errorUtils
 import { HomeyHttpStatusError } from '../../utils/homeyHttpStatusError';
 import { getLogger } from '../../logging/logger';
 import { bindCurrentContext } from '../../logging/alsContext';
+import { countHomeyApiCall } from './homeyApiCallCount';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
 export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
@@ -272,6 +273,7 @@ function homeyHttpRequest(
   urlPath: string,
   body?: unknown,
 ): Promise<unknown> {
+  countHomeyApiCall(method, urlPath);
   return new Promise((resolve, reject) => {
     const url = new URL(urlPath, baseUrl);
     const requestModule = url.protocol === 'https:' ? https : http;
