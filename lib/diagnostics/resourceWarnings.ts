@@ -7,6 +7,7 @@ import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { reclaimHeapPages } from './heapReclaim';
 import { type AppMemoryUsageSampler, captureAppMemorySnapshot } from './appMemoryFootprint';
+import { createCallRateLog } from './callRateLog';
 import './v8MemoryFlags';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
@@ -319,6 +320,8 @@ const createWarnLogger = (
  * short lines to a day's log.
  */
 const FOOTPRINT_INTERVAL_MS = 30 * 60_000;
+/** How often the frequent-call log compares the Homey API and refresh counters (`callRateLog.ts`). */
+const CALL_RATE_INTERVAL_MS = 10 * 60_000;
 
 /**
  * How often a memory warning may ask Homey for a fresh reading.
@@ -401,10 +404,14 @@ export const startResourceWarningListeners = (
   backstop.unref();
   const footprintTimer = setInterval(() => footprint.onInterval(), FOOTPRINT_INTERVAL_MS);
   footprintTimer.unref();
+  const callRates = createCallRateLog(Date.now());
+  const callRateTimer = setInterval(() => callRates.onInterval(Date.now()), CALL_RATE_INTERVAL_MS);
+  callRateTimer.unref();
 
   return () => {
     clearInterval(backstop);
     clearInterval(footprintTimer);
+    clearInterval(callRateTimer);
     if (typeof emitter.off === 'function') {
       emitter.off('cpuwarn', cpuwarn);
       emitter.off('memwarn', memwarn);
