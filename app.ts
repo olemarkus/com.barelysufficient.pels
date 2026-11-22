@@ -1,3 +1,6 @@
+// First: its first import sets the V8 memory flags (`lib/diagnostics/v8MemoryFlags.ts`)
+// before the rest of the app is parsed and compiled.
+import { withAppApi } from './setup/appRuntimeApi';
 import type { ScheduleService } from './lib/schedules';
 import { bindModePreparationResolver } from './setup/appInit/temperatureSetpointsSeam';
 import type { SchedulesResponse } from './packages/contracts/src/schedules';
@@ -99,7 +102,6 @@ import { TimerRegistry } from './lib/utils/timerRegistry';
 import { ShutdownLatch } from './lib/utils/shutdownLatch';
 import type { AppRuntimeHandles } from './setup/appRuntimeHandles';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
-import { withAppApi } from './setup/appRuntimeApi';
 import type { EnergyTaskDeliveryTracker } from './lib/objectives/deferredObjectives/energyDelivery';
 
 const PelsAppBase = withAppApi(Homey.App);
