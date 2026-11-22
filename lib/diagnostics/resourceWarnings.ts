@@ -8,7 +8,6 @@ import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { reclaimHeapPages } from './heapReclaim';
 import { type AppMemoryUsageSampler, captureAppMemorySnapshot } from './appMemoryFootprint';
 import { createCallRateLog } from './callRateLog';
-import './v8MemoryFlags';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
 const emitPerfDebug = getDebugEmitter('perf', 'perf');

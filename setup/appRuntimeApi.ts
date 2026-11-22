@@ -1,3 +1,5 @@
+// First: sets the V8 memory flags before the rest of the app is parsed and compiled.
+import '../lib/diagnostics/v8MemoryFlags';
 import { temperaturePolicyPriceSettings } from '../packages/shared-domain/src/settings/temperatureControl';
 import { notifySetupOnce } from '../lib/app/setupNotification';
 import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } from './settingsUiAppRuntime';

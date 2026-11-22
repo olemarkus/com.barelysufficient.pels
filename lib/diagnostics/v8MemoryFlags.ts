@@ -25,9 +25,14 @@
  *   127-128 MB instead of 138-139 MB with no change in CPU. The compile work
  *   is the same; it now runs on the main thread, whose heap glibc trims.
  *
- * Imported by `resourceWarnings.ts`, the memory-warning owner, which the app
- * entry loads statically: the flags are set while the module graph loads,
- * before most code has run. A runtime that refuses a flag keeps its default.
+ * Imported first by `setup/appRuntimeApi.ts`, which `app.ts` imports first, so
+ * the flags are set before the rest of the app is parsed and compiled. That
+ * order is the point: V8 compiles the module graph as it loads, and with the
+ * flags set from `resourceWarnings.ts` instead (about a quarter of the app
+ * already loaded) worker arenas still held 15.8 MB, RSS settled at
+ * 133-135 MB and rose to 140 MB by an hour; set first, the arenas held 7.6 MB
+ * and RSS stayed at 121-123 MB. `test/unit/v8MemoryFlagsLoadOrder.test.ts`
+ * keeps both imports first. A runtime that refuses a flag keeps its default.
  */
 import v8 from 'node:v8';
 
