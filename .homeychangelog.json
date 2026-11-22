@@ -886,5 +886,8 @@
   },
   "3.48.1": {
     "en": "Fixed: A heater that is already running for a smart task keeps running while PELS replans the task at the turn of the hour, instead of switching off for a few minutes. Changing a device's price adjustment or how PELS limits it applies at once with fewer reads from Homey."
+  },
+  "3.48.2": {
+    "en": "Fixed: A heater that is already running for a smart task keeps running while PELS replans the task at the turn of the hour, instead of switching off for a few minutes. Changing a device's price adjustment or how PELS limits it applies at once with fewer reads from Homey. Diagnostics reports now name the Homey requests and device reads that PELS repeats often."
   }
 }
