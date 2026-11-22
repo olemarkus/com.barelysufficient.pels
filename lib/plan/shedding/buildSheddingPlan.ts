@@ -40,6 +40,7 @@ import { reportShortfallToGuard } from './shortfallVerdict';
 import { resolveShedPressure, type ShedPressure } from './pressure';
 import { resolveRelayShedDecisions, retainNoAckShedPosture } from './relayShedDecision';
 import { runPhaseShedPass } from '../phase/phaseShedPass';
+import { readLastResortOwnedOffAtMs, selectLastResortCut } from './lastResort';
 import { runPhaseExportPass } from '../phase/phaseExportPass';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
@@ -76,6 +77,11 @@ export async function buildSheddingPlan(
     ...phaseMerged,
     storageSetpoints: new Map([...phaseMerged.storageSetpoints, ...exportPass.storageSetpoints]),
   };
+  const lastResortCut = selectLastResortCut(context, power, state, scalar, phase, deps.pendingBinaryCommandStore);
+  if (lastResortCut) {
+    merged.shedSet.add(lastResortCut.deviceId);
+    merged.shedReasons.set(lastResortCut.deviceId, lastResortCut.reason);
+  }
   const selection = { ...scalar, ...merged };
   const { shedSet, shedReasons, shedStepTargets, storageSetpoints, outcome } = selection;
   const wasSheddingActive = state.sheddingActive;
@@ -86,7 +92,7 @@ export async function buildSheddingPlan(
   const sheddingActive = resolveSheddingLatch(
     context, power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),
   );
-  await reportShortfallToGuard(context, power, state, selection, deps, storage);
+  await reportShortfallToGuard(context, power, state, selection, deps, storage, lastResortCut?.deviceId);
   state.noteRelayMeterDecision(power.sampledAtMs);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
@@ -98,6 +104,8 @@ export async function buildSheddingPlan(
   const recoveredFromShedding = wasSheddingActive && !sheddingActive;
   return {
     relayShedDecisions,
+    ...(lastResortCut ? { lastResortCutIds: new Set([lastResortCut.deviceId]) } : {}),
+    lastResortOwnedOffAtMs: readLastResortOwnedOffAtMs(context, deps.pendingBinaryCommandStore),
     shedSet,
     shedReasons,
     shedStepTargets,

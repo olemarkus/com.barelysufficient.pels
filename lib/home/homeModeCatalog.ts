@@ -384,11 +384,11 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
 
   getModeDeviceTargets = (): Record<string, Record<string, number>> => this.lastGood.targets;
 
-  getPrioritiesForDevices = (deviceIds: readonly string[]): ModePriorityOrder => (
+  getPrioritiesForDevices = (deviceIds: readonly string[], isLastResort?: (id: string) => boolean) => (
     // Before the batteries are known no device ranks as one: an order is only
     // inferred then, and the persisted ranks wait (`persistMissingRanks`).
     this.lastGood.modePriorityCatalog.getOrder(
-      this.lastGood.operatingMode, deviceIds, homeBatteryPredicate(this.readHomeBatteries()),
+      this.lastGood.operatingMode, deviceIds, homeBatteryPredicate(this.readHomeBatteries()), isLastResort,
     )
   );
 

@@ -122,7 +122,7 @@ export type AppServiceWiringDeps = {
   ctx: AppContext;
   getDailyKwh: Parameters<typeof startPostStartupBackgroundTasks>[6];
   getHomeOperatingMode: () => string;
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
+  getPrioritiesForDevices: (ids: readonly string[], isLastResort?: (id: string) => boolean) => ModePriorityOrder;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   getPreparedModeTargets: Parameters<typeof bindTemperatureSetpoints>[2];
   readPreparedTemperatureC: Parameters<typeof createObservedTemperatureModeUpdates>[4];

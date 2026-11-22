@@ -6,6 +6,7 @@ type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
 export type PendingBinaryCommand = {
   dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
+  lastResortMaximumW?: number;
   binarySwitchGeneration?: number;
   startedMs: number;
   /**

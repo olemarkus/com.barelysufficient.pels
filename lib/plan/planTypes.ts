@@ -559,9 +559,11 @@ type CarriedInputKey =
   | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'
   | 'priority' | 'expectedPowerSource' | 'control' | 'budgetExempt' | 'available'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'targetPowerClaimNeeded' | 'residualKw'
-  | 'phaseFootprint' | 'binarySwitchGeneration';
+  | 'phaseFootprint' | 'binarySwitchGeneration' | 'lastResort';
 
 type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
+  lastResortCommand?: 'off' | 'on';
+  lastResortOwnedOffAtMs?: number;
   relayShedDecision?: import('../planContract/executionPlan').RelayShedDecision;
   // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it
   // runs its own mode, and on every device that is not a battery. Stamped by

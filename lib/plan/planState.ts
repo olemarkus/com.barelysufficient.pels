@@ -428,6 +428,11 @@ export class PlanEngineState {
    * no relief is credited. Cleared only when the overshoot ends.
    */
   shedPlanLatch: ShedPlanLatch | null = null;
+  readonly lastResortShedAttempts = new Set<string>();
+  lastResortShedReadingMs = 0;
+  lastResortPriorCutId?: string;
+  lastResortDecisionAtMs = 0;
+  lastResortShedWaitUntilMs = 0;
 
   /** Change-only log of the capacity timed run (`applyCapacityTimedRun`). */
   readonly capacityTimedRunLog = new CapacityTimedRunLog();

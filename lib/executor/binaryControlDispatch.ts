@@ -125,6 +125,7 @@ export async function dispatchBinaryControlDecision(params: {
       kind: 'binary', deviceId: decision.deviceId, desired: decision.desired,
       ...(decision.binarySwitchGeneration !== undefined
         ? { binarySwitchGeneration: decision.binarySwitchGeneration } : {}),
+      ...(decision.lastResortMaximumW === undefined ? {} : { lastResortMaximumW: decision.lastResortMaximumW }),
     });
     if (!outcome.requested) {
       attempt?.finish('failed');
@@ -201,6 +202,7 @@ function recordPendingForDispatch(
     ...(decision.binarySwitchGeneration !== undefined
       ? { binarySwitchGeneration: decision.binarySwitchGeneration } : {}),
     logContext: decision.logContext,
+    ...(decision.lastResortMaximumW === undefined ? {} : { lastResortMaximumW: decision.lastResortMaximumW }),
     ...(sameValueOff ? { relayRepeat: true } : {}),
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
   });

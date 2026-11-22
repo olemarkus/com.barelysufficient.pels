@@ -32,6 +32,7 @@ export type DeviceCommand =
     deviceId: string;
     desired: boolean;
     binarySwitchGeneration?: number;
+    lastResortMaximumW?: number;
   }
   | {
     kind: 'target';
@@ -70,6 +71,7 @@ export type ActuatorTransport = {
     deviceId: string,
     desired: boolean,
     binarySwitchGeneration?: number,
+    lastResortMaximumW?: number,
   ) => Promise<NativeRelayOffResult | void | false>;
   requestTemperatureTarget: (deviceId: string, desired: number) => Promise<number>;
   /** Resolve the exact semantic setpoint before pending/retry preflight. */

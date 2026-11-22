@@ -91,6 +91,7 @@ export type PlanEngine = {
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;
   hasPendingBinaryCommands: () => boolean;
+  hasLastResortOffOwnership?: () => boolean;
   hasAttributablePendingBinaryCommand: (deviceId: string, binarySwitchGeneration?: number) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;

@@ -50,6 +50,7 @@ type PlanServicePlanEngine = Pick<
   | 'decoratePlanWithPendingTargetCommands'
   | 'hasPendingTargetCommands'
   | 'hasPendingBinaryCommands'
+  | 'hasLastResortOffOwnership'
   | 'evaluateHeadroomForDevice'
   | 'syncHeadroomCardState'
   | 'syncHeadroomUsageObservation'

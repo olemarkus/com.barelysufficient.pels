@@ -33,7 +33,7 @@ type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** Remove stale retry state for devices no longer in the runtime configuration. */
   pruneCommandability: (presentDeviceIds: ReadonlySet<string>) => void;
   /** This home's catalog owner returns a complete order for the planned set. */
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
+  getPrioritiesForDevices: (deviceIds: readonly string[], isLastResort?: (id: string) => boolean) => ModePriorityOrder;
 };
 
 /**
@@ -120,6 +120,7 @@ export const buildHomePlanDevices = (
   // The mode catalog owner puts the home's planned set in order: unique,
   // gap-free, no ties (`packages/shared-domain/src/settings/modePriorities.ts`).
   const deviceIds = devices.map((device) => device.id);
-  const priorities = options.getPrioritiesForDevices(deviceIds);
+  const lastResortIds = new Set(devices.filter((device) => device.lastResort).map(({ id }) => id));
+  const priorities = options.getPrioritiesForDevices(deviceIds, (id) => lastResortIds.has(id));
   return devices.map((device) => ({ ...device, priority: priorities.getPriority(device.id) }));
 };

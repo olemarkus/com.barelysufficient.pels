@@ -152,6 +152,17 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
   Boolean(planDevice.reason && isRestoreAdmissionHoldReason(planDevice.reason))
 );
 
+function buildLastResortBinaryCommand(dev: PlanDevice): PlannedBinaryCommand | undefined {
+  if (!dev.lastResort || !dev.control.commandAuthority || !dev.lastResortCommand) return undefined;
+  if (dev.lastResortCommand === 'on' && (dev.lastResortOwnedOffAtMs === undefined || dev.plannedState !== 'keep'
+    || isRestoreAdmissionHoldReason(dev.reason) || isSwapTargetPendingReason(dev.reason))) return undefined;
+  if (dev.lastResortCommand === 'off' && dev.plannedState !== 'shed') return undefined;
+  return {
+    deviceId: dev.id, name: dev.name, desiredOn: dev.lastResortCommand === 'on',
+    lastResortMaximumW: dev.lastResort.maximumW, source: 'controlled', ...binarySwitchAuthority(dev),
+  };
+}
+
 /** The binary intent projected from a finalized device decision. */
 const binarySwitchAuthority = (dev: PlanDevice): { binarySwitchGeneration?: number } => (
   dev.binarySwitchGeneration === undefined ? {} : { binarySwitchGeneration: dev.binarySwitchGeneration }
@@ -161,6 +172,7 @@ export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand
   if (dev.waitingForTaskPlan && dev.plannedState !== 'shed') return undefined;
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
+  if (dev.lastResort) return buildLastResortBinaryCommand(dev);
   // A device can remain visible before power setup, or after losing its power
   // facet. Neither permits an ON intent, even when it has a standing shed.
   if (!isMeteredPlanDevice(dev)) return undefined;
@@ -198,7 +210,7 @@ const buildPlannedReleaseCommand = (
   planMeta?: PlanMeta,
 ): PlannedReleaseCommand | undefined => {
   const release = dev.deferredReleaseIntent;
-  if (!release) return undefined;
+  if (!release || dev.lastResort) return undefined;
   const { kind } = release;
   // The release intent is producer-resolved in deferred-objective admission. This per-cycle
   // projection only reconciles a binary_restore (resume) against the current cycle's planner

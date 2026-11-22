@@ -270,7 +270,7 @@ export type MainHomeScope = HomeScope & {
 export function buildMainHomeScope(
   ctx: AppContext,
   taskEvaluationSource: TaskEvaluationSource,
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
+  getPrioritiesForDevices: (deviceIds: readonly string[], isLastResort?: (id: string) => boolean) => ModePriorityOrder,
   getOperatingMode: () => string,
   getModeDeviceTargets: () => Record<string, Record<string, number>>,
   shutdown: ShutdownLatch,

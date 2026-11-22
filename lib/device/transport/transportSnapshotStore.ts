@@ -25,6 +25,8 @@ export class TransportSnapshotStore {
         getBinarySwitchRevision: settings.getBinarySwitchRevision.bind(settings),
         isBinarySwitchWriteCurrent: settings.isBinarySwitchWriteCurrent.bind(settings),
         getDeviceControlProfile: settings.getDeviceControlProfile.bind(settings),
+        get lastResortDevices() { return settings.lastResortDevices; },
+        isManaged: settings.isManaged?.bind(settings),
       } : undefined;
     this.binarySwitches = new BinarySwitchBindings(bindings);
     this.externalPower = externalPower && new ExternalDevicePower(

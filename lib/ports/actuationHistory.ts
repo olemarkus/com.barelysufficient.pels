@@ -3,6 +3,7 @@ export type RestoreDrawEvidence = {
   readonly deviceId: string;
   readonly restoredAtMs: number;
   readonly drawEvidenceFromMs: number;
+  readonly lastResortReserve?: { maximumW: number; untilMs: number };
 };
 
 /** Facts execution has recorded; planning consumes these without mutation authority. */

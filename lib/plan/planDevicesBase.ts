@@ -235,6 +235,19 @@ export type BasePlanDeviceInputs = {
   surplusCeilingStepId: string | undefined;
 };
 
+function buildLastResortFields(inputs: BasePlanDeviceInputs): Pick<
+  DevicePlanDevice, 'lastResort' | 'lastResortCommand' | 'lastResortOwnedOffAtMs'
+> {
+  const { dev, sheddingPlan } = inputs;
+  if (!dev.lastResort) return {};
+  return {
+    lastResort: dev.lastResort,
+    ...(sheddingPlan.lastResortCutIds?.has(dev.id) && isBinaryPlanDevice(dev) && dev.currentOn
+      ? { lastResortCommand: 'off' as const } : {}),
+    lastResortOwnedOffAtMs: sheddingPlan.lastResortOwnedOffAtMs?.get(dev.id),
+  };
+}
+
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const { dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift } = inputs;
@@ -274,6 +287,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     expectedPowerSource: dev.expectedPowerSource,
     controlAdapter: dev.controlAdapter,
     ...(dev.binarySwitchGeneration !== undefined ? { binarySwitchGeneration: dev.binarySwitchGeneration } : {}),
+    ...buildLastResortFields(inputs),
     // `commandableNow` MUST be carried. Dropping it is what forced consumers
     // back onto raw-field re-derivation against fields the plan device does not
     // have, so every plan-device `isCommandableNow` answered from absence and
@@ -446,6 +460,7 @@ function resolveEffectiveShedBehavior(
   configured: ShedBehavior,
   shedReasons: Map<string, DeviceReason>,
 ): ShedBehavior {
+  if (dev.lastResort) return TURN_OFF_SHED_BEHAVIOR;
   // A smart task's deferred-hour hold is shed to OFF for the same reason: the task
   // wants the device off, and the floor still draws (`isDeferredHoldShed`).
   //

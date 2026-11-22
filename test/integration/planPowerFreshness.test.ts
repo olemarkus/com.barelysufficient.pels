@@ -1,3 +1,5 @@
+import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlannedBinaryCommand } from '../../lib/plan/planExecutionProjection';
 import { planLimitsFixture } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
@@ -239,6 +241,21 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
 
     expect(plan.devices[0]?.plannedState).toBe('shed');
+  });
+
+  it('turns off an enabled unmetered last-resort relay on a meter outage', async () => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const builder = buildBuilder({ tracker });
+    const relay = buildPlanInputDevice({
+      id: 'relay', unmetered: true, control: { managed: true, commandAuthority: true },
+      lastResort: { maximumW: 6000 }, currentOn: true, commandableNow: true,
+    });
+    const [device] = (await builder.buildDevicePlanSnapshot([relay])).devices;
+    expect(device).toMatchObject({ plannedState: 'shed', lastResortCommand: 'off' });
+    expect(buildPlannedBinaryCommand(device)).toMatchObject({
+      deviceId: 'relay', desiredOn: false, lastResortMaximumW: 6000,
+    });
+    expect(device).not.toHaveProperty('currentDrawKw');
   });
 
   it('sheds on the fail-closed pass, publishes no headroom for it, and clears once a fresh sample returns', async () => {

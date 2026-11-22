@@ -79,6 +79,7 @@ export type BinaryControlDecision = {
   lifecycleRelease?: boolean;
   binarySwitchGeneration?: number;
   capacityShed?: PlannedBinaryCommand;
+  lastResortMaximumW?: number;
 };
 
 /**

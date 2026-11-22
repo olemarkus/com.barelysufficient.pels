@@ -409,3 +409,11 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 ## Suggested setup order
 
 Follow [Getting Started](/getting-started) to confirm your meter, choose one device, review the settings for your home, then preview and start managing. Setup offers the controls your device supports. You can add more devices, change priorities or enable a [daily budget](/daily-budget) later.
+
+### Last-resort control for an unmetered relay
+
+If a relay has no device power reading, open **Devices** and find it under **Add device or change its power source**. Enable **Turn off as a last resort** and enter the maximum watts the connected load can draw. Save the setup and enable **Managed by PELS**.
+
+PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
+
+PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after a restart, turn the relay back on to resume control.

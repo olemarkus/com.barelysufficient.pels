@@ -261,6 +261,8 @@ export class SilentMeterPlanBuilder {
     }
     return {
       ...selection,
+      lastResortCutIds: new Set(context.devices.filter((device) => device.lastResort
+        && device.control.commandAuthority && device.commandableNow).map(({ id }) => id)),
       sheddingActive: this.state.sheddingActive,
       guardInShortfall: false,
       outcome: NO_SHEDDING_OUTCOME,

@@ -258,8 +258,15 @@ export class PlanExecutor {
         this.execution.actuation.clearShed(deviceId);
       } else {
         this.execution.actuation.markConfirmedBinaryRestore(deviceId, pending.startedMs, now);
+        if (pending.lastResortMaximumW !== undefined) {
+          this.execution.actuation.reserveLastResortRestore(
+            deviceId, pending.lastResortMaximumW, now + this.feedback.getRestoreCooldownMs(),
+          );
+        }
         this.recordRestoreControlEvent(deviceId, liveDevice.name, now);
-        this.ctx.recordActivationAttemptStarted(deviceId, liveDevice.name, now);
+        if (pending.lastResortMaximumW === undefined) {
+          this.ctx.recordActivationAttemptStarted(deviceId, liveDevice.name, now);
+        }
       }
 
     } else {

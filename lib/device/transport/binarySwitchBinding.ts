@@ -7,7 +7,8 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 export type BinarySwitchSettings = Pick<DeviceControlSettings,
-  'getBinarySwitchSelection' | 'getBinarySwitchRevision' | 'isBinarySwitchWriteCurrent' | 'getDeviceControlProfile'>;
+  'getBinarySwitchSelection' | 'getBinarySwitchRevision' | 'isBinarySwitchWriteCurrent' | 'getDeviceControlProfile'>
+  & Partial<Pick<DeviceControlSettings, 'lastResortDevices' | 'isManaged'>>;
 
 export function supportsBinarySwitchSetup(device: HomeyDeviceLike): boolean {
   return getDeviceAdapter(device) === plainDeviceAdapter
@@ -76,6 +77,11 @@ export class BinarySwitchBindings {
     this.nextGeneration += 1;
     this.accepted.set(deviceId, { revision, capabilityId, generation: this.nextGeneration });
     return this.nextGeneration;
+  }
+
+  allowsLastResortWrite(deviceId: string, maximumW: number | undefined): boolean {
+    const configuredMaximumW = this.settings?.lastResortDevices?.[deviceId];
+    return maximumW === configuredMaximumW && (maximumW === undefined || this.settings?.isManaged?.(deviceId) === true);
   }
 
   allows(deviceId: string, generation: number | undefined): boolean {

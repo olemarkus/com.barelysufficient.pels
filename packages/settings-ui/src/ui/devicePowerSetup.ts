@@ -3,7 +3,10 @@ import { readDevicePowerSources, type DevicePowerSources }
   from '../../../shared-domain/src/settings/devicePowerSources.ts';
 import { readDeviceBinarySwitches, type DeviceBinarySwitches }
   from '../../../shared-domain/src/settings/deviceBinarySwitches.ts';
-import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { isLastResortMaximumW, readLastResortDevices, type LastResortDevices }
+  from '../../../shared-domain/src/settings/lastResortDevices.ts';
+import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES }
+  from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { createSelectOption } from './materialSelectOption.ts';
 import type { MaterialSelectOptionElement } from './components.ts';
@@ -25,6 +28,10 @@ export const devicePowerSetupHint = (deviceId: string): string | null => {
   if (entry?.sourceId && !entry.sourceReady) return 'Waiting for a power reading from the metering socket.';
   return null;
 };
+
+export const isLastResortConfigured = (deviceId: string): boolean => (
+  entries.some((entry) => entry.id === deviceId && entry.lastResortMaximumW !== undefined && !entry.sourceId)
+);
 
 export const isSocketReservedForPower = (deviceId: string): boolean => (
   entries.some((entry) => entry.id === deviceId && entry.usedBy !== null)
@@ -88,11 +95,31 @@ const persistBinarySwitch = (entry: DevicePowerSetupEntry, switchId: string | nu
   })
 );
 
-const persist = (entry: DevicePowerSetupEntry, sourceId: string | null, switchId: string | null) => (
+const persistLastResort = (entry: DevicePowerSetupEntry, maximum: number | undefined) => (
+  writeFreshSetting<LastResortDevices>({
+    key: LAST_RESORT_DEVICES,
+    context: 'device setup',
+    logMessage: 'Failed to save last-resort power control',
+    toastMessage: 'Could not save last-resort control.',
+    fallbackValue: Object.fromEntries(entries.flatMap((device) => (
+      device.lastResortMaximumW === undefined ? [] : [[device.id, device.lastResortMaximumW]]
+    ))),
+    readFresh: readLastResortDevices,
+    mutate: (current) => {
+      const unchanged = Object.entries(current).filter(([id]) => id !== entry.id);
+      return Object.fromEntries(maximum === undefined ? unchanged : [...unchanged, [entry.id, maximum]]);
+    },
+  })
+);
+
+const persist = (
+  entry: DevicePowerSetupEntry, sourceId: string | null, switchId: string | null, maximum: number | undefined,
+) => (
   writeDeviceSetup(async () => {
     if ((entry.binarySwitchId ?? null) !== switchId && !await persistBinarySwitch(entry, switchId)) return false;
-    if (entry.configured && entry.sourceId === sourceId) return true;
-    return (await persistPowerSource(entry, sourceId)) !== null;
+    if ((!entry.configured || entry.sourceId !== sourceId) && !await persistPowerSource(entry, sourceId)) return false;
+    if (entry.lastResortMaximumW === maximum) return true;
+    return (await persistLastResort(entry, maximum)) !== null;
   })
 );
 
@@ -132,6 +159,26 @@ function updateSwitchOptions(
   return { visible, value, hint };
 }
 
+const readLastResortControls = () => ({
+  lastResort: document.getElementById('device-power-setup-last-resort'),
+  lastResortToggle: document.querySelector<HTMLElement & { selected: boolean }>(
+    '#device-power-setup-last-resort-toggle',
+  ),
+  maximum: document.querySelector<HTMLElement & { value: string }>('#device-power-setup-maximum'),
+});
+
+export const allowLastResortPriorityMove = (dragged: HTMLElement, related: HTMLElement): boolean => (
+  isLastResortConfigured(dragged.dataset.deviceId ?? '') === isLastResortConfigured(related.dataset.deviceId ?? '')
+);
+
+export function appendLastResortLabel(name: HTMLElement, deviceId: string): void {
+  if (!isLastResortConfigured(deviceId)) return;
+  const label = document.createElement('small');
+  label.className = 'muted';
+  label.textContent = 'Last resort';
+  name.appendChild(label);
+}
+
 export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
   const root = document.getElementById('device-power-setup');
   const target = document.querySelector<SetupSelect>('#device-power-setup-target');
@@ -140,8 +187,10 @@ export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
   const switchField = document.getElementById('device-power-setup-binary-field');
   const control = document.querySelector<SetupSelect>('#device-power-setup-binary');
   const switchHelp = document.getElementById('device-power-setup-binary-help');
+  const { lastResort, lastResortToggle, maximum } = readLastResortControls();
   const save = document.querySelector<HTMLElement & { disabled: boolean }>('#device-power-setup-save');
-  if (!root || !target || !source || !help || !switchField || !control || !switchHelp || !save) return;
+  if (!root || !target || !source || !help || !switchField || !control || !switchHelp
+    || !save || !lastResort || !lastResortToggle || !maximum) return;
   root.hidden = entries.length === 0;
   const previousTarget = target.value;
   const previousSource = source.value;
@@ -159,7 +208,13 @@ export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
     const changedSourceUnavailable = source.selectedOptions[0]?.disabled === true && source.value !== entry?.sourceId;
     const changedSwitchUnavailable = control.selectedOptions[0]?.disabled === true
       && control.value !== entry?.binarySwitchId;
-    save.disabled = entry === undefined || changedSourceUnavailable || changedSwitchUnavailable;
+    const lastResortAvailable = Boolean(entry && !source.value
+      && (entry.lastResortAvailable || entry.lastResortMaximumW !== undefined));
+    lastResort.hidden = !lastResortAvailable;
+    maximum.hidden = !lastResortToggle.selected;
+    const invalidMaximum = lastResortAvailable && lastResortToggle.selected
+      && !isLastResortMaximumW(Number(maximum.value));
+    save.disabled = entry === undefined || changedSourceUnavailable || changedSwitchUnavailable || invalidMaximum;
   };
   const updateSource = (preserveSelection: boolean): void => {
     const entry = selected();
@@ -175,11 +230,15 @@ export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
     control.value = switchOptions.value;
     switchField.hidden = !switchOptions.visible;
     switchHelp.textContent = switchOptions.hint;
+    lastResortToggle.selected = entry?.lastResortMaximumW !== undefined;
+    maximum.value = entry?.lastResortMaximumW?.toString() ?? '';
     updateSave();
   };
   target.onchange = () => updateSource(false);
   source.onchange = updateSave;
   control.onchange = updateSave;
+  lastResortToggle.onchange = updateSave;
+  maximum.oninput = updateSave;
   save.onclick = async () => {
     const entry = selected();
     if (!entry || save.disabled) return;
@@ -188,7 +247,8 @@ export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
     control.disabled = true;
     save.disabled = true;
     try {
-      await persist(entry, source.value || null, control.value || null);
+      const maximumW = !lastResort.hidden && lastResortToggle.selected ? Number(maximum.value) : undefined;
+      await persist(entry, source.value || null, control.value || null, maximumW);
       await refresh();
     } finally {
       target.disabled = false;

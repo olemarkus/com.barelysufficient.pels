@@ -69,6 +69,52 @@ export type BinaryCommandLifecycleListener = {
  * the single source of truth in both directions.
  */
 export class PendingBinaryCommandStore {
+  private readonly lastResortOffByDevice = new Map<string, {
+    observedAtMs: number; generation: number | undefined;
+  }>();
+
+  private readonly lastResortOffSettledAtByDevice = new Map<string, number>();
+
+  getLastResortOffSettledAt(deviceId: string): number {
+    return this.lastResortOffSettledAtByDevice.get(deviceId) ?? 0;
+  }
+
+  ownsLastResortOff(deviceId: string, observedAtMs: number, generation: number | undefined): boolean {
+    const off = this.lastResortOffByDevice.get(deviceId);
+    return off !== undefined && off.observedAtMs === observedAtMs && off.generation === generation;
+  }
+
+  hasLastResortOwnership(): boolean { return this.lastResortOffByDevice.size > 0; }
+
+  recordLastResortConfirmation(
+    deviceId: string, pending: PendingBinaryCommand, observedAtMs: number,
+  ): void {
+    if (pending.desired || pending.lastResortMaximumW === undefined) {
+      this.lastResortOffByDevice.delete(deviceId);
+      return;
+    }
+    this.lastResortOffSettledAtByDevice.set(deviceId, Math.max(Date.now(), observedAtMs));
+    this.lastResortOffByDevice.set(deviceId, { observedAtMs, generation: pending.binarySwitchGeneration });
+  }
+
+  reconcileLastResortOwnership(liveById: ReadonlyMap<string, PendingBinaryLiveDevice>): void {
+    for (const [id, ownership] of this.lastResortOffByDevice) {
+      const live = liveById.get(id);
+      const observation = live?.binaryCommandConfirmation;
+      if (live && (live.binarySwitchGeneration !== ownership.generation
+        || (observation?.state === 'observed' && observation.observedAtMs >= ownership.observedAtMs
+          && (observation.observedValue || observation.observedAtMs !== ownership.observedAtMs)))) {
+        this.lastResortOffByDevice.delete(id);
+      }
+    }
+  }
+
+  private recordLastResortOffSettled(deviceId: string, pending: PendingBinaryCommand | undefined): void {
+    if (pending && !pending.desired && pending.lastResortMaximumW !== undefined) {
+      this.lastResortOffSettledAtByDevice.set(deviceId, Date.now());
+    }
+  }
+
   private readonly recentConfirmedOffByDevice = new Map<string, {
     confirmedAtMs: number;
     binarySwitchGeneration?: number;
@@ -117,6 +163,7 @@ export class PendingBinaryCommandStore {
     if (pending?.binarySwitchGeneration !== command.binarySwitchGeneration
       || (command.startedAtMs !== undefined && (pending?.startedMs !== command.startedAtMs
         || pending.desired !== command.desired))) return;
+    this.recordLastResortOffSettled(deviceId, pending);
     this.lifecycle?.onDispatchFailed?.({
       ...command,
       deviceId,
@@ -139,6 +186,7 @@ export class PendingBinaryCommandStore {
   }
 
   lifecycleTimedOut(deviceId: string, command: PendingBinaryCommand): void {
+    this.recordLastResortOffSettled(deviceId, command);
     this.confirmationWindows.unconfirmed(deviceId);
     this.lifecycle?.onTimedOut?.({
       deviceId,
@@ -212,6 +260,10 @@ export class PendingBinaryCommandStore {
     deviceId: string,
     observedOnAtMs?: number,
   ): void {
+    const ownership = this.lastResortOffByDevice.get(deviceId);
+    if (ownership && (observedOnAtMs === undefined || observedOnAtMs > ownership.observedAtMs)) {
+      this.lastResortOffByDevice.delete(deviceId);
+    }
     const recent = this.recentConfirmedOffByDevice.get(deviceId);
     if (
       recent && (observedOnAtMs === undefined || observedOnAtMs > recent.confirmedAtMs)
@@ -379,6 +431,7 @@ export function syncPendingBinaryCommands(
   onConfirmed?: (confirmation: PendingBinaryConfirmation) => void,
 ): boolean {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
+  store.reconcileLastResortOwnership(liveById);
   const nowMs = Date.now();
   let changed = false;
 
@@ -482,6 +535,7 @@ function confirmPendingBinaryCommand(
   store.recordConfirmedBinaryCommand(
     deviceId, pending.desired, observation.observedAtMs, pending.binarySwitchGeneration,
   );
+  store.recordLastResortConfirmation(deviceId, pending, observation.observedAtMs);
   onConfirmed?.({
     liveDevice,
     pending,
