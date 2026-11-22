@@ -21,6 +21,7 @@ import {
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 /**
  * An observation may drive the UI and the executor. It may NOT drive the
@@ -41,6 +42,7 @@ const pending = (overrides: Partial<PendingBinaryCommand> = {}): PendingBinaryCo
   dispatchState: 'accepted',
   desired: true,
   startedMs: Date.now(),
+  confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
   ...overrides,
 });
 
@@ -54,7 +56,7 @@ const buildLane = () => {
     clearScheduledRebuild,
   );
   const backing: Record<string, PendingBinaryCommand> = {};
-  const store = createPendingBinaryCommandStore(backing, reachability.lifecycle);
+  const store = createPendingBinaryCommandStore(backing, fixedConfirmationWindows, reachability.lifecycle);
   return {
     reachability, store, backing, requestRebuild, scheduleRebuild, clearScheduledRebuild,
   };
@@ -216,7 +218,7 @@ describe('the lanes that MAY drive the planner still do', () => {
   it('still arms the confirmation deadline on acceptance, unchanged by this split', () => {
     const { store, backing, scheduleRebuild } = buildLane();
     const startedMs = Date.now();
-    backing['heater'] = { dispatchState: 'dispatching', desired: true, startedMs };
+    backing['heater'] = { dispatchState: 'dispatching', desired: true, startedMs, confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS };
 
     store.recordDispatchAccepted('heater', { deviceId: 'heater', desired: true, startedAtMs: startedMs });
 

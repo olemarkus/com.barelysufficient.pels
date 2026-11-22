@@ -32,6 +32,7 @@ import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_SETTLE_MS,
 } from '../../lib/plan/admission/surplusAbsorb';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const DEVICE_ID = 'tank';
 const MODE_C = 20;
@@ -104,7 +105,7 @@ const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevi
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationSettings: () => surplusSettings(surplusWilling, surplusDelta),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
 });
 
 // Mirror the PR-7 hoist: `planBuilder.buildPlanSnapshotWithTimings` resolves

@@ -131,10 +131,9 @@ at all, so treating `plugged_in` as a block meant PELS could not resume a charge
 it had paused itself. go-e and Zaptec can use it for a finished session. PELS
 therefore commands the state and lets the ordinary command-confirmation path
 judge the outcome: a rejected write fails immediately; an accepted write must
-settle within the fixed confirmation window
-(`CONTROL_COMMAND_CONFIRMATION_MS`, 90 s — the per-device cloud tier was
-removed 2026-09-01 with the never-written settings map that selected
-it). **Settlement is strictly the `evcharger_charging`
+settle within the charger's confirmation window (learned from how fast Homey
+answers its writes, else `CONTROL_COMMAND_CONFIRMATION_MS`, 90 s; see
+`notes/state-management/observer-transport-split.md`). **Settlement is strictly the `evcharger_charging`
 readback** — a `BinaryControlObservation` from one of `snapshot_refresh`,
 `realtime_capability`, or `device_update` — not measured power and not the
 associated car. `resolveEvChargingStateBinaryEvidence` still reads the

@@ -183,7 +183,7 @@ Pending binary confirmation is observer-owned and keyed only by device plus desi
 The planner and executor never receive capability identifiers or EV-specific settlement state.
 Transport privately translates semantic commands to native capabilities or Flow cards; accepted
 dispatch records intent but does not alter observed truth. Normalized snapshot/realtime telemetry
-confirms the command within the fixed 90 s window (`CONTROL_COMMAND_CONFIRMATION_MS`). The injected
+confirms the command within the device's confirmation window: learned from how fast Homey answers its writes, else the fixed 90 s (`CONTROL_COMMAND_CONFIRMATION_MS`; see `observer-transport-split.md`). The injected
 `observedStateDispatcher` handles post-translation event fan-out without a static transport-to-observer import.
 
 Internal compatibility fields keep distinct meanings; they are not settings-UI wire fields:
@@ -659,7 +659,6 @@ This note does not solve the implementation by itself. The active backlog still 
 
 - binary pending confirmation semantics
 - same-value refresh-cycle freshness stamping
-- communication-model-aware confirmation windows
 - conservative downward stepped-load semantics
 - provisional post-command state for laggy devices
 - binary drift/reconcile consistency

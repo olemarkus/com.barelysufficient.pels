@@ -83,9 +83,10 @@ export function createPlanEngineComposition(
   // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
   // null when the device manager is absent, so past this guard the actuator is
   // non-null; the assertion just satisfies the required dep type. The handle
-  // itself is not kept: the executor reads devices through `ctx`'s descriptor
-  // and observed reads below, never through the transport.
-  requireDeviceManager(ctx);
+  // is kept only for the devices' confirmation windows, which transport learns:
+  // the executor reads devices through `ctx`'s descriptor and observed reads
+  // below, never through the transport.
+  const deviceManager = requireDeviceManager(ctx);
   const baseActuator = buildDeviceActuator(ctx);
   if (!baseActuator) {
     throw new Error('Device actuator must be initialized before plan engine setup.');
@@ -114,6 +115,7 @@ export function createPlanEngineComposition(
   ), execution);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(
     execution.pendingBinaryCommands,
+    deviceManager.writeAnswerTimes,
     scope.binaryCommandLifecycle,
   );
   // Scope-owned diagnostics recorder, resolved LIVE at engine construction

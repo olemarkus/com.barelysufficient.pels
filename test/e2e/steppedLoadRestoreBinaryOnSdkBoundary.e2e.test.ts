@@ -48,6 +48,7 @@ import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -227,7 +228,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       stepCommandPending: false,
       unansweredStepCommands: { kind: 'none' as const },
     }),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
     storageLane: { kind: 'none' },
     inverterLane: NO_INVERTER_EXECUTION,
   };

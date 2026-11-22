@@ -8,6 +8,7 @@ import type { DeviceHomeySdk } from './transport/deviceHomeySdk';
 import { HomeyActionAccess } from './transport/homeyActionAccess';
 import type { DeviceTransportOptions } from './transport/transportTypes';
 import type { TransportSnapshotStore } from './transport/transportSnapshotStore';
+import { WriteAnswerTimes } from './transport/writeAnswerTimes';
 import type { Logger } from '../utils/types';
 
 /**
@@ -15,11 +16,14 @@ import type { Logger } from '../utils/types';
  * (`HomeyActionAccess`), and the two owners that run actions on it: the
  * charging-current control and the home-battery action host
  * (`HomeBatteryAppActions`), all resolving their cards against one
- * `FlowActionCardInventory`. The device transport builds them once and hands
- * the same ones to its snapshot reads and its writes.
+ * `FlowActionCardInventory`, with the record of how fast Homey answers each
+ * device's writes. The device transport builds them once and hands the same
+ * ones to its snapshot reads and its writes.
  */
 export type HomeyActionOwners = {
   access: HomeyActionAccess;
+  /** How fast Homey answers each device's writes, action runs and capability writes alike. */
+  answerTimes: WriteAnswerTimes;
   batteryAppActions: HomeBatteryAppActions;
   chargingCurrentControl: ChargingCurrentControl;
   createChargingPhaseTransport(
@@ -35,7 +39,8 @@ export const createHomeyActionOwners = (
   logger: Logger,
   options: Pick<DeviceTransportOptions, 'acceptedFlowWrites' | 'settings'>,
 ): HomeyActionOwners => {
-  const access = new HomeyActionAccess(deviceSdk.runtime, logger);
+  const answerTimes = new WriteAnswerTimes(Date.now(), () => deviceSdk.getHealth()?.subscriptionState === 'subscribed');
+  const access = new HomeyActionAccess(deviceSdk.runtime, logger, answerTimes);
   const cardInventory = new FlowActionCardInventory(logger);
   const batteryAppActions = new HomeBatteryAppActions(
     access,
@@ -53,7 +58,7 @@ export const createHomeyActionOwners = (
     },
     options.acceptedFlowWrites, options.settings,
   );
-  return { access, batteryAppActions, chargingCurrentControl,
+  return { access, answerTimes, batteryAppActions, chargingCurrentControl,
     createChargingPhaseTransport: (pause, currentPolicy, writeCapability) => new ChargingPhaseTransport(
       snapshotStore, options.settings, access, cardInventory, pause, currentPolicy, writeCapability,
     ),

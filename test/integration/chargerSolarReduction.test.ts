@@ -6,6 +6,7 @@ import { buildPlanCycle } from '../utils/planContextPowerFixture';
 import {
   buildInitialPlanDevicesForSpec, buildPlanInputDevice, sheddingPlanFixture, steppedInputDevice,
 } from '../utils/planTestUtils';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 describe('solar-only charger reductions stay outside capacity recovery timing', () => {
   it.each([
@@ -33,7 +34,7 @@ describe('solar-only charger reductions stay outside capacity recovery timing', 
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationSettings: () => ({}),
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       },
     });
 
@@ -68,7 +69,7 @@ describe('solar-only charger reductions stay outside capacity recovery timing', 
           getInferredSurplusKw: () => 0,
           getShedBehavior: () => ({ action: 'set_step' }),
           getPriceOptimizationSettings: () => ({}),
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
         },
       });
 
@@ -99,7 +100,7 @@ describe('solar-only charger reductions stay outside capacity recovery timing', 
         getInferredSurplusKw: () => 0,
         getShedBehavior: (id) => ({ action: id === 'other' ? 'turn_off' : 'set_step' }),
         getPriceOptimizationSettings: () => ({}),
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       },
     });
 

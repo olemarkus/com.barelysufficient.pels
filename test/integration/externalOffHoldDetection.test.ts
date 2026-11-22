@@ -41,6 +41,7 @@ import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { syncExternalOffHoldForObservation } from '../../setup/appObservedControlStateRuntime';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const NOW = new Date('2026-07-25T12:00:00Z').getTime();
 const DEVICE_ID = 'heater-1';
@@ -463,7 +464,7 @@ describe('external-off hold — release under an unreadable store', () => {
 
   it('uses a newer pull-observed raw EV ON to end old PELS-OFF attribution', () => {
     const h = buildCtx({ optedIn: true });
-    const store = createPendingBinaryCommandStore({});
+    const store = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
     store.recordConfirmedBinaryCommand(DEVICE_ID, false, NOW);
     h.ctx.externalOffHold?.startHold(DEVICE_ID);
     const charger = buildSnapshot({

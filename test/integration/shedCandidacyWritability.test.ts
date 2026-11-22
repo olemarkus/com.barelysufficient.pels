@@ -8,6 +8,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -46,7 +47,7 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
   capacityGuard,
   shortfallThresholdKw: Number.POSITIVE_INFINITY,
   powerTracker: { lastTimestamp: 100, lastPowerW: FIXTURE_TOTAL_KW * 1000 } as PowerTrackerState,
-  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   // Cap-less device sorts first (higher number sheds first).
   structuredLog: testLogger,

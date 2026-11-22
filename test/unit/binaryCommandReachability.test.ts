@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 const buildReachability = () => {
   const requestRebuild = vi.fn();
@@ -25,6 +26,7 @@ describe('binary command reachability', () => {
       deviceId: 'heater',
       desired: true,
       startedAtMs: 1_000,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     });
 
     expect(scheduleRebuild).toHaveBeenCalledWith('heater', 91_000);
@@ -132,7 +134,7 @@ describe('binary command reachability', () => {
     const { reachability, requestRebuild, scheduleRebuild } = buildReachability();
 
     reachability.lifecycle.onDispatchAccepted?.({
-      deviceId: 'heater', desired: false, startedAtMs: 1_000,
+      deviceId: 'heater', desired: false, startedAtMs: 1_000, confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     });
     reachability.lifecycle.onTimedOut?.({ deviceId: 'heater', desired: false });
 

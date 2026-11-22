@@ -5,6 +5,7 @@ import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildInitialPlanDevicesForSpec, buildPlanInputDevice } from '../utils/planTestUtils';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // The plan device carries the price shift behind its planned target, resolved
 // from the same setpoints the planner commanded, so the card's reason line
@@ -49,7 +50,7 @@ const planDevice = (params: {
     getInferredSurplusKw: () => 0,
     getShedBehavior: () => ({ action: 'turn_off' }),
     getPriceOptimizationSettings: () => priceSettings,
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
   };
   return buildInitialPlanDevicesForSpec({ context, state: createPlanEngineState(), deps })[0];
 };

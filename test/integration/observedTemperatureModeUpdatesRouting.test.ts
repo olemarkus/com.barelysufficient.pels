@@ -6,6 +6,7 @@ import type { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeReg
 import { getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { PlanService } from '../../lib/plan/planService';
 import { partialDouble } from '../helpers/partialDouble';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // The "not saved while limited" rule asks the plan of the device's OWNING home.
 // Main's plan filters meter-area members out, so a sub-home device asked of
@@ -34,7 +35,7 @@ describe('observed temperature mode updates ask the owning home whether a device
     const route = params.areaLimited === undefined ? undefined : {
       homeId: 'area-1',
       hooks: {
-        pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
+        pendingBinaryCommandStore: new PendingBinaryCommandStore({}, fixedConfirmationWindows),
         isDeviceLimited: vi.fn(() => params.areaLimited === true),
         observeDeviceEvidence: vi.fn(),
         syncLivePlanState: vi.fn().mockResolvedValue(false),

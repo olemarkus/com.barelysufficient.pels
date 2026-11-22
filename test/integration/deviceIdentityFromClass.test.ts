@@ -36,6 +36,7 @@ import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const noop = (): void => undefined;
 const loggerMock: Logger = {
@@ -155,7 +156,7 @@ const planDevicesDeps: PlanDevicesDeps = {
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationSettings: () => ({}),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
 };
 
 /**

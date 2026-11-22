@@ -27,6 +27,8 @@ import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 /**
  * The shed PELS undoes when it loses its authority, driven through real plan
@@ -72,7 +74,7 @@ const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harne
     getShedBehavior: () => shedBehavior,
     // One record of PELS's in-flight writes, as in production: the builder and
     // the executor's release lane read the same one.
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
     decorateDeferredObjectives: (input) => (
       decorate ? decorate(input.devices) : decorateWithoutDeferredObjectives(input)
     ),
@@ -275,7 +277,7 @@ describe('the shed PELS undoes when it loses authority over a device', () => {
     const h = makeHarness();
     await shedTheHeater(h);
     // The OFF is sent but the relay has not reported it yet.
-    h.state.pendingBinaryCommands[HEATER] = { dispatchState: 'accepted', desired: false, startedMs: Date.now() };
+    h.state.pendingBinaryCommands[HEATER] = { dispatchState: 'accepted', desired: false, startedMs: Date.now() , confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS};
 
     await vi.advanceTimersByTimeAsync(5_000);
     await h.builder.buildDevicePlanSnapshot([heater({ on: true, powerLimitControl: false })]);

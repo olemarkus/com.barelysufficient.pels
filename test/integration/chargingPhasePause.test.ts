@@ -2,12 +2,13 @@ import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { ChargingPhasePauseRecorder } from '../../lib/executor/chargingPhasePause';
 import { PendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { ControlContestRecording } from '../../lib/ports/controlContest';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const NOW = 1_800_000_000_000;
 const ID = 'charger';
 const fixture = () => {
-  const main = new PendingBinaryCommandStore({});
-  const area = new PendingBinaryCommandStore({});
+  const main = new PendingBinaryCommandStore({}, fixedConfirmationWindows);
+  const area = new PendingBinaryCommandStore({}, fixedConfirmationWindows);
   let owningHome = { homeId: 'main', pendingCommands: main };
   const contests: ControlContestRecording = { commandSent: vi.fn(), controlReported: vi.fn(),
     commandReleased: vi.fn(), retainPlanned: vi.fn() };

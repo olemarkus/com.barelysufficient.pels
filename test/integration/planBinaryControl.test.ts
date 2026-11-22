@@ -6,6 +6,8 @@ import {
 } from '../../lib/observer/pendingBinaryCommands';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 
 let logs: LoggerCapture;
 beforeEach(() => { logs = captureLogger(); });
@@ -27,11 +29,12 @@ describe('generic binary observation and pending confirmation', () => {
       dispatchState: 'accepted',
       desired: true,
       startedMs: 1_000,
+      confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
     vi.spyOn(Date, 'now').mockReturnValue(61_000);
 
     expect(syncPendingBinaryCommands(
-      createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       [{
         id: deviceId,
         name,
@@ -53,12 +56,12 @@ describe('generic binary observation and pending confirmation', () => {
   it('confirms from normalized binary evidence without inspecting device kind', () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands['device-1'] = {
-      dispatchState: 'accepted', desired: true, startedMs: 1_000,
+      dispatchState: 'accepted', desired: true, startedMs: 1_000, confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
     vi.spyOn(Date, 'now').mockReturnValue(2_000);
 
     expect(syncPendingBinaryCommands(
-      createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       [{
         id: 'device-1',
         name: 'Load',
@@ -79,9 +82,9 @@ describe('generic binary observation and pending confirmation', () => {
   it('expires an unconfirmed command at its pending window', () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands['device-1'] = {
-      dispatchState: 'accepted', desired: false, startedMs: 1_000,
+      dispatchState: 'accepted', desired: false, startedMs: 1_000, confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     };
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
     vi.spyOn(Date, 'now').mockReturnValue(91_000);
     expect(store.get('device-1')).toBeUndefined();
   });

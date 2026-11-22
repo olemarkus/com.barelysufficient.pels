@@ -196,8 +196,9 @@ Reasoning:
 
 Pending binary commands are keyed by device and desired on/off state. No raw
 capability identifier crosses into observer, planner, or executor state. The
-observer confirms them from normalized telemetry within one generic window:
-90 seconds (`CONTROL_COMMAND_CONFIRMATION_MS`). An accepted SDK
+observer confirms them from normalized telemetry within the window each
+command was recorded with: the device's learned window, else 90 seconds
+(`CONTROL_COMMAND_CONFIRMATION_MS`). An accepted SDK
 or Flow dispatch records intent and accounting, but never fabricates observed
 state. Transport alone retains the private capability/Flow binding needed to
 translate the semantic command.
@@ -228,32 +229,44 @@ at `plugged_in` forever. Keying settlement there meant every charger write ran t
 timeout and reported drift against a snapshot older than the write, on a command
 the charger had in fact accepted.
 
-**How long it waits.** One confirmation policy for every device and capability,
-deliberately **not** sized per device class or command kind: a single fixed
-window (`CONTROL_COMMAND_CONFIRMATION_MS`, 90 s,
-`lib/ports/controlCommandConfirmation.ts`). A per-device cloud tier (3 min)
-existed until 2026-09-01; the settings map that selected it was never written
-by anything, so every device already ran the 90 s window, and the tier was
-removed. The window is armed
-before dispatch (a device echo can arrive before the write promise resolves, so
-re-arming on acceptance would miss it), so it must cover the round-trip plus the
-ack — 9.2 s at the observed maximum. It is set far above that because the
-timeout is now the abnormal path only: it must never fire while the command is
-still inside its own pending window, or PELS would report drift for a command it
-still considers outstanding. That is now true by construction rather than by a
-pinned inequality: a pending entry carries no window of its own — every reader
-resolves it from `CONTROL_COMMAND_CONFIRMATION_MS` (the former
-`resolveBinaryCommandPendingMs` alias is gone), so the settle window and the
-pending window are the same number by definition, and the EV-specific pending
-constant the inequality once had to outrun is gone.
+**How long it waits.** One confirmation policy for every capability,
+deliberately **not** sized per command kind. What is sized per device is the
+on/off window, by direction: transport learns how long Homey takes to answer
+PELS's on/off writes to each device (`lib/device/transport/writeAnswerTimes.ts`)
+and gives an on/off command twice that time plus 15 s, never under 30 s. Only
+an on/off write that reached the switch capability itself and reads back as
+written teaches the window, because only then is the confirmation Homey's echo
+of the write, which arrives with the answer. A switch the integration turns
+into another write (a charger paused by 0 A), a switch read back from another
+capability, a Flow-backed switch, a device not learned yet and every device
+while the live feed is down keep the fixed window
+(`CONTROL_COMMAND_CONFIRMATION_MS`, 90 s, `lib/ports/controlCommandConfirmation.ts`),
+and so does every setpoint and step command, whose confirmation can be a device
+report that comes minutes after Homey answered.
+
+Only clean answers are learned: a write PELS sent, that Homey answered without
+an error, that was the device's only PELS write in flight, sent after the
+start-up warm-up. A direction needs three; with five or more the slowest is set
+aside. An on/off command that goes unconfirmed, or any write to the device that
+times out without an answer, clears the device's answers, so it relearns. The
+diagnostics report lists every device's answers by kind of write ("Device
+write answer times").
+
+The window is armed before dispatch (a device echo can arrive before the write
+promise resolves, so re-arming on acceptance would miss it), so it must cover
+the round-trip plus the ack. A command takes its window when it is recorded
+and keeps it (`PendingBinaryCommand.confirmationWindowMs`), so the settle window
+and the pending window are the same number by construction: the observer's
+expiry, the reachability deadline and every pending read use the window the
+command carries.
 
 The window also carries a second job, added 2026-08-17: it is the *only*
 resolution mechanism for a write whose HTTP call timed out. Such a write is
 neither accepted nor rejected — the socket was abandoned at our end while Homey
 may still have been delivering it — so the dispatcher keeps the entry armed and
-treats it as accepted rather than clearing it (`binaryControlDispatch.ts`). The
-90 s window comfortably outlasts the transport's own 15 s timeout, so telemetry
-still has room to settle it; if nothing arrives, the ordinary expiry fires
+treats it as accepted rather than clearing it (`binaryControlDispatch.ts`). Every
+window outlasts the transport's own 15 s timeout by at least as long again, so
+telemetry still has room to settle it; if nothing arrives, the ordinary expiry fires
 `onTimedOut` and the reachability backoff escalates as a dispatch failure would
 have. Note this means the early-echo gate refuses settlement only for a
 *rejected* dispatch, never for an unanswered one: a rejection makes the echo

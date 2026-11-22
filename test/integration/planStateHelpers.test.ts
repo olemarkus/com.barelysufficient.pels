@@ -75,6 +75,7 @@ describe('isPlanActivelyConverging', () => {
         dispatchState: 'accepted',
         desired: true,
         startedMs: Date.now(),
+        confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
       },
     });
 
@@ -84,7 +85,10 @@ describe('isPlanActivelyConverging', () => {
   it('stops bypassing rebuild guards exactly when the last binary command expires', () => {
     const state = createPlanEngineState();
     Object.assign(state.pendingBinaryCommands, {
-      heater: { dispatchState: 'accepted', desired: true, startedMs: Date.now() },
+      heater: {
+        dispatchState: 'accepted', desired: true, startedMs: Date.now(),
+        confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
+      },
     });
     const summary = {
       ...buildEmptyCapacityStateSummary(),
@@ -107,7 +111,10 @@ describe('isPlanActivelyConverging', () => {
   it('keeps overdue target retries actionable even when binary commands have expired', () => {
     const state = createPlanEngineState();
     Object.assign(state.pendingBinaryCommands, {
-      heater: { dispatchState: 'accepted', desired: true, startedMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS },
+      heater: {
+        dispatchState: 'accepted', desired: true, startedMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS,
+        confirmationWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
+      },
     });
     Object.assign(state.pendingTargetCommands, {
       thermostat: {

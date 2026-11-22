@@ -17,6 +17,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 let logs: LoggerCapture;
 beforeEach(() => { logs = captureLogger(); });
@@ -28,7 +29,7 @@ const buildTransport = (
   const state = createPlanEngineState();
   const transport: BinaryControlTransport = {
     getObservedState: () => undefined,
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
     actuator: createDeviceActuator({
 requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
@@ -50,7 +51,7 @@ describe('binary command dispatch', () => {
     const accepted = vi.fn();
     const { requestBinaryControl, state, transport } = buildTransport();
     transport.pendingBinaryCommandStore = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onDispatchAccepted: accepted },
     );
 
@@ -111,7 +112,7 @@ describe('binary command dispatch', () => {
     const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/device-1/capability/onoff');
     const { state, transport } = buildTransport(vi.fn(async () => { throw timeout; }));
     transport.pendingBinaryCommandStore = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onDispatchAccepted: accepted, onDispatchFailed: failed },
     );
 
@@ -187,7 +188,7 @@ describe('binary command dispatch', () => {
 
   it('settles a binary command from the producer-confirmed control-capability read', () => {
     const state = createPlanEngineState();
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows);
     const startedMs = Date.now();
     store.record('charger-1', { desired: true, startedMs });
     store.recordDispatchAccepted('charger-1', { deviceId: 'charger-1', desired: true });
@@ -217,7 +218,7 @@ describe('binary command dispatch', () => {
     const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/device-1/capability/onoff');
     const { state, transport } = buildTransport(vi.fn(async () => { throw timeout; }));
     const store = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onTimedOut: timedOut },
     );
     transport.pendingBinaryCommandStore = store;
@@ -250,7 +251,7 @@ describe('binary command dispatch', () => {
     const state = createPlanEngineState();
     const confirmed = vi.fn();
     let observedAtMs = 0;
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, {
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows, {
       onConfirmed: confirmed,
     });
     const actuator = createDeviceActuator({
@@ -321,7 +322,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
   it('does not settle an early echo when the transport later rejects', async () => {
     const state = createPlanEngineState();
     const confirmed = vi.fn();
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
       syncPendingBinaryCommands(
@@ -355,7 +356,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     const state = createPlanEngineState();
     const confirmed = vi.fn();
     let timedOutStartedMs = 0;
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
       timedOutStartedMs = pending?.startedMs ?? 0;
@@ -404,7 +405,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
   it('does not settle an early echo after command authority is lost', async () => {
     const state = createPlanEngineState();
     const confirmed = vi.fn();
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
       syncPendingBinaryCommands(
@@ -433,7 +434,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
   it('does not replay an early match after newer contradictory telemetry', async () => {
     const state = createPlanEngineState();
     const confirmed = vi.fn();
-    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
       const observedAtMs = pending?.startedMs ?? 0;
@@ -493,7 +494,7 @@ describe('binary command settlement — when the handshake does not complete', (
     const confirmed = vi.fn();
     const timedOut = vi.fn();
     const store = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onConfirmed: confirmed, onTimedOut: timedOut },
     );
     const startedMs = Date.now();
@@ -523,7 +524,7 @@ describe('binary command settlement — when the handshake does not complete', (
     const state = createPlanEngineState();
     const confirmed = vi.fn();
     const store = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onConfirmed: confirmed },
     );
     const startedMs = Date.now();
@@ -546,7 +547,7 @@ describe('binary command settlement — when the handshake does not complete', (
     const state = createPlanEngineState();
     const confirmed = vi.fn();
     const store = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onConfirmed: confirmed },
     );
     const startedMs = Date.now();
@@ -571,7 +572,7 @@ describe('binary command settlement — when the handshake does not complete', (
     const state = createPlanEngineState();
     const confirmed = vi.fn();
     const store = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onConfirmed: confirmed },
     );
     const startedMs = Date.now();
@@ -593,7 +594,7 @@ describe('binary command settlement — when the handshake does not complete', (
     const state = createPlanEngineState();
     const confirmed = vi.fn();
     const store = createPendingBinaryCommandStore(
-      state.pendingBinaryCommands,
+      state.pendingBinaryCommands, fixedConfirmationWindows,
       { onConfirmed: confirmed },
     );
     const startedMs = Date.now();

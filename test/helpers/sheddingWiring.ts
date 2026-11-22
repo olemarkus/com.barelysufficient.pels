@@ -5,6 +5,7 @@ import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { partialDouble } from './partialDouble';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from './confirmationWindows';
 
 type SheddingWiring = Pick<SheddingDeps, 'pendingBinaryCommandStore' | 'getShedBehavior' | 'structuredLog'>;
 
@@ -15,7 +16,7 @@ type SheddingWiring = Pick<SheddingDeps, 'pendingBinaryCommandStore' | 'getShedB
  * overrides the rest.
  */
 export const sheddingWiring = (state: PlanEngineState): SheddingWiring => ({
-  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
   getShedBehavior: () => ({ action: 'turn_off' }),
   structuredLog: testLogger,
 });

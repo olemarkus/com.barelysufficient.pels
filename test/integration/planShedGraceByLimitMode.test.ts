@@ -20,6 +20,7 @@ import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import { testLogger } from '../utils/testLogger';
 import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -107,7 +108,7 @@ const buildHarness = (scenario: Scenario) => {
       : withCapacityPace(tracker, scenario.settings, scenario.capacityPaceKw)),
     getDailyBudgetSnapshot: () => (scenario.dailyBudget ? dailyBudgetSnapshot() : null),
     getShedBehavior: () => ({ action: 'turn_off' }),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
     decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, state);
   /** One build on a new whole-home reading, `afterMs` after the start. */

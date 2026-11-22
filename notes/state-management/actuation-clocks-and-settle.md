@@ -84,8 +84,8 @@ idempotency and in-flight guards one level down — longer, and on better eviden
 
 - **Binary** — `shouldSkipBinaryControl` (`lib/executor/binaryControlPreflight.ts`):
   `already_matched` (observed state equals desired) and `already_pending` (a matching command in
-  flight for the whole confirmation window — 90 s, `CONTROL_COMMAND_CONFIRMATION_MS`,
-  `lib/ports/controlCommandConfirmation.ts`). The pending entry is recorded by
+  flight for the whole confirmation window — the device's learned on/off window, else 90 s,
+  `CONTROL_COMMAND_CONFIRMATION_MS`, `lib/ports/controlCommandConfirmation.ts`). The pending entry is recorded by
   `dispatchBinaryControlDecision` *before* the write and survives a timeout, so this covers the
   flow-backed path too, where confirmation only ever arrives via telemetry.
 - **Shed temperature** — `handleTargetCommandPreflight` (`lib/executor/targetExecutor.ts`):

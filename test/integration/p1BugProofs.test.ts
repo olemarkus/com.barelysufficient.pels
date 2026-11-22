@@ -37,6 +37,7 @@ import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testLogger } from '../utils/testLogger';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => buildPlanContextFixture({
   nowTs: Date.UTC(2025, 0, 1, 0, 0, 0),
@@ -107,7 +108,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       stepCommandPending: false,
       unansweredStepCommands: { kind: 'none' as const },
     }),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
     storageLane: { kind: 'none' },
     inverterLane: NO_INVERTER_EXECUTION,
   };
@@ -317,7 +318,7 @@ describe('P1 bug proofs', () => {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationSettings: () => ({}),
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands, fixedConfirmationWindows),
       },
     });
 

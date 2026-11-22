@@ -5,6 +5,7 @@ import type { SettingsPort } from '../../ports/homeyRuntime';
 import { HomeyRequestTimeoutError } from '../../utils/errorUtils';
 import { HomeyRequestInFlightError } from '../../utils/homeyRequestInFlightError';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
+import type { WriteAnswerTimes } from './writeAnswerTimes';
 
 /** An adapter-resolved Homey Flow action card run, never supplied by the settings UI. */
 export type HomeyFlowAction = {
@@ -62,7 +63,11 @@ export class HomeyActionAccess {
   private deniedRetryAtMs = 0;
   private deniedCheck: Promise<void> | undefined;
 
-  constructor(private readonly homey: HomeyActionAccessHomey, private readonly logger: Pick<Logger, 'structuredLog'>) {}
+  constructor(
+    private readonly homey: HomeyActionAccessHomey,
+    private readonly logger: Pick<Logger, 'structuredLog'>,
+    private readonly answerTimes: Pick<WriteAnswerTimes, 'timeWrite'>,
+  ) {}
 
   status(): ChargingAccessStatus {
     this.sync();
@@ -143,13 +148,14 @@ export class HomeyActionAccess {
     const generation = this.generation;
     const path = `manager/flow/flowcardaction/${encodeURIComponent(action.ownerUri)}`
       + `/${encodeURIComponent(action.cardId)}/run`;
-    const operation = this.request(
+    // Timed to the run's own answer, which may come after the caller stopped waiting.
+    const operation = this.answerTimes.timeWrite(deviceId, 'other', () => this.request(
       this.key, path, 'POST', { args: action.args }, generation, assertAuthorized,
     ).then((result) => {
       if (result === false || !isUnknownRecord(result) || result.error !== null) {
         throw new HomeyActionAccessError('unavailable');
       }
-    });
+    }));
     this.inFlight.set(deviceId, operation);
     // Keep the device busy after a caller timeout: the remote action may still
     // be executing. A new key must not make an outstanding write replayable.

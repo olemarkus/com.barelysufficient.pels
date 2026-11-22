@@ -36,6 +36,7 @@ import { noStorageTransport } from '../helpers/storageTransportStub';
 import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 
 // The executor's in-flight binary command is passed alongside the observed
 // device, not folded into it: it belongs to a different layer and does not ride
@@ -1067,7 +1068,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
         stepCommandPending: false,
         unansweredStepCommands: { kind: 'none' as const },
       }),
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands, fixedConfirmationWindows),
       storageLane: { kind: 'none' },
     inverterLane: NO_INVERTER_EXECUTION,
     };

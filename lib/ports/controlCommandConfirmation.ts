@@ -1,18 +1,23 @@
 /**
- * One confirmation window for every control axis AND every device: how long a
- * command waits for telemetry to confirm it. The observer confirms pending
- * commands against it; the executor, the planner and the battery control
- * owner (which reads a battery's claim against PELS's last claim write) time
- * their own waits by it. A neutral port so every one of them names it
- * without importing a peer.
- *
- * Command kind is deliberately absent: a binary switch, temperature target,
- * and stepped target on the same transport deserve the same observation
- * window. The per-device cloud tier (3 min) was removed 2026-09-01 together
- * with the `device_communication_models` settings map that fed it — nothing
- * ever wrote that map, so every device already ran this window in practice.
+ * How long a command waits for telemetry to confirm it. Setpoint, step and
+ * battery commands always wait this long, and so does an on/off command to a
+ * device whose on/off window is not learned ({@link ConfirmationWindows}). A
+ * neutral port so every consumer names it without importing a peer.
  */
 export const CONTROL_COMMAND_CONFIRMATION_MS = 90 * 1000;
+
+/**
+ * Each device's on/off confirmation window, by direction. Transport learns it
+ * from how long Homey takes to answer PELS's on/off writes to the device
+ * (`lib/device/transport/writeAnswerTimes.ts`); a device it has not learned
+ * yet keeps {@link CONTROL_COMMAND_CONFIRMATION_MS}. A command takes the window
+ * once, when it is sent, and keeps it until it is confirmed or expires.
+ */
+export type ConfirmationWindows = {
+  windowMs(deviceId: string, desired: boolean, nowMs: number): number;
+  /** An on/off command went unconfirmed within the window it took: report it to the owner of that window. */
+  unconfirmed(deviceId: string): void;
+};
 
 /**
  * How long a stepped command the device has ACKNOWLEDGED (echoed the commanded
