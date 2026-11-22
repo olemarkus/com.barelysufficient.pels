@@ -8,10 +8,17 @@ describe('v8MemoryFlags', () => {
     setFlagsFromString.mockReset();
   });
 
-  it('sets both memory flags when the module loads', async () => {
+  it('sets every memory flag when the module loads', async () => {
     await import('../../lib/diagnostics/v8MemoryFlags.ts');
 
-    expect(setFlagsFromString.mock.calls).toEqual([['--optimize-for-size'], ['--flush-baseline-code']]);
+    expect(setFlagsFromString.mock.calls).toEqual([
+      ['--optimize-for-size'],
+      ['--flush-baseline-code'],
+      ['--no-concurrent-recompilation'],
+      ['--no-lazy-compile-dispatcher'],
+      ['--no-parallel-compile-tasks-for-lazy'],
+      ['--no-parallel-compile-tasks-for-eager-toplevel'],
+    ]);
   });
 
   it('keeps loading when the runtime refuses a flag', async () => {
@@ -20,6 +27,6 @@ describe('v8MemoryFlags', () => {
     });
 
     await expect(import('../../lib/diagnostics/v8MemoryFlags.ts')).resolves.toBeDefined();
-    expect(setFlagsFromString).toHaveBeenCalledTimes(2);
+    expect(setFlagsFromString).toHaveBeenCalledTimes(6);
   });
 });
