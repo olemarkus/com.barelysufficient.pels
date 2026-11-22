@@ -9,6 +9,7 @@
 // Counterpart to test/integration/heatpumpDevices.integration.test.ts, which keeps the
 // power-estimation classification cases (no externally observable effect).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import api from '../../api';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
@@ -135,11 +136,27 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     await app.onInit();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(putSpy).not.toHaveBeenCalledWith(targetPath, pelsCapabilityWrite(22));
+    const unscoped = await api.ui_devices({ homey: app.homey });
+    expect(unscoped.schedules).not.toHaveProperty('data.preparationPlan');
+    const ignoredQuery = await api.ui_devices({ homey: app.homey, query: { modePreparation: ['next'] } });
+    expect(ignoredQuery).toEqual(unscoped);
+    const preview = () => api.ui_devices({ homey: app.homey, query: { modePreparation: 'next' } });
+    const initialPreview = await preview();
+    expect(Object.keys(initialPreview)).toEqual(['schedules']);
+    expect(initialPreview.schedules).toMatchObject({
+      ok: true, data: { preparationPlan: {
+        state: 'ready', currentMode: 'Night', destinationMode: 'Home',
+        devices: [{ deviceId: 'heatpump-a', fromC: 17, targetC: 22, state: 'estimated' }],
+      } },
+    });
 
     await vi.advanceTimersByTimeAsync(90_000);
     await drainUntilCalledWith(putSpy, targetPath, pelsCapabilityWrite(22));
     expect(putSpy).toHaveBeenCalledWith(targetPath, pelsCapabilityWrite(22));
     expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Night');
+    expect((await preview()).schedules).toMatchObject({
+      ok: true, data: { preparationPlan: { devices: [{ deviceId: 'heatpump-a', state: 'preparing' }] } },
+    });
     const reason = () => app.planService?.getLatestPlanSnapshotForUi()?.devices
       ?.find((candidate) => candidate.id === 'heatpump-a')?.status.reason?.text;
     expect(reason()).toBe('Getting ready for Home at 13:00');

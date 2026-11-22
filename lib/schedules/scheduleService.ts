@@ -1,4 +1,5 @@
 import type {
+  ModePreparationPlan, ModePreparationPlanDevice,
   Schedule, ScheduleCommand, ScheduleControls, ScheduleEntry, SchedulesSnapshot,
 } from '../../packages/contracts/src/schedules';
 import type {
@@ -83,8 +84,13 @@ export type ScheduleRuntimePort = {
   currentMode(): string;
   listTaskDevices(): SmartTaskCandidateDevice[];
   execute(schedule: Schedule, scheduledAtMs: number): Promise<void>;
+  previewPreparation(occurrence: ModePreparationOccurrence): ModePreparationPlanDevice[];
   preparationResult(occurrence: ModePreparationOccurrence): string;
 };
+
+type ModeSchedule = Schedule & { action: Extract<Schedule['action'], { type: 'mode' }> };
+
+const isModeSchedule = (schedule: Schedule): schedule is ModeSchedule => schedule.action.type === 'mode';
 
 const groupPaused = (schedule: Schedule, controls: ScheduleControls): boolean => {
   const deviceId = scheduleActionDeviceId(schedule.action);
@@ -201,13 +207,14 @@ export class ScheduleService {
     return structuredClone(this.requireSchedule(id));
   }
 
-  read(): SchedulesSnapshot {
+  read(includeModePreparation = false): SchedulesSnapshot {
     this.load();
     const schedules = [...this.schedules.values()];
     const catalog = this.readCatalog(schedules);
     return {
       timeZone: this.port.clock.getTimezone(), modes: [...catalog.modes], controls: structuredClone(this.controls),
       entries: schedules.map((schedule) => this.entry(schedule, catalog)),
+      ...(includeModePreparation ? { preparationPlan: this.readPreparationPlan() } : {}),
     };
   }
 
@@ -377,32 +384,67 @@ export class ScheduleService {
   readModePreparation(): ModePreparationRead {
     if (!this.running || !this.controls.modeChangesEnabled) return undefined;
     try {
-      return this.findModePreparation();
+      const next = this.findNextModeAction(MAX_MODE_PREPARATION_LEAD_MS, (id) => this.readPreparationReceipt(id));
+      if (next === 'unavailable') return next;
+      return next?.entry.action.prepare ? this.preparationOccurrence(next.entry, next.atMs) : undefined;
     } catch (error) {
       logger.error({ event: 'schedule_preparation_unavailable', err: error });
       return 'unavailable';
     }
   }
 
-  private findModePreparation(): ModePreparationRead {
+  private readPreparationPlan(): ModePreparationPlan {
+    const configured = [...this.schedules.values()].filter(isModeSchedule)
+      .filter((schedule) => schedule.action.prepare);
+    if (configured.length === 0) return { state: 'inactive' };
+    if (!this.controls.modeChangesEnabled) return { state: 'waiting', reason: 'Mode schedules are paused.' };
+    if (!configured.some((schedule) => schedule.enabled)) {
+      return { state: 'waiting', reason: 'Turn on a mode schedule with preparation to see its plan.' };
+    }
+    const unavailable: ModePreparationPlan = {
+      state: 'unavailable', reason: 'Mode preparation is temporarily unavailable.',
+    };
+    if (!this.running) return unavailable;
+    try {
+      const next = this.findNextModeAction(Infinity, (id) => this.port.receipts.read(id)?.localOccurrence ?? '');
+      if (next === 'unavailable') return unavailable;
+      if (!next) return { state: 'waiting', reason: 'No scheduled preparation applies in the current mode.' };
+      if (!next.entry.action.prepare) {
+        return { state: 'waiting', reason: `Waiting for ${next.entry.name} to run before estimating preparation.` };
+      }
+      const occurrence = this.preparationOccurrence(next.entry, next.atMs);
+      return {
+        state: 'ready', scheduleId: occurrence.scheduleId, scheduleName: next.entry.name,
+        currentMode: this.port.currentMode(), destinationMode: occurrence.mode, atMs: occurrence.atMs,
+        devices: this.port.previewPreparation(occurrence),
+      };
+    } catch (error) {
+      logger.error({ event: 'schedule_preparation_preview_unavailable', err: error });
+      return unavailable;
+    }
+  }
+
+  private preparationOccurrence(schedule: ModeSchedule, atMs: number): ModePreparationOccurrence {
+    return { scheduleId: schedule.id, mode: this.port.resolveModeName(schedule.action.mode), at: schedule.at, atMs };
+  }
+
+  private findNextModeAction(
+    maxLeadMs: number, readReceipt: (scheduleId: string) => string,
+  ): { entry: ModeSchedule; atMs: number } | 'unavailable' | undefined {
     const now = this.port.getNowMs();
     if (now < this.latestTickAt) return 'unavailable';
     const timeZone = this.port.clock.getTimezone();
-    const modeSchedules = [...this.schedules.values()].filter((entry) => entry.enabled && entry.action.type === 'mode');
-    if (!modeSchedules.some((entry) => entry.action.type === 'mode' && entry.action.prepare)) return undefined;
-    const next = modeSchedules.flatMap((entry) => {
-      const consumed = this.readPreparationReceipt(entry.id);
+    const modeSchedules = [...this.schedules.values()].filter(isModeSchedule).filter((entry) => entry.enabled);
+    if (!modeSchedules.some((entry) => entry.action.prepare)) return undefined;
+    return modeSchedules.flatMap((entry) => {
+      const consumed = readReceipt(entry.id);
       const since = Math.max(this.lastCheckAt, this.armedAt.get(entry.id) ?? now);
       const occurrence = dueScheduleOccurrence(entry, since, now, timeZone, consumed)
         ?? nextScheduleOccurrence(entry, now, timeZone, consumed);
-      if (!occurrence || occurrence.atMs - now > MAX_MODE_PREPARATION_LEAD_MS
+      if (!occurrence || occurrence.atMs - now > maxLeadMs
         || this.skipReason(entry, occurrence.key.slice(0, 10))) return [];
       return [{ entry, atMs: occurrence.atMs }];
     }).sort((a, b) => a.atMs - b.atMs)[0];
-    return next?.entry.action.type === 'mode' && next.entry.action.prepare ? {
-      scheduleId: next.entry.id, mode: this.port.resolveModeName(next.entry.action.mode),
-      at: next.entry.at, atMs: next.atMs,
-    } : undefined;
   }
 
   private readPreparationReceipt(scheduleId: string): string {
@@ -488,11 +530,9 @@ export class ScheduleService {
   }
 
   private preparationResult(schedule: Schedule, atMs: number): string {
-    if (schedule.action.type !== 'mode' || !schedule.action.prepare) return '';
+    if (!isModeSchedule(schedule) || !schedule.action.prepare) return '';
     try {
-      return this.port.preparationResult({
-        scheduleId: schedule.id, mode: this.port.resolveModeName(schedule.action.mode), at: schedule.at, atMs,
-      });
+      return this.port.preparationResult(this.preparationOccurrence(schedule, atMs));
     } catch (error) {
       logger.error({ event: 'schedule_preparation_result_unavailable', scheduleId: schedule.id, err: error });
       return '';

@@ -16,6 +16,7 @@ type ScheduledModeCatalog = {
 export const createAppSchedules = (
   ctx: AppContext,
   modes: ScheduledModeCatalog,
+  previewPreparation: ScheduleRuntimePort['previewPreparation'],
   preparationResult: ScheduleRuntimePort['preparationResult'],
 ): ScheduleService => {
   const listTaskDevices = () => requireScheduledTaskCandidates(ctx.getCreateSmartTaskCandidateDevices());
@@ -29,6 +30,7 @@ export const createAppSchedules = (
     currentMode: modes.getOperatingMode,
     listTaskDevices,
     execute: (schedule, at) => executor.execute(schedule, at),
+    previewPreparation,
     preparationResult,
   });
   registerScheduleFlowCards(ctx.homey, schedules, listTaskDevices);

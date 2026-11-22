@@ -1,3 +1,4 @@
+import type { ModePreparationPlanDevice } from '../../packages/contracts/src/schedules';
 import type { PlanInputDevice, TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 import type { PreparedModeTarget } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
@@ -16,10 +17,12 @@ const isTemperatureDevice = (device: PlanInputDevice): device is PlanInputDevice
 );
 
 type PreparationDevice = Pick<PlanInputDevice, 'id' | 'deviceType' | 'control' | 'targets'>;
+type PreparationLeadDevice = Omit<PlanInputDevice, 'priority'>;
 
 export type ModePreparationReads = {
   occurrence(): ModePreparationRead;
   readDevice(deviceId: string): PreparationDevice | undefined;
+  readPreviewDevices(): readonly PreparationLeadDevice[];
   nowMs(): number;
   currentMode(): string;
   modeTargets(): Readonly<Record<string, Readonly<Record<string, number>>>>;
@@ -27,7 +30,7 @@ export type ModePreparationReads = {
   canSetTemperature(deviceId: string): boolean;
   temporaryTemperatureC(deviceId: string): number | null;
   smartTaskState(deviceId: string): 'open' | 'none' | 'unavailable';
-  leadMs(device: PlanInputDevice, fromC: number, targetC: number): number;
+  leadMs(device: PreparationLeadDevice, fromC: number, targetC: number): number;
 };
 
 type PreparationWindow = {
@@ -74,6 +77,26 @@ export class ModePreparationResolver {
       ?.targetC ?? null;
   };
 
+  /** Estimate the next occurrence without marking a device as having started. */
+  preview = (occurrence: ModePreparationOccurrence): ModePreparationPlanDevice[] => {
+    const current = this.reads.currentMode();
+    if (current === occurrence.mode) return [];
+    const targets = this.reads.modeTargets();
+    const started = this.activeWindow(occurrence, current)?.started;
+    const now = this.reads.nowMs();
+    return this.reads.readPreviewDevices().flatMap((device): ModePreparationPlanDevice[] => {
+      const temperatures = this.candidateTemperatures(device, targets[current]?.[device.id],
+        targets[occurrence.mode]?.[device.id]);
+      if (!temperatures) return [];
+      const row = { deviceId: device.id, name: device.name, ...temperatures };
+      const blocker = this.preparationBlocker(device.id);
+      if (blocker !== 'none') return [{ ...row, state: blocker }];
+      if (started?.has(device.id)) return [{ ...row, state: 'preparing' }];
+      const startAtMs = occurrence.atMs - this.reads.leadMs(device, temperatures.fromC, temperatures.targetC);
+      return startAtMs <= now ? [{ ...row, state: 'waiting_to_start' }] : [{ ...row, state: 'estimated', startAtMs }];
+    });
+  };
+
   private lastUsableWindow(): PreparationWindow | undefined {
     const window = this.window;
     if (!window || window.currentMode !== this.reads.currentMode()) return undefined;
@@ -111,16 +134,25 @@ export class ModePreparationResolver {
   }
 
   private eligibleTemperatures(device: PreparationDevice, currentC: number | undefined, nextC: number | undefined) {
+    const temperatures = this.candidateTemperatures(device, currentC, nextC);
+    return temperatures && this.preparationBlocker(device.id) === 'none' ? temperatures : undefined;
+  }
+
+  private candidateTemperatures(device: PreparationDevice, currentC: number | undefined, nextC: number | undefined) {
     if (currentC === undefined || nextC === undefined || !isTemperatureControlDevice(device)
       || !device.control.commandAuthority || !device.control.managed
       || this.reads.thermalDirection(device.id) !== 'heating') return undefined;
     const target = getPrimaryTargetCapability(device.targets);
     const fromC = normalizeTargetCapabilityValue({ target, value: currentC });
     const targetC = normalizeTargetCapabilityValue({ target, value: nextC });
-    if (!setpointAddsDemand('heating', fromC, targetC) || !this.reads.canSetTemperature(device.id)
-      || this.reads.temporaryTemperatureC(device.id) !== null
-      || this.reads.smartTaskState(device.id) !== 'none') return undefined;
+    if (!setpointAddsDemand('heating', fromC, targetC) || !this.reads.canSetTemperature(device.id)) return undefined;
     return { fromC, targetC };
+  }
+
+  private preparationBlocker(deviceId: string): 'override' | 'smart_task' | 'unavailable' | 'none' {
+    if (this.reads.temporaryTemperatureC(deviceId) !== null) return 'override';
+    const task = this.reads.smartTaskState(deviceId);
+    return task === 'open' ? 'smart_task' : task;
   }
 
   result(devices: readonly PlanInputDevice[], occurrence: ModePreparationOccurrence): string {

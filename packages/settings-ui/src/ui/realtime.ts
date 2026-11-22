@@ -1,4 +1,5 @@
 import { refreshSchedulesIfVisible } from './schedules.ts';
+import { refreshModePreparationIfVisible } from './deadlinesList.ts';
 import {
   PLAN_STATUS_PUBLISHED_EVENT,
   POWER_TRACKER_PERSISTED_EVENT,
@@ -243,6 +244,7 @@ export const startStaleDataRefreshInterval = () => {
     refreshOverviewOnStatusPoll('periodicRefresh');
     refreshCurrentPriceIfVisible();
     refreshSchedulesIfVisible();
+    refreshModePreparationIfVisible();
     if (isPanelVisible('#overview-panel')) {
       // The Overview's cards are device rows. A device load that failed is
       // retried on this cadence; a loaded list is kept current by the

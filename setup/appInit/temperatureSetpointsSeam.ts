@@ -6,9 +6,7 @@ import { readActiveTemperatureOverride } from '../../lib/overrides/deviceOverrid
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
-import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
 import type { PlanInputSnapshotDevice } from '../../lib/planInput/runtimeDeviceRead';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { toPlanDevice } from './toPlanDevice';
 
 /**
@@ -51,6 +49,7 @@ export const bindModePreparationResolver = (
   modes: Pick<ModePreparationReads, 'currentMode' | 'modeTargets'>,
   occurrence: ModePreparationReads['occurrence'],
   runtimeDevice: (deviceId: string) => PlanInputSnapshotDevice | undefined,
+  runtimeDevices: () => readonly PlanInputSnapshotDevice[],
   objectives: Pick<ModePreparationReads, 'smartTaskState' | 'leadMs'>,
 ): ModePreparationResolver => new ModePreparationResolver({
   ...modes,
@@ -58,9 +57,11 @@ export const bindModePreparationResolver = (
   occurrence,
   readDevice: (deviceId) => {
     const device = runtimeDevice(deviceId);
-    const [mainDevice] = filterDevicesForHome(ctx.homeMembership, device ? [device] : [], MAIN_HOME_ID);
-    return mainDevice && toPlanDevice(ctx, mainDevice);
+    return device && toPlanDevice(ctx, device);
   },
+  readPreviewDevices: () => runtimeDevices()
+    .filter((device) => device.temperature !== undefined)
+    .map((device) => toPlanDevice(ctx, device)),
   nowMs: () => ctx.getNow().getTime(),
   thermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
   canSetTemperature: (deviceId) => ctx.observedTemperatureModeUpdates.allowsLimiting(deviceId),

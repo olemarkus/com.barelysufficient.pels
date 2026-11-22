@@ -6,6 +6,7 @@ import {
 } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { type SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
 import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
+import { MODE_PREPARATION_QUERY_PARAM } from '../../../shared-domain/src/settings/schedules.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
@@ -69,6 +70,7 @@ import {
   renderDeadlinesHistoryList,
   type DeadlinesHistoryListState,
 } from './views/DeadlinesHistoryList.tsx';
+import { renderModePreparationPanel } from './views/ModePreparationPanel.tsx';
 
 // The card's line beside the target: the same live cause the widget and the
 // detail hero name (stopped taking power, the car's own limit
@@ -154,6 +156,46 @@ const getSurface = (): HTMLElement | null => (
 const getHistorySurface = (): HTMLElement | null => (
   document.getElementById('deadlines-history-root')
 );
+
+const getModePreparationSurface = (): HTMLElement | null => (
+  document.getElementById('mode-preparation-root')
+);
+const modePreparationPath = `${SETTINGS_UI_DEVICES_PATH}?${MODE_PREPARATION_QUERY_PARAM}=next`;
+let modePreparationReadPending = false;
+let hasModePreparation = false;
+
+const refreshModePreparation = async (): Promise<void> => {
+  const surface = getModePreparationSurface();
+  if (!surface || modePreparationReadPending) return;
+  modePreparationReadPending = true;
+  try {
+    const { schedules } = await callApi<Pick<SettingsUiDevicesPayload, 'schedules'>>('GET', modePreparationPath);
+    if (schedules?.ok === true) {
+      const plan = schedules.data.preparationPlan ?? { state: 'inactive' as const };
+      hasModePreparation = plan.state !== 'inactive';
+      const panel = plan.state === 'ready' ? { ...plan, timeZone: schedules.data.timeZone } : plan;
+      renderModePreparationPanel(surface, panel);
+      return;
+    }
+  } catch {
+    // The plan read is independent of the active and past task lists.
+  } finally {
+    modePreparationReadPending = false;
+  }
+  if (hasModePreparation) {
+    renderModePreparationPanel(surface, {
+      state: 'unavailable', reason: 'The mode preparation plan could not be refreshed.',
+    });
+  }
+};
+
+export const refreshModePreparationIfVisible = (): void => {
+  const root = getModePreparationSurface();
+  const panel = document.getElementById('deadlines-panel');
+  if (hasModePreparation && root && !root.hidden && panel && !panel.classList.contains('hidden')) {
+    void refreshModePreparation();
+  }
+};
 
 // Persisted-filter localStorage key for the past-tasks chip row. Namespaced
 // under `pels.` so it can't collide with other Homey-shell consumers, and
@@ -277,6 +319,7 @@ let schedulesNotRunning = 0;
 export const refreshDeadlinesList = async (): Promise<void> => {
   const surface = getSurface();
   if (!surface) return;
+  void refreshModePreparation();
   // Claim a generation for this invocation. A later refresh bumps the counter,
   // which stales any in-flight history callback from this invocation so it
   // can't re-render the active surface over the newer paint.
@@ -396,14 +439,16 @@ const smartTaskCreateActions: SmartTaskCreateActions = {
   onChangeDeviceSettings: openSmartTaskCreateDeviceSettings,
 };
 
-// The flow and the list share this tab: while the flow is open the list and
-// its history are hidden, and closing the flow brings them back refreshed.
+// The flow shares this tab with the task lists and mode preparation. Closing
+// it brings those surfaces back refreshed.
 const setListVisible = (visible: boolean): void => {
   const list = document.getElementById('deadlines-list-root');
   const history = document.getElementById('deadlines-history-root');
   const surface = document.getElementById('smart-task-create-root');
   if (list) list.hidden = !visible;
   if (history) history.hidden = !visible;
+  const modePreparation = getModePreparationSurface();
+  if (modePreparation) modePreparation.hidden = !visible;
   if (surface) surface.hidden = visible;
 };
 

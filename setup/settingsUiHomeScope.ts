@@ -35,6 +35,7 @@ import { isValidSubHomeId } from '../lib/home/homeConfig';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import { isListedWholeHomeDevice } from '../lib/home/wholeHomeDeviceListing';
 import type { PelsHost } from '../lib/app/pelsHost';
+import { MODE_PREPARATION_QUERY_PARAM } from '../packages/shared-domain/src/settings/schedules';
 import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../packages/shared-domain/src/settingsUiHomeIdQuery';
 
 /**
@@ -98,6 +99,12 @@ export class SettingsUiHomeScopeAdapter {
     // unless the id passes.
     if (typeof raw !== 'string' || !isValidSubHomeId(raw)) return { state: 'rejected' };
     return { state: 'sub_home', homeId: raw };
+  }
+
+  public static includesModePreparation(query: unknown): boolean {
+    const record = asQueryRecord(query);
+    return record !== null && Object.hasOwn(record, MODE_PREPARATION_QUERY_PARAM)
+      && record[MODE_PREPARATION_QUERY_PARAM] === 'next';
   }
 
   /**

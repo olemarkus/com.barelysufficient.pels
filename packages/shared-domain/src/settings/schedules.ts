@@ -6,6 +6,9 @@ import { isUnknownRecord } from '../recordGuards';
 import { resolveSmartTaskCandidateGoal } from '../smartTaskCandidateGoal';
 import { MAX_DEVICE_OVERRIDE_MINUTES } from './deviceOverrides';
 
+/** Explicit opt-in to the next preparation preview on the devices read. */
+export const MODE_PREPARATION_QUERY_PARAM = 'modePreparation';
+
 export const MAX_SCHEDULES = 100;
 export const SCHEDULE_DELETION = { deleted: true } as const;
 export const isScheduleDeletion = (value: unknown): boolean => isUnknownRecord(value)
