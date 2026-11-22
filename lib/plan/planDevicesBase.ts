@@ -237,10 +237,7 @@ export type BasePlanDeviceInputs = {
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
-  const {
-    dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift,
-    temporaryTemperatureActive, modePreparation,
-  } = inputs;
+  const { dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift } = inputs;
   const { currentState } = dev;
   const decision = resolvePlannedDeviceDecision(inputs);
   const {
@@ -306,25 +303,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   // The binary on/off truth, only when the input device is binary this cycle.
   // Forwarded unchanged — resolved once at `toPlanDevice`, never recomputed.
   if (isBinaryPlanDevice(dev)) loose.currentOn = dev.currentOn;
-  // The temperature cluster as a UNIT, and the `satisfies` is the unit: the
-  // three fields are independent optionals on `LooseDevicePlanDevice`, so
-  // written one line at a time a dropped field compiles clean and the device
-  // reads `undefined` behind a required `number`. One literal per cluster per
-  // device is the price of keeping that a compile error; the fourteen this
-  // commit removes were per device too.
-  if (isTemperaturePlanDevice(dev)) {
-    Object.assign(loose, {
-      currentTarget: dev.currentTarget,
-      currentTemperature: dev.currentTemperature,
-      // `?? dev.currentTarget` is the type-level seam for the totality
-      // invariant, not a runtime state: "no commanded setpoint" materializes as
-      // planned === current, which the executor's no-op fence skips.
-      plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
-    } satisfies TemperatureKind);
-    loose.temporaryTemperatureActive = temporaryTemperatureActive;
-    loose.modePreparation = modePreparation;
-  }
-  // The stepped cluster as a UNIT, for the reason above: `SteppedLoadKind`
+  Object.assign(loose, temperatureCluster(inputs, resolvedPlannedTarget));
+  // Assign the stepped cluster as a unit. `SteppedLoadKind`
   // requires all three, so dropping one here is a local compile error rather
   // than a `planningPowerKw` that reads `undefined` inside the ladder pricing.
   if (isSteppedLoadDevice(dev)) {
@@ -334,11 +314,6 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
       planningPowerKw: dev.planningPowerKw,
     } satisfies SteppedLoadKind);
   }
-  // BUDGET NEARLY SPENT: the ten conditionals below and above, plus the three
-  // logical operators in the literal, put this function one under the
-  // `complexity` ceiling of 15 (`eslint.config.mjs`, warnings are errors). A
-  // twelfth conditional field needs a helper, not another `if` — that is what
-  // the five deleted `pick*` helpers were buying, at fourteen objects a device.
   // Decisions the PRODUCER already made (`toPlanDevice` -> `resolveCommandableNow`),
   // forwarded verbatim. Nothing below re-derives them: `commandableNow` and
   // `hasStandingDemand` are in the literal above for the same reason.
@@ -354,6 +329,20 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 
   if (decision.stepDownToRetire) loose.stepDownToRetire = decision.stepDownToRetire;
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));
+}
+
+/** Keep the required temperature fields together and add preparation only while it is active. */
+function temperatureCluster(inputs: BasePlanDeviceInputs, plannedTarget: number | undefined) {
+  const { dev, temporaryTemperatureActive, modePreparation } = inputs;
+  if (!isTemperaturePlanDevice(dev)) return undefined;
+  const temperature: TemperatureKind & Pick<LooseDevicePlanDevice, 'temporaryTemperatureActive' | 'modePreparation'> = {
+    currentTarget: dev.currentTarget,
+    currentTemperature: dev.currentTemperature,
+    plannedTarget: plannedTarget ?? dev.currentTarget,
+    temporaryTemperatureActive,
+  };
+  if (modePreparation !== undefined) temperature.modePreparation = modePreparation;
+  return temperature;
 }
 /* eslint-enable functional/immutable-data */
 
