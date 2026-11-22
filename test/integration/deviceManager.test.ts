@@ -3005,6 +3005,76 @@ describe('DeviceTransport', () => {
             ]);
         });
 
+        it('a written-devices refresh reads a written device again when its read failed', async () => {
+            const devices = {
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater 1', class: 'heater' }, {
+                    measure_power: 1000, onoff: false,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+                dev2: homeyDevice({ id: 'dev2', name: 'Heater 2', class: 'heater' }, {
+                    measure_power: 800, onoff: false,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+                dev3: homeyDevice({ id: 'dev3', name: 'Heater 3', class: 'heater' }, {
+                    measure_power: 600, onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+            };
+            let failDev1 = false;
+            mockApiGet.mockImplementation(async (path: string) => {
+                const id = path.match(/^manager\/devices\/device\/(dev\d)$/)?.[1];
+                if (id === 'dev1' && failDev1) throw new Error('timeout');
+                return id ? devices[id as keyof typeof devices] : devices;
+            });
+            await deviceManager.init();
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.setCapability('dev1', 'onoff', true);
+            await deviceManager.setCapability('dev2', 'onoff', true);
+
+            failDev1 = true;
+            await deviceManager.refreshSnapshot({ targetedRefresh: true, writtenDevicesOnly: true, meterDeviceIds: [] });
+
+            failDev1 = false;
+            mockApiGet.mockClear();
+            await deviceManager.refreshSnapshot({ targetedRefresh: true, writtenDevicesOnly: true, meterDeviceIds: [] });
+            const reads = mockApiGet.mock.calls.map(([path]) => path).filter((path) => /devices\/device\/dev/.test(path));
+            expect(reads).toEqual(['manager/devices/device/dev1']);
+        });
+
+        it('a written-devices refresh reads every device after a command a Flow card carries out', async () => {
+            const profile = { steps: [{ id: 'Low', planningPowerW: 1250 }, { id: 'Max', planningPowerW: 3000 }] };
+            const trigger = vi.fn().mockResolvedValue(undefined);
+            const transport = createTestDeviceTransport(homeyMock, loggerMock, {
+                settings: { getDeviceControlProfile: (deviceId: string) => (deviceId === 'flow1' ? profile : undefined) },
+                nativeWiring: { steppedLoadFlowSetup: () => 'ready' },
+            }, undefined, { getFlowTriggerCard: () => ({ trigger }) });
+            const devices = {
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater 1', class: 'heater' }, {
+                    measure_power: 1000, onoff: false,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+                flow1: homeyDevice({ id: 'flow1', name: 'Water heater', class: 'heater' }, {
+                    measure_power: 1250, onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+                dev3: homeyDevice({ id: 'dev3', name: 'Heater 3', class: 'heater' }, {
+                    measure_power: 600, onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
+            };
+            mockApiGet.mockImplementation(async (path: string) => {
+                const id = path.match(/^manager\/devices\/device\/(\w+)$/)?.[1];
+                return id ? devices[id as keyof typeof devices] : devices;
+            });
+            await transport.init();
+            await transport.refreshSnapshot({ meterDeviceIds: [] });
+            await transport.setCapability('dev1', 'onoff', true);
+            await expect(transport.requestSteppedLoadStep({
+                deviceId: 'flow1', profile, desiredStepId: 'Max', planningPowerW: 3000, planningCurrentA: 0,
+            })).resolves.toMatchObject({ requested: true, transport: 'flow' });
+
+            mockApiGet.mockClear();
+            await transport.refreshSnapshot({ targetedRefresh: true, writtenDevicesOnly: true, meterDeviceIds: [] });
+            const reads = mockApiGet.mock.calls.map(([path]) => path).filter((path) => /devices\/device\/\w/.test(path));
+            expect(reads.sort()).toEqual([
+                'manager/devices/device/dev1', 'manager/devices/device/dev3', 'manager/devices/device/flow1',
+            ]);
+        });
+
         it('publishes the observed realtime confirmation of a local onoff write', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
