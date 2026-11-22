@@ -33,8 +33,10 @@ import {
   overlayRetainedTrackedDevices,
 } from './targetedSnapshotMerge';
 import { addPerfDuration } from '../../utils/perfCounters';
-import { countRefreshCaller, countRefreshRead } from './refreshWorkload';
-import { appendRecoveredTemperatureDevices, resolveTargetedViewIds } from './targetedReadScope';
+import { countRefreshCaller } from './refreshWorkload';
+import {
+    appendRecoveredTemperatureDevices, fetchDevicesForSnapshotRefresh, TargetedReadScope,
+} from './targetedReadScope';
 import type { PolledMeterReads } from './polledMeterReads';
 import { startRuntimeSpan } from '../../utils/runtimeTrace';
 import { logEvSnapshotChanges } from '../managerControl';
@@ -274,6 +276,16 @@ function logCommittedSnapshot(
 //
 // `fetchedList` is Homey's list as fetched, before the read contract: on a full
 // read its ids are the inventory a device is truly gone from, readable or not.
+//
+// Rebuild the realtime tracking map and (re)sync native stepped-load command
+// adapters from a device list. Side-effecting, so the refresh workflow runs it
+// ONLY after the abandon-grace guard has committed the snapshot: a transient
+// empty SDK read must not tear down tracking/adapters for devices that are
+// still present. The guard already preserves the snapshot on such a read, so
+// the matching native adapters must be preserved too — otherwise a default-on
+// native stepped-load command (e.g. a Høiax heater) would silently no-op
+// (`NativeSteppedLoadCommandAdapters.setStep` returns false with no adapter) until the
+// next good read re-registered it.
 function adoptCommittedDeviceList(
     refresh: SnapshotRefreshService,
     effectiveList: HomeyDeviceLike[],
@@ -292,38 +304,6 @@ function adoptCommittedDeviceList(
     refresh.reader.syncTrackedDevices(trackingList);
     if (isFullRead) {
         refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList, fetchedList);
-    }
-}
-
-// Rebuild the realtime tracking map and (re)sync native stepped-load command
-// adapters from a device list. Side-effecting, so the refresh workflow runs it
-// ONLY after the abandon-grace guard has committed the snapshot: a transient
-// empty SDK read must not tear down tracking/adapters for devices that are
-// still present. The guard already preserves the snapshot on such a read, so
-// the matching native adapters must be preserved too — otherwise a default-on
-// native stepped-load command (e.g. a Høiax heater) would silently no-op
-// (`NativeSteppedLoadCommandAdapters.setStep` returns false with no adapter) until the
-// next good read re-registered it.
-async function fetchDevicesForSnapshotRefresh(
-    refresh: SnapshotRefreshService,
-    targetedViewIds: ReadonlySet<string> | null,
-): Promise<DeviceFetchResult | null> {
-    const isTargetedRefresh = targetedViewIds !== null;
-    try {
-        const result = isTargetedRefresh
-            ? await refresh.fetchDevicesByKnownIds(targetedViewIds)
-            : await refresh.deviceSdk.fetchDevices();
-        countRefreshRead(isTargetedRefresh, result.devices.length);
-        return result;
-    } catch (error) {
-        const normalizedError = normalizeError(error);
-        moduleLogger.error({
-            event: 'device_snapshot_refresh_failed',
-            reasonCode: 'refresh_failed',
-            targetedRefresh: isTargetedRefresh,
-            err: normalizedError,
-        });
-        return null;
     }
 }
 
@@ -486,10 +466,8 @@ export class SnapshotRefreshService {
     readonly notifications: TransportNotifications,
   ) {}
 
-  /** Read these views (by default every known one), plus tracked cars and pending recoveries. */
-  fetchDevicesByKnownIds(
-    viewIds: Iterable<string> = this.reader.snapshotStore.getSnapshot().map((device) => device.id),
-  ): Promise<DeviceFetchResult> {
+  /** Read these views, plus tracked cars and pending recoveries. */
+  fetchDevicesByKnownIds(viewIds: ReadonlySet<string>): Promise<DeviceFetchResult> {
     const store = this.reader.snapshotStore;
     const ids = new Set([
       ...[...viewIds].map((id) => store.sourceDeviceId(id)),
@@ -571,6 +549,19 @@ export class SnapshotRefreshService {
     }
   }
 
+  /** Whether this read commits; it puts back the writes it did not confirm. */
+  private commitsRead(
+    readScope: TargetedReadScope,
+    previous: readonly TransportDeviceSnapshot[],
+    fetchResult: DeviceFetchResult,
+    start: number,
+  ): boolean {
+    const commits = !this.stopped
+      && !shouldDeferEmptySnapshotCommit(this, previous, fetchResult.devices.length === 0, start);
+    readScope.restoreUnconfirmed(commits ? fetchResult.failedIds : null);
+    return commits;
+  }
+
   private async runActiveRefresh(
     options: SnapshotRefreshOptions, refreshInventory: boolean, start: number,
   ): Promise<LiveMeterReadings | null> {
@@ -578,9 +569,12 @@ export class SnapshotRefreshService {
     const isTargetedRefresh = !refreshInventory && options.targetedRefresh === true && previousSnapshot.length > 0;
     // Keep request-time membership separate from the live array: realtime
     // can admit views while the read waits, including from an already-known source.
-    const targetedViewIds = resolveTargetedViewIds(this, options, previousSnapshot, isTargetedRefresh);
+    const readScope = new TargetedReadScope(
+        this.observationBridge.state, (id) => this.reader.snapshotStore.sourceDeviceId(id),
+        options, previousSnapshot, isTargetedRefresh,
+    );
     const inventoryTrustEpoch = this.reader.chargingCurrentControl.trustEpoch();
-    const fetchResult = await fetchDevicesForSnapshotRefresh(this, targetedViewIds);
+    const fetchResult = await fetchDevicesForSnapshotRefresh(this, readScope);
     if (!fetchResult || this.stopped) return null;
     const { devices: list, fetchSource, failedIds } = fetchResult;
     const { byDeviceId: livePowerByDeviceId, meterReadings } = await resolveLivePowerForRefresh(
@@ -591,9 +585,7 @@ export class SnapshotRefreshService {
     );
     // Accept the inventory before changing any session membership. A transient
     // empty full read must leave both accepted observations and sessions intact.
-    if (this.stopped || shouldDeferEmptySnapshotCommit(this, previousSnapshot, list.length === 0, start)) {
-        return meterReadings;
-    }
+    if (!this.commitsRead(readScope, previousSnapshot, fetchResult, start)) return meterReadings;
     // Reject individual fields before conversion or observation.
     const acceptedRawDevices = list.flatMap((device) => resolveDeviceViews(
         this.reader.snapshotStore,
@@ -637,7 +629,7 @@ export class SnapshotRefreshService {
         this,
         presentSnapshot,
         previousSnapshot,
-        isTargetedOverlay ? targetedViewIds : null,
+        isTargetedOverlay ? readScope.viewIds : null,
         failedIds,
         start,
     ).map((device) => this.reader.chargingCurrentControl.projectControl(device));

@@ -268,7 +268,6 @@ export class DeviceWriteService {
     // The Homey device behind the view: the write and its echo are the Homey device's.
     const homeyDeviceId = this.snapshotStore.sourceDeviceId(deviceId);
     const ownWrite = this.observationState.ownWrites.begin(homeyDeviceId, write.capabilityId, Date.now());
-    this.observationState.noteDeviceWritten(deviceId);
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
         deviceId,
@@ -276,10 +275,12 @@ export class DeviceWriteService {
         normalizedValue,
         write,
     );
+    // Recorded once Homey answered (a failure too: it may have landed), so a
+    // read started while the write was on its way does not take it.
     await sendWithTemperatureWriteEvidence(
       this.observationProducers.temperature, this.snapshotStore, deviceId, requested, ownWrite,
       () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId),
-    );
+    ).finally(() => this.observationState.noteDeviceWritten(deviceId));
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,
@@ -340,10 +341,10 @@ export class DeviceWriteService {
     const surface = requireDrivableSurface(snapshot, deviceId);
     if (surface.kind === 'app_actions') {
       if (command.control.kind !== 'app_actions') throw new Error('Home battery command lacks app-action authority.');
-      return {
-        kind: 'written',
-        setpointW: await this.batteryAppActions.command(deviceId, command.setpointW, command.control.target),
-      };
+      // The app's actions run on the device it drives, which no write names.
+      const setpointW = this.batteryAppActions.command(deviceId, command.setpointW, command.control.target)
+        .finally(() => this.observationState.noteCommandOnUnnamedDevices());
+      return { kind: 'written', setpointW: await setpointW };
     }
     if (command.control.kind !== 'capability') {
       throw new Error('Home battery command authority does not match binding.');
@@ -625,6 +626,8 @@ export class DeviceWriteService {
       }, {
         deviceId,
       }));
+      // The Flow drives whatever devices it does, which no write names.
+      this.observationState.noteCommandOnUnnamedDevices();
       if (outcome === 'timed_out') {
         this.logger.structuredLog.warn({
           event: 'stepped_load_flow_trigger_unacknowledged',
