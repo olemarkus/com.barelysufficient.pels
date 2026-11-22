@@ -152,7 +152,8 @@ export type DeviceTransportOptions = {
     /** The owner's per-device configuration (`DeviceControlSettings`). */
     settings: DeviceParseSettings & Pick<
       DeviceControlSettings, 'resolveEvCarCurrentLimits' | 'resolveEvChargerCurrentLimits'
-    >;
+    > & Partial<Pick<DeviceControlSettings,
+      'getBinarySwitchSelection' | 'getBinarySwitchRevision' | 'isBinarySwitchWriteCurrent'>>;
     /** Native wiring and Flow conflicts (`BuiltInControlFlowConflicts`). */
     nativeWiring: NativeWiringRead;
     /** The Flow-reported capability values and learned peaks (`FlowBackedDeviceState`). */

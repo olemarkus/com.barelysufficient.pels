@@ -81,6 +81,7 @@ export type ExternalOffHoldObservedDevice = {
   id: string;
   binaryObservationCapabilityId?: string;
   binaryAxisOn: boolean;
+  binarySwitchGeneration?: number;
   binaryAxisObservedAtMs?: number;
   evSessionInactive: boolean;
 };
@@ -99,6 +100,7 @@ export function toExternalOffHoldObservedDevice(
     id: device.id,
     binaryObservationCapabilityId: device.binaryControlObservation?.capabilityId,
     binaryAxisOn: isBinaryObservedOn(device),
+    ...(device.binarySwitchGeneration === undefined ? {} : { binarySwitchGeneration: device.binarySwitchGeneration }),
     binaryAxisObservedAtMs: device.binaryControlObservation?.observedAtMs,
     // The device's own session question, asked directly of the decided
     // plug-state — this seam wants only that bit, not a whole commandability
@@ -116,7 +118,7 @@ export type ExternalOffHoldSyncDeps = {
    * keep their own store, so asking main's about a sub-home device would report
    * "no pending command" for PELS's own write and fabricate a hold.
    */
-  hasPendingBinaryCommand: (deviceId: string) => boolean;
+  hasPendingBinaryCommand: (deviceId: string, binarySwitchGeneration?: number) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
 };
 
@@ -187,7 +189,8 @@ function shouldStartHold(params: {
     device.evSessionInactive === true
     && !sawRawControlOnToOffTransition(changes, capabilityId)
   ) return false;
-  return !deps.hasPendingBinaryCommand(deviceId);
+  return device.binarySwitchGeneration === undefined ? !deps.hasPendingBinaryCommand(deviceId)
+    : !deps.hasPendingBinaryCommand(deviceId, device.binarySwitchGeneration);
 }
 
 /**

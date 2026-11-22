@@ -96,7 +96,7 @@ export type OwningHomeHooks = {
   pendingBinaryCommandStore: PlanEngine['pendingBinaryCommandStore'];
   observeDeviceEvidence: PlanService['observeDeviceEvidence'];
   syncLivePlanState: PlanService['syncLivePlanState'];
-  hasPendingBinaryCommand: (deviceId: string) => boolean;
+  hasPendingBinaryCommand: (deviceId: string, binarySwitchGeneration?: number) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
   /**
    * Re-plan THIS home. Used by the reachability lane, which learns that a device

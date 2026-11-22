@@ -1,3 +1,4 @@
+import { sameBinarySwitchBinding } from './binarySwitchBinding';
 import { preserveNewerMeteredPowerReading } from './meteredPowerObservation';
 import { toCapabilityTimestampMs } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
@@ -230,7 +231,7 @@ function mergeSnapshotObservationsForDevice(
     preserveNewerMeteredPowerReading(previous, snapshot);
     preserveNewerHomeBatteryReadings(previous, snapshot);
 
-    if (snapshot.binaryCapabilityId) {
+    if (snapshot.binaryCapabilityId && sameBinarySwitchBinding(previous, snapshot)) {
         mergeReading(snapshot.binaryCapabilityId);
     }
 
@@ -269,7 +270,8 @@ function preserveBinaryControlObservation(params: {
     // `device.update` does (`getPreservedBinaryControlObservation`): a read
     // without the binary capability, a withheld `null` one included, carries
     // nothing binary over.
-    if (previousObservation.capabilityId !== snapshot.binaryCapabilityId) return;
+    if (previousObservation.capabilityId !== snapshot.binaryCapabilityId
+        || !sameBinarySwitchBinding(previous, snapshot)) return;
     if (!nextObservation || nextObservation.observedAtMs < previousObservation.observedAtMs) {
         snapshot.binaryControlObservation = {
             ...previousObservation,

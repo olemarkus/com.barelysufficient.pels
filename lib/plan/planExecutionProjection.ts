@@ -153,6 +153,10 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
 );
 
 /** The binary intent projected from a finalized device decision. */
+const binarySwitchAuthority = (dev: PlanDevice): { binarySwitchGeneration?: number } => (
+  dev.binarySwitchGeneration === undefined ? {} : { binarySwitchGeneration: dev.binarySwitchGeneration }
+);
+
 export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
   if (dev.waitingForTaskPlan && dev.plannedState !== 'shed') return undefined;
   if (isSteppedLoadDevice(dev)) return undefined;
@@ -162,7 +166,7 @@ export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand
   if (!isMeteredPlanDevice(dev)) return undefined;
   if (dev.control.commandAuthority === false) {
     return dev.plannedState === 'keep'
-      ? { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'uncontrolled' }
+      ? { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'uncontrolled', ...binarySwitchAuthority(dev) }
       : undefined;
   }
   if (dev.plannedState !== 'shed' && dev.plannedState !== 'keep') return undefined;
@@ -171,7 +175,7 @@ export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
   if (dev.plannedState === 'shed') return buildExecutableBinaryShedIntent(dev);
-  return { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'controlled' };
+  return { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'controlled', ...binarySwitchAuthority(dev) };
 };
 
 const buildExecutableBinaryShedIntent = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
@@ -181,6 +185,7 @@ const buildExecutableBinaryShedIntent = (dev: PlanDevice): PlannedBinaryCommand 
     deviceId: dev.id,
     name: dev.name,
     desiredOn: false,
+    ...binarySwitchAuthority(dev),
     ...(!isPostureHoldShed(dev) ? dev.relayShedDecision : undefined),
     // A shed never rides the managed -> unmanaged release path; that path only
     // ever turns a device back ON.
@@ -200,8 +205,8 @@ const buildPlannedReleaseCommand = (
   // state — power-freshness (re-evaluated every cycle, incl. realtime reconcile) and the final
   // plan reason — via shared predicates in planDecisionSemantics. The actual executor
   // (planExecutor) then actuates the resulting intent flatly, without re-checking reasons.
-  if (kind === 'shed_release') return { ...release, deviceId: dev.id, name: dev.name };
-  if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
+  if (kind === 'shed_release') return { ...release, deviceId: dev.id, name: dev.name, ...binarySwitchAuthority(dev) };
+  if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name, ...binarySwitchAuthority(dev) };
   // binary_restore is the only positive (turn-on) intent: require a MEASURED power
   // sample (avoid racing the capacity guard), the device kept, no pending swap target,
   // and a plan reason that does not block restore (capacity/cooldown/etc).
@@ -215,7 +220,7 @@ const buildPlannedReleaseCommand = (
   if (dev.plannedState !== 'keep') return undefined;
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return undefined;
-  return { kind, deviceId: dev.id, name: dev.name };
+  return { kind, deviceId: dev.id, name: dev.name, ...binarySwitchAuthority(dev) };
 };
 
 /** Project a finalized decision at the planner's outward boundary. No observation or command lifecycle runs here. */

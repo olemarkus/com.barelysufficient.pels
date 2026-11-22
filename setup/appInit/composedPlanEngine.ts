@@ -220,8 +220,8 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.pendingBinaryCommandStore.hasAny();
   }
 
-  public hasAttributablePendingBinaryCommand(deviceId: string): boolean {
-    return this.pendingBinaryCommandStore.isBinaryChangeAttributableToPels(deviceId);
+  public hasAttributablePendingBinaryCommand(deviceId: string, binarySwitchGeneration?: number): boolean {
+    return this.pendingBinaryCommandStore.isBinaryChangeAttributableToPels(deviceId, binarySwitchGeneration);
   }
 
   public clearRecentBinaryOffCommand(

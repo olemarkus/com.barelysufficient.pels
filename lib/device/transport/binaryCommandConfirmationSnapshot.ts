@@ -27,6 +27,8 @@ export function buildBinaryCommandConfirmationSnapshot(
     return snapshot.map((device) => ({
         id: device.id,
         name: device.name,
+        ...(device.binarySwitchGeneration !== undefined
+            ? { binarySwitchGeneration: device.binarySwitchGeneration } : {}),
         binaryCommandConfirmation: projectBinaryCommandConfirmation(device),
     }));
 }

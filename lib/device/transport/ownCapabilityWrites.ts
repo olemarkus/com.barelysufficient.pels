@@ -27,6 +27,7 @@ export type OwnCapabilityWrite = {
   /** The capability the write reached Homey on, which its echo carries. */
   writtenCapabilityId: string;
   sentAtMs: number;
+  binaryAuthority?: { generation: number | undefined };
 };
 
 /**
@@ -43,6 +44,7 @@ export class OwnCapabilityWrites {
     deviceId: string,
     writtenCapabilityId: string,
     nowMs: number,
+    binaryAuthority?: OwnCapabilityWrite['binaryAuthority'],
   ): OwnCapabilityWrite {
     this.pruneUnanswered(nowMs);
     const write: OwnCapabilityWrite = {
@@ -50,6 +52,7 @@ export class OwnCapabilityWrites {
       deviceId,
       writtenCapabilityId,
       sentAtMs: nowMs,
+      ...(binaryAuthority ? { binaryAuthority } : {}),
     };
     this.byTransactionId.set(write.transactionId, write);
     return write;

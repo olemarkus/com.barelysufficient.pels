@@ -7,6 +7,7 @@ import { isHomeBatteryDevice, isSolarPanelDevice } from '../managerEnergy';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { resolveZoneId } from './managerHelpers';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
+import { availableBinarySwitches } from './binarySwitchBinding';
 
 type PowerSourceRead = { kind: 'device' }
   | { kind: 'external'; socketId: string; capability?: HomeyDeviceLike['capabilitiesObj']['measure_power'] };
@@ -24,7 +25,9 @@ export const hasGenericSetupControls = (device: HomeyDeviceLike): boolean => {
   if (integration.identity(device).class === 'evcharger' || integration.nativeCurrentControls.length > 0) return false;
   // Apply only to generic controls, keeping special devices under their owners.
   const caps = device.capabilities;
-  return caps.includes('onoff') || (caps.includes('target_temperature') && caps.includes('measure_temperature'));
+  return caps.includes('onoff') || (caps.includes('target_temperature') && caps.includes('measure_temperature'))
+    || availableBinarySwitches(device).length > 0
+    || device.selectedBinarySwitch !== undefined;
 };
 
 function readSocketPowerCapability(source: HomeyDeviceLike): HomeyDeviceLike['capabilitiesObj']['measure_power'] {
@@ -158,9 +161,14 @@ export class ExternalDevicePower {
       device.id, this.resolveEligibleHome(device.id, resolveZoneId(device) ?? null),
     ]));
     const resolveHome: PowerSourceHome = (id) => homes.get(id);
-    const devices: DevicePowerSetupEntry[] = inventory.filter(hasGenericSetupControls).map((device) => ({
+    const configuredSwitch = (id: string) => this.inventory.binarySwitches.settings?.getBinarySwitchSelection(id);
+    const eligible = inventory.filter((device) => hasGenericSetupControls(device) || configuredSwitch(device.id));
+    const devices: DevicePowerSetupEntry[] = eligible.map((device) => ({
       id: device.id, name: device.name, configured: this.setupSelected(device.id),
       sourceId: this.sourceForDevice(device.id) ?? null,
+      binarySwitchId: configuredSwitch(device.id) ?? null,
+      binarySwitches: this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
+        ? [] : availableBinarySwitches(device),
       usedBy: this.targetForSocket(device.id) ?? null,
       sources: sockets.flatMap((socket) => {
         if (socket.id === device.id) return [];

@@ -162,10 +162,26 @@ export class DeviceSnapshotReader {
       : this.parseDeviceList(rawDevices, {}, 'ui_picker');
   }
 
+  mergeRefreshedBindingReads(device: HomeyDeviceLike, startedAtMs: number): HomeyDeviceLike {
+    const source = this.externalPower?.mergeSocketRefreshRead(device, startedAtMs) ?? device;
+    return this.snapshotStore.keepNewerSwitchRead(source, startedAtMs);
+  }
+
+  selectedSwitchDeviceIds(): string[] {
+    return Array.from(this.snapshotStore.getTrackedRawDevicesById().values()).flatMap((device) => (
+      device.selectedBinarySwitch?.declaredReadableSwitch ? [this.snapshotStore.sourceDeviceId(device.id)] : []
+    ));
+  }
+
   applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
     const effective = applyDeviceDriverOverride(device, this.sources.settings);
     const selected = this.externalPower?.setupSelected(device.id) === true && hasGenericSetupControls(effective);
-    return selected || effective.genericSetupEnabled ? { ...effective, genericSetupEnabled: selected } : effective;
+    const binarySwitch = this.snapshotStore.binarySwitches.selection(effective);
+    return selected || effective.genericSetupEnabled || binarySwitch || effective.selectedBinarySwitch
+      ? {
+        ...effective, genericSetupEnabled: selected || binarySwitch !== undefined, selectedBinarySwitch: binarySwitch,
+      }
+      : effective;
   }
 
   /**

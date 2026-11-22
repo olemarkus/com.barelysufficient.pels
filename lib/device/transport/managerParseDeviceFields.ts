@@ -86,7 +86,8 @@ export function resolveDeviceCapabilityProfile(
     const rawCapabilities = getCapabilities(effectiveDevice);
     const rawCapabilityObj = getCapabilityObj(effectiveDevice);
     const overlay = resolveFlowCapabilityOverlay(identity, rawCapabilities, rawCapabilityObj, deps, logger);
-    const capsStatus = resolveCandidateCapabilities(identity, overlay);
+    const capsStatus = resolveCandidateCapabilities(identity, overlay,
+        resolveSelectedBinaryCapability(effectiveDevice, overlay));
     if (!capsStatus) return null;
     return { overlay, capsStatus };
 }
@@ -221,6 +222,17 @@ function resolveSameSourceRetainedReading(
     return resolveRetainedReading(previousSnapshot, deps.getRestoredPowerReading(deviceId));
 }
 
+function resolveSelectedBinaryCapability(
+    device: ParsedDeviceIdentity['effectiveDevice'],
+    overlay: DeviceCapabilityProfile['overlay'],
+): string | undefined {
+    const id = device.selectedBinarySwitch?.id;
+    if (!id || !device.selectedBinarySwitch?.declaredReadableSwitch || !overlay.capabilities.includes(id)
+        || overlay.steppedLoadProfile || overlay.pendingSteppedLoad) return undefined;
+    const field = overlay.capabilityObj[id];
+    return field?.setable === true && typeof field.value === 'boolean' ? id : undefined;
+}
+
 export function assembleDeviceSnapshot(params: {
     identity: ParsedDeviceIdentity;
     deps: DeviceTransportParseDeps;
@@ -240,7 +252,9 @@ export function assembleDeviceSnapshot(params: {
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
     // a second call could not disagree — but one call is one fewer thing to keep
     // in step.
-    const binaryCapabilityId = getControlCapabilityId({
+    const binaryCapabilityId = effectiveDevice.selectedBinarySwitch !== undefined
+        ? resolveSelectedBinaryCapability(effectiveDevice, overlay)
+        : getControlCapabilityId({
         deviceClassKey,
         capabilities: overlay.capabilities,
     });
@@ -297,6 +311,8 @@ export function assembleDeviceSnapshot(params: {
         targetPowerConfig: overlay.targetPowerConfig,
         automaticPowerControl: overlay.automaticPowerControl,
         binaryCapabilityId: control.binaryCapabilityId,
+        ...(effectiveDevice.selectedBinarySwitch
+            ? { binarySwitchSelectionRevision: effectiveDevice.selectedBinarySwitch.revision } : {}),
         expectedPowerKw: powerEstimate.expectedPowerKw,
         expectedPowerSource: powerEstimate.expectedPowerSource,
         powerCapable: control.powerCapable,

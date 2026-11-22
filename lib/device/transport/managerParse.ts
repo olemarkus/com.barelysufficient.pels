@@ -15,6 +15,7 @@ export function resolveDeviceCapabilities(params: {
   deviceId: string;
   deviceLabel: string;
   capabilities: string[];
+  selectedBinaryCapability?: string;
 }): { targetCaps: string[]; hasPower: boolean } | null {
   const {
     deviceClassKey,
@@ -26,7 +27,7 @@ export function resolveDeviceCapabilities(params: {
   const targetCaps = capabilities.includes('measure_temperature')
     ? getTargetCaps(capabilities)
     : [];
-  const hasOnOff = capabilities.includes('onoff');
+  const hasOnOff = params.selectedBinaryCapability !== undefined || capabilities.includes('onoff');
   // A home battery or solar device has neither a temperature target nor `onoff`, so it
   // would otherwise be dropped by the no-control gate below. Keep it as a power-capable,
   // NON-controllable snapshot entry (battery level + charge/discharge power, or PV

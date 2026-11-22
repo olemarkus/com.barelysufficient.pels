@@ -47,6 +47,7 @@ export const TARGET_WAITING_LOG_REPEAT_MS = 60 * 1000;
 export type PendingBinaryLiveDevice = {
   id: string;
   name: string;
+  binarySwitchGeneration?: number;
   binaryCommandConfirmation:
     | { state: 'unavailable' }
     | {

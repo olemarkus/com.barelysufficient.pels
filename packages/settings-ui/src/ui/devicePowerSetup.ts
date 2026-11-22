@@ -1,14 +1,16 @@
 import type { DevicePowerSetupEntry, DevicePowerSetupRead } from '../../../contracts/src/settingsUi/devices.ts';
 import { readDevicePowerSources, type DevicePowerSources }
   from '../../../shared-domain/src/settings/devicePowerSources.ts';
-import { DEVICE_POWER_SOURCES } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { readDeviceBinarySwitches, type DeviceBinarySwitches }
+  from '../../../shared-domain/src/settings/deviceBinarySwitches.ts';
+import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { createSelectOption } from './materialSelectOption.ts';
 import type { MaterialSelectOptionElement } from './components.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './deviceDetail/settingsWrite.ts';
 
 let entries: readonly DevicePowerSetupEntry[] = [];
-const writePowerSource = createSerializedAsyncRunner();
+const writeDeviceSetup = createSerializedAsyncRunner();
 
 export const acceptDevicePowerSetup = (read: DevicePowerSetupRead | undefined): void => {
   if (read) entries = read.devices;
@@ -49,7 +51,7 @@ const unavailableReason = (state: DevicePowerSetupEntry['sources'][number]['stat
   }
 };
 
-const persist = (entry: DevicePowerSetupEntry, source: string | null) => writePowerSource(async () => {
+const persistPowerSource = (entry: DevicePowerSetupEntry, source: string | null) => {
   const accepted = Object.fromEntries(entries.flatMap((device) => (
     device.configured ? [[device.id, device.sourceId]] : []
   )));
@@ -67,7 +69,32 @@ const persist = (entry: DevicePowerSetupEntry, source: string | null) => writePo
       return next;
     },
   });
-});
+};
+
+const persistBinarySwitch = (entry: DevicePowerSetupEntry, switchId: string | null) => (
+  writeFreshSetting<DeviceBinarySwitches>({
+    key: DEVICE_BINARY_SWITCHES,
+    context: 'device setup',
+    logMessage: 'Failed to save device on/off control',
+    toastMessage: 'Could not save on/off control.',
+    fallbackValue: Object.fromEntries(entries.flatMap((device) => (
+      device.binarySwitchId ? [[device.id, device.binarySwitchId]] : []
+    ))),
+    readFresh: readDeviceBinarySwitches,
+    mutate: (current) => {
+      const unchanged = Object.entries(current).filter(([id]) => id !== entry.id);
+      return Object.fromEntries(switchId ? [...unchanged, [entry.id, switchId]] : unchanged);
+    },
+  })
+);
+
+const persist = (entry: DevicePowerSetupEntry, sourceId: string | null, switchId: string | null) => (
+  writeDeviceSetup(async () => {
+    if ((entry.binarySwitchId ?? null) !== switchId && !await persistBinarySwitch(entry, switchId)) return false;
+    if (entry.configured && entry.sourceId === sourceId) return true;
+    return (await persistPowerSource(entry, sourceId)) !== null;
+  })
+);
 
 function fillSourceOptions(source: SetupSelect, entry: DevicePowerSetupEntry | undefined): void {
   source.replaceChildren();
@@ -82,16 +109,43 @@ function fillSourceOptions(source: SetupSelect, entry: DevicePowerSetupEntry | u
   }
 }
 
+function fillSwitchOptions(control: SetupSelect, entry: DevicePowerSetupEntry | undefined): void {
+  control.replaceChildren();
+  addOption(control, 'Default', '');
+  for (const option of entry?.binarySwitches ?? []) addOption(control, option.name, option.id);
+  if (entry?.binarySwitchId && !entry.binarySwitches?.some(({ id }) => id === entry.binarySwitchId)) {
+    addOption(control, 'Selected switch unavailable', entry.binarySwitchId).disabled = true;
+  }
+}
+
+function updateSwitchOptions(
+  control: SetupSelect, entry: DevicePowerSetupEntry | undefined, previousSwitch: string,
+): { visible: boolean; value: string; hint: string } {
+  const switches = entry?.binarySwitches ?? [];
+  const visible = Boolean(entry?.binarySwitchId) || switches.some(({ id }) => id !== 'onoff');
+  fillSwitchOptions(control, entry);
+  const keepSwitch = switches.some(({ id }) => id === previousSwitch);
+  const value = keepSwitch ? previousSwitch : entry?.binarySwitchId ?? '';
+  const available = value === '' || switches.some(({ id }) => id === value);
+  const hint = available
+    ? 'Choose which switch PELS uses for power limiting.' : 'PELS cannot use this switch right now.';
+  return { visible, value, hint };
+}
+
 export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
   const root = document.getElementById('device-power-setup');
   const target = document.querySelector<SetupSelect>('#device-power-setup-target');
   const source = document.querySelector<SetupSelect>('#device-power-setup-source');
   const help = document.getElementById('device-power-setup-help');
+  const switchField = document.getElementById('device-power-setup-binary-field');
+  const control = document.querySelector<SetupSelect>('#device-power-setup-binary');
+  const switchHelp = document.getElementById('device-power-setup-binary-help');
   const save = document.querySelector<HTMLElement & { disabled: boolean }>('#device-power-setup-save');
-  if (!root || !target || !source || !help || !save) return;
+  if (!root || !target || !source || !help || !switchField || !control || !switchHelp || !save) return;
   root.hidden = entries.length === 0;
   const previousTarget = target.value;
   const previousSource = source.value;
+  const previousSwitch = control.value;
   target.replaceChildren();
   addOption(target, 'Select a device', '');
   for (const entry of entries) {
@@ -100,6 +154,13 @@ export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
   if (entries.some((entry) => entry.id === previousTarget)) target.value = previousTarget;
 
   const selected = () => entries.find((entry) => entry.id === target.value);
+  const updateSave = (): void => {
+    const entry = selected();
+    const changedSourceUnavailable = source.selectedOptions[0]?.disabled === true && source.value !== entry?.sourceId;
+    const changedSwitchUnavailable = control.selectedOptions[0]?.disabled === true
+      && control.value !== entry?.binarySwitchId;
+    save.disabled = entry === undefined || changedSourceUnavailable || changedSwitchUnavailable;
+  };
   const updateSource = (preserveSelection: boolean): void => {
     const entry = selected();
     fillSourceOptions(source, entry);
@@ -110,20 +171,28 @@ export function renderDevicePowerSetup(refresh: () => Promise<void>): void {
     const hint = entry ? devicePowerSetupHint(entry.id) : null;
     help.textContent = hint ?? 'Choose an unmanaged socket you use to measure this device.';
     source.disabled = entry === undefined;
-    save.disabled = entry === undefined || source.selectedOptions[0]?.disabled === true;
+    const switchOptions = updateSwitchOptions(control, entry, preserveSelection ? previousSwitch : '');
+    control.value = switchOptions.value;
+    switchField.hidden = !switchOptions.visible;
+    switchHelp.textContent = switchOptions.hint;
+    updateSave();
   };
   target.onchange = () => updateSource(false);
-  source.onchange = () => { save.disabled = source.selectedOptions[0]?.disabled === true; };
+  source.onchange = updateSave;
+  control.onchange = updateSave;
   save.onclick = async () => {
     const entry = selected();
     if (!entry || save.disabled) return;
     target.disabled = true;
     source.disabled = true;
+    control.disabled = true;
     save.disabled = true;
     try {
-      if (await persist(entry, source.value || null)) await refresh();
+      await persist(entry, source.value || null, control.value || null);
+      await refresh();
     } finally {
       target.disabled = false;
+      control.disabled = false;
       updateSource(false);
     }
   };

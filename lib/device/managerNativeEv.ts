@@ -535,6 +535,7 @@ export function resolveCandidateCapabilities(
     ReturnType<typeof resolveFlowCapabilityOverlay>,
     'capabilities' | 'controlAdapter' | 'steppedLoadProfile' | 'pendingSteppedLoad'
   >,
+  selectedBinaryCapability?: string,
 ): { targetCaps: string[]; hasPower: boolean } | null {
   const { deviceClassKey, deviceId, deviceLabel } = identity;
   const { capabilities, controlAdapter, steppedLoadProfile, pendingSteppedLoad } = overlay;
@@ -553,6 +554,7 @@ export function resolveCandidateCapabilities(
     deviceId,
     deviceLabel,
     capabilities,
+    selectedBinaryCapability,
   });
   if (resolved) return resolved;
   // A stepped-load profile is an independent control facet. Missing or invalid

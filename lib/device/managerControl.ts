@@ -35,10 +35,8 @@ export function getCurrentOn(
       evchargerCharging: getEvCharging(capabilityObj),
     });
   }
-  if (binaryCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value === 'boolean') {
-    return capabilityObj.onoff.value;
-  }
-  return undefined;
+  const value = binaryCapabilityId === undefined ? undefined : capabilityObj[binaryCapabilityId]?.value;
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 export function resolveEvCurrentOn(params: {

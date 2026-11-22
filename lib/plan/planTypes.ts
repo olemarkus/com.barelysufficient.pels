@@ -559,7 +559,7 @@ type CarriedInputKey =
   | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'
   | 'priority' | 'expectedPowerSource' | 'control' | 'budgetExempt' | 'available'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'targetPowerClaimNeeded' | 'residualKw'
-  | 'phaseFootprint';
+  | 'phaseFootprint' | 'binarySwitchGeneration';
 
 type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   relayShedDecision?: import('../planContract/executionPlan').RelayShedDecision;

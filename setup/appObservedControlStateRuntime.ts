@@ -77,8 +77,8 @@ function buildExternalOffHoldHooks(
 ): Pick<ExternalOffHoldSyncDeps, 'hasPendingBinaryCommand' | 'clearRecentBinaryOffCommand'> {
   return {
     hasPendingBinaryCommand: subHomeHooks?.hasPendingBinaryCommand
-      ?? ((deviceId) => (
-        ctx.planEngine?.hasAttributablePendingBinaryCommand(deviceId) === true
+      ?? ((deviceId, generation) => (
+        ctx.planEngine?.hasAttributablePendingBinaryCommand(deviceId, generation) === true
       )),
     clearRecentBinaryOffCommand: subHomeHooks?.clearRecentBinaryOffCommand
       ?? ((deviceId) => {

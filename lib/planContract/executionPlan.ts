@@ -25,9 +25,14 @@ export type PlannedBinaryCommand = RelayShedDecision & {
   deviceId: string;
   name: string;
   desiredOn: boolean;
+  binarySwitchGeneration?: number;
   source: 'controlled' | 'uncontrolled';
 };
-export type PlannedReleaseCommand = PlannedReleaseIntent & { deviceId: string; name: string };
+export type PlannedReleaseCommand = PlannedReleaseIntent & {
+  deviceId: string;
+  name: string;
+  binarySwitchGeneration?: number;
+};
 /**
  * How this cycle's step command moves the device. It rides only beside the
  * desired state it was resolved for: the step it commands is `desired.stepId`,

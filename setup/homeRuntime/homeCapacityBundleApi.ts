@@ -237,8 +237,8 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       pendingBinaryCommandStore: planEngine.pendingBinaryCommandStore,
       observeDeviceEvidence: planService.observeDeviceEvidence.bind(planService),
       syncLivePlanState: planService.syncLivePlanState.bind(planService),
-      hasPendingBinaryCommand: (deviceId) => (
-        planEngine.hasAttributablePendingBinaryCommand(deviceId)
+      hasPendingBinaryCommand: (deviceId, generation) => (
+        planEngine.hasAttributablePendingBinaryCommand(deviceId, generation)
       ),
       clearRecentBinaryOffCommand: (deviceId) => (
         planEngine.clearRecentBinaryOffCommand(deviceId)),

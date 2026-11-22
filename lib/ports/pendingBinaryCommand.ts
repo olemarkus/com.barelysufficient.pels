@@ -6,6 +6,7 @@ type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
 export type PendingBinaryCommand = {
   dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
+  binarySwitchGeneration?: number;
   startedMs: number;
   /**
    * How long the command waits to be confirmed: the device's window when it

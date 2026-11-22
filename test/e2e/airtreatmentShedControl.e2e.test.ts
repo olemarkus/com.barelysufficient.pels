@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
+import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEVICE_BINARY_SWITCHES } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
@@ -151,6 +151,31 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     await drainUntilCalledWith(putSpy, cap('thermostat-1', 'target_temperature'), pelsCapabilityWrite(10));
 
     expect(putSpy).toHaveBeenCalledWith(cap('thermostat-1', 'target_temperature'), pelsCapabilityWrite(10));
+    expect(onoffWrites(putSpy)).toHaveLength(0);
+  });
+
+  it('sheds through the configured heating switch rather than the device mains', async () => {
+    enableCapacity('spa', 1);
+    const heating = 'onoff.heating';
+    mockHomeyInstance.settings.set(DEVICE_BINARY_SWITCHES, { spa: heating });
+    const spa = buildTemperatureApiDevice({
+      id: 'spa', class: 'other', capabilities: ['measure_power', 'onoff', heating], measurePower: 2000,
+    });
+    stubSdk({ spa: {
+      ...spa,
+      capabilitiesObj: {
+        ...spa.capabilitiesObj,
+        [heating]: { id: heating, value: true, setable: true, lastUpdated: new Date().toISOString() },
+      },
+    } }, 5000);
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('spa', heating), pelsCapabilityWrite(false));
+
+    expect(putSpy).toHaveBeenCalledWith(cap('spa', heating), pelsCapabilityWrite(false));
     expect(onoffWrites(putSpy)).toHaveLength(0);
   });
 

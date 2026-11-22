@@ -32,7 +32,7 @@ export function parseHomeyDevicePayload(value: unknown): HomeyDeviceLike | null 
   if (typeof id !== 'string' || typeof name !== 'string' || typeof deviceClass !== 'string') return null;
   if (!isNonEmptyString(driverId) || !isNonEmptyString(ownerUri) || typeof available !== 'boolean') return null;
   if (!isStringList(capabilities) || !isUnknownRecord(capabilitiesObj)) return null;
-  const { genericSetupEnabled: _genericSetupEnabled, ...payload } = value;
+  const { genericSetupEnabled: _genericSetupEnabled, selectedBinarySwitch: _selectedBinarySwitch, ...payload } = value;
   return {
     ...payload,
     id,

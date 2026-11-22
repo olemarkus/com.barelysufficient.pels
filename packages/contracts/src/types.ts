@@ -640,6 +640,8 @@ export type ObservedDeviceState = {
     // consumers must treat its absence exactly like the old fabricated `currentOn:
     // true` ("may always draw, so stays sheddable").
     binaryControl?: { on: boolean };
+    /** Opaque transport authority for an explicitly configurable binary binding. */
+    binarySwitchGeneration?: number;
     evCharging?: boolean;
     /** Timestamp of the raw `evcharger_charging` boolean-axis observation. */
     evChargingObservedAtMs?: number;

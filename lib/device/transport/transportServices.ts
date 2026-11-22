@@ -1,5 +1,6 @@
 import { isIgnoredOwnStepEcho } from './nativeSteppedRealtime';
 import { withAcceptedCapabilityReport } from './deviceReadContract';
+import type { OwnCapabilityWrite } from './ownCapabilityWrites';
 import { isEvObserved } from '../../../packages/shared-domain/src/evObservedState';
 import { isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
 import type { EvCarLinkEventEmitter, EvCarLinkProducer } from '../evCarLinkProducer';
@@ -50,6 +51,9 @@ export class RealtimeIngestService {
   ) {}
 
   handleDeviceUpdate(device: HomeyDeviceLike): void {
+    if (this.reader.snapshotStore.binarySwitches.selection(device)) {
+      this.reader.snapshotStore.noteRealtimeSwitchRead(device.id, Date.now());
+    }
     handleRealtimeDeviceUpdateEvent(this, device);
     const target = this.reader.externalPower?.targetForSocket(device.id);
     if (target) {
@@ -112,6 +116,57 @@ export class RealtimeIngestService {
     else this.deviceConfiguration.remove(deviceId);
   }
 
+  private discardStaleSwitchEcho(
+    deviceId: string, capabilityId: string, echoed: OwnCapabilityWrite | undefined,
+  ): boolean {
+    const store = this.reader.snapshotStore;
+    if (!echoed?.binaryAuthority || store.binarySwitches.allows(deviceId, echoed.binaryAuthority.generation)) {
+      return false;
+    }
+    if (store.getSnapshotByDeviceId(deviceId)?.binaryCapabilityId === capabilityId) {
+      this.observationBridge.state.requestReadAfterWrite(deviceId);
+    }
+    return true;
+  }
+
+  private acceptCapabilityReport(
+    device: HomeyDeviceLike, capabilityId: string, value: unknown, echo: boolean,
+  ): boolean {
+    if (device.selectedBinarySwitch?.id === capabilityId) {
+      return this.handleSelectedSwitchReport(device, capabilityId, value);
+    }
+    if (!isIgnoredOwnStepEcho(capabilityId, echo)) {
+      this.reader.snapshotStore.updateAcceptedRawDevice(
+        withAcceptedCapabilityReport(device, capabilityId, value, Date.now()),
+      );
+    }
+    return false;
+  }
+
+  private handleSelectedSwitchReport(raw: HomeyDeviceLike, capabilityId: string, value: unknown): boolean {
+    const store = this.reader.snapshotStore;
+    if (store.binarySwitches.selection(raw)?.id !== capabilityId || !raw.selectedBinarySwitch?.declaredReadableSwitch) {
+      return true;
+    }
+    const now = Date.now();
+    store.noteRealtimeSwitchRead(raw.id, now);
+    if (typeof value !== 'boolean') {
+      const capabilitiesObj = Object.fromEntries(
+        Object.entries(raw.capabilitiesObj).filter(([id]) => id !== capabilityId),
+      );
+      store.updateAcceptedRawDevice({
+        ...raw, capabilities: raw.capabilities.filter((id) => id !== capabilityId), capabilitiesObj,
+      });
+      this.binaryEvidence.clearInvalidControlPayload(raw.id, capabilityId);
+      this.rebuildFromAcceptedRead(raw.id);
+      return true;
+    }
+    store.updateAcceptedRawDevice(withAcceptedCapabilityReport(raw, capabilityId, value, now));
+    if (store.getSnapshotByDeviceId(raw.id)?.binaryCapabilityId === capabilityId) return false;
+    this.rebuildFromAcceptedRead(raw.id);
+    return true;
+  }
+
   private handleExternalPowerReport(deviceId: string, capabilityId: string): boolean {
     const power = this.reader.externalPower;
     if (!power) return false;
@@ -134,6 +189,7 @@ export class RealtimeIngestService {
     const { deviceId, capabilityId } = source
       ? getDeviceAdapter(source).routeReport(source, reportedCapabilityId)
       : { deviceId: homeyDeviceId, capabilityId: reportedCapabilityId };
+    if (this.discardStaleSwitchEcho(deviceId, capabilityId, echoed)) return;
     if (echoed !== undefined && this.reader.shouldTrackRealtimeDevice(deviceId)) {
       this.observationProducers.temperature.observeTimedOutEcho(deviceId, echoed.transactionId, Date.now());
     }
@@ -141,11 +197,7 @@ export class RealtimeIngestService {
     // retain them. Follow the step lane's echo policy: native current echoes
     // are accepted observations; other local writes are not.
     const raw = this.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
-    if (!isIgnoredOwnStepEcho(capabilityId, pelsEcho) && raw) {
-      this.reader.snapshotStore.updateAcceptedRawDevice(
-        withAcceptedCapabilityReport(raw, capabilityId, value, Date.now()),
-      );
-    }
+    if (raw && this.acceptCapabilityReport(raw, capabilityId, value, pelsEcho)) return;
     if (this.handleExternalPowerReport(deviceId, capabilityId)) return;
     const session = this.reader.chargingCurrentControl.sessions;
     this.reader.chargingCurrentControl.synchronizeTrust();

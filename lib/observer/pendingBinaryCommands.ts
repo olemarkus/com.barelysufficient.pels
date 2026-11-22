@@ -39,6 +39,7 @@ export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;
 export type BinaryCommandLifecycleEvent = {
   deviceId: string;
   desired: boolean;
+  binarySwitchGeneration?: number;
   startedAtMs?: number;
   settledAtMs?: number;
 };
@@ -70,6 +71,7 @@ export type BinaryCommandLifecycleListener = {
 export class PendingBinaryCommandStore {
   private readonly recentConfirmedOffByDevice = new Map<string, {
     confirmedAtMs: number;
+    binarySwitchGeneration?: number;
   }>();
 
   constructor(
@@ -88,7 +90,8 @@ export class PendingBinaryCommandStore {
     // the entry. Flipping on device id alone would mark the REPLACEMENT
     // accepted on the strength of its predecessor's transport call, letting an
     // echo settle a command whose own write may not have been accepted yet.
-    if (pending.desired !== command.desired) return;
+    if (pending.desired !== command.desired || pending.binarySwitchGeneration !== command.binarySwitchGeneration
+      || (command.startedAtMs !== undefined && pending.startedMs !== command.startedAtMs)) return;
     this.backing[deviceId] = { ...pending, dispatchState: 'accepted' };
     this.lifecycle?.onDispatchAccepted?.({
       deviceId,
@@ -110,10 +113,14 @@ export class PendingBinaryCommandStore {
   }
 
   recordDispatchFailed(deviceId: string, command: BinaryCommandLifecycleEvent): void {
+    const pending = this.backing[deviceId];
+    if (pending?.binarySwitchGeneration !== command.binarySwitchGeneration
+      || (command.startedAtMs !== undefined && (pending?.startedMs !== command.startedAtMs
+        || pending.desired !== command.desired))) return;
     this.lifecycle?.onDispatchFailed?.({
       ...command,
       deviceId,
-      startedAtMs: this.backing[deviceId]?.startedMs,
+      startedAtMs: pending?.startedMs,
       settledAtMs: Date.now(),
     });
   }
@@ -165,7 +172,9 @@ export class PendingBinaryCommandStore {
    * pending window, an unconfirmed OFF without transaction attribution is
    * indistinguishable from a user's manual action and must remain eligible to start an external-off hold.
    */
-  recordConfirmedBinaryCommand(deviceId: string, desired: boolean, confirmedAtMs = Date.now()): void {
+  recordConfirmedBinaryCommand(
+    deviceId: string, desired: boolean, confirmedAtMs = Date.now(), binarySwitchGeneration?: number,
+  ): void {
     const current = this.recentConfirmedOffByDevice.get(deviceId);
     if (desired) {
       if (
@@ -175,16 +184,18 @@ export class PendingBinaryCommandStore {
       }
       return;
     }
-    if (current && current.confirmedAtMs > confirmedAtMs) return;
-    this.recentConfirmedOffByDevice.set(deviceId, { confirmedAtMs });
+    if (current && current.binarySwitchGeneration === binarySwitchGeneration
+        && current.confirmedAtMs > confirmedAtMs) return;
+    this.recentConfirmedOffByDevice.set(deviceId, { confirmedAtMs, binarySwitchGeneration });
   }
 
   hasRecentConfirmedOff(
     deviceId: string,
     nowMs = Date.now(),
+    binarySwitchGeneration?: number,
   ): boolean {
     const recent = this.recentConfirmedOffByDevice.get(deviceId);
-    if (!recent) return false;
+    if (!recent || recent.binarySwitchGeneration !== binarySwitchGeneration) return false;
     if ((nowMs - recent.confirmedAtMs) >= RECENT_CONFIRMED_BINARY_OFF_MS) {
       // This is NOT the eviction `hasActiveCommand` forbids a predicate: the map
       // is private to the store, so the delete fires no lifecycle callback and
@@ -244,8 +255,11 @@ export class PendingBinaryCommandStore {
    */
   isBinaryChangeAttributableToPels(
     deviceId: string,
+    binarySwitchGeneration?: number,
   ): boolean {
-    return this.hasActiveCommand(deviceId) || this.hasRecentConfirmedOff(deviceId);
+    const pending = this.peek(deviceId);
+    return (pending?.binarySwitchGeneration === binarySwitchGeneration && this.hasActiveCommand(deviceId))
+      || this.hasRecentConfirmedOff(deviceId, Date.now(), binarySwitchGeneration);
   }
 
   /** Clear the pending entry for a device, if any. */
@@ -387,6 +401,10 @@ function reconcilePendingEntry(
   nowMs: number,
   onConfirmed: ((confirmation: PendingBinaryConfirmation) => void) | undefined,
 ): boolean {
+  if (liveDevice && liveDevice.binarySwitchGeneration !== pending.binarySwitchGeneration) {
+    store.clear(deviceId);
+    return true;
+  }
   if (!isPendingBinaryCommandActive({
     pending,
     nowMs,
@@ -461,7 +479,9 @@ function confirmPendingBinaryCommand(
   onConfirmed: ((confirmation: PendingBinaryConfirmation) => void) | undefined,
 ): void {
   const deviceId = liveDevice.id;
-  store.recordConfirmedBinaryCommand(deviceId, pending.desired, observation.observedAtMs);
+  store.recordConfirmedBinaryCommand(
+    deviceId, pending.desired, observation.observedAtMs, pending.binarySwitchGeneration,
+  );
   onConfirmed?.({
     liveDevice,
     pending,
