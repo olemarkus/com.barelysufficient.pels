@@ -1,5 +1,4 @@
-import { readDevicePowerSources, type DevicePowerSources }
-  from '../../packages/shared-domain/src/settings/devicePowerSources';
+import { DeviceBinarySwitchSettings, readDevicePowerSources, type DevicePowerSources } from './deviceSetupSettings';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeEvChargingSessionSmoothingSettings, type EvChargingSessionSmoothingSettings }
   from '../../packages/shared-domain/src/settings/evChargingSessionSmoothing';
@@ -230,7 +229,17 @@ export class DeviceControlSettings {
     shedBehaviors: {},
   };
 
-  constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'>) {}
+  private readonly binarySwitchSettings: DeviceBinarySwitchSettings;
+
+  constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'>) {
+    this.binarySwitchSettings = new DeviceBinarySwitchSettings(settings);
+  }
+
+  getBinarySwitchSelection(deviceId: string): string | undefined {
+    return this.binarySwitchSettings.selection(deviceId);
+  }
+  getBinarySwitchRevision(deviceId: string): number { return this.binarySwitchSettings.revision(deviceId); }
+  isBinarySwitchWriteCurrent(deviceId: string): boolean { return this.binarySwitchSettings.isCurrent(deviceId); }
 
   /** The runtime-held Power-limit control map (`controllable_devices`), the one the planner reads. */
   get controllableDevices(): BooleanMap { return this.maps.controllable; }
@@ -460,6 +469,7 @@ export class DeviceControlSettings {
       powerControlModes: this.readPowerControlModes(),
       shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
+    this.binarySwitchSettings.reload();
   }
 
   private readPowerSources(): DevicePowerSources {

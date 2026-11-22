@@ -1,3 +1,4 @@
+import { sameBinarySwitchBinding } from './transport/binarySwitchBinding';
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -32,7 +33,6 @@ import type { ObservedCapabilityChange } from '../ports/observedStateEvents';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
-const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
 type RealtimeControlCapabilityId = NonNullable<TransportDeviceSnapshot['binaryCapabilityId']>;
 
 type RealtimeReconcileResult = {
@@ -182,9 +182,10 @@ export function reconcileRealtimeDeviceUpdate(params: {
   );
   if (!temperatureMerge.admitted) return dropSnapshotEntry(latestSnapshot, snapshotIndex);
 
-  const explicitBinaryValueAccepted = applyExplicitControlObservationFromUpdate(device, parsed, previous);
+  const previousSwitchRead = previous && sameBinarySwitchBinding(previous, parsed) ? previous : null;
+  const explicitBinaryValueAccepted = applyExplicitControlObservationFromUpdate(device, parsed, previousSwitchRead);
   const preservedBinaryControlObservation = explicitBinaryValueAccepted === null
-    ? getPreservedBinaryControlObservation(previous, parsed)
+    ? getPreservedBinaryControlObservation(previousSwitchRead, parsed)
     : undefined;
   if (preservedBinaryControlObservation) {
     applyBinaryControlObservation(parsed, previous, preservedBinaryControlObservation);
@@ -261,7 +262,6 @@ function resolveExplicitControlObservation(
 ): ExplicitControlObservation | null {
   const binaryCapabilityId = parsed.binaryCapabilityId;
   if (typeof binaryCapabilityId !== 'string') return null;
-  if (!isRealtimeControlCapability(binaryCapabilityId)) return null;
   const observation = getExplicitObservedBinaryObservation(
     device,
     binaryCapabilityId,
@@ -444,7 +444,8 @@ function getControlRelevantRealtimeChanges(
   if (!previous) return [];
 
   const changes: ObservedCapabilityChange[] = [];
-  if (options.binaryValueExplicitlyObserved) {
+  if (options.binaryValueExplicitlyObserved && sameBinarySwitchBinding(previous, next)
+      && (next.binarySwitchSelectionRevision === undefined || previous.binaryControlObservation !== undefined)) {
     const binaryChange = resolveBinaryReconcileChange(previous, next);
     if (binaryChange.previousValue !== binaryChange.nextValue) changes.push(binaryChange);
   }
@@ -533,12 +534,4 @@ function hasStateOfChargeObservationChanged(
   return previousSoc?.capabilityId !== nextSoc.capabilityId
     || previousSoc?.report.percent !== nextSoc.report.percent
     || previousSoc?.report.observedAtMs !== nextSoc.report.observedAtMs;
-}
-
-export function isRealtimeControlCapability(
-  capabilityId: string,
-): capabilityId is (typeof REALTIME_CONTROL_CAPABILITY_IDS)[number] {
-  return REALTIME_CONTROL_CAPABILITY_IDS.includes(
-    capabilityId as (typeof REALTIME_CONTROL_CAPABILITY_IDS)[number],
-  );
 }

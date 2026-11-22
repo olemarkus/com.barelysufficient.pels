@@ -63,6 +63,7 @@ export const applyBinaryRestoreWithSnapshot = async (
   deviceId: string,
   name: string,
   snapshot: ExecutorDeviceSnapshot,
+  binarySwitchGeneration?: number,
 ): Promise<boolean> => {
   // "Leave off until turned on again", at the FUNNEL: every controlled-restore
   // lane ends here — the plan lane, and the smart-task deferred `binary_restore`
@@ -88,7 +89,7 @@ export const applyBinaryRestoreWithSnapshot = async (
     try {
       const outcome = await runBinaryControl(
         ctx,
-        { deviceId, name, desired: true, logContext: 'capacity' },
+        { deviceId, name, desired: true, logContext: 'capacity', binarySwitchGeneration },
         snapshot,
       );
       if (!outcome.applied) return false;

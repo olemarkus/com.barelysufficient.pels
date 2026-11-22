@@ -130,6 +130,12 @@ ID. A socket ID chooses another device's live watts. An entry with value
 `ExternalDevicePower` resolves socket eligibility and links observations.
 See [external device power](state-management/external-device-power.md).
 
+`device_binary_switches` belongs to DeviceControlSettings. It maps a Homey device
+ID to the user's selected Homey on/off capability ID. Removing an entry restores
+the device's default binary control. Device transport validates the exact
+capability against the accepted read and relates plan intents and write
+confirmations to the current binding generation.
+
 `capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
 Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders

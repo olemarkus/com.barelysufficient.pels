@@ -59,6 +59,8 @@ export type BinaryControlTransport = {
 
 const logger = getLogger('executor/binary-dispatch');
 
+type IssuedBinaryControlDecision = BinaryControlDecision & { startedAtMs: number };
+
 /**
  * Check command preflight against the binary axis from `getObservedState`,
  * then dispatch through the same command transport. Returns `{ applied: true }`
@@ -113,17 +115,20 @@ export async function dispatchBinaryControlDecision(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
 }): Promise<DispatchBinaryControlResult> {
-  const { decision, transport } = params;
+  const { transport } = params;
+  const decision: IssuedBinaryControlDecision = { ...params.decision, startedAtMs: Date.now() };
   const intent = decision.capacityShed;
   const attempt = intent && transport.relayShed?.begin(intent);
   recordPendingForDispatch(transport.pendingBinaryCommandStore, decision, attempt?.sameValue === true);
   try {
     const outcome = await transport.actuator.apply({
       kind: 'binary', deviceId: decision.deviceId, desired: decision.desired,
+      ...(decision.binarySwitchGeneration !== undefined
+        ? { binarySwitchGeneration: decision.binarySwitchGeneration } : {}),
     });
     if (!outcome.requested) {
       attempt?.finish('failed');
-      transport.pendingBinaryCommandStore.clear(decision.deviceId);
+      clearDispatchedCommand(transport.pendingBinaryCommandStore, decision);
       return { ok: false, reason: 'not_requested' };
     }
     if (outcome.kind !== 'binary') {
@@ -131,7 +136,7 @@ export async function dispatchBinaryControlDecision(params: {
     }
     if (!transport.isAuthorityCurrent()) {
       attempt?.finish('failed');
-      transport.pendingBinaryCommandStore.clear(decision.deviceId);
+      clearDispatchedCommand(transport.pendingBinaryCommandStore, decision);
       return { ok: false, reason: 'not_requested' };
     }
     return handleBinaryOutcome(transport, decision, outcome, attempt);
@@ -141,7 +146,7 @@ export async function dispatchBinaryControlDecision(params: {
     // 4xx/5xx, an actuator that declined. Nothing is in flight, so the entry
     // goes and the next cycle may retry without tripping its own guard.
     transport.pendingBinaryCommandStore.recordDispatchFailed(decision.deviceId, decision);
-    transport.pendingBinaryCommandStore.clear(decision.deviceId);
+    clearDispatchedCommand(transport.pendingBinaryCommandStore, decision);
     emitBinaryCommandFailure({
       decision,
       err: caughtError,
@@ -151,7 +156,7 @@ export async function dispatchBinaryControlDecision(params: {
 }
 
 function handleBinaryOutcome(
-  transport: BinaryControlTransport, decision: BinaryControlDecision,
+  transport: BinaryControlTransport, decision: IssuedBinaryControlDecision,
   outcome: Extract<ActuatorOutcome, { requested: true; kind: 'binary' }>, attempt: RelayShedAttempt | undefined,
 ): DispatchBinaryControlResult {
   if (!outcome.acknowledged && outcome.reason === 'zwave_no_ack') {
@@ -170,21 +175,31 @@ function handleBinaryOutcome(
   return { ok: true };
 }
 
-function recordNoAck(transport: BinaryControlTransport, decision: BinaryControlDecision, err: unknown)
+function recordNoAck(transport: BinaryControlTransport, decision: IssuedBinaryControlDecision, err: unknown)
   : DispatchBinaryControlResult {
   transport.pendingBinaryCommandStore.recordDispatchFailed(decision.deviceId, decision);
-  transport.pendingBinaryCommandStore.clear(decision.deviceId);
+  clearDispatchedCommand(transport.pendingBinaryCommandStore, decision);
   logger.warn({ event: 'binary_command_outcome_unknown', reasonCode: 'zwave_no_ack',
     deviceId: decision.deviceId, deviceName: decision.name, desired: decision.desired, err });
   return { ok: false, reason: 'zwave_no_ack' };
 }
 
+function clearDispatchedCommand(store: PendingBinaryCommandStore, decision: IssuedBinaryControlDecision): void {
+  const current = store.peek(decision.deviceId);
+  if (current?.startedMs === decision.startedAtMs && current.desired === decision.desired
+      && current.binarySwitchGeneration === decision.binarySwitchGeneration) {
+    store.clear(decision.deviceId);
+  }
+}
+
 function recordPendingForDispatch(
-  store: PendingBinaryCommandStore, decision: BinaryControlDecision, sameValueOff: boolean,
+  store: PendingBinaryCommandStore, decision: IssuedBinaryControlDecision, sameValueOff: boolean,
 ): void {
   store.record(decision.deviceId, {
     desired: decision.desired,
-    startedMs: Date.now(),
+    startedMs: decision.startedAtMs,
+    ...(decision.binarySwitchGeneration !== undefined
+      ? { binarySwitchGeneration: decision.binarySwitchGeneration } : {}),
     logContext: decision.logContext,
     ...(sameValueOff ? { relayRepeat: true } : {}),
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),

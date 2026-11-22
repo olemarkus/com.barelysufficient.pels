@@ -33,7 +33,10 @@ export class TransportObservationState {
   readonly ownWrites = new OwnCapabilityWrites();
   private readonly observationSeqByDeviceId = new Map<string, number>();
   private readonly realtimeCapabilityEventTimesByKey = new Map<string, number>();
-  private readonly binarySettleEvidenceByDeviceId = new Map<string, BinaryControlObservation>();
+  private readonly binarySettleEvidenceByDeviceId = new Map<string, {
+    generation: number | undefined;
+    evidence: BinaryControlObservation;
+  }>();
   private readonly pendingTemperatureRecoveryDeviceIds = new Set<string>();
   private readonly writtenDeviceIdsSinceRead = new Set<string>();
   private commandOnUnnamedDevicesSinceRead = false;
@@ -57,17 +60,26 @@ export class TransportObservationState {
   }
 
   getBinarySettleEvidence(deviceId: string): BinaryControlObservation | undefined {
-    const evidence = this.binarySettleEvidenceByDeviceId.get(deviceId);
-    return evidence === undefined ? undefined : cloneBinaryControlObservation(evidence);
+    const current = this.binarySettleEvidenceByDeviceId.get(deviceId);
+    return current === undefined ? undefined : cloneBinaryControlObservation(current.evidence);
   }
 
-  upsertBinarySettleEvidence(deviceId: string, evidence: BinaryControlObservation): BinaryControlObservation {
-    const existing = this.binarySettleEvidenceByDeviceId.get(deviceId);
-    if (existing !== undefined && existing.observedAtMs > evidence.observedAtMs) {
-      return cloneBinaryControlObservation(existing);
-    }
+  readBinarySettleEvidenceForBinding(snapshot: TransportDeviceSnapshot): BinaryControlObservation | undefined {
+    const current = this.binarySettleEvidenceByDeviceId.get(snapshot.id);
+    if (!current || current.generation !== snapshot.binarySwitchGeneration
+        || current.evidence.capabilityId !== snapshot.binaryCapabilityId) return undefined;
+    return cloneBinaryControlObservation(current.evidence);
+  }
+
+  upsertBinarySettleEvidence(
+    snapshot: TransportDeviceSnapshot, evidence: BinaryControlObservation,
+  ): BinaryControlObservation {
+    const existing = this.readBinarySettleEvidenceForBinding(snapshot);
+    if (existing !== undefined && existing.observedAtMs > evidence.observedAtMs) return existing;
     const accepted = cloneBinaryControlObservation(evidence);
-    this.binarySettleEvidenceByDeviceId.set(deviceId, accepted);
+    this.binarySettleEvidenceByDeviceId.set(snapshot.id, {
+      evidence: accepted, generation: snapshot.binarySwitchGeneration,
+    });
     return cloneBinaryControlObservation(accepted);
   }
 
@@ -93,8 +105,10 @@ export class TransportObservationState {
     capabilityId: string,
   ): void {
     if (snapshot !== undefined && this.ownWrites.settledByEcho(write, snapshot, capabilityId)) return;
-    this.writtenDeviceIdsSinceRead.add(deviceId);
+    this.requestReadAfterWrite(deviceId);
   }
+
+  requestReadAfterWrite(deviceId: string): void { this.writtenDeviceIdsSinceRead.add(deviceId); }
 
   /**
    * A command whose devices no capability write names: a Flow card or a

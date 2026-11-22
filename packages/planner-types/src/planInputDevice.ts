@@ -536,6 +536,8 @@ export type PlanInputDeviceBase = {
   // three-valued reason/UI label) is producer-resolved at `toPlanDevice`, for
   // every device (`resolveObservedCurrentState` always answers).
   currentState: ObservedCurrentState;
+  /** Passed through unchanged to binary execution when a binding can be reconfigured. */
+  binarySwitchGeneration?: number;
   /**
    * What the device draws while running, as the producer resolved it. REQUIRED —
    * never null, never undefined, never absent. The twin of `currentDrawKw` below:

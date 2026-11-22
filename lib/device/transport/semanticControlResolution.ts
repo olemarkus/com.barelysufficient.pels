@@ -32,7 +32,9 @@ export async function requestBinaryControl(
     deviceId: string,
     desired: boolean,
     triggerFlow: (id: string, capabilityId: string, desired: boolean) => Promise<void>,
-): Promise<NativeRelayOffResult | void> {
+    binarySwitchGeneration?: number,
+): Promise<NativeRelayOffResult | void | false> {
+    if (!store.binarySwitches.allows(deviceId, binarySwitchGeneration)) return false;
     store.externalPower?.assertAllowsWrite(deviceId);
     const snapshot = store.getSnapshotByDeviceId(deviceId);
     const capabilityId = snapshot?.binaryCapabilityId;

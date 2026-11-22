@@ -89,6 +89,8 @@ export type DevicePowerSetupEntry = {
   name: string;
   configured: boolean;
   sourceId: string | null;
+  binarySwitchId?: string | null;
+  binarySwitches?: readonly { id: string; name: string }[];
   usedBy: string | null;
   sourceReady: boolean;
   sources: { id: string; name: string; state: 'selectable' | 'managed' | 'assigned' | 'unavailable' }[];

@@ -21,6 +21,7 @@ import type {
 } from './executablePlan';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type { ExecutorCommandContext } from './executorCommandContext';
+import type { BinaryControlDecision } from './binaryControlPreflight';
 import {
   applyBinaryRestoreWithSnapshot,
   canApplyRestoreSnapshot,
@@ -45,7 +46,7 @@ export const applyBinaryRestore = async (
   const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (snapshot && isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity') || !snapshot) return false;
-  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot);
+  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration);
 };
 
 export const applyUncontrolledBinaryRestore = async (
@@ -69,7 +70,10 @@ export const applyUncontrolledBinaryRestore = async (
   try {
     const outcome = await runBinaryControl(
       ctx,
-      { deviceId: intent.deviceId, name: intent.name, desired: true, logContext: 'capacity_control_off' },
+      {
+        deviceId: intent.deviceId, name: intent.name, desired: true, logContext: 'capacity_control_off',
+        binarySwitchGeneration: intent.binarySwitchGeneration,
+      },
       entry,
     );
     return outcome.applied;
@@ -100,7 +104,10 @@ export const applyBinarySheddingToDevice = async (
   if (shouldSkipShedding(ctx.execution.actuation, deviceId, deviceName, snapshot, repeat)) return false;
   ctx.execution.actuation.beginShed(deviceId);
   try {
-    return await turnOffDevice(ctx, deviceId, deviceName, snapshot, false, false, capacityShed);
+    return await turnOffDevice(ctx, {
+      deviceId, name: deviceName, desired: false, logContext: 'capacity', capacityShed,
+      binarySwitchGeneration: capacityShed?.binarySwitchGeneration,
+    }, snapshot, false);
   } finally {
     ctx.execution.actuation.endShed(deviceId);
   }
@@ -120,12 +127,13 @@ export const applyBinaryLifecycleRelease = async (
   deviceName: string,
   snapshot: ExecutorDeviceSnapshot | undefined,
   forceAgainstReleasedOpposing: boolean,
+  binarySwitchGeneration?: number,
 ): Promise<boolean> => turnOffDevice(
   ctx,
-  deviceId,
-  deviceName,
+  {
+    deviceId, name: deviceName, desired: false, logContext: 'capacity', lifecycleRelease: true, binarySwitchGeneration,
+  },
   snapshot ?? ctx.readDevice(deviceId),
-  true,
   forceAgainstReleasedOpposing,
 );
 
@@ -163,6 +171,7 @@ export const applyDeferredBinaryCommand = async (
       intent.name,
       snapshot,
       options.forceAgainstReleasedOpposing === true,
+      intent.binarySwitchGeneration,
     );
   }
 
@@ -173,18 +182,16 @@ export const applyDeferredBinaryCommand = async (
   // only added a way for the two to disagree.
   if (isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity')) return false;
-  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot);
+  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration);
 };
 
 const turnOffDevice = async (
   ctx: ExecutorCommandContext,
-  deviceId: string,
-  name: string,
+  command: BinaryControlDecision,
   snapshot: ExecutorDeviceSnapshot | undefined,
-  lifecycleRelease: boolean,
   forceAgainstReleasedOpposing: boolean,
-  capacityShed?: ExecutableBinaryIntent,
 ): Promise<boolean> => {
+  const { deviceId, name, lifecycleRelease = false } = command;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (!controlPlan) {
     const hasTarget = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
@@ -210,7 +217,7 @@ const turnOffDevice = async (
   try {
     const outcome = await runBinaryControl(
       ctx,
-      { deviceId, name, desired: false, logContext: 'capacity', lifecycleRelease, capacityShed },
+      command,
       snapshot,
       forceAgainstReleasedOpposing,
     );

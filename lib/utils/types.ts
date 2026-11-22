@@ -54,12 +54,16 @@ export type CapabilityValue<T> = {
     excludeMin?: number;
     excludeMax?: number;
     setable?: boolean;
+    getable?: boolean;
+    title?: string;
     lastUpdated?: string | number | Date | null;
 };
 
 export type HomeyDeviceLike = {
     /** Device-layer opt-in, populated after the SDK boundary. */
     genericSetupEnabled?: boolean;
+  /** Operator-selected Homey switch, resolved by transport after the SDK boundary. */
+  selectedBinarySwitch?: { id: string; revision: number; declaredReadableSwitch: boolean };
     id: string;
     name: string;
     class: string;

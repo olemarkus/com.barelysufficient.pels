@@ -273,6 +273,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     expectedPowerSource: dev.expectedPowerSource,
     controlAdapter: dev.controlAdapter,
+    ...(dev.binarySwitchGeneration !== undefined ? { binarySwitchGeneration: dev.binarySwitchGeneration } : {}),
     // `commandableNow` MUST be carried. Dropping it is what forced consumers
     // back onto raw-field re-derivation against fields the plan device does not
     // have, so every plan-device `isCommandableNow` answered from absence and

@@ -82,6 +82,8 @@ export type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energ
 
 export type TransportDeviceSnapshot =
   Omit<TargetDeviceSnapshot, 'binaryControlObservation'> & {
+    /** The selected settings revision before the transport commits an effective binding. */
+    binarySwitchSelectionRevision?: number;
     binaryControlObservation?: TransportBinaryControlObservation;
     nativeRelayMeter?: import('../../packages/contracts/src/types').NativeRelayMeter;
     measuredPowerReading?: MeteredPowerReading;

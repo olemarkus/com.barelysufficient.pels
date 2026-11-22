@@ -23,7 +23,9 @@ const emitExecutorDebug = getDebugEmitter('executor', 'plan');
  * gates consult. Narrower than the raw producer `TargetDeviceSnapshot` — the
  * full snapshot remains assignable, so callers pass it unchanged.
  */
-export type BinaryControlDecisionSnapshot = Pick<ObservedDeviceState, 'targets' | 'binaryControl'>
+export type BinaryControlDecisionSnapshot = Pick<
+  ObservedDeviceState, 'targets' | 'binaryControl' | 'binarySwitchGeneration'
+>
   & Pick<
     DeviceDescriptor,
     'capabilities' | 'canSetControl'
@@ -75,6 +77,7 @@ export type BinaryControlDecision = {
    * diagnostic-only release recorder and never stamp the capacity cooldown markers.
    */
   lifecycleRelease?: boolean;
+  binarySwitchGeneration?: number;
   capacityShed?: PlannedBinaryCommand;
 };
 
@@ -95,6 +98,7 @@ export function decideBinaryControl(
   snapshot: BinaryControlDecisionSnapshot | undefined,
   forceAgainstReleasedOpposing: boolean,
 ): BinaryControlDecision | null {
+  if (command.binarySwitchGeneration !== snapshot?.binarySwitchGeneration) return null;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (command.capacityShed && deps.relayShed && !deps.relayShed.allowsOrdinary(command.capacityShed)
     && !deps.relayShed.allowsRepeat(command.capacityShed)) {
@@ -155,7 +159,7 @@ function shouldSkipBinaryControl(
     });
     return true;
   }
-  if (hasPendingMatchingBinaryCommand(deps.pendingBinaryCommandStore, deviceId, desired)) {
+  if (hasPendingMatchingBinaryCommand(deps.pendingBinaryCommandStore, decision)) {
     emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
@@ -190,7 +194,7 @@ function shouldSkipAlreadyMatched(
   // materialize after this decision.
   if (
     forceAgainstReleasedOpposing
-    || hasOppositePendingBinaryCommand(deps.pendingBinaryCommandStore, deviceId, desired)
+    || hasOppositePendingBinaryCommand(deps.pendingBinaryCommandStore, decision)
   ) {
     return false;
   }
@@ -200,27 +204,25 @@ function shouldSkipAlreadyMatched(
 
 function hasOppositePendingBinaryCommand(
   pendingBinaryCommandStore: PendingBinaryCommandStore,
-  deviceId: string,
-  desired: boolean,
+  decision: BinaryControlDecision,
 ): boolean {
   // `peek` (not `get`): freshness-eviction stays owned by the matching-pending
   // guard below; this read only asks whether an un-superseded opposite intent
   // exists right now.
-  const pending = pendingBinaryCommandStore.peek(deviceId);
-  if (!pending) return false;
-  return pending.desired !== desired;
+  const pending = pendingBinaryCommandStore.peek(decision.deviceId);
+  return pending !== undefined && pending.binarySwitchGeneration === decision.binarySwitchGeneration
+    && pending.desired !== decision.desired;
 }
 
 function hasPendingMatchingBinaryCommand(
   pendingBinaryCommandStore: PendingBinaryCommandStore,
-  deviceId: string,
-  desired: boolean,
+  decision: BinaryControlDecision,
 ): boolean {
   // `get` (not `peek`): this read owns freshness-eviction — a stale
   // in-flight entry must not suppress a fresh actuation. Eviction is
   // performed once, inside the store.
-  const pending = pendingBinaryCommandStore.get(deviceId);
-  if (!pending) return false;
-  return pending.desired === desired;
+  const pending = pendingBinaryCommandStore.get(decision.deviceId);
+  return pending !== undefined && pending.binarySwitchGeneration === decision.binarySwitchGeneration
+    && pending.desired === decision.desired;
 }
 

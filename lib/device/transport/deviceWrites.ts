@@ -1,3 +1,6 @@
+import {
+  captureBinaryWriteAuthority, normalizeCapabilityValue, readBackFromSnapshot, resolveSdkWrite, targetsBinarySwitch,
+} from './capabilityWriteResolution';
 import { resolveCommandableNow } from '../../../packages/shared-domain/src/commandableNow';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
 import type { HomeBatteryAppActions } from '../homeBatteryAppActions';
@@ -21,14 +24,13 @@ import { getDebugEmitter } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import { resolveHomeyHttpStatusCode } from '../../utils/homeyHttpStatusError';
-import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
-import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
-import type { HomeBatteryCapabilityBinding, SwitchWrite } from '../deviceAdapter';
+import { getDeviceAdapter } from '../deviceAdapterRegistry';
+import type { HomeBatteryCapabilityBinding } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
@@ -52,19 +54,6 @@ import type { WriteAnswerKind, WriteAnswerTimes } from './writeAnswerTimes';
 
 const emitTransportDebug = getDebugEmitter('devices', 'devices');
 
-function normalizeCapabilityValue(
-    snapshotStore: TransportSnapshotStore,
-    deviceId: string,
-    capabilityId: string,
-    value: unknown,
-): unknown {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-    const snapshot = snapshotStore.getSnapshotByDeviceId(deviceId);
-    const target = snapshot?.targets.find((entry) => entry.id === capabilityId);
-    if (!target) return value;
-    return normalizeTargetCapabilityValue({ target, value });
-}
-
 function emitCapabilityWriteDebug(
     event: 'device_capability_write_requested' | 'device_capability_write_accepted',
     deviceId: string,
@@ -81,36 +70,6 @@ function emitCapabilityWriteDebug(
         valueType: typeof value,
         writeValue: write.value,
     });
-}
-
-/**
- * Where a write to a device's binary switch lands in the SDK: the switch, or the
- * capability the transport routes it to. An Easee may carry out its charging
- * switch through the charger current instead (`resolveEaseeSwitchWrite`).
- * The settle evidence PELS waits for stays on the switch it asked for, and only
- * the switch is recorded as PELS's own write: an Easee current's echo is always an
- * observation (`nativeSteppedRealtime.ts`). An Easee under built-in control reads
- * its switch from the plug state and the current, not from what Homey holds for
- * it, so PELS's own write to the switch is no observation of it either. A
- * request the device needs no command for (an Easee session the car completed,
- * with built-in control off) sends nothing.
- */
-function resolveSwitchSdkWrite(
-    snapshot: TransportDeviceSnapshot,
-    trackedDevice: HomeyDeviceLike | undefined,
-    requested: CapabilityWrite,
-): SwitchWrite {
-    return trackedDevice
-        ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested)
-        : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested);
-}
-
-/** A non-switch write, under the capability the device's integration writes it to. */
-function resolveCapabilitySdkWrite(
-    trackedDevice: HomeyDeviceLike | undefined,
-    requested: CapabilityWrite,
-): CapabilityWrite {
-    return trackedDevice ? getDeviceAdapter(trackedDevice).capabilityWrite(trackedDevice, requested) : requested;
 }
 
 type DrivableSurface =Extract<HomeBatteryControlSurface, { kind: 'setpoint' } | { kind: 'app_actions' }>;
@@ -223,8 +182,9 @@ export class DeviceWriteService {
   }
 
   private assertBinaryWriteAllowed(snapshot: TransportDeviceSnapshot | undefined, requested: CapabilityWrite): void {
-    if (requested.capabilityId !== 'onoff' && requested.capabilityId !== 'evcharger_charging') return;
-    if (!snapshot || snapshot.binaryCapabilityId !== requested.capabilityId) {
+    if (!targetsBinarySwitch(snapshot, requested.capabilityId)) return;
+    if (!snapshot || snapshot.binaryCapabilityId !== requested.capabilityId
+        || !this.snapshotStore.binarySwitches.allows(snapshot.id, snapshot.binarySwitchGeneration)) {
       throw new Error('Binary control is unavailable for this device.');
     }
     if (requested.value !== true) return;
@@ -234,32 +194,20 @@ export class DeviceWriteService {
     if (this.needsNativeControlReadBeforeStart(snapshot)) {
       throw new Error('Native power control metadata is unavailable for starting this device.');
     }
+    this.currentLimitPolicy.assertStartAllowed(snapshot);
   }
 
   async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    const binaryAuthority = captureBinaryWriteAuthority(snapshotBefore, capabilityId);
     this.assertControlAllowed(deviceId);
-    const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
+    const normalizedValue = normalizeCapabilityValue(snapshotBefore, capabilityId, value);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);
-    if (snapshotBefore?.binaryCapabilityId === capabilityId && normalizedValue === true) {
-      this.currentLimitPolicy.assertStartAllowed(snapshotBefore);
-    }
-    // `readBackAsWritten`: whether PELS reads the requested capability back as
-    // Homey holds it. Only then may the local write stand in for a read that
-    // Homey dated before it.
-    const sdkWrite: SwitchWrite = snapshotBefore?.binaryCapabilityId === capabilityId
-        ? resolveSwitchSdkWrite(
-          this.currentLimitPolicy.projectSwitchSnapshot(snapshotBefore),
-          this.snapshotStore.getTrackedRawDevice(deviceId),
-          requested,
-        )
-        : {
-            kind: 'write',
-            write: resolveCapabilitySdkWrite(this.snapshotStore.getTrackedRawDevice(deviceId), requested),
-            readBackAsWritten: true,
-        };
+    const sdkWrite = resolveSdkWrite(
+      snapshotBefore, this.snapshotStore.getTrackedRawDevice(deviceId), requested, this.currentLimitPolicy,
+    );
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
     if (sdkWrite.kind === 'none') {
         emitTransportDebug({ event: 'device_capability_write_skipped', deviceId, capabilityId,
@@ -272,7 +220,9 @@ export class DeviceWriteService {
     incPerfCounter(`device_action.capability.${capabilityId}`);
     // The Homey device behind the view: the write and its echo are the Homey device's.
     const homeyDeviceId = this.snapshotStore.sourceDeviceId(deviceId);
-    const ownWrite = this.observationState.ownWrites.begin(homeyDeviceId, write.capabilityId, Date.now());
+    const ownWrite = this.observationState.ownWrites.begin(
+      homeyDeviceId, write.capabilityId, Date.now(), binaryAuthority,
+    );
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
         deviceId,
@@ -295,7 +245,10 @@ export class DeviceWriteService {
         write,
     );
 
-    if (readBackAsWritten && (!snapshotBefore || getSnapshotAdapter(snapshotBefore).readBackAfterWrite)) {
+    if (binaryAuthority && !this.snapshotStore.binarySwitches.allows(deviceId, binaryAuthority.generation)) {
+      return normalizedValue;
+    }
+    if (readBackAsWritten && readBackFromSnapshot(snapshotBefore)) {
         recordLocalWriteObservation({
             state: this.observationState.getObservationState(),
             latestSnapshot: this.snapshotStore.getSnapshot(),
@@ -311,7 +264,7 @@ export class DeviceWriteService {
     // on a later read: a pulled value Homey dated before it gives way to PELS's
     // value (`observationMerge`, `retained_fresher`) until a newer observation
     // arrives.
-    if (snapshotBefore?.binaryCapabilityId === capabilityId) {
+    if (binaryAuthority) {
         this.dispatchObservedStateForDevice(deviceId, capabilityId);
     }
 

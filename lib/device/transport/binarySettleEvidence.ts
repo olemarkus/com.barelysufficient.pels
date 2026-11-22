@@ -94,19 +94,12 @@ export class BinarySettleEvidenceService {
     return true;
 }
 
-    private upsertBinarySettleEvidence(
-    deviceId: string,
-    evidence: BinaryControlObservation,
-): BinaryControlObservation {
-    return this.observationState.upsertBinarySettleEvidence(deviceId, evidence);
-}
-
     private applyBinarySettleEvidenceToSnapshot(
     snapshot: TransportDeviceSnapshot,
     evidence: BinaryControlObservation,
 ): BinaryControlObservation {
     const mutableSnapshot = snapshot;
-    const acceptedEvidence = this.upsertBinarySettleEvidence(snapshot.id, evidence);
+    const acceptedEvidence = this.observationState.upsertBinarySettleEvidence(snapshot, evidence);
     if (acceptedEvidence.capabilityId === 'evcharger_charging') {
         const rawPermission = acceptedEvidence.observedCapabilityIds.includes('evcharger_charging');
         if (rawPermission) mutableSnapshot.evCharging = acceptedEvidence.observedValue;
@@ -125,9 +118,8 @@ export class BinarySettleEvidenceService {
     private applyCachedBinarySettleEvidenceToSnapshot(
     snapshot: TransportDeviceSnapshot,
 ): void {
-    const cached = this.observationState.getBinarySettleEvidence(snapshot.id);
+    const cached = this.observationState.readBinarySettleEvidenceForBinding(snapshot);
     if (!cached) return;
-    if (cached.capabilityId !== snapshot.binaryCapabilityId) return;
     this.applyBinarySettleEvidenceToSnapshot(snapshot, cached);
 }
 
@@ -182,7 +174,8 @@ export class BinarySettleEvidenceService {
         !payload.present
         || typeof payload.value !== 'boolean'
         || payload.observedAtMs === undefined
-        || this.isRetainedBinaryObservation(payload, previousSnapshot)
+        || (previousSnapshot?.binarySwitchGeneration === snapshot.binarySwitchGeneration
+            && this.isRetainedBinaryObservation(payload, previousSnapshot))
     ) {
         this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
         return;
@@ -230,7 +223,7 @@ private isRetainedBinaryObservation(
     } else {
         mutableSnapshot.binaryControl = { on: value };
     }
-    if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging') {
+    if (capabilityId === snapshot.binaryCapabilityId) {
         const evidence: BinaryControlObservation = {
             valid: true,
             capabilityId,

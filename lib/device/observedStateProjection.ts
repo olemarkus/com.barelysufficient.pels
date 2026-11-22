@@ -44,6 +44,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),
         available: snapshot.available,
+        ...projectBinaryControl(snapshot),
         ...projectReportedStepObservation(snapshot),
         ...projectMeasuredPowerObservation(snapshot),
         ...(snapshot.nativeRelayMeter ? { nativeRelayMeter: copyNativeRelayMeter(snapshot.nativeRelayMeter) } : {}),
@@ -56,7 +57,6 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
             mode: { ...snapshot.inverterObservation.mode },
         } } : {}),
     };
-    if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
     if (snapshot.evChargingObservedAtMs !== undefined) {
         projected.evChargingObservedAtMs = snapshot.evChargingObservedAtMs;
@@ -80,17 +80,25 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
             target: { ...snapshot.temperature.target },
         };
     }
-    if (snapshot.binaryControlObservation !== undefined) {
-        projected.binaryControlObservation = {
-            ...snapshot.binaryControlObservation,
-            observedCapabilityIds: [...snapshot.binaryControlObservation.observedCapabilityIds],
-        };
-    }
     if (snapshot.lastFreshDataMs !== undefined) projected.lastFreshDataMs = snapshot.lastFreshDataMs;
     if (snapshot.lastUpdated !== undefined) projected.lastUpdated = snapshot.lastUpdated;
     return projected;
 }
 /* eslint-enable functional/immutable-data */
+
+function projectBinaryControl(snapshot: TransportDeviceSnapshot): Pick<
+    ProjectedObservedDeviceState, 'binaryControl' | 'binaryControlObservation' | 'binarySwitchGeneration'
+> {
+    const { binaryControl, binaryControlObservation, binarySwitchGeneration } = snapshot;
+    return {
+        ...(binaryControl !== undefined ? { binaryControl: { on: binaryControl.on } } : {}),
+        ...(binarySwitchGeneration !== undefined ? { binarySwitchGeneration } : {}),
+        ...(binaryControlObservation !== undefined ? { binaryControlObservation: {
+            ...binaryControlObservation,
+            observedCapabilityIds: [...binaryControlObservation.observedCapabilityIds],
+        } } : {}),
+    };
+}
 
 /**
  * The measured-power cluster as consumers may read it: the reading, when it

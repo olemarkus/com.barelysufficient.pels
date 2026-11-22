@@ -11,11 +11,22 @@ import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { PolledMeterReads } from './polledMeterReads';
 import { ExternalDevicePower } from './externalDevicePower';
 import type { DeviceTransportOptions } from './transportTypes';
+import { BinarySwitchBindings, type BinarySwitchSettings } from './binarySwitchBinding';
 
 export class TransportSnapshotStore {
   readonly externalPower: ExternalDevicePower | undefined;
+  readonly binarySwitches: BinarySwitchBindings;
 
-  constructor(externalPower?: DeviceTransportOptions['externalPower']) {
+  constructor(externalPower?: DeviceTransportOptions['externalPower'], settings?: DeviceTransportOptions['settings']) {
+    const bindings: BinarySwitchSettings | undefined = settings?.getBinarySwitchSelection
+        && settings.getBinarySwitchRevision && settings.isBinarySwitchWriteCurrent
+      ? {
+        getBinarySwitchSelection: settings.getBinarySwitchSelection.bind(settings),
+        getBinarySwitchRevision: settings.getBinarySwitchRevision.bind(settings),
+        isBinarySwitchWriteCurrent: settings.isBinarySwitchWriteCurrent.bind(settings),
+        getDeviceControlProfile: settings.getDeviceControlProfile.bind(settings),
+      } : undefined;
+    this.binarySwitches = new BinarySwitchBindings(bindings);
     this.externalPower = externalPower && new ExternalDevicePower(
       externalPower.settings, this, externalPower.resolveHome,
     );
@@ -27,6 +38,7 @@ export class TransportSnapshotStore {
   private snapshot: TransportDeviceSnapshot[] = [];
   private snapshotByDeviceId = new Map<string, TransportDeviceSnapshot>();
   private readonly trackedRawDeviceById = new Map<string, HomeyDeviceLike>();
+  private readonly realtimeSwitchReads = new Map<string, number>();
   private latestRawDevices: HomeyDeviceLike[] = [];
   private latestRawDevicePositions = new Map<string, number>();
   private homeyDeviceIds: ReadonlySet<string> | undefined;
@@ -45,7 +57,13 @@ export class TransportSnapshotStore {
     return this.snapshotByDeviceId;
   }
 
+  private stampBinaryBinding(snapshot: TransportDeviceSnapshot): void {
+    const generation = this.binarySwitches.commit(snapshot.id, snapshot.binaryCapabilityId);
+    if (generation !== undefined) Object.assign(snapshot, { binarySwitchGeneration: generation });
+  }
+
   replaceSnapshotEntry(deviceId: string, snapshot: TransportDeviceSnapshot): void {
+    this.stampBinaryBinding(snapshot);
     const index = this.snapshot.findIndex((entry) => entry.id === deviceId);
     if (index === -1) this.snapshot.push(snapshot);
     else this.snapshot[index] = snapshot;
@@ -53,12 +71,18 @@ export class TransportSnapshotStore {
   }
 
   removeSnapshotEntry(deviceId: string): void {
+    this.binarySwitches.commit(deviceId, undefined);
     const index = this.snapshot.findIndex((entry) => entry.id === deviceId);
     if (index !== -1) this.snapshot.splice(index, 1);
     this.snapshotByDeviceId.delete(deviceId);
   }
 
   replaceSnapshot(snapshot: TransportDeviceSnapshot[]): void {
+    const present = new Set(snapshot.map(({ id }) => id));
+    for (const id of this.snapshotByDeviceId.keys()) {
+      if (!present.has(id)) this.binarySwitches.commit(id, undefined);
+    }
+    for (const device of snapshot) this.stampBinaryBinding(device);
     this.snapshot = snapshot;
     this.snapshotByDeviceId = new Map(snapshot.map((device) => [device.id, device]));
   }
@@ -119,6 +143,29 @@ export class TransportSnapshotStore {
   sourceDeviceId(deviceId: string): string {
     const raw = this.getLastAcceptedRawDevice(deviceId);
     return raw ? getDeviceAdapter(raw).sourceDeviceId(raw) : deviceId;
+  }
+
+  noteRealtimeSwitchRead(deviceId: string, receivedAtMs: number): void {
+    this.realtimeSwitchReads.set(deviceId, receivedAtMs);
+  }
+
+  keepNewerSwitchRead(device: HomeyDeviceLike, startedAtMs: number): HomeyDeviceLike {
+    const selected = device.selectedBinarySwitch;
+    if (!selected || (this.realtimeSwitchReads.get(device.id) ?? 0) <= startedAtMs) return device;
+    const newer = this.getLastAcceptedRawDevice(device.id);
+    if (newer?.selectedBinarySwitch?.id !== selected.id
+        || newer.selectedBinarySwitch.revision !== selected.revision) return device;
+    const entry = newer.capabilitiesObj[selected.id];
+    const capabilities = device.capabilities.filter((id) => id !== selected.id);
+    const capabilitiesObj = Object.fromEntries(
+      Object.entries(device.capabilitiesObj).filter(([id]) => id !== selected.id),
+    );
+    return {
+      ...device,
+      selectedBinarySwitch: newer.selectedBinarySwitch,
+      capabilities: entry ? [...capabilities, selected.id] : capabilities,
+      capabilitiesObj: entry ? { ...capabilitiesObj, [selected.id]: entry } : capabilitiesObj,
+    };
   }
 
   /** Replace an existing accepted raw read after an independent capability report. */

@@ -103,6 +103,7 @@ describe('planExecutablePlan', () => {
     });
     const binaryDevice = buildPlanDevice({
       id: 'binary-1',
+      binarySwitchGeneration: 37,
     });
 
     const executablePlan = buildExecutablePlan(planWithDevices([steppedDevice, binaryDevice]));
@@ -137,6 +138,7 @@ describe('planExecutablePlan', () => {
       binary: {
         desiredOn: true,
         source: 'controlled',
+        binarySwitchGeneration: 37,
       },
     });
     expect(executablePlan.devices[1]).not.toHaveProperty('steppedLoad');

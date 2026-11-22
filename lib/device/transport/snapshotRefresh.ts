@@ -586,10 +586,7 @@ export class SnapshotRefreshService {
     if (!fetchResult || this.stopped) return null;
     const { devices: list, fetchSource, failedIds } = fetchResult;
     const { byDeviceId: livePowerByDeviceId, meterReadings } = await resolveLivePowerForRefresh(
-        this,
-        options.includeLivePower !== false,
-        options.meterDeviceIds,
-        list,
+        this, options.includeLivePower !== false, options.meterDeviceIds, list,
     );
     // Accept the inventory before changing any session membership. A transient
     // empty full read must leave both accepted observations and sessions intact.
@@ -601,7 +598,7 @@ export class SnapshotRefreshService {
         'device_fetch',
         this.reader.logger.structuredLog,
         this.reader.snapshotStore.getLastAcceptedRawDevice,
-    ).map((source) => this.reader.externalPower?.mergeSocketRefreshRead(source, start) ?? source));
+    ).map((source) => this.reader.mergeRefreshedBindingReads(source, start)));
     // Only a full inventory can remove companions. Resolve membership before
     // parsing publishes eligibility.
     if (fetchSource === 'raw_manager_devices') {
@@ -672,6 +669,7 @@ export class SnapshotRefreshService {
             ...deviceIds.map((id) => this.reader.snapshotStore.sourceDeviceId(id)),
             ...this.reader.chargingCurrentControl.sessions.observedIds(),
             ...(this.reader.externalPower?.sourcesForTargets(deviceIds) ?? []),
+            ...this.reader.selectedSwitchDeviceIds(),
         ])]),
         acceptedRawDevices,
         fetchSource,

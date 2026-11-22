@@ -124,7 +124,8 @@ function resolveModelCapabilityTypes(
         && (withSteppedControl || !STEPPED_ONLY_CAPABILITY_IDS.has(capabilityId))
         && (capabilityId !== 'target_power_mode' || capabilities.includes('target_power'))
     )));
-    return modelTypes;
+    const selectedId = device.selectedBinarySwitch?.id;
+    return selectedId ? { ...modelTypes, [selectedId]: 'boolean' } : modelTypes;
 }
 
 /**
@@ -173,6 +174,21 @@ export function withAcceptedCapabilityReport(
         ...getDeviceAdapter(device).readRules(device),
     };
     const type = types[capabilityId];
+    const selected = device.selectedBinarySwitch;
+    const metadata = device.capabilitiesObj[capabilityId];
+    if (selected?.id === capabilityId && selected.declaredReadableSwitch && typeof value === 'boolean'
+        && metadata?.setable !== false && metadata?.getable !== false) {
+        return {
+            ...device,
+            capabilities: [...new Set([...device.capabilities, capabilityId])],
+            capabilitiesObj: {
+                ...device.capabilitiesObj,
+                [capabilityId]: {
+                    ...device.capabilitiesObj[capabilityId], value, setable: true, lastUpdated: observedAtMs,
+                },
+            },
+        };
+    }
     if (type === undefined || !isModelValue(capabilityId, value, type)) return device;
     return {
         ...device,
@@ -217,6 +233,7 @@ function resolveReadDescriptorIds(device: HomeyDeviceLike): Set<string> {
     // A real write descriptor is not an observed binary facet.
     descriptors.delete('onoff');
     descriptors.delete('evcharger_charging');
+    if (device.selectedBinarySwitch) descriptors.delete(device.selectedBinarySwitch.id);
     return descriptors;
 }
 
@@ -249,6 +266,7 @@ function resolveModelCapabilities(
         // Binary admission requires the current read's accepted boolean. Native
         // limits retain their own readings/metadata independently of this axis.
         if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging'
+            || capabilityId === device.selectedBinarySwitch?.id
             || (types[capabilityId] === 'boolean' && descriptorIds.has(capabilityId))) return [];
         const entry = previousRead?.capabilitiesObj[capabilityId];
         const type = types[capabilityId];

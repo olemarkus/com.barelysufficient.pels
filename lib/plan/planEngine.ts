@@ -91,7 +91,7 @@ export type PlanEngine = {
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;
   hasPendingBinaryCommands: () => boolean;
-  hasAttributablePendingBinaryCommand: (deviceId: string) => boolean;
+  hasAttributablePendingBinaryCommand: (deviceId: string, binarySwitchGeneration?: number) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
   /** The snapshot refresh's sync: every device in the refreshed snapshot, and cleanup of the ones that left. */

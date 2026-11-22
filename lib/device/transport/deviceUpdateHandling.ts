@@ -244,7 +244,7 @@ export function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiv
 /** The facets a whole-device update can change with no capability event of their own. */
 type ObservedFlushFacets = Pick<TransportDeviceSnapshot,
     'available' | 'binaryCapabilityId' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'
-    | 'externalPowerSocketId' | 'measuredPowerKw' | 'measuredPowerObservedAtMs'>;
+    | 'externalPowerSocketId' | 'measuredPowerKw' | 'measuredPowerObservedAtMs' | 'binarySwitchGeneration'>;
 
 // Dispatch the reconcile's deferred observed-state events — and when it emitted
 // none, still dispatch for an availability flip or a reported-step change. Availability is not a
@@ -288,14 +288,18 @@ function observedFlushFacetsUnchanged(
     current: ObservedFlushFacets,
 ): boolean {
     if (!previous) return false;
-    const externalPowerUnchanged = previous.externalPowerSocketId === current.externalPowerSocketId
-        && (current.externalPowerSocketId === undefined
-            || (previous.measuredPowerKw === current.measuredPowerKw
-                && previous.measuredPowerObservedAtMs === current.measuredPowerObservedAtMs));
-    return externalPowerUnchanged && previous.available === current.available
+    return externalPowerUnchanged(previous, current) && previous.available === current.available
         && previous.binaryCapabilityId === current.binaryCapabilityId
+        && previous.binarySwitchGeneration === current.binarySwitchGeneration
         && previous.reportedStepId === current.reportedStepId
         && previous.reportedStepObservedAtMs === current.reportedStepObservedAtMs
         && previous.acknowledgedStep?.stepId === current.acknowledgedStep?.stepId
         && previous.acknowledgedStep?.observedAtMs === current.acknowledgedStep?.observedAtMs;
+}
+
+function externalPowerUnchanged(previous: ObservedFlushFacets, current: ObservedFlushFacets): boolean {
+    return previous.externalPowerSocketId === current.externalPowerSocketId
+        && (current.externalPowerSocketId === undefined
+            || (previous.measuredPowerKw === current.measuredPowerKw
+                && previous.measuredPowerObservedAtMs === current.measuredPowerObservedAtMs));
 }

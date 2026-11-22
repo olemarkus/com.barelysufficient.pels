@@ -239,7 +239,7 @@ export class DeviceTransport {
         options: DeviceTransportOptions,
     ) {
         this.logger = logger;
-        this.snapshotStore = new TransportSnapshotStore(options.externalPower);
+        this.snapshotStore = new TransportSnapshotStore(options.externalPower, options.settings);
         this.getFlowTriggerCard = options.getFlowTriggerCard;
         // Late-bound: the refresh service is built below, and a zone change can
         // only arrive once the transport is running.
@@ -642,10 +642,10 @@ export class DeviceTransport {
         deviceId: string,
         desired: boolean,
         triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
-    ): Promise<NativeRelayOffResult | void> {
-        return requestBinaryControl(
-            this.snapshotStore, this.writeService, this.observationProducers.evCarLink, deviceId, desired, triggerFlow,
-        );
+        binarySwitchGeneration?: number,
+    ): Promise<NativeRelayOffResult | void | false> {
+        return requestBinaryControl(this.snapshotStore, this.writeService, this.observationProducers.evCarLink,
+            deviceId, desired, triggerFlow, binarySwitchGeneration);
     }
 
     /** Resolve the exact semantic setpoint before executor pending/retry preflight. */

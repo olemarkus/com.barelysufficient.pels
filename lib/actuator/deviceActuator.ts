@@ -26,7 +26,10 @@ const applyBinary = async (
   command: Extract<DeviceCommand, { kind: 'binary' }>,
 ): Promise<ActuatorOutcome> => {
   try {
-    const relay = await transport.requestBinaryControl(command.deviceId, command.desired);
+    const relay = command.binarySwitchGeneration === undefined
+      ? await transport.requestBinaryControl(command.deviceId, command.desired)
+      : await transport.requestBinaryControl(command.deviceId, command.desired, command.binarySwitchGeneration);
+    if (relay === false) return { requested: false };
     if (relay) return { requested: true, kind: 'binary', ...relay };
     return { requested: true, kind: 'binary', acknowledged: true };
   } catch (err) {
