@@ -40,18 +40,34 @@ function register(entries: ScheduleEntry[] = [entry(modeSchedule()), entry(taskS
     return found.schedule;
   });
   const write = vi.fn(() => {});
-  const owner: Pick<ScheduleService, 'definitions' | 'lookup' | 'write'> = { definitions, lookup, write };
+  const prepareModeBy = vi.fn();
+  const owner: Pick<ScheduleService, 'definitions' | 'lookup' | 'write' | 'listModes' | 'prepareModeBy'> = {
+    definitions, lookup, write, listModes: () => snapshot.modes, prepareModeBy,
+  };
   const getTaskDevices = vi.fn(() => [waterHeater()]);
   registerScheduleFlowCards(mockHomeyInstance as unknown as FlowHomeyLike, owner, getTaskDevices);
   const run = (id: string, args: unknown = {}) => mockHomeyInstance.flow._actionCardListeners[id](args);
   const autocomplete = (id: string, arg: string, query = '') => (
     mockHomeyInstance.flow._actionCardAutocompleteListeners[id][arg](query)
   );
-  return { snapshot, definitions, lookup, write, run, autocomplete, getTaskDevices };
+  return { snapshot, definitions, lookup, write, run, autocomplete, getTaskDevices, prepareModeBy };
 }
 
 describe('schedule Flow cards', () => {
   beforeEach(() => resetMockHomey());
+
+  it('selects a mode and validates the ready-by time before preparing it', async () => {
+    const { autocomplete, run, prepareModeBy } = register();
+    await expect(autocomplete('prepare_operating_mode', 'mode', 'nig')).resolves.toEqual([
+      { id: 'Night', name: 'Night' },
+    ]);
+    await expect(run('prepare_operating_mode', { mode: {}, ready_by: '07:30' })).rejects.toThrow('Select a mode');
+    await expect(run('prepare_operating_mode', { mode: 'Night', ready_by: '7:30' })).rejects.toThrow('Ready by must be HH:mm');
+    expect(prepareModeBy).not.toHaveBeenCalled();
+
+    await expect(run('prepare_operating_mode', { mode: { id: 'Night' }, ready_by: ' 07:30 ' })).resolves.toBe(true);
+    expect(prepareModeBy).toHaveBeenCalledExactlyOnceWith('Night', '07:30');
+  });
 
   it('can select a mode schedule when the task-device read is unavailable', async () => {
     const { autocomplete, getTaskDevices } = register([entry(modeSchedule())]);

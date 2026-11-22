@@ -11,8 +11,7 @@ import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDev
 import { resolveObjectiveWriteRefusalMessage } from '../packages/shared-domain/src/objectiveWriteStrings';
 import type { FlowCardDeps } from './registerFlowCards';
 import { setSmartTaskDeadline } from '../lib/objectives/deferredObjectives/smartTaskCommands';
-
-const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+import { validateReadyBy } from './flowArgParsers';
 
 // A device-scoped write can refuse to persist on a transient untrustworthy
 // settings read / provisional ownership fence. The Flow-card run listeners are
@@ -34,14 +33,6 @@ export const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
 export const isOfferedDevice = (deps: FlowCardDeps) => (device: TargetDeviceSnapshot): boolean => (
   deps.hasMainHomeSmartTaskAuthority(device.id)
 );
-
-export const validateReadyBy = (raw: unknown): string => {
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!LOCAL_TIME_PATTERN.test(value)) {
-    throw new Error('Ready by must be HH:mm in 24-hour local time (e.g. "07:00").');
-  }
-  return value;
-};
 
 export const validateNumberInRange = (
   raw: unknown,

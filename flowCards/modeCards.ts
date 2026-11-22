@@ -15,6 +15,7 @@ import {
   readFlowStringArg,
 } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
+import { getModeOptions } from './modeArgs';
 
 const emitFlowDebug = getDebugEmitter('flow', 'settings');
 
@@ -27,7 +28,7 @@ export function registerOperatingModeChangedTrigger(deps: FlowCardDeps): void {
     return chosenMode.toLowerCase() === stateMode.toLowerCase();
   });
   operatingModeChangedTrigger.registerArgumentAutocompleteListener('mode', async (query: string) => (
-    getModeOptions(deps, query)
+    getModeOptions(deps.getAllModes(), query)
   ));
 }
 
@@ -123,7 +124,7 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     return true;
   });
   setOperatingModeCard.registerArgumentAutocompleteListener('mode', async (query: string) => (
-    getModeOptions(deps, query)
+    getModeOptions(deps.getAllModes(), query)
   ));
 
   const hasCapacityCond = deps.homey.flow.getConditionCard('has_capacity_for');
@@ -153,14 +154,6 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     return matches;
   });
   isOperatingModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => (
-    getModeOptions(deps, query)
+    getModeOptions(deps.getAllModes(), query)
   ));
-}
-
-function getModeOptions(deps: FlowCardDeps, query: string): Array<{ id: string; name: string }> {
-  const q = (query || '').toLowerCase();
-  return Array.from(deps.getAllModes())
-    .filter((m) => !q || m.toLowerCase().includes(q))
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-    .map((m) => ({ id: m, name: m }));
 }

@@ -5,10 +5,11 @@ import type {
   SettingsUiSmartTaskDevicesResponse, SmartTaskCandidateDevice,
 } from '../packages/contracts/src/smartTaskEdit';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
-import { readFlowDeviceArg, readFlowStringArg } from './flowArgParsers';
+import { readFlowDeviceArg, readFlowRawArg, readFlowStringArg, validateReadyBy } from './flowArgParsers';
+import { getModeOptions } from './modeArgs';
 import { deadlineLabels } from '../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
 
-type ScheduleCardsOwner = Pick<ScheduleService, 'definitions' | 'lookup' | 'write'>;
+type ScheduleCardsOwner = Pick<ScheduleService, 'definitions' | 'lookup' | 'write' | 'listModes' | 'prepareModeBy'>;
 type ScheduleOption = FlowAutocompleteResult & { description: string };
 
 function selectedSchedule(owner: ScheduleCardsOwner, args: unknown): Schedule {
@@ -91,6 +92,17 @@ export function registerScheduleFlowCards(
       return true;
     });
   }
+
+  const prepareMode = homey.flow.getActionCard('prepare_operating_mode');
+  prepareMode.registerArgumentAutocompleteListener('mode', async (query: string) => (
+    getModeOptions(schedules.listModes(), query)
+  ));
+  prepareMode.registerRunListener(async (args: unknown) => {
+    const mode = readFlowStringArg(args, 'mode');
+    if (!mode) throw new Error('Select a mode.');
+    schedules.prepareModeBy(mode, validateReadyBy(readFlowRawArg(args, 'ready_by')));
+    return true;
+  });
 
   const condition = homey.flow.getConditionCard('schedule_is_enabled');
   condition.registerArgumentAutocompleteListener('schedule', scheduleOptions);

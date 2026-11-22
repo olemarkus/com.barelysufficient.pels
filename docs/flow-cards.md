@@ -84,6 +84,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Report power usage** | Feeds live meter data into PELS. Required unless the power source is Power meter. |
 | **Set capacity limit** | Changes the configured hard cap dynamically. It does not turn on **Capacity limit**. |
 | **Set operating mode** | Switches between stored modes such as Home or Night. |
+| **Prepare operating mode** | Heats eligible devices early and switches mode at the ready-by time. |
 | **Set daily budget** | Sets the daily budget from a Flow. Use `0` to disable daily budget. |
 | **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts, the grid import limit and hard-cap protection. |
 | **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
@@ -112,7 +113,9 @@ The device-aware available-power condition includes built-in hysteresis after re
 
 ### Mode switching
 
-For a fixed time, choose **Settings > Schedules > New schedule > Mode**. Use **Set operating mode** in a Flow for a presence change, a button press or another Homey event.
+For a fixed time, choose **Settings > Schedules > New schedule > Mode**. Use **Set operating mode** in a Flow to switch modes immediately.
+
+Use **Prepare operating mode** when a Homey event should schedule a mode change with a ready-by time. For example, when you start your trip home, have **Home** ready by 18:00. The **Mode preparation** panel on **Smart tasks** shows the plan as soon as it applies. Each run replaces the previous Flow request, including any edits made in **Schedules**. You can also pause or delete the request there.
 
 ### Temperature changes from a Flow
 

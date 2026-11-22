@@ -1,0 +1,30 @@
+{
+  "title": {
+    "en": "Prepare operating mode"
+  },
+  "titleFormatted": {
+    "en": "Have [[mode]] ready by [[ready_by]]"
+  },
+  "hint": {
+    "en": "PELS heats eligible devices early and switches mode at the selected time. If today's time has passed, it uses tomorrow. Each run replaces the previous Flow request. Pausing mode schedules pauses this request too."
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "autocomplete",
+      "title": {
+        "en": "Mode"
+      },
+      "placeholder": {
+        "en": "Choose a mode"
+      }
+    },
+    {
+      "name": "ready_by",
+      "type": "time",
+      "title": {
+        "en": "Ready by"
+      }
+    }
+  ]
+}

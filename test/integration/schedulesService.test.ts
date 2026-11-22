@@ -127,6 +127,93 @@ describe('schedule owner', () => {
     expect(fixture().create().read().entries).toEqual([]);
   });
 
+  it.each([
+    { now: '2026-10-28T08:59:00Z', time: '10:00', at: '2026-10-28T09:00:00Z' },
+    { now: '2026-10-28T09:00:00Z', time: '10:00', at: '2026-10-29T09:00:00Z' },
+    { now: '2026-10-25T00:15:00Z', time: '02:30', at: '2026-10-25T00:30:00Z' },
+    { now: '2026-10-25T00:45:00Z', time: '02:30', at: '2026-10-26T01:30:00Z' },
+  ])('previews Flow preparation for $at after a Flow runs at $now', ({ now, time, at }) => {
+    const f = fixture();
+    f.setNow(now);
+    const service = f.create();
+    service.start();
+
+    service.prepareModeBy('Home', time);
+
+    expect(service.read(true).preparationPlan).toMatchObject({
+      state: 'ready', scheduleName: 'Mode preparation from Flow', destinationMode: 'Home', atMs: Date.parse(at),
+    });
+  });
+
+  it('reports an unavailable deadline during a clock change', () => {
+    const f = fixture();
+    f.setNow('2026-03-28T03:00:00Z');
+    const service = f.create();
+
+    expect(() => service.prepareModeBy('Home', '02:30')).toThrow('Choose a future date and time.');
+    expect(service.definitions()).toEqual([]);
+  });
+
+  it('checks mode eligibility and schedule conflicts before replacing the Flow request', () => {
+    const f = fixture();
+    const service = f.create();
+    service.write({ type: 'save', schedule: modeSchedule() });
+    service.prepareModeBy('Home', '10:10');
+    const accepted = service.definitions();
+
+    expect(() => service.prepareModeBy('Missing', '10:30')).toThrow(/mode.*available/i);
+    expect(() => service.prepareModeBy('Night', '10:00')).toThrow('Another enabled schedule');
+    expect(service.definitions()).toEqual(accepted);
+  });
+
+  it('reuses the Flow request during an in-flight occurrence and executes the replacement once', async () => {
+    const f = fixture();
+    const service = f.create();
+    service.start();
+    service.prepareModeBy('Home', '10:00');
+    const original = service.definitions()[0];
+    f.execute.mockImplementationOnce(async () => {
+      f.setMode('Home');
+      service.prepareModeBy('Night', '10:02');
+    });
+
+    f.setNow('2026-10-28T09:00:10Z');
+    await service.tick();
+    expect(service.definitions()).toEqual([{
+      ...original, at: '10:02', action: { type: 'mode', mode: 'Night', prepare: true },
+    }]);
+    expect(f.receipts.get(original.id)).toMatchObject({ localOccurrence: '2026-10-28|10:00' });
+    expect(service.read(true).preparationPlan).toMatchObject({
+      state: 'ready', currentMode: 'Home', destinationMode: 'Night', atMs: Date.parse('2026-10-28T09:02:00Z'),
+    });
+
+    f.setNow('2026-10-28T09:02:10Z');
+    await service.tick();
+    await service.tick();
+    expect(f.execute).toHaveBeenCalledTimes(2);
+    expect(f.receipts.get(original.id)).toMatchObject({
+      localOccurrence: '2026-10-28|10:02', lastResult: 'Mode changed.',
+    });
+  });
+
+  it('honors the mode schedule pause when a Flow arms preparation', async () => {
+    const f = fixture();
+    const service = f.create();
+    service.start();
+    service.write({ type: 'set_mode_schedules_enabled', enabled: false });
+    service.prepareModeBy('Home', '10:00');
+    expect(service.read(true)).toMatchObject({
+      entries: [{ state: 'paused' }], preparationPlan: { state: 'waiting' },
+    });
+    expect(service.readModePreparation()).toBeUndefined();
+
+    f.setNow('2026-10-28T09:00:10Z');
+    await service.tick();
+    service.write({ type: 'set_mode_schedules_enabled', enabled: true });
+    await service.tick();
+    expect(f.execute).not.toHaveBeenCalled();
+  });
+
   it('keeps preparation through a late tick and records readiness with the scheduled change', async () => {
     const f = fixture();
     f.values.set('schedule.morning', { ...modeSchedule(), action: { type: 'mode', mode: 'Home', prepare: true } });
