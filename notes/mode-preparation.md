@@ -34,6 +34,17 @@ apply as usual. Preparation grants no extra control authority, reservations or
 budget exemptions. The current mode still sets device priorities until the
 switch. A prepared room can arrive late.
 
+## Plan on Smart tasks
+
+The **Mode preparation** panel shows the next eligible mode change and each
+heater's estimated early target time. An open Smart task or temperature override
+shows what is taking precedence now. The panel links to the Smart task and to the
+mode schedule.
+
+The estimates use current mode targets and the same heating lead as preparation.
+An intervening mode change can alter which targets apply. Available power and the
+daily budget still determine when a device can heat.
+
 ## Handoff and reporting
 
 The schedule owner resolves the occurrence with the same condition, conflict and

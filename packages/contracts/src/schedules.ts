@@ -37,8 +37,32 @@ export type ScheduleEntry = {
   /** When the last result's occurrence was due, in the Homey time zone; empty before the first run. */
   lastLabel: string;
 };
+export type ModePreparationPlanDevice = {
+  deviceId: string;
+  name: string;
+  fromC: number;
+  targetC: number;
+} & (
+  | { state: 'estimated'; startAtMs: number }
+  | { state: 'waiting_to_start' | 'preparing' | 'smart_task' | 'override' | 'unavailable' }
+);
+
+export type ModePreparationPlan =
+  | { state: 'inactive' }
+  | { state: 'waiting' | 'unavailable'; reason: string }
+  | {
+    state: 'ready';
+    scheduleId: string;
+    scheduleName: string;
+    currentMode: string;
+    destinationMode: string;
+    atMs: number;
+    devices: ModePreparationPlanDevice[];
+  };
+
 export type SchedulesSnapshot = {
   timeZone: string; modes: string[]; controls: ScheduleControls; entries: ScheduleEntry[];
+  preparationPlan?: ModePreparationPlan;
 };
 export type ScheduleCommand = { type: 'save'; schedule: Schedule }
   | { type: 'delete'; id: string }

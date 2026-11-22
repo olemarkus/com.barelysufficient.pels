@@ -7496,6 +7496,25 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   overflow-wrap: break-word;
 }
 
+.mode-preparation-panel {
+  margin-top: var(--spacing-4);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mode-preparation-panel > :where(h3, p),
+.mode-preparation-panel__device > :where(h4, p) {
+  margin: 0;
+}
+
+.mode-preparation-panel__device {
+  display: grid;
+  gap: var(--spacing-1);
+  justify-items: start;
+  border-top: 1px solid var(--pels-surface-outline);
+  padding-top: var(--spacing-2);
+}
+
 .deadlines-history {
   margin-top: var(--spacing-4);
   display: flex;

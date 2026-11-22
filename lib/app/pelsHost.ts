@@ -80,7 +80,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'flowBacked'
 > & {
   readDeviceDiagnosticConfiguration(deviceId: string): DeviceDiagnosticConfiguration;
-  readSchedules(): SchedulesResponse;
+  readSchedules(includeModePreparation?: boolean): SchedulesResponse;
   /** The battery owner's measured round-trip efficiency, offered beside the configured value. */
   readBatteryEfficiencyMeasurement(deviceId: string): BatteryEfficiencyMeasurement;
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;

@@ -1,5 +1,5 @@
 import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
-import type { TemperatureIntentReads } from '../lib/thermostat/temperatureSetpoints';
+import type { bindTemperatureSetpoints } from './appInit/temperatureSetpointsSeam';
 import type { ControlContestRecording } from '../lib/ports/controlContest';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
@@ -124,7 +124,7 @@ export type AppServiceWiringDeps = {
   getHomeOperatingMode: () => string;
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
-  getPreparedModeTargets: TemperatureIntentReads['getPreparedModeTargets'];
+  getPreparedModeTargets: Parameters<typeof bindTemperatureSetpoints>[2];
   readPreparedTemperatureC: Parameters<typeof createObservedTemperatureModeUpdates>[4];
   resolveOperatingModeForDevice: Parameters<typeof createObservedTemperatureModeUpdates>[1];
   createHomeRuntimeRegistry: (

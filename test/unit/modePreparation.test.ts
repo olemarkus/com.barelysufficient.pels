@@ -12,7 +12,7 @@ const HOUR_MS = 3_600_000;
 const occurrence = { scheduleId: 'morning', mode: 'Home', at: '08:00', atMs: 8 * HOUR_MS };
 type MeteredHeater = PlanInputDevice & TemperaturePlanInputKind & MeteredPlanInputKind;
 const heater = (id: string, currentTemperature: number) => partialDouble<MeteredHeater>({
-  id, deviceType: 'temperature', currentTemperature, currentTarget: 17,
+  id, name: id, deviceType: 'temperature', currentTemperature, currentTarget: 17,
   control: { managed: true, commandAuthority: true },
   currentDrawKw: 0, expectedPowerKw: 1, planningPowerKw: 1,
   targets: [{ id: 'target_temperature', value: 17, unit: '°C', min: 5, max: 35, step: 0.5 }],
@@ -40,9 +40,11 @@ const fixture = () => {
   const external = new Set<string>();
   let leadScale = 1;
   let read: ModePreparationRead = occurrence;
+  let previewDevices: PlanInputDevice[] = [];
   const preparation = new ModePreparationResolver({
     occurrence: () => read,
     readDevice: () => undefined,
+    readPreviewDevices: () => previewDevices,
     nowMs: () => now,
     currentMode: () => mode,
     modeTargets: () => targets,
@@ -59,6 +61,7 @@ const fixture = () => {
     getTemporaryTemperatureC: (id) => overrides.has(id) ? 19 : null,
   });
   return { preparation, setpoints, tasks, overrides, external,
+    setPreviewDevices: (devices: PlanInputDevice[]) => { previewDevices = devices; },
     setOccurrence: (next: ModePreparationRead) => { read = next; },
     refineLead: (scale: number) => { leadScale = scale; },
     setRemaining: (hours: number) => { now = occurrence.atMs - hours * HOUR_MS; },
@@ -114,6 +117,29 @@ describe('scheduled mode preparation', () => {
     expect(f.setpoints(devices).get('fast')?.keepC).toBe(19);
     f.tasks.clear();
     expect(f.setpoints(devices).get('slow')?.keepC).toBe(21);
+  });
+
+  it('shows estimated starts and current precedence without starting preparation', () => {
+    const f = fixture();
+    const slow = heater('slow', 17);
+    const fast = heater('fast', 17);
+    const devices = [slow, fast, heater('cooler', 24), heater('lower', 21)];
+    f.setPreviewDevices(devices);
+    f.setRemaining(7);
+    expect(f.preparation.preview(occurrence)).toEqual([
+      { deviceId: 'slow', name: 'slow', fromC: 17, targetC: 21, state: 'estimated', startAtMs: 4.5 * HOUR_MS },
+      { deviceId: 'fast', name: 'fast', fromC: 17, targetC: 21, state: 'estimated', startAtMs: 6 * HOUR_MS },
+    ]);
+
+    f.setRemaining(1);
+    f.tasks.add('fast');
+    expect(f.preparation.preview(occurrence).map(({ state }) => state)).toEqual(['waiting_to_start', 'smart_task']);
+    expect(f.preparation.result(devices, occurrence)).toBe('');
+    f.setpoints(devices);
+    expect(f.preparation.preview(occurrence).map(({ state }) => state)).toEqual(['preparing', 'smart_task']);
+
+    f.overrides.add('slow');
+    expect(f.preparation.preview(occurrence).map(({ state }) => state)).toEqual(['override', 'smart_task']);
   });
 
   it('leaves externally controlled temperatures with their owner', () => {

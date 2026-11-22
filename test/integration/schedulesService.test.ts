@@ -50,7 +50,7 @@ const fixture = () => {
     },
     getNowMs: () => now, listModes: () => ['Home', 'Night'], resolveModeName: (value) => value,
     currentMode: () => mode,
-    listTaskDevices: () => [], execute, preparationResult: () => '',
+    listTaskDevices: () => [], execute, previewPreparation: () => [], preparationResult: () => '',
   };
   const create = () => { const service = new ScheduleService(port); services.push(service); return service; };
   return { port, values, receipts, execute, create,
@@ -144,6 +144,28 @@ describe('schedule owner', () => {
     await service.tick();
     expect(service.readModePreparation()).toBeUndefined();
     expect(service.read().entries[0]?.lastResult).toBe('Mode changed. 1 of 2 devices were ready.');
+  });
+
+  it('estimates only on request, before the preparation window and behind the same schedule barrier', () => {
+    const f = fixture();
+    f.setNow('2026-10-28T00:00:00Z');
+    f.values.set('schedule.morning', { ...modeSchedule(), action: { type: 'mode', mode: 'Home', prepare: true } });
+    const preview = vi.fn(() => []);
+    f.port.previewPreparation = preview;
+    const service = f.create();
+    service.start();
+
+    expect(service.read().preparationPlan).toBeUndefined();
+    expect(service.readModePreparation()).toBeUndefined();
+    expect(preview).not.toHaveBeenCalled();
+    expect(service.read(true).preparationPlan).toMatchObject({
+      state: 'ready', scheduleId: 'morning', currentMode: 'Night', destinationMode: 'Home',
+      atMs: Date.parse('2026-10-28T09:00:00Z'),
+    });
+
+    f.values.set('schedule.earlier', { ...modeSchedule('earlier'), at: '09:59', action: { type: 'mode', mode: 'Night' } });
+    expect(service.read(true).preparationPlan).toMatchObject({ state: 'waiting' });
+    expect(preview).toHaveBeenCalledTimes(1);
   });
 
   it('respects an intervening mode change, the current mode condition, and pause', () => {
