@@ -13,12 +13,14 @@ measures the whole home. Homey Energy continues to account for devices
 according to its own settings.
 
 The device owner validates assignment settings and current physical-device
-eligibility. The source reading maintains normal observation retention while
-the socket remains eligible. Removing the socket, reassigning it, changing
-its area, or switching it off removes its contribution rather than changing
-the load's draw to zero. While its assigned source is unavailable, PELS
-blocks device control through that assignment. Removing the assignment
-restores the device's own power source.
+eligibility. The SDK read pipeline projects the socket's `measure_power`
+capability onto the controlled device and resolves it through the same path
+as a native power reading. If the socket becomes unavailable or the
+assignment is no longer eligible, the projected capability disappears and
+the device's remaining capabilities follow their normal control rules.
+An off report withdraws earlier watts. A fresh zero reported after the
+switch is an observation. Removing the assignment restores the device's
+own power source.
 
 The setup inventory stays separate from the managed roster and travels through
 the existing device settings read. The device's regular observation, planning

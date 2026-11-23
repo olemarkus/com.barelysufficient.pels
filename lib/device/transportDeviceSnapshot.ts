@@ -78,7 +78,7 @@ export type MeteredPowerReading =
  * means (`measuredPowerIsDirectMeasurement`, `projectObservedState`), so none
  * branches on a capability id.
  */
-export type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energy' | 'external_socket';
+export type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energy';
 
 export type TransportDeviceSnapshot =
   Omit<TargetDeviceSnapshot, 'binaryControlObservation'> & {

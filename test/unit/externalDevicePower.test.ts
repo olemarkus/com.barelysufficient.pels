@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readDevicePowerSources } from '../../packages/shared-domain/src/settings/devicePowerSources';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
-import { ExternalDevicePower } from '../../lib/device/transport/externalDevicePower';
+import { ExternalDevicePower, withExternalPowerCapability } from '../../lib/device/transport/externalDevicePower';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { TransportSnapshotStore } from '../../lib/device/transport/transportSnapshotStore';
 
@@ -51,23 +51,25 @@ describe('external device power', () => {
     expect(external.read(target)).toEqual({
       kind: 'external',
       socketId: 'socket',
-      resolution: {
-        source: 'external_socket', measuredPowerKw: 0, observedAtMs: 2000,
-        reading: { kind: 'instantaneous', powerKw: 0, observedAtMs: 2000 },
-      },
+      capability: { value: 0, lastUpdated: 2000 },
     });
-    expect(external.allowsWrite('heater', target)).toBe(true);
-    expect(external.allowsWrite('socket', zero)).toBe(false);
+    expect(withExternalPowerCapability(target, external.read(target))).toMatchObject({
+      capabilities: ['onoff', 'measure_power'],
+      capabilitiesObj: { measure_power: { value: 0, lastUpdated: 2000 } },
+    });
+    expect(external.allowsWrite('heater')).toBe(true);
+    expect(external.allowsWrite('socket')).toBe(false);
   });
 
-  it('withdraws attribution and writes if the socket turns off, is moved or is removed', () => {
+  it('withdraws the power capability if the socket turns off, is moved or is removed', () => {
     const { inventory, external } = setup();
     for (const source of [socket(500, false), { ...socket(500), zone: 'garage' }, undefined]) {
       const devices = source ? [target, source] : [target];
       inventory.replaceLatestRawDevices(devices, devices);
-      expect(external.read(target)).toEqual({ kind: 'external', socketId: 'socket', resolution: {} });
-      expect(external.allowsWrite('heater', target)).toBe(false);
-      expect(external.allowsWrite('socket', source)).toBe(false);
+      expect(external.read(target)).toEqual({ kind: 'external', socketId: 'socket', capability: undefined });
+      expect(withExternalPowerCapability(target, external.read(target))).toEqual(target);
+      expect(external.allowsWrite('heater')).toBe(true);
+      expect(external.allowsWrite('socket')).toBe(false);
     }
   });
 
@@ -76,7 +78,7 @@ describe('external device power', () => {
     const source = socket(1800);
     settings.managedDevices = { socket: true };
     inventory.replaceLatestRawDevices([target, source], [target, source]);
-    expect(external.read(target)).toEqual({ kind: 'external', socketId: 'socket', resolution: {} });
-    expect(external.allowsWrite('socket', source)).toBe(false);
+    expect(external.read(target)).toEqual({ kind: 'external', socketId: 'socket', capability: undefined });
+    expect(external.allowsWrite('socket')).toBe(false);
   });
 });

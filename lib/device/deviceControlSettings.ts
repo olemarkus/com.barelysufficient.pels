@@ -242,11 +242,9 @@ export class DeviceControlSettings {
     return Object.values(this.maps.powerSources).includes(deviceId);
   }
 
-  /** Close the write fence while a newly persisted assignment awaits refresh. */
-  isPowerSourceWriteCurrent(deviceId: string): boolean {
-    const current = this.maps.powerSources;
-    const persisted = this.readPowerSources();
-    return current[deviceId] === persisted[deviceId] && !Object.values(persisted).includes(deviceId);
+  /** Reserve the socket as soon as its assignment has been persisted. */
+  isMeteringSocketReserved(deviceId: string): boolean {
+    return Object.values(this.readPowerSources()).includes(deviceId);
   }
   get managedDevices(): BooleanMap { return this.maps.managed; }
   /** Per-device start authority; absence reads as `'unrestricted'`. */

@@ -2,7 +2,6 @@ import type { DevicePowerSetupEntry, DevicePowerSetupRead } from '../../../packa
 import type { HomeyDeviceLike } from '../../utils/types';
 import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type { DeviceControlSettings } from '../deviceControlSettings';
-import type { DeviceMeasuredPowerResolution } from '../measuredPowerResolver';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isHomeBatteryDevice, isSolarPanelDevice } from '../managerEnergy';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
@@ -10,7 +9,7 @@ import { resolveZoneId } from './managerHelpers';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 
 type PowerSourceRead = { kind: 'device' }
-  | { kind: 'external'; socketId: string; resolution: DeviceMeasuredPowerResolution };
+  | { kind: 'external'; socketId: string; capability?: HomeyDeviceLike['capabilitiesObj']['measure_power'] };
 
 export type PowerSourceHome = (deviceId: string, zoneId: string | null) => string | undefined;
 
@@ -28,18 +27,35 @@ export const hasGenericSetupControls = (device: HomeyDeviceLike): boolean => {
   return caps.includes('onoff') || (caps.includes('target_temperature') && caps.includes('measure_temperature'));
 };
 
-const readSocketPower = (source: HomeyDeviceLike): DeviceMeasuredPowerResolution => {
-  if (!source.available || source.capabilitiesObj.onoff?.value === false) return {};
-  const entry = source.capabilitiesObj.measure_power;
-  const watts = entry?.value;
-  const observedAtMs = toCapabilityTimestampMs(entry?.lastUpdated);
-  const powerKw = typeof watts === 'number' ? normalizeMeasuredPowerKw(watts / 1000) : null;
-  if (powerKw === null || observedAtMs === undefined) return {};
+function readSocketPowerCapability(source: HomeyDeviceLike): HomeyDeviceLike['capabilitiesObj']['measure_power'] {
+  if (!source.available) return undefined;
+  const power = source.capabilitiesObj.measure_power;
+  const onoff = source.capabilitiesObj.onoff;
+  if (onoff?.value !== false) return power;
+  // An off report withdraws pre-switch watts. A confirmed zero measured after
+  // the switch is a fresh observation in its own right.
+  if (power?.value !== 0) return undefined;
+  const powerAt = toCapabilityTimestampMs(power.lastUpdated);
+  const offAt = toCapabilityTimestampMs(onoff.lastUpdated);
+  return powerAt !== undefined && offAt !== undefined && powerAt > offAt ? power : undefined;
+}
+
+const isPowerCapability = (id: string): boolean => id === 'measure_power' || id === 'meter_power';
+
+/** Give the normal device parser a single, selected power capability. */
+export function withExternalPowerCapability(
+  device: HomeyDeviceLike,
+  power: PowerSourceRead | undefined,
+): HomeyDeviceLike {
+  if (power?.kind !== 'external') return device;
+  const capabilities = device.capabilities.filter((id) => !isPowerCapability(id));
+  const { measure_power: _measurePower, meter_power: _meterPower, ...capabilitiesObj } = device.capabilitiesObj;
   return {
-    measuredPowerKw: powerKw, observedAtMs, source: 'external_socket',
-    reading: { kind: 'instantaneous', powerKw, observedAtMs },
+    ...device,
+    capabilities: power.capability ? [...capabilities, 'measure_power'] : capabilities,
+    capabilitiesObj: power.capability ? { ...capabilitiesObj, measure_power: power.capability } : capabilitiesObj,
   };
-};
+}
 
 const METER_SOCKET_CAPABILITIES = ['measure_power', 'onoff'] as const;
 
@@ -50,7 +66,7 @@ export class ExternalDevicePower {
   constructor(
     private readonly settings: Pick<
       DeviceControlSettings, 'devicePowerSources' | 'managedDevices' | 'isMainFusePhaseMeter'
-    > & Partial<Pick<DeviceControlSettings, 'isPowerSourceWriteCurrent'>>,
+    > & Partial<Pick<DeviceControlSettings, 'isMeteringSocketReserved'>>,
     private readonly inventory: TransportSnapshotStore,
     private readonly resolveHome: PowerSourceHome,
   ) {}
@@ -122,28 +138,16 @@ export class ExternalDevicePower {
     return {
       kind: 'external',
       socketId: sourceId,
-      resolution: source && this.classifySource(target, source) ? readSocketPower(source) : {},
+      capability: source && this.classifySource(target, source) ? readSocketPowerCapability(source) : undefined,
     };
   }
 
-  allowsWrite(
-    deviceId: string,
-    device = this.inventory.getTrackedRawDevice(deviceId),
-    requiresLivePower = true,
-  ): boolean {
-    if (this.targetForSocket(deviceId) || this.settings.isPowerSourceWriteCurrent?.(deviceId) === false) return false;
-    const boundSocket = this.sourceForDevice(deviceId);
-    const snapshot = this.inventory.getSnapshotByDeviceId(deviceId);
-    if (snapshot && snapshot.externalPowerSocketId !== boundSocket) return false;
-    if (!boundSocket) return true;
-    if (!device) return false;
-    const socket = this.inventory.getLastAcceptedRawDevice(boundSocket);
-    if (!socket || !this.classifySource(device, socket)) return false;
-    return !requiresLivePower || readSocketPower(socket).reading !== undefined;
+  allowsWrite(deviceId: string): boolean {
+    return !this.targetForSocket(deviceId) && this.settings.isMeteringSocketReserved?.(deviceId) !== true;
   }
 
-  assertAllowsWrite(deviceId: string, device: HomeyDeviceLike | undefined, requiresLivePower = true): void {
-    if (this.allowsWrite(deviceId, device, requiresLivePower)) return;
+  assertAllowsWrite(deviceId: string): void {
+    if (this.allowsWrite(deviceId)) return;
     throw new Error('Device control is unavailable for the configured power source.');
   }
 
@@ -162,7 +166,7 @@ export class ExternalDevicePower {
         if (socket.id === device.id) return [];
         return [{ id: socket.id, name: socket.name, state: this.sourceState(device, socket, resolveHome) }];
       }),
-      sourceReady: this.read(device).kind === 'device' || this.hasExternalPower(device),
+      sourceReady: this.isSourceReady(device),
     }));
     return { devices };
   }
@@ -179,8 +183,10 @@ export class ExternalDevicePower {
       ? 'selectable' : 'unavailable';
   }
 
-  private hasExternalPower(device: HomeyDeviceLike): boolean {
+  private isSourceReady(device: HomeyDeviceLike): boolean {
     const power = this.read(device);
-    return power.kind === 'external' && power.resolution.reading !== undefined;
+    if (power.kind === 'device') return true;
+    const watts = power.capability?.value;
+    return typeof watts === 'number' && normalizeMeasuredPowerKw(watts / 1000) !== null;
   }
 }

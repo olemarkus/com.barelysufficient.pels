@@ -100,7 +100,7 @@ export type DeviceTransportOptions = {
     externalPower?: {
       settings: Pick<
         DeviceControlSettings,
-        'devicePowerSources' | 'managedDevices' | 'isPowerSourceWriteCurrent' | 'isMainFusePhaseMeter'
+        'devicePowerSources' | 'managedDevices' | 'isMeteringSocketReserved' | 'isMainFusePhaseMeter'
       >;
       resolveHome: import('./externalDevicePower').PowerSourceHome;
     };

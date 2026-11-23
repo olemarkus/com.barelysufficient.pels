@@ -210,9 +210,14 @@ function resolveSameSourceRetainedReading(
     deps: DeviceTransportParseDeps,
     previousSnapshot: TransportDeviceSnapshot | undefined,
 ): RetainedMeasurement | undefined {
-    if (resolveExternalPowerSocketId(deps.externalPower) !== undefined || previousSnapshot?.externalPowerSocketId) {
-        return undefined;
+    const { externalPower } = deps;
+    if (externalPower?.kind === 'external') {
+        if (!externalPower.capability || previousSnapshot?.externalPowerSocketId !== externalPower.socketId) {
+            return undefined;
+        }
+        return resolveRetainedReading(previousSnapshot, undefined);
     }
+    if (previousSnapshot?.externalPowerSocketId) return undefined;
     return resolveRetainedReading(previousSnapshot, deps.getRestoredPowerReading(deviceId));
 }
 
@@ -303,7 +308,8 @@ export function assembleDeviceSnapshot(params: {
         thermostatMode,
         stateOfCharge,
         temperature,
-        nativeRelayMeter: readNativeRelayMeter(effectiveDevice.capabilities, measuredPower),
+        nativeRelayMeter: deps.externalPower?.kind === 'external'
+            ? undefined : readNativeRelayMeter(effectiveDevice.capabilities, measuredPower),
         measuredPowerKw: resolvedMeasuredPower.measuredPowerKw,
         measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
         measuredPowerReading: resolvedMeasuredPower.reading,

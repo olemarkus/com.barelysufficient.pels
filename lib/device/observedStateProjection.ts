@@ -103,8 +103,7 @@ function projectMeasuredPowerObservation(snapshot: TransportDeviceSnapshot): Mea
         ...(snapshot.measuredPowerKw !== undefined ? {
             measuredPowerKw: snapshot.measuredPowerKw,
             measuredPowerIsDirectMeasurement: snapshot.measuredPowerSource === 'measure_power'
-                || snapshot.measuredPowerSource === 'homey_energy'
-                || snapshot.measuredPowerSource === 'external_socket',
+                || snapshot.measuredPowerSource === 'homey_energy',
         } : {}),
         ...(snapshot.measuredPowerObservedAtMs !== undefined
             ? { measuredPowerObservedAtMs: snapshot.measuredPowerObservedAtMs } : {}),
