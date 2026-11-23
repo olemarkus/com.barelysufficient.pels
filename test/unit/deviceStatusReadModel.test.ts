@@ -475,3 +475,41 @@ describe('charger app update warning', () => {
       .not.toHaveProperty('needsChargerAppUpdate');
   });
 });
+
+describe('mode preparation reason', () => {
+  const modePreparation = { targetC: 65, mode: 'Home', at: '08:05' };
+  const preparing = (overrides: Partial<DeviceStatusInput> = {}): DeviceStatusInput => {
+    const device = runningPowerHold();
+    return {
+      ...device, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      temperature: { currentTemperature: 58, currentTarget: 65, plannedTarget: 65, thermalDirection: 'heating' },
+      modePreparation,
+      execution: { ...device.execution, desiredBinary: 'on', binaryProgress: 'settled', targetProgress: 'settled' },
+      ...overrides,
+    };
+  };
+  const stepped = {
+    profile: { steps: [
+      { id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1250 }, { id: 'max', planningPowerW: 3000 },
+    ] },
+    reportedStepId: 'max', targetStepId: 'max', selectedStepId: 'max', planningPowerKw: 3, commandPending: false,
+  };
+
+  it('explains the early target on a thermostat card', () => {
+    expect(buildDeviceStatus(preparing(), false, 0).reason).toEqual({ text: 'Getting ready for Home at 08:05' });
+  });
+
+  it('explains the early target on a stepped water heater card', () => {
+    const device = preparing({ steppedLoad: stepped });
+    const status = buildDeviceStatus({ ...device, execution: { ...device.execution,
+      observedStepId: 'max', desiredStepId: 'max', stepProgress: 'settled' } }, false, 0);
+    expect(status.reason).toEqual({ text: 'Getting ready for Home at 08:05' });
+  });
+
+  it('keeps a power hold ahead of the early target', () => {
+    const status = buildDeviceStatus(runningPowerHold({ modePreparation,
+      temperature: { currentTemperature: 58, currentTarget: 65, plannedTarget: 65, thermalDirection: 'heating' } }),
+    false, 0);
+    expect(status.reason?.text).not.toContain('Getting ready');
+  });
+});

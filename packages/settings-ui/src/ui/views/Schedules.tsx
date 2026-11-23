@@ -43,6 +43,7 @@ export type SchedulesActions = {
   onModeGroup(enabled: boolean): void;
   onDeviceGroup(deviceId: string, enabled: boolean): void;
   onFilter(filter: 'all' | 'mode' | 'task' | 'override'): void;
+  onViewPreparation(): void;
 };
 type View = { snapshot: SchedulesViewSnapshot; actions: SchedulesActions };
 const inputValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
@@ -134,7 +135,12 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
         {grantedLine !== null && <p class="pels-card-supporting">
           {SMART_TASK_EXTRA_PERMISSIONS_TITLE}: {grantedLine}
         </p>}
-        <MdTextButton disabled={view.snapshot.busy} onClick={() => view.actions.onEdit(schedule.id)}>Edit</MdTextButton>
+        <div class="schedule-row__actions">
+          {schedule.action.type === 'mode' && schedule.action.prepare && entry.state === 'on' && (
+            <MdTextButton onClick={view.actions.onViewPreparation}>View plan</MdTextButton>
+          )}
+          <MdTextButton disabled={view.snapshot.busy} onClick={() => view.actions.onEdit(schedule.id)}>Edit</MdTextButton>
+        </div>
       </div>
     </article>
   );
@@ -341,7 +347,7 @@ const ModePreparationSwitch = ({ draft, view }: { draft: ScheduleDraft; view: Vi
   return (
     <div class="schedule-editor__enabled">
       <div><span class="pels-text-settings-label">Have devices ready by then</span>
-        <p class="pels-card-supporting">Start heating eligible devices early toward their new mode temperatures.</p></div>
+        <p class="pels-card-supporting">Heaters with a higher temperature in the new mode start early, so they reach it by this time.</p></div>
       <MdSwitch key={`prepare:${draft.prepareMode}:${disabled}`} aria-label="Have devices ready by then"
         selected={draft.prepareMode} disabled={disabled}
         onChange={(event: Event) => view.actions.onDraftChange({ prepareMode: readSwitchSelected(event) })} />

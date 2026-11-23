@@ -9506,8 +9506,11 @@ md-switch {
   margin: 0;
 }
 
-#schedules-panel .schedule-row__footer md-text-button {
-  justify-self: end;
+#schedules-panel .schedule-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-1);
 }
 
 #schedules-panel .schedule-row[data-state="paused"] .schedule-row__footer,

@@ -20,6 +20,7 @@ const actions: SchedulesActions = {
   onRetry: vi.fn(), onNew: vi.fn(), onEdit: vi.fn(), onBack: vi.fn(), onDraftChange: vi.fn(),
   onSelectAction: vi.fn(), onDevice: vi.fn(), onRepeat: vi.fn(), onDay: vi.fn(), onConditionMode: vi.fn(),
   onSave: vi.fn(), onDelete: vi.fn(), onToggle: vi.fn(), onModeGroup: vi.fn(), onDeviceGroup: vi.fn(), onFilter: vi.fn(),
+  onViewPreparation: vi.fn(),
 };
 
 const snapshot = (): SchedulesViewSnapshot => ({

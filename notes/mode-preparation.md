@@ -36,10 +36,11 @@ switch. A prepared room can arrive late.
 
 ## Plan on Smart tasks
 
-The **Mode preparation** panel shows the next eligible mode change and each
-heater's estimated early target time. An open Smart task or temperature override
-shows what is taking precedence now. The panel links to the Smart task and to the
-mode schedule.
+The **Getting ready for Home** panel shows the next eligible mode change and when
+each heater is estimated to start heating. An open Smart task or temperature
+override shows what comes first now. The panel links to the Smart task, the
+device and the mode schedule; a mode schedule row with preparation on links back
+with **View plan**.
 
 The estimates use current mode targets and the same heating lead as preparation.
 An intervening mode change can alter which targets apply. Available power and the
@@ -58,7 +59,7 @@ target**, the write fence allows that target and an external setpoint change
 during preparation does not replace the current mode's saved preference.
 Use a temperature override to set a different target during preparation.
 
-The device card can read **Getting ready for Home at 08:00**. At the schedule
+The device card, thermostat or stepped water heater, can read **Getting ready for Home at 08:00**. At the schedule
 trigger, PELS counts participating devices that report at least their target
 minus 0.5 °C. The last result can read **Mode changed. 5 of 6 devices were
 ready.** The stored result describes what PELS observed when running the

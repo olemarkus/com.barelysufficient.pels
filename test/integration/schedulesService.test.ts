@@ -163,8 +163,14 @@ describe('schedule owner', () => {
       atMs: Date.parse('2026-10-28T09:00:00Z'),
     });
 
+    f.setMode('Home');
+    expect(service.read(true).preparationPlan).toEqual({
+      state: 'waiting', reason: 'Home is already the mode. PELS plans again after the mode changes.',
+    });
+    f.setMode('Night');
+
     f.values.set('schedule.earlier', { ...modeSchedule('earlier'), at: '09:59', action: { type: 'mode', mode: 'Night' } });
-    expect(service.read(true).preparationPlan).toMatchObject({ state: 'waiting' });
+    expect(service.read(true).preparationPlan).toEqual({ state: 'waiting', reason: 'Plans once "Morning at home" runs at 09:59.' });
     expect(preview).toHaveBeenCalledTimes(1);
   });
 
