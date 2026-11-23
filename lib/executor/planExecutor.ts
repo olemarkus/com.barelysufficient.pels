@@ -426,7 +426,7 @@ export class PlanExecutor {
     }));
     this.deviceLimitEpisodes?.retainDevices(plannedCommands, (id) => (
       !this.deps.pendingBinaryCommandStore.peekActive(id)
-      && this.deps.getObservedState(id)?.binaryControl?.on === true
+      && isBinaryObservedOn(this.deps.getObservedState(id))
     ));
     this.execution.controlContests.retainPlanned(this.deps.homeId, plannedCommands);
   }
