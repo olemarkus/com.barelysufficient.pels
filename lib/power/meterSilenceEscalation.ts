@@ -27,6 +27,7 @@ export const freshnessEscalationIntervalMs = (homeId: HomeId): number => {
  * structurally: power imports no planner, and the planner's outcome satisfies it.
  */
 export type MeterSilenceShedPassOutcome = {
+  sharedChargingPausePending?: true;
   failed: boolean;
   isDryRun: boolean;
   gated: boolean;
@@ -175,6 +176,10 @@ export class MeterSilenceEscalation {
           debugEscalation({ event: 'home_freshness_heartbeat_release_pending', homeId,
             pendingInverterReleaseCount: outcome.pendingInverterReleaseCount,
             inverterReleaseRecoveryReady: outcome.inverterReleaseRecoveryReady });
+          return;
+        }
+        if (outcome.sharedChargingPausePending) {
+          debugEscalation({ event: 'home_freshness_heartbeat_shared_charging_pause_pending', homeId });
           return;
         }
         // The preconditions are re-judged at completion: a fence that closed

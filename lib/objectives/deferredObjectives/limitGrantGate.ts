@@ -1,5 +1,5 @@
 import type {
-  DeviceControlModel,
+  DeviceControlAdapterSnapshot, DeviceControlModel,
   ObservedDeviceState,
   SteppedLoadDescriptorProbe,
 } from '../../../packages/contracts/src/types';
@@ -32,7 +32,7 @@ export type StoredObjectiveState = {
 // stepped ladder. Any device carrier passes, planner input included, without
 // claiming inventory metadata it does not have.
 export type GateDevice = Pick<ObservedDeviceState, 'id' | 'name'>
-  & { controlModel?: DeviceControlModel }
+  & { controlModel?: DeviceControlModel; controlAdapter?: DeviceControlAdapterSnapshot }
   & SteppedLoadDescriptorProbe;
 
 /** Read one device's objective for the gate; a thrown read is an untrusted absence. */
@@ -55,9 +55,10 @@ export const readStoredObjectiveState = (
 // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
 // which the boost resolvers gate on the device's stepped-load profile
 // (`resolveBoostSupported` → `hasSteppedLoadProfile`); a binary on/off device has
-// no higher step to promote to.
+// no higher step to promote to unless its installation carries the ladder.
 export const deviceSupportsLimitLowerPriority = (device: GateDevice): boolean => (
-  device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device)
+  device.controlAdapter?.chargingInstallation !== undefined
+  || (device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device))
 );
 
 // A grant we can't rule out counts as established: an unreadable store is

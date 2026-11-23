@@ -46,6 +46,8 @@ export class SettingCurrentLimitSession implements DeviceAdapterSession {
 
   constructor(private readonly charger: SettingCurrentLimitCharger) {}
 
+  chargingInstallationOf(): undefined { return undefined; }
+
   observeDevice(device: HomeyDeviceLike, readAtMs: number): void {
     if (!this.charger.matches(device)) return;
     this.chargers.add(device.id);

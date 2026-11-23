@@ -84,9 +84,11 @@ const syncSetupAutoExpand = (device: SettingsUiDeviceDetailItem | null, shouldEx
 };
 
 export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailItem | null) => {
+  const installation = device?.controlAdapter?.chargingInstallation;
   setChargingCurrentDevice(
-    isAutomaticPowerControlActive(device) ? '' : device?.id ?? '',
+    !installation && isAutomaticPowerControlActive(device) ? '' : device?.id ?? '',
     isEvChargerDevice(device),
+    installation?.mainId,
   );
   const nativeWiringSupported = supportsNativeWiringActivation(device);
   const builtInChosen = device ? isBuiltInControlChosen(device, state.nativeWiringMap) : false;

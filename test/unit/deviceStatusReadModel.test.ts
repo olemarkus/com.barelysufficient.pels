@@ -1,11 +1,12 @@
 import { buildDeviceStatus, type DeviceStatusInput } from '../../lib/plan/deviceStatusReadModel';
+import { withChargingInstallation } from '../../lib/plan/chargingInstallationCardText';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
 const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceStatusInput => ({
   currentState: 'on', plannedState: 'shed', binaryControllable: true, isEvCharger: false,
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
-  priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, unusedBuiltInControl: 'none', targetPowerControlRefused: false,
+  priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, chargingInstallation: undefined, unusedBuiltInControl: 'none', targetPowerControlRefused: false,
   standingCommandGrant: true, powerLimitControlEnabled: true, hasPowerReading: true, powerSetupRequired: false,
   powerBeforeSwitchOffKw: undefined,
   carIdentificationState: 'not_waiting',
@@ -511,5 +512,44 @@ describe('mode preparation reason', () => {
       temperature: { currentTemperature: 58, currentTarget: 65, plannedTarget: 65, thermalDirection: 'heating' } }),
     false, 0);
     expect(status.reason?.text).not.toContain('Getting ready');
+  });
+});
+
+describe('charging installation controlled as one load', () => {
+  const card = (chargingInstallation: DeviceStatusInput['chargingInstallation'], overrides: Partial<DeviceStatusInput> = {}) => (
+    runningPowerHold({
+      isEvCharger: true, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      chargingInstallation, currentDrawKw: 3.2,
+      execution: { ...runningPowerHold().execution, desiredBinary: 'on', binaryProgress: 'settled' },
+      ...overrides,
+    }));
+  const status = (device: DeviceStatusInput) => withChargingInstallation(device, buildDeviceStatus(device, false, 0));
+
+  it('keeps the installation total on the main\'s power line beside its own draw, whatever the reason line says', () => {
+    const main = status(card({ role: 'main', memberCount: 2, totalKw: 10.4 }));
+    expect(main.powerText).toBe('3.2 kW · installation 10.4 kW');
+    expect(main.reason?.text).toBe('Sets the available current for this installation.');
+    const held = status(card({ role: 'main', memberCount: 2, totalKw: 10.4 }, {
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
+    }));
+    expect(held.powerText).toContain('installation 10.4 kW');
+    expect(held.reason?.text).not.toBe('Sets the available current for this installation.');
+  });
+
+  it.each([
+    ['its car draws', 3.2, 'on', 'plugged_in_charging', 'Running', 'Charging', '3.2 kW'],
+    ['its car waits in the installation\'s queue', 0, 'on', 'plugged_in_paused', 'Idle', 'Waiting for current', '0.0 kW'],
+    ['it is switched off', 0, 'off', 'plugged_in_paused', 'Off', 'Not charging', '0.0 kW'],
+    ['its car has finished', 0, 'on', 'plugged_in_finished', 'Off', 'Not charging', '0.0 kW'],
+    ['its car stopped itself', 0, 'on', 'plugged_in_car_stopped', 'Off', 'Not charging', '0.0 kW'],
+    ['its car is unplugged', 0, 'on', 'plugged_out', 'Off', 'Unplugged', '0.0 kW'],
+  ] as const)('shows a secondary\'s own state while %s', (_case, drawKw, physicalState, evChargingState, label, fact, power) => {
+    const secondary = status(card({ role: 'secondary', mainName: 'Garage' }, {
+      currentDrawKw: drawKw, evChargingState, reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2 },
+      hasPowerReading: false, execution: { ...runningPowerHold().execution, physicalState },
+    }));
+    expect(secondary).toMatchObject({ label, factText: fact, powerText: power, limited: false });
+    expect(secondary.reason?.text).toBe('Its current is set through Garage. '
+      + 'The chargers share the available current between the cars that are charging.');
   });
 });

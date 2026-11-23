@@ -1,5 +1,4 @@
-import { allowLastResortPriorityMove, isLastResortConfigured } from './devicePowerSetup.ts';
-import Sortable from 'sortablejs';
+import { isLastResortConfigured } from './devicePowerSetup.ts';
 import { currentSetupJourney } from './setupJourneyState.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import {
@@ -54,10 +53,8 @@ import {
 } from './modeSettingsRead.ts';
 import { markDecimalField } from './decimalField.ts';
 import { EMPTY_MODE_COPY, prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
-import {
-  isPriorityContextCurrent,
-  savePriorities,
-} from './modePrioritySave.ts';
+import { savePriorities } from './modePrioritySave.ts';
+import { getPriorityRows, initPriorityDrag } from './modePriorityDrag.ts';
 
 export { savePriorities };
 
@@ -170,10 +167,6 @@ export const renderModeOptions = () => {
   }
 };
 
-const getPriorityRows = (): HTMLElement[] => (
-  Array.from(priorityList?.querySelectorAll<HTMLElement>('.device-row') || [])
-);
-
 export const getDesiredTarget = (device: SettingsUiDeviceListItem) => {
   if (!supportsTemperatureDevice(device)) return null;
   const mode = state.editingMode || DEFAULT_MODE_NAME;
@@ -237,6 +230,14 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   nameText.className = 'mode-row__name-text';
   nameText.textContent = formatDisplayDeviceName(device.name);
   name.appendChild(nameText);
+  const installation = device.controlAdapter?.chargingInstallation;
+  if (installation) {
+    row.dataset.priorityGroup = installation.mainId;
+    const shared = document.createElement('span');
+    shared.className = 'field__hint mode-row__shared-priority';
+    shared.textContent = 'Shares priority with the other chargers on this installation.';
+    name.appendChild(shared);
+  }
 
   const input = isLastResortConfigured(device.id) ? buildModeTargetPlaceholder('Last resort')
     : buildModeTargetInput(device, getDesiredTarget(device));
@@ -273,12 +274,15 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   priorityEmpty.hidden = true;
 
   const editingMode = state.editingMode || DEFAULT_MODE_NAME;
+  const groups = new Map(managedDevices.map(({ id, controlAdapter }) => [
+    id, controlAdapter?.chargingInstallation?.mainId,
+  ]));
   const order = state.modePriorityCatalog.getOrder(editingMode, managedDevices.map(({ id }) => id),
-    isHomeBatteryDeviceId, isLastResortConfigured);
+    isHomeBatteryDeviceId, isLastResortConfigured, (id) => groups.get(id));
   [...managedDevices].sort((a, b) => order.getPriority(a.id) - order.getPriority(b.id))
     .forEach((d) => priorityList.appendChild(buildPriorityRow(d)));
 
-  initSortable();
+  initPriorityDrag(refreshPriorityBadges, () => renderPriorities(state.latestDevices));
   refreshPriorityBadges();
 };
 
@@ -314,46 +318,16 @@ export const renameMode = async (oldName: string, newName: string) => {
 
 const refreshPriorityBadges = () => {
   const rows = getPriorityRows();
+  const groupRanks = new Map<string, number>();
   rows.forEach((row, index) => {
+    const group = row.dataset.priorityGroup;
+    const rank = (group && groupRanks.get(group)) || index + 1;
+    if (group) groupRanks.set(group, rank);
     const badge = row.querySelector<HTMLElement>('.priority-badge');
-    if (badge) badge.textContent = `#${index + 1}`;
+    if (badge) badge.textContent = `#${rank}`;
   });
   // Said for the order on screen, so a drag that moves a battery updates it.
   renderPriorityBatteryNote(priorityBatteryNote, rows.map((row) => row.dataset.deviceId ?? ''));
-};
-
-let sortableInstance: Sortable | null = null;
-
-const initSortable = () => {
-  if (sortableInstance) {
-    sortableInstance.destroy();
-  }
-  if (!priorityList) return;
-
-  sortableInstance = new Sortable(priorityList, {
-    animation: 150,
-    handle: '.drag-handle',
-    ghostClass: 'sortable-ghost',
-    chosenClass: 'sortable-chosen',
-    dragClass: 'sortable-drag',
-    forceFallback: true,
-    fallbackClass: 'sortable-fallback',
-    fallbackOnBody: true,
-    delay: 150,
-    delayOnTouchOnly: true,
-    touchStartThreshold: 5,
-    onMove: ({ dragged, related }) => allowLastResortPriorityMove(dragged, related),
-    onEnd: async () => {
-      refreshPriorityBadges();
-      const outcome = await savePriorities();
-      if (outcome.status !== 'saved') {
-        renderPriorities(state.latestDevices);
-        return;
-      }
-      if (!isPriorityContextCurrent(outcome.homeId, outcome.mode, outcome.deviceIds)) return;
-      renderPriorities(state.latestDevices);
-    },
-  });
 };
 
 export const applyTargetChange = async (deviceId: string, rawValue: string) => {

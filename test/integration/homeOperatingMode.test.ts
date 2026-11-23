@@ -87,7 +87,7 @@ const createCatalogFor = (ctx: AppContext, homeId: string) => createHomeModeCata
   () => ctx.deviceControlSettings.managedDevices,
   () => ctx.homeMembership,
   () => getLogger('homes'),
-  () => ({ status: 'resolved', deviceIds: new Set() }),
+  { readHomeBatteryDevices: () => ({ status: 'resolved', deviceIds: new Set() }), readDeviceControlAdapter: () => undefined },
 );
 
 const buildRig = (): Rig => {

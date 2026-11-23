@@ -40,12 +40,18 @@ export const needsVehicleChargingConsent = (device: ChargingCurrentRead): boolea
   device.scope === 'vehicle' && device.setup.confirmation !== 'vehicle'
 );
 
+/** Installation members receive their current through the shared control. */
+export const usesInstallationCurrentWithoutSetup = (device: ChargingCurrentRead): boolean => (
+  device.chargingInstallation?.role === 'secondary' || device.chargingInstallation?.automaticWatts === true
+);
+
 /**
  * Nothing sets this device's charging current: built-in control is not selected
  * and no Flow sets it. A shared installation is left to its coordinating Flow.
  */
 export const lacksChargingCurrentRoute = (device: ChargingCurrentRead): boolean => (
-  device.setup.method === 'flow' && device.flowCheck === 'clear' && !device.sharedInstallation
+  device.setup.method === 'flow' && device.flowCheck === 'clear'
+  && !device.sharedInstallation && !usesInstallationCurrentWithoutSetup(device)
 );
 
 /** Unknown setup never invents a missing route; failed refreshes retain accepted facts. */

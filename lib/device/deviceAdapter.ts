@@ -295,6 +295,15 @@ export type DeviceAdapter = {
   retainsPlugObservation(device: HomeyDeviceLike): boolean;
   phaseReport(device: HomeyDeviceLike): ChargerPhaseReport;
   currentBindings(device: HomeyDeviceLike): ChargingCurrentBinding[];
+  /**
+   * The level a shared charging installation is held at, in watts on the
+   * device's own watt ladder, read from `device` as the main of a charging
+   * installation (`ChargingInstallationMembership`). `undefined` when the
+   * integration has no installation level or cannot read it now.
+   */
+  installationLevelW(device: HomeyDeviceLike): number | undefined;
+  /** Conversion supplied by an installation that reports its current as a watt target. */
+  installationWattsPerAmp(device: HomeyDeviceLike): number | undefined;
   phaseBindings(device: HomeyDeviceLike): readonly ChargingPhaseBinding[];
   nativeCurrentControls: readonly NativeCurrentControl[];
   nativeLevelControls: readonly NativeLevelControl[];
@@ -342,8 +351,28 @@ export type DeviceAdapter = {
 /** Whether a full device list proves that a device it lacks is absent (`DeviceAdapterSession.retainDevices`). */
 export type InventoryCompleteness = 'complete' | 'partial';
 
+/**
+ * The chargers that share one available current, as the integration reads its
+ * app's installation from the last full inventory (`retainDevices`), and the
+ * one it sends amp or watt commands through. Membership only: whether PELS
+ * controls the installation as one load is `ChargingCurrentControl`'s call.
+ */
+export type ChargingInstallationMembership = {
+  id: string;
+  mainId: string;
+  /** Every member's device id, the main included. */
+  memberIds: readonly string[];
+};
+
 /** Session details remain behind resolved eligibility. */
 export type DeviceAdapterSession = {
+  /**
+   * The shared charging installation `device` is on, when the integration has
+   * one and more than one charger is on it; `undefined` otherwise.
+   */
+  chargingInstallationOf(device: HomeyDeviceLike): ChargingInstallationMembership | undefined;
+  /** Physical sharing can be known even when the integration cannot identify a main. */
+  sharedChargingMemberIds?(device: HomeyDeviceLike): readonly string[] | undefined;
   /** `readAtMs`: when the read that produced `device` started. */
   observeDevice(device: HomeyDeviceLike, readAtMs: number): void;
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void;

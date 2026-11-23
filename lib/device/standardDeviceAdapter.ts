@@ -2,6 +2,7 @@ import type { DeviceAdapter, DeviceAdapterSession, SwitchWrite } from './deviceA
 import { STANDARD_HOME_BATTERY_BINDING } from './homeBatteryBinding';
 
 const unrestrictedSession: DeviceAdapterSession = {
+  chargingInstallationOf: () => undefined,
   observeDevice() {}, observeCapability() {}, retainDevices() {}, withheldCapabilities: () => [], setTrustEpoch() {},
   observedIds: () => [], observes: () => false, controls: () => false,
   missingCompanion: () => 'none',
@@ -28,6 +29,7 @@ export const standardDeviceAdapter: DeviceAdapter = {
   finalizeObservation: (_control, _capabilities, values) => values,
   readRules: () => ({}), retainsPlugObservation: () => false,
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [], phaseBindings: () => [],
+  installationLevelW: () => undefined, installationWattsPerAmp: () => undefined,
   nativeCurrentControls: [], nativeLevelControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
   meterMonthlyPeak: () => ({ state: 'none' }),
   readBackAfterWrite: true, supportsProductionLimits: true,

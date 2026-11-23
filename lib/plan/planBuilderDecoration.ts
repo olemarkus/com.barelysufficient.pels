@@ -44,6 +44,8 @@ export function decorateWithoutDeferredObjectives(input: DeferredDecorationInput
   return buildIdentityDecorationBundle(input.devices);
 }
 
+export { ChargingInstallationPlan } from './chargingInstallationPlan';
+
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 /**

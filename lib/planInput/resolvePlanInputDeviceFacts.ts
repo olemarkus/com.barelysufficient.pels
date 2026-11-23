@@ -124,7 +124,8 @@ const resolveSteppedPlanInputFields = (
   // control channel. Retain the real usable ladder so the pause can execute.
   const plannerSteppedLoadProfile = carCurrentRangeUnavailable && isSteppedDevice
     ? device.steppedLoadProfile
-    : limitedSteppedLoadProfile && resolveFinishedSessionProfile(device, limitedSteppedLoadProfile);
+    : limitedSteppedLoadProfile && (device.chargingInstallationLoad
+      ? limitedSteppedLoadProfile : resolveFinishedSessionProfile(device, limitedSteppedLoadProfile));
   return {
     ...resolveSteppedClusterFields(plannerSteppedLoadProfile, device),
     ...(carCurrentRangeUnavailable ? { carCurrentRangeUnavailable: true as const } : {}),
@@ -173,6 +174,12 @@ function resolvePlanControlPolicy(
   };
 }
 
+function canCommandPhysicalDevice(device: ToPlanDeviceInput): boolean {
+  const installationCarFinished = device.controlAdapter?.chargingInstallation !== undefined
+    && isEvObserved(device) && resolveEvChargeAction(device.evChargingState) === 'offer';
+  return !installationCarFinished && resolveCommandableNow(device);
+}
+
 export const resolvePlanInputDeviceFacts = (
   source: PlanInputProjectionSource,
   device: ToPlanDeviceInput,
@@ -194,7 +201,7 @@ export const resolvePlanInputDeviceFacts = (
     )
     : false;
 
-  const physicallyCommandable = resolveCommandableNow(device);
+  const physicallyCommandable = canCommandPhysicalDevice(device);
   const commandability = resolvePlanCommandability(device, options, physicallyCommandable);
   const commandabilityReason = commandability.reason !== 'none'
     ? commandability.reason

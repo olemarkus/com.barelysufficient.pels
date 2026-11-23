@@ -295,7 +295,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => context.deviceControlSettings.managedDevices,
     () => context.homeMembership,
     () => testLogger,
-    () => context.readHomeBatteryDevices(),
+    {
+      readHomeBatteryDevices: () => context.readHomeBatteryDevices(),
+      readDeviceControlAdapter: (id) => context.deviceConfiguration.get(id)?.controlAdapter,
+    },
   );
   const context: AppContext = {
     readContinuousBatteryPlan: () => ({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),

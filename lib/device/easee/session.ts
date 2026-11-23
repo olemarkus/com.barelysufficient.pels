@@ -13,6 +13,8 @@ type StatusAuthority =
 export class EaseeChargingSession implements DeviceAdapterSession {
   private readonly statuses = new Map<string, StatusAuthority>();
 
+  chargingInstallationOf(): undefined { return undefined; }
+
   observeDevice(device: HomeyDeviceLike, readAtMs: number): void {
     const previous = this.statuses.get(device.id);
     if (previous?.kind === 'retired' && readAtMs < previous.readAtMs) return;

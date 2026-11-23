@@ -24,7 +24,7 @@ import { isHomeBatteryDevice, isSolarPanelDevice } from './managerEnergy';
  */
 export type TargetPowerControlClaim = 'held' | 'needed' | 'refused';
 
-const WITHHELD: readonly string[] = ['target_power', 'target_power_mode'];
+export const WATT_CONTROL_CAPABILITIES: readonly string[] = ['target_power', 'target_power_mode'];
 const NOTHING: readonly string[] = [];
 /**
  * How long an accepted or unanswered claim waits for the device's mode to read
@@ -79,7 +79,7 @@ export class TargetPowerControlClaims {
 
   /** The capabilities a refused device is parsed without: it has no watt control to plan on. */
   withheldCapabilities(device: HomeyDeviceLike, nowMs: number): readonly string[] {
-    return this.resolve(device, nowMs) === 'refused' ? WITHHELD : NOTHING;
+    return this.resolve(device, nowMs) === 'refused' ? WATT_CONTROL_CAPABILITIES : NOTHING;
   }
 
   retainDevices(deviceIds: ReadonlySet<string>): void {

@@ -4,7 +4,7 @@ import {
   ACKNOWLEDGED_COMMAND_SETTLE_MS, CONTROL_COMMAND_CONFIRMATION_MS,
 } from '../ports/controlCommandConfirmation';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import { isPlanDeviceObservedOff, isSteppedLoadDevice } from './planSteppedLoad';
+import { isPlanDeviceObservedOff, isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import { computeRestoreBufferKw } from './restore/accounting';
@@ -218,4 +218,13 @@ export function resolveAcknowledgedStepUpReservationKw(dev: DevicePlanDevice): n
   if (!reservation) return 0;
   const gapKw = resolveSteppedRestoreObservedGapKw(dev, reservation);
   return gapKw > 0 ? gapKw + computeRestoreBufferKw(gapKw) : 0;
+}
+
+/** Charging can fill the installation's current assignment before the next meter sample. */
+export function resolveRunningInstallationReservationKw(dev: DevicePlanDevice): number {
+  if (dev.controlAdapter?.chargingInstallation?.role !== 'main'
+    || !isMeteredPlanDevice(dev) || !isPlanDeviceObservedOn(dev)) return 0;
+  if (!isSteppedLoadDevice(dev)) return Math.max(0, dev.residualKw.restore.kw - dev.currentDrawKw);
+  const step = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
+  return step ? Math.max(0, step.planningPowerW / 1000 - dev.currentDrawKw) : 0;
 }

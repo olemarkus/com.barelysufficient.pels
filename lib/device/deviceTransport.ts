@@ -102,7 +102,6 @@ import {
     resolveChargerPhasePresets,
     resolveChargerPhasePresetsRead,
 } from './settingsUiDeviceReads';
-import type { SteppedLoadStepRequestResult } from '../ports/steppedLoadWrite';
 
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
 export type {
@@ -265,7 +264,9 @@ export class DeviceTransport {
         this.chargingPhases = this.createChargingPhaseTransport(actionOwners);
         // Roles and saved current choices are resolved by their owning services.
         this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl, this.chargingPhases);
-        this.runtimeConfiguration = new RuntimeDeviceConfiguration(options.settings, this, this.snapshotStore);
+        this.runtimeConfiguration = new RuntimeDeviceConfiguration(
+            options.settings, this, this.snapshotStore, this.chargingCurrentControl,
+        );
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
             options,
@@ -516,7 +517,7 @@ export class DeviceTransport {
     }
     readDevicePowerSetup() { return this.snapshotStore.externalPower?.readSetup(); }
 
-    refreshExternalDevicePowers(): void { this.refreshService.requestExternalPowerRefresh(); }
+    refreshExternalDevicePowers(): void { this.refreshService.requestDependentInventoryRefresh('ownership'); }
 
     getUiPickerDevices(): TransportDeviceSnapshot[] { return this.reader.getUiPickerDevices(); }
     getHomeyDeviceIds(): ReadonlySet<string> { return this.snapshotStore.getHomeyDeviceIds(); }
@@ -669,19 +670,17 @@ export class DeviceTransport {
         return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
     }
 
-    requestSteppedLoadStep(request: SteppedLoadWrite): Promise<SteppedLoadStepRequestResult> {
-        return this.writeService.requestSteppedLoadStep(request);
-    }
+    requestSteppedLoadStep(request: SteppedLoadWrite) { return this.writeService.requestSteppedLoadStep(request); }
 
     /** Homey's control of a watt-stepped device PELS manages (`TargetPowerControlClaims`). */
-    getTargetPowerControlClaim(deviceId: string): 'needed' | 'refused' | undefined {
-        return this.writeService.getTargetPowerControlClaim(deviceId);
-    }
+    getTargetPowerControlClaim(id: string) { return this.writeService.getTargetPowerControlClaim(id); }
 
     isTargetPowerControlRefused(id: string): boolean { return this.writeService.isTargetPowerControlRefused(id); }
 
-    requestTargetPowerControlClaim(request: TargetPowerControlClaimWrite): Promise<ClaimResult> {
-        return this.writeService.requestTargetPowerControlClaim(request);
+    async requestTargetPowerControlClaim(request: TargetPowerControlClaimWrite): Promise<ClaimResult> {
+        const result = await this.writeService.requestTargetPowerControlClaim(request);
+        if (result.kind === 'refused') this.refreshService.requestDependentInventoryRefresh('claim');
+        return result;
     }
 
     /** A home battery's signed setpoint; the claim and the range stay this owner's binding. */

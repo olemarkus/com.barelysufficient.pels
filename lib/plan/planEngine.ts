@@ -44,6 +44,7 @@ export type PlanEngine = {
   applyPlanActions: (plan: ExecutionPlan) => Promise<PlanActuationResult>;
   isInverterReleaseRecoveryReady: () => boolean;
   getPendingInverterReleaseCount: (plan: ExecutionPlan) => number;
+  hasPendingSharedChargingPause: (plan: ExecutionPlan) => boolean;
   shouldApplyStablePlanActions: (plan: ExecutionPlan) => boolean;
   /**
    * Does the executor still have work to do against this plan?

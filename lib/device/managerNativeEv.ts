@@ -1,4 +1,7 @@
-import { resolveSteppedLoadProfilePrecedence, type SteppedLoadProfileResolution } from './steppedLoadProfilePolicy';
+import {
+  readInstallationTargetWatts, resolveReportedStep, resolveSteppedLoadProfilePrecedence,
+  type SteppedLoadProfileResolution,
+} from './steppedLoadProfilePolicy';
 import type {
   AcknowledgedStepObservation,
   AutomaticPowerControl,
@@ -43,12 +46,12 @@ import {
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
+import { resolveInstallationCurrentTargetPowerObservation } from './chargingCurrentAdapter';
 import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from './deviceAdapter';
 import { resolveAcknowledgedStepObservation } from './acknowledgedStep';
 import { warnIfTargetPowerCapabilityViolatesContract } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
-import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 
 export type FlowEffectiveRequiredCapabilityId =
@@ -94,7 +97,7 @@ export function resolveFlowCapabilityOverlay(
   // class key is known: no ladder-contract warning, no owner-configured or
   // native ladder (so no control adapter, which is what every later stepped
   // write and realtime path keys on), and its `target_power` is not stripped.
-  const steppedLoad = !isBatteryOrSolarClassKey(deviceClassKey);
+  const steppedLoad = supportsSteppedLoad(deviceClassKey, device, sources.chargingCurrent);
   const { targetPowerOverlay, nativeSteppedOverlay, automaticPowerControl }: SteppedLoadOverlays = steppedLoad
     ? applySteppedLoadOverlays(device, deviceId, nativeEvOverlay, sources, logger)
     : { targetPowerOverlay: nativeEvOverlay, nativeSteppedOverlay: {} };
@@ -139,8 +142,6 @@ export function resolveFlowCapabilityOverlay(
   const finalCapabilityObj = controlAdapter
     ? getDeviceAdapter(device).finalizeObservation(controlAdapter, finalCapabilities, capabilityObj)
     : capabilityObj;
-  const reportedStepId = nativeSteppedOverlay.reportedStepId ?? targetPowerOverlay.reportedStepId;
-  const phaseStep = chargingPhaseProfile?.steps.find((step) => step.id === reportedStepId);
   return {
     capabilities: finalCapabilities,
     capabilityObj: finalCapabilityObj,
@@ -151,10 +152,7 @@ export function resolveFlowCapabilityOverlay(
     flowBackedCapabilityIds,
     requiredFlowCapabilityIds,
     reportedCapabilities,
-    reportedStepId,
-    reportedStepPowerW: phaseStep?.planningPowerW ?? targetPowerOverlay.reportedStepPowerW,
-    reportedStepObservedAtMs: targetPowerOverlay.reportedStepPowerW !== undefined
-      ? targetPowerOverlay.reportedStepObservedAtMs : nativeSteppedOverlay.reportedStepObservedAtMs,
+    ...resolveReportedStep(chargingPhaseProfile, nativeSteppedOverlay, targetPowerOverlay),
     acknowledgedStep: targetPowerOverlay.acknowledgedStep,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
     ...profile,
@@ -165,6 +163,12 @@ export function resolveFlowCapabilityOverlay(
     automaticPowerControl,
     allReportedCapabilities,
   };
+}
+
+function supportsSteppedLoad(
+  deviceClassKey: string, device: HomeyDeviceLike, charging: DeviceParseSources['chargingCurrent'],
+): boolean {
+  return !isBatteryOrSolarClassKey(deviceClassKey) && !charging.withholdsInstallationSteps(device);
 }
 
 /**
@@ -438,18 +442,6 @@ function isEvTargetPowerPresetConfig(
   return config?.preset === 'ev_charger_1_phase' || config?.preset === 'ev_charger_3_phase';
 }
 
-function resolveInstallationCurrentTargetPowerObservation(
-  config: TargetPowerSteppedLoadConfig,
-  current: DeviceCapabilityMap[string],
-): { value: number; observedAt?: DeviceCapabilityMap[string]['lastUpdated'] } | undefined {
-  const phaseCount = resolveTargetPowerPresetPhaseCount(config.preset);
-  if (!phaseCount || typeof current.value !== 'number' || !Number.isFinite(current.value)) return undefined;
-  return {
-    value: Math.round(current.value * 230 * phaseCount),
-    observedAt: current.lastUpdated,
-  };
-}
-
 /**
  * Native watt devices arrive with their published ladder intact. A configured
  * fallback supplies the ladder for amp controls and devices without a usable
@@ -464,6 +456,7 @@ function resolveNativeSteppedLoadOverlay(
 ): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
+  reportedStepPowerW?: number;
   reportedStepObservedAtMs?: number;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
@@ -504,6 +497,10 @@ function resolveNativeSteppedLoadOverlay(
         ? { activationOrder: 'current_before_start' as const } : {}),
     },
     reportedStepId,
+    reportedStepPowerW: readInstallationTargetWatts(
+      automaticPowerControl, sources.chargingCurrent.isInstallationMain(deviceId), reportedStepId,
+      capabilityObj.target_power?.value,
+    ),
     reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, capabilities) ?? (reportedStepId
       ? resolveNativeSteppedLoadObservedAtMs(capabilities, capabilityObj)
       : undefined),

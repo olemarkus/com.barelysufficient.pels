@@ -104,6 +104,7 @@ export class HomeModeDeviceResolver {
       managedDevices: Readonly<Record<string, boolean>>,
       membership: HomeMembershipPort | undefined,
     ) => PersistedHomeModeCatalogRead,
+    private readonly readPriorityGroup: (id: string) => string | undefined,
   ) {}
 
   resolve = (deviceId: string): DeviceOperatingModeOutcome => {
@@ -133,7 +134,7 @@ export class HomeModeDeviceResolver {
     const modes = new Set(Object.keys(catalog.targets));
     if (activeMode !== null) modes.add(activeMode);
     const priorities = catalog.modePriorityCatalog.resolveHomeConfiguration(
-      this.getManagedDevices(), catalog.targets, activeMode ?? '', homeId, this.getMembership(),
+      this.getManagedDevices(), catalog.targets, activeMode ?? '', homeId, this.getMembership(), this.readPriorityGroup,
     );
     return {
       state: 'resolved', homeId, catalogHomeId, activeMode,

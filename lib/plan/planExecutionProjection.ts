@@ -4,7 +4,7 @@ import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice, isPlanDeviceObservedOff, isPlanDeviceObservedOn } from './planSteppedLoad';
 import { buildPlannedSteppedCommand, resolveSteppedLoadCurrentFallback } from './planSteppedCommand';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   isDeferredRestoreBlockedReason, isRestoreAdmissionHoldReason, isSwapTargetPendingReason,
@@ -12,7 +12,7 @@ import {
 import { hasStorageDecision } from '../planContract/storageDecision';
 import { hasPlannedStep, type PlannedDeviceCommands, type PlannedBinaryCommand, type PlannedReleaseCommand,
   type StableExecutionOperation, type PlannedSteppedCommand, type ExecutionPlan,
-  type PlannedCommandAxes, type PlannedTargetPowerClaim } from '../planContract/executionPlan';
+  type PlannedBinaryDrive, type PlannedCommandAxes, type PlannedTargetPowerClaim } from '../planContract/executionPlan';
 import type { DroppedSteppedShedIntent } from '../planContract/executionPlan';
 type PlanDevice = DevicePlan['devices'][number];
 type PlanMeta = DevicePlan['meta'];
@@ -25,9 +25,11 @@ export function buildExecutablePlan(plan: DevicePlan): PlannedCommandPlan {
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
   const target = planDevice.targetCommand;
-  const binary = buildPlannedBinaryCommand(planDevice);
+  const installation = planDevice.controlAdapter?.chargingInstallation;
+  const binary = installation ? planDevice.chargingInstallationSwitch : buildPlannedBinaryCommand(planDevice);
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
-  const steppedLoad = buildPlannedSteppedCommand(planDevice);
+  const step = installation?.role === 'secondary' ? undefined : buildPlannedSteppedCommand(planDevice);
+  const steppedLoad = installation && step ? installationStepOnly(step) : step;
   // The claim follows from PELS's authority over the device this cycle, a
   // smart task's included, and not from this cycle's step: a device the plan
   // leaves alone or holds off is claimed too. A device PELS only watches is not.
@@ -47,6 +49,19 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     ...(targetPowerClaim ? { targetPowerClaim } : {}),
   };
   return commands;
+}
+
+function installationStepOnly(
+  step: PlannedSteppedCommand & Partial<PlannedBinaryDrive>,
+): PlannedSteppedCommand {
+  const { desiredOn: _binaryDrive, transition, ...command } = step;
+  const { desired } = command;
+  return {
+    ...command,
+    desired: isSteppedLoadOffStep(command.steppedLoadProfile, desired.stepId)
+      ? { ...desired, stepId: undefined } : desired,
+    transition: transition && { ...transition, binaryTarget: null },
+  };
 }
 
 function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
@@ -239,6 +254,7 @@ const buildPlannedReleaseCommand = (
 export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
   const commands = buildExecutablePlan(plan);
   return {
+    ...(!plan.meta.powerIsMeasured ? { meterSilenceStamp: plan.meta.lastPowerUpdateMs } : {}),
     devices: plan.devices.map((device, index) => {
       const intent = commands.devices[index]!;
       const stepDownToRetire = device.stepDownToRetire;

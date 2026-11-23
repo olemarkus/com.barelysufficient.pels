@@ -113,3 +113,32 @@ export const rankActiveDevicePriorities = (
   });
   return Object.fromEntries(ordered.map((deviceId, index) => [deviceId, index + 1]));
 };
+
+/**
+ * Keep a shared load's rows together, with its controlling device first.
+ * On a drag, the moved member's position is the group's new place in the order.
+ */
+export const groupModePriorityDeviceIds = (
+  deviceIds: readonly string[],
+  getMainId: (deviceId: string) => string | undefined,
+  movedDeviceId?: string,
+): string[] => {
+  const groupByDevice = new Map(deviceIds.map((id) => [id, getMainId(id) ?? id]));
+  const membersByGroup = new Map<string, string[]>();
+  for (const id of deviceIds) {
+    const group = groupByDevice.get(id)!;
+    const members = membersByGroup.get(group) ?? [];
+    members.push(id);
+    membersByGroup.set(group, members);
+  }
+  return deviceIds.flatMap((id) => {
+    const group = groupByDevice.get(id)!;
+    const members = membersByGroup.get(group)!;
+    const hasMain = members.includes(group);
+    const defaultAnchor = hasMain ? group : members[0];
+    const anchor = movedDeviceId !== undefined && groupByDevice.get(movedDeviceId) === group
+      ? movedDeviceId : defaultAnchor;
+    if (id !== anchor) return [];
+    return hasMain ? [group, ...members.filter((member) => member !== group)] : members;
+  });
+};

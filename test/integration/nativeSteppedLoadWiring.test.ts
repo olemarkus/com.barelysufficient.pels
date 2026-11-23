@@ -2165,6 +2165,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('clears fallback off-step reporting when native onoff turns back on', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const offDevice = {
       ...buildHoiaxDevice(),
       capabilitiesObj: {
@@ -2197,6 +2198,7 @@ describe('native stepped-load wiring', () => {
 
       const realtimeReconcile = vi.fn();
       onObservedControlState(deviceManager, realtimeReconcile);
+      vi.setSystemTime(Date.now() + 1);
       await emitCapability('hoiax-1', 'onoff', true);
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -2214,6 +2216,7 @@ describe('native stepped-load wiring', () => {
       }));
     } finally {
       restoreMockRestClient();
+      vi.useRealTimers();
     }
   });
 

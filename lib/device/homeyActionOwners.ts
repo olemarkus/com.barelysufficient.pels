@@ -37,7 +37,7 @@ export const createHomeyActionOwners = (
   deviceSdk: DeviceHomeySdk,
   snapshotStore: TransportSnapshotStore,
   logger: Logger,
-  options: Pick<DeviceTransportOptions, 'acceptedFlowWrites' | 'settings'>,
+  options: Pick<DeviceTransportOptions, 'acceptedFlowWrites' | 'settings' | 'externalPower'>,
 ): HomeyActionOwners => {
   const answerTimes = new WriteAnswerTimes(Date.now(), () => deviceSdk.getHealth()?.subscriptionState === 'subscribed');
   const access = new HomeyActionAccess(deviceSdk.runtime, logger, answerTimes);
@@ -56,7 +56,7 @@ export const createHomeyActionOwners = (
       const health = deviceSdk.getHealth();
       return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
     },
-    options.acceptedFlowWrites, options.settings,
+    options.acceptedFlowWrites, options.settings, options.externalPower?.resolveHome,
   );
   return { access, answerTimes, batteryAppActions, chargingCurrentControl,
     createChargingPhaseTransport: (pause, currentPolicy, writeCapability) => new ChargingPhaseTransport(

@@ -299,6 +299,13 @@ export type PlanInputDevice =
   | (PlanInputDeviceBase & SteppedPlanInputKind)
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);
 
+/** The shared current and draw observed at the installation boundary, for capacity only. */
+export type ChargingInstallationLoad = {
+  currentDrawKw?: number;
+  level?: { stepId: string; watts: number };
+  running: boolean;
+};
+
 export type PlanInputDeviceBase = {
   /** An exact delivery failure on this home's native shed, until the executor clears the episode. */
   relayShedNoAck?: { decisionAtMs?: number; retryAtMs: number };
@@ -349,6 +356,8 @@ export type PlanInputDeviceBase = {
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
   controlAdapter?: DeviceControlAdapterSnapshot;
+  /** Present on the single capacity representative of a shared charging installation. */
+  chargingInstallationLoad?: ChargingInstallationLoad;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   // Producer-only control-model setting (`temperature_target` / `binary_power` /
   // `stepped_load`). It is NOT the planner's stepped discriminant — that is
@@ -932,7 +941,7 @@ export type DeviceControlPosture = {
 export type PlanDeviceCarriedKey =
   'associatedCar' | 'available' | 'binaryControllable' | 'binarySwitchGeneration' | 'budgetExempt'
   | 'isEvCharger' | 'isBatteryOrSolar' | 'starvationSupported'
-  | 'canSetControl' | 'capabilities' | 'controlAdapter' | 'controlModel'
+  | 'canSetControl' | 'capabilities' | 'chargingInstallationLoad' | 'controlAdapter' | 'controlModel'
   | 'controllable' | 'desiredStepId'
   | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
   | 'expectedPowerKw' | 'expectedPowerSource'

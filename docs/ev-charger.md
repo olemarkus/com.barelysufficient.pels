@@ -17,7 +17,7 @@ For most supported chargers PELS controls charging through the charger's Homey a
 | **Alfen** (Alfen, or Alfen Pro-line/ACE) | Directly in whole amps from 6 A, no key or Flow. |
 | **Peblar** (Peblar EV Charger by Kyle Michiels) | Sets the live charge limit directly in whole amps from 6 A, no key or Flow. |
 | **Enua** (Enua) | Directly through the charger's charging power, in whole amps from 6 A, no key or Flow. PELS converts amps to watts from the charger's grid type. |
-| **Zaptec** (Zaptec) | Directly, without an API key. Update the Zaptec app if writable control is unavailable, or keep using a Flow. See the [Zaptec guide](/zaptec-ev-charger). |
+| **Zaptec** (Zaptec) | Directly, without an API key, including shared current when all chargers on an installation are managed with Power-limit control on. Update the Zaptec app if writable control is unavailable, or keep using a Flow. See the [Zaptec guide](/zaptec-ev-charger). |
 | **Tesla** (Tesla Car & Energy) | Directly through the car. See [Tesla vehicle charging](/tesla-charging). |
 | **Futurehome Charge** (Futurehome) | Directly, with a Homey API key. See the [Futurehome guide](/futurehome-ev-charger). |
 | **Wallbox** (Wallbox Charger) | Directly, with a Homey API key under **Setup → Charging current**. |
@@ -71,6 +71,8 @@ Then configure the charger as a normal managed device:
 3. Set a priority that matches how important EV charging is compared with heaters, water tanks, and other managed devices.
 
 Lower priority numbers are more important. Devices with higher numbers are limited first when PELS needs to stay under your grid import limit or hard cap.
+
+When PELS manages the current for a shared charging installation, its chargers move together in the priority list. They share the available current and keep separate switches, car settings and battery-level smart tasks. **Setup → Charging current** shows which charger PELS uses to set the installation's current. See [Several chargers on one installation](/zaptec-ev-charger#several-chargers-on-one-installation).
 
 Under **Setup → Default charging current limits**, save the minimum and maximum currents to use when the connected car has no saved range. This covers older cars without a Homey car device and cars PELS has not identified. Both values accept whole amps from 6 to 32.
 

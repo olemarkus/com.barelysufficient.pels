@@ -1,4 +1,6 @@
-import { TargetPowerControlClaims, type TargetPowerControlClaim } from './targetPowerControlClaims';
+import {
+  WATT_CONTROL_CAPABILITIES, TargetPowerControlClaims, type TargetPowerControlClaim,
+} from './targetPowerControlClaims';
 import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type { HubHomeLocation } from './hubHomeLocation';
 import { teslaAdapter } from './tesla';
@@ -38,9 +40,10 @@ import { lixeeZlinkyAdapter } from './lixee';
 import { nousEnergyMonitorAdapter } from './nous';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type {
-  DeviceAdapter, AdapterObservation, AdapterControlTarget, CapabilityWrite, DeviceAdapterSession,
-  InventoryCompleteness,
+  DeviceAdapter, AdapterObservation, AdapterControlTarget, CapabilityWrite, ChargingInstallationMembership,
+  DeviceAdapterSession, InventoryCompleteness,
 } from './deviceAdapter';
+import type { ChargingInstallation } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
@@ -79,7 +82,40 @@ export class DeviceAdapterSessions {
   private readonly sessions: readonly DeviceAdapterSession[];
   /** Homey's control of the watt target of the devices PELS steps through it. */
   readonly targetPowerClaims = new TargetPowerControlClaims();
-  constructor(home: HubHomeLocation) { this.sessions = adapters.map((adapter) => adapter.createSession(home)); }
+  /**
+   * `installationRole`: the device's role on a charging installation PELS
+   * controls as one load (`ChargingCurrentControl.chargingInstallation`). Its
+   * main keeps its watt control, which sets the installation's current; a
+   * secondary is parsed without it, whatever the integration withholds.
+   */
+  constructor(
+    home: HubHomeLocation,
+    private readonly installationRole: (
+      device: HomeyDeviceLike,
+    ) => ChargingInstallation['role'] | 'blocked' | undefined = () => undefined,
+  ) { this.sessions = adapters.map((adapter) => adapter.createSession(home)); }
+  /** The shared charging installation `device` is on, as the first integration that reads one says. */
+  chargingInstallationOf(device: HomeyDeviceLike): ChargingInstallationMembership | undefined {
+    for (const session of this.sessions) {
+      const installation = session.chargingInstallationOf(device);
+      if (installation) return installation;
+    }
+    return undefined;
+  }
+  sharedChargingMemberIds(device: HomeyDeviceLike): readonly string[] | undefined {
+    for (const session of this.sessions) {
+      const members = session.sharedChargingMemberIds?.(device);
+      if (members) return members;
+    }
+    return undefined;
+  }
+  private sessionWithheld(device: HomeyDeviceLike): string[] {
+    const withheld = this.sessions.flatMap((session) => session.withheldCapabilities(device));
+    const role = this.installationRole(device);
+    if (role === 'main') return withheld.filter((id) => !WATT_CONTROL_CAPABILITIES.includes(id));
+    if (role === 'secondary' || role === 'blocked') return [...withheld, ...WATT_CONTROL_CAPABILITIES];
+    return withheld;
+  }
   observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
     for (const device of devices) this.observeDevice(device, readAtMs);
   }
@@ -99,12 +135,15 @@ export class DeviceAdapterSessions {
    * control of it (`TargetPowerControlClaims`).
    */
   withholdCapabilities(device: HomeyDeviceLike, nowMs = Date.now()): HomeyDeviceLike {
-    const shared = without(device, this.sessions.flatMap((session) => session.withheldCapabilities(device)));
+    const shared = without(device, this.sessionWithheld(device));
     return without(shared, this.targetPowerClaims.withheldCapabilities(shared, nowMs));
   }
   /** Homey's control of `device`'s watt target, read as the sessions parse the device. */
   targetPowerClaimOf(device: HomeyDeviceLike, nowMs: number): TargetPowerControlClaim | undefined {
-    const shared = without(device, this.sessions.flatMap((session) => session.withheldCapabilities(device)));
+    if (this.installationRole(device) === 'blocked' && this.targetPowerClaims.resolve(device, nowMs) === 'refused') {
+      return 'refused';
+    }
+    const shared = without(device, this.sessionWithheld(device));
     return this.targetPowerClaims.resolve(shared, nowMs);
   }
   setTrustEpoch(epoch: string): void { for (const session of this.sessions) session.setTrustEpoch(epoch); }

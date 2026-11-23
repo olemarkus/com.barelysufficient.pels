@@ -161,7 +161,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     () => this.deviceControlSettings.managedDevices,
     () => this.context.homeMembership,
     () => this.getStructuredLogger('homes'),
-    () => this.readHomeBatteryDevices(),
+    this,
   );
   protected readonly getHomeOperatingMode = () => this.homeModeCatalog.getOperatingMode();
   protected readonly setHomeOperatingMode = (mode: string) => this.homeModeCatalog.setOperatingMode(mode);

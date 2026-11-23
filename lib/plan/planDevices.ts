@@ -13,6 +13,7 @@ import { applyOffStateReason } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isChargeTargetHoldShed } from './shedding/chargeTargetHold';
 import { isCarCurrentRangeHoldShed } from './shedding/carCurrentRangeHold';
+import { resolveCapacityShedBehavior } from './shedding/capacityShedBehavior';
 import { isDeferredHoldShed } from './shedding/deferredHold';
 import type { SheddingPlan } from './shedding/types';
 import { isSteppedLoadDevice } from './planSteppedLoad';
@@ -120,7 +121,7 @@ export function buildInitialPlanDevices(
     const shedBehavior: ShedBehavior = (
       isSteppedLoadDevice(dev) || isTemperaturePlanDevice(dev)
     )
-      ? deps.getShedBehavior(dev.id)
+      ? resolveCapacityShedBehavior(dev, deps.getShedBehavior)
       : { action: 'turn_off' };
     const previousBoostActive = state.boostActiveByDevice[dev.id] === true;
     const boostActive = resolveBoostActive(dev);
@@ -221,7 +222,7 @@ function isPhantomSetStepShed(
   deps: PlanDevicesDeps,
 ): boolean {
   if (!isSteppedLoadDevice(dev)) return false;
-  const behavior = deps.getShedBehavior(dev.id);
+  const behavior = resolveCapacityShedBehavior(dev, deps.getShedBehavior);
   if (behavior.action !== 'set_step') return false;
   const directStepId = resolveSteppedShedHypotheticalStepId(
     dev, devices, state, behavior,

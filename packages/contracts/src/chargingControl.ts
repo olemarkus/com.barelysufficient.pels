@@ -21,7 +21,10 @@ export type ChargingCurrentRead = {
   /** Whether built-in current control can use an app action through Homey access. */
   supportsAppAction: boolean;
   scope: 'installation' | 'vehicle' | 'charger';
+  /** A shared installation where built-in current is not available through this charger. */
   sharedInstallation: boolean;
+  /** The shared installation PELS operates as one load, where a single charger sets the current. */
+  chargingInstallation?: { role: 'main' | 'secondary'; mainName: string; automaticWatts: boolean };
   flowCheck: 'clear' | 'conflict' | 'unavailable';
   flowNames: string[];
   /**

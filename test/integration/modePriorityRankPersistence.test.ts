@@ -43,7 +43,7 @@ const createMainCatalog = (
   () => managed,
   () => membership,
   () => testLogger,
-  readHomeBatteries,
+  { readHomeBatteryDevices: readHomeBatteries, readDeviceControlAdapter: () => undefined },
 );
 
 describe('persisting ranks for unranked managed devices', () => {
@@ -123,7 +123,7 @@ describe('persisting ranks for unranked managed devices', () => {
     const catalog = createHomeModeCatalog(
       MAIN_HOME_ID, settings, () => { throw new Error('unused'); },
       () => ({ heater: true, charger: true }), () => ownership.membership, () => testLogger,
-      NO_BATTERIES,
+      { readHomeBatteryDevices: NO_BATTERIES, readDeviceControlAdapter: () => undefined },
     );
     expect(settings.writes).toEqual([]);
     ownership.membership = settledMembership();
@@ -166,7 +166,7 @@ describe('persisting ranks for unranked managed devices', () => {
       area, settings, main.getSnapshot,
       () => ({ heater: true, sauna: true, kitchen: true }),
       () => settledMembership({ heater: area, sauna: area }), () => testLogger,
-      NO_BATTERIES,
+      { readHomeBatteryDevices: NO_BATTERIES, readDeviceControlAdapter: () => undefined },
     );
     catalog.reload();
     expect(settings.get(homeScopedSettingsKey(CAPACITY_PRIORITIES, area))).toEqual({ Home: { heater: 1, sauna: 2 } });

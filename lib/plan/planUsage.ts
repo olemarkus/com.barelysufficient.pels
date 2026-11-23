@@ -1,4 +1,4 @@
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { isPlanDeviceObservedOff } from './planSteppedLoad';
@@ -7,6 +7,7 @@ import type { MeteredKind } from './planTypes';
 
 type UsageDevice = {
   budgetExempt: boolean;
+  controlAdapter?: DeviceControlAdapterSnapshot;
   // Producer-resolved on/off truth, present iff the device is binary
   // (`binaryCapabilityId` set). A step-only stepper carries no `currentOn`; its
   // off-state is read from the step axis, so the stepped fields travel too.
@@ -73,7 +74,9 @@ export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice & { id: st
  *   step, never its learned peak: a restart from off never jumps past that rung.
  */
 const resolveBudgetExemptProjectedKw = (dev: UsageDevice, heldOffByPels: boolean): number => {
-  if (heldOffByPels) return dev.currentDrawKw;
+  // A shared load has one admission reservation. A member's own budget
+  // exemption covers the power it actually uses through that load.
+  if (heldOffByPels || dev.controlAdapter?.chargingInstallation) return dev.currentDrawKw;
   if (dev.currentDrawKw > 0) return dev.currentDrawKw;
   if (!isPlanDeviceObservedOff(dev)) return dev.currentDrawKw;
   // Reached only when the draw is 0, so the fallback arm is 0 — not "the draw".

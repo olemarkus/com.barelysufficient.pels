@@ -145,7 +145,9 @@ async function executePlanRebuild(
   }
 
   await maybeApplyPlanChanges(host, executionPlan, changes, isDryRun, observationRevision, outcome);
+  const sharedChargingPausePending = host.deps.planEngine.hasPendingSharedChargingPause(executionPlan);
   Object.assign(outcome, {
+    ...(sharedChargingPausePending ? { sharedChargingPausePending: true } : {}),
     buildMs,
     changeMs,
     snapshotMs,

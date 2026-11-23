@@ -344,6 +344,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getNow = (): Date => new Date();
 
   public readHomeBatteryDevices = (): HomeBatteryDevicesRead => readHomeBatteryDevices(this.context.deviceManager);
+  public readDeviceControlAdapter = (deviceId: string) => (
+    this.context.deviceManager && this.context.deviceConfiguration.get(deviceId)?.controlAdapter
+  );
   public resolveManagedState = (deviceId: string): boolean => resolveDeviceManagedState(
     this.context.deviceManager,
     this.context.batteryManaged,

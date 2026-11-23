@@ -282,9 +282,19 @@ export function handleNativeSteppedLoadCapabilityUpdate(
         ?? fallbackReportedStepId;
 
     applyNativeSteppedLoadSnapshotUpdate(
-        ingest, snapshot, capabilityId, nextReportedStepId, isNativePowerStepUpdate, reportedStepPowerW, pelsEcho,
+        ingest, snapshot, capabilityId, nextReportedStepId, isNativePowerStepUpdate,
+        resolveExactStepObservationWatts(snapshot, capabilityId, value, reportedStepPowerW), pelsEcho,
     );
     return isNativePowerStepUpdate;
+}
+
+function resolveExactStepObservationWatts(
+    snapshot: TransportDeviceSnapshot, capabilityId: string, value: unknown, presetWatts: number | undefined,
+): number | undefined {
+    if (presetWatts !== undefined) return presetWatts;
+    return capabilityId === 'target_power' && typeof value === 'number'
+        && snapshot.automaticPowerControl?.mode === 'automatic'
+        && snapshot.controlAdapter?.chargingInstallation?.role === 'main' ? value : undefined;
 }
 
 function isInvalidNativeNumericStep(capabilityId: string, value: unknown): boolean {

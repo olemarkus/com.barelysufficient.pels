@@ -42,7 +42,11 @@ const setup = (ranges: EvCarCurrentLimits, settings: Pick<DeviceControlSettings,
   const owner = new EvChargingCurrentLimitPolicy(settings, {
     getAssociatedCar: (id) => links.get(id),
     getCarConfirmation: (id) => confirmations.get(id),
-  }, snapshots);
+  }, snapshots, {
+    chargingInstallation: () => undefined,
+    installationLevelW: () => undefined,
+    installationWattsPerAmp: () => undefined,
+  });
   const configurations = new DeviceConfigurationStore(owner);
   const planned = (id = 'charger') => {
     const configuration = configurations.get(id);

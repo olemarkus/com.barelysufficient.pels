@@ -13,6 +13,9 @@ export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProje
     getNow: () => ctx.getNow(),
     isWaitingForCarAssociation: (deviceId) => requireDeviceManager(ctx).isWaitingForCarAssociation(deviceId),
     getTargetPowerControlClaim: (deviceId) => requireDeviceManager(ctx).getTargetPowerControlClaim(deviceId),
+    readChargingInstallationLevelW: (deviceId) => (
+      requireDeviceManager(ctx).chargingCurrentControl.installationLevelW(deviceId)
+    ),
     getPowerCalibrationSnapshot: () => ctx.getPowerCalibrationSnapshot(),
     deviceControl: ctx.deviceControlSettings,
     getPriceOptimizationSettings: (deviceId) => ctx.priceOptimizationSettings[deviceId],

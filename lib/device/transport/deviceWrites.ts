@@ -129,13 +129,13 @@ export class DeviceWriteService {
     return snapshot !== undefined && this.chargingCurrentControl.sessions.controls(snapshot);
   }
 
-  private assertControlAllowed(deviceId: string): HomeyDeviceLike | undefined {
+  private assertControlAllowed(deviceId: string, capabilityId?: string): HomeyDeviceLike | undefined {
     const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
     this.snapshotStore.externalPower?.assertAllowsWrite(deviceId);
     if (!raw && this.requiresAdapterControl(deviceId)) {
       throw new Error('Device control metadata is unavailable.');
     }
-    if (raw) this.chargingCurrentControl.assertControlAllowed(raw);
+    if (raw) this.chargingCurrentControl.assertControlAllowed(raw, capabilityId);
     return raw;
   }
 
@@ -201,13 +201,12 @@ export class DeviceWriteService {
     if (!hasRestClient()) throw new Error('REST client not ready');
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const binaryAuthority = captureBinaryWriteAuthority(snapshotBefore, capabilityId);
-    this.assertControlAllowed(deviceId);
+    const raw = this.assertControlAllowed(deviceId, capabilityId);
     const normalizedValue = normalizeCapabilityValue(snapshotBefore, capabilityId, value);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);
-    const sdkWrite = resolveSdkWrite(
-      snapshotBefore, this.snapshotStore.getTrackedRawDevice(deviceId), requested, this.currentLimitPolicy,
-    );
+    this.currentLimitPolicy.assertInstallationCapability(deviceId, raw, requested);
+    const sdkWrite = resolveSdkWrite(snapshotBefore, raw, requested, this.currentLimitPolicy);
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
     if (sdkWrite.kind === 'none') {
         emitTransportDebug({ event: 'device_capability_write_skipped', deviceId, capabilityId,
@@ -237,13 +236,7 @@ export class DeviceWriteService {
       () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId,
         this.answerTimes.kindOf(snapshotBefore, requested, write, readBackAsWritten)),
     ).finally(() => this.observationState.noteWriteAnswered(deviceId, ownWrite, snapshotBefore, capabilityId));
-    emitCapabilityWriteDebug(
-        'device_capability_write_accepted',
-        deviceId,
-        capabilityId,
-        normalizedValue,
-        write,
-    );
+    emitCapabilityWriteDebug('device_capability_write_accepted', deviceId, capabilityId, normalizedValue, write);
 
     if (binaryAuthority && !this.snapshotStore.binarySwitches.allows(deviceId, binaryAuthority.generation)) {
       return normalizedValue;
@@ -455,6 +448,7 @@ export class DeviceWriteService {
   ): Promise<SteppedLoadStepRequestResult> {
     this.currentLimitPolicy.assertStepAllowed(params);
     const { deviceId, profile, desiredStepId, planningCurrentA } = params;
+    this.chargingCurrentControl.assertInstallationStepAllowed(deviceId);
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     if (snapshot?.pendingSteppedLoad) return { requested: false };
     if (snapshot?.manualFlowSteppedLoad && this.nativeWiring.steppedLoadFlowSetup(deviceId) !== 'ready') {
@@ -520,6 +514,9 @@ export class DeviceWriteService {
     request: TargetPowerControlClaimWrite,
   ): Promise<TargetPowerControlClaimResult> {
     const { deviceId } = request;
+    const preparation = this.currentLimitPolicy.prepareInstallationClaim(deviceId);
+    if (preparation.kind === 'prepare') await this.setCapability(deviceId, 'target_power', preparation.watts);
+    if (preparation.kind !== 'ready') return { kind: 'not_sent' };
     const claims = this.chargingCurrentControl.sessions.targetPowerClaims;
     try {
       const claimed = await this.snapshotStore.nativeSteppedAdapters.claimTargetPower(

@@ -13,6 +13,7 @@
 
 import { createPlanInputProjectionSource } from '../appInit/planInputDeviceProjection';
 import { projectPlanInputDevice } from '../../lib/planInput/projectPlanInputDevice';
+import { foldChargingInstallations } from '../../lib/planInput/chargingInstallationFold';
 import { pruneMissingLearnedPowerPeaks } from '../appInit/devicePowerPeakPrePass';
 import {
   isAffirmativelyOn,
@@ -88,7 +89,8 @@ const runSnapshotPrePass = (
 };
 
 /**
- * This home's plan input: the snapshot pre-pass, the membership complement, and
+ * This home's plan input: the snapshot pre-pass, the membership complement, the
+ * charging-installation fold (`foldChargingInstallations`), and
  * the shared planned-set filter.
  *
  * Membership complement: with sub-homes configured, a home plans only its own
@@ -115,7 +117,7 @@ export const buildHomePlanDevices = (
   const membership = ctx.homeMembership;
   let homeDevices = homeId === MAIN_HOME_ID ? snapshot : [];
   if (membership) homeDevices = membership.filterDevicesForHome(snapshot, homeId);
-  const devices = homeDevices
+  const devices = foldChargingInstallations(homeDevices, source)
     .map((device) => projectPlanInputDevice(source, device, options))
     .filter((device) => isPlannableDevice(device) && isRuntimePlannedPlanDevice(device));
   // The mode catalog owner puts the home's planned set in order: unique,

@@ -68,6 +68,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
   isInverterReleaseRecoveryReady: () => true,
   getPendingInverterReleaseCount: () => 0,
+  hasPendingSharedChargingPause: () => false,
   applyPlanActions: vi.fn().mockResolvedValue({
     deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0,
   }),

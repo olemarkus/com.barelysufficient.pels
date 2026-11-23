@@ -1,4 +1,4 @@
-import { resolveLatchedMeterReading } from '../power/lastTotalPower';
+import { resolveLatchedMeterReading, resolveMeterEvidenceAtMs } from '../power/lastTotalPower';
 import type { RelayMeterObservation } from '../ports/nativeRelay';
 import { RelayShedRecovery } from './relayShedRecovery';
 import { hasBinaryCommand } from './executablePlan';
@@ -37,6 +37,7 @@ import type { DriftObservationDeps } from './driftObservedDevice';
 import { hasPlanExecutionDriftAgainstIntent } from './executorConvergence';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
+import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { resolveDeviceExecutionState, resolvePlannedCommandValues } from './deviceExecutionState';
 import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
@@ -458,6 +459,17 @@ export class PlanExecutor {
     return this.deps.inverterLane.pendingReleaseCount(plan.inverterDecisions);
   }
 
+  public hasPendingSharedChargingPause(plan: ExecutionPlan): boolean {
+    if (plan.meterSilenceStamp === undefined) return false;
+    return plan.devices.some(({ commands }) => {
+      if (!hasBinaryCommand(commands) || commands.binary.meterSilencePausePrimaryId === undefined) return false;
+      const observed = this.deps.getObservedState(commands.id);
+      return observed !== undefined && observed.available !== false && (
+        !isBinaryObservedOff(observed) || this.deps.pendingBinaryCommandStore.hasActiveTurnOn(commands.id)
+      );
+    });
+  }
+
   public async handleShortfall(deficitKw: number): Promise<void> {
     await this.shortfallExecutor.handleShortfall(deficitKw);
   }
@@ -489,7 +501,8 @@ export class PlanExecutor {
     try {
       const phaseWork = this.chargingPhases.apply(plan.chargingPhaseDecisions, Date.now());
       const [result, phaseResult] = await Promise.all([
-        dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage, this.chargingPhases),
+        dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage, this.chargingPhases,
+          () => resolveMeterEvidenceAtMs(this.deps.getPowerTracker()) === plan.meterSilenceStamp),
         phaseWork,
       ]);
       const inverterResult = await this.deps.inverterLane.apply(plan.inverterDecisions);
