@@ -223,7 +223,7 @@ describe('a device that turns itself back on', () => {
         limited_minutes: expect.any(Number),
       },
     });
-    expect(resumeTriggers()[0]?.tokens.limited_minutes).toBeGreaterThan(0);
+    expect(resumeTriggers()[0]?.tokens?.limited_minutes).toBeGreaterThan(0);
     expect(limitTriggers()).toHaveLength(1);
   });
 
