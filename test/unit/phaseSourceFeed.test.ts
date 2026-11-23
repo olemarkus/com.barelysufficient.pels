@@ -2,12 +2,16 @@ import { observeFlowSamplePhases } from '../../setup/phaseSourceFeed';
 import { PhaseReadingTracker } from '../../lib/power/phaseReading';
 import { PhaseReadFlight } from '../../lib/power/phaseReadFlight';
 import { PhasePeakLog, parsePhasePeaks } from '../../lib/power/phasePeakLog';
+import { MAIN_FUSE_PHASE_METER_DEVICE_ID } from '../../lib/utils/settingsKeys';
+import { MockSettings } from '../mocks/homey';
 
 describe('phases beside a Flow sample', () => {
-  const ctxWith = (meterId: string | null) => {
+  const ctxWith = (meterId: string) => {
     const readings = new PhaseReadingTracker();
+    const settings = new MockSettings();
+    settings.set(MAIN_FUSE_PHASE_METER_DEVICE_ID, meterId);
     return {
-      homey: { settings: { get: (key: string) => (key === 'main_fuse_phase_meter_device_id' ? meterId : null) } },
+      homey: { settings },
       capacityGuard: { phaseReadings: readings, phaseReadFlight: new PhaseReadFlight() },
       getNow: () => new Date(1),
       deviceManager: { readMeterPhases: vi.fn(async () => ({
@@ -31,8 +35,8 @@ describe('phases beside a Flow sample', () => {
     observeFlowSamplePhases(ctx as never, 3000, 1);
     await settle();
     expect(ctx.capacityGuard.phaseReadings.current().kind).toBe('healthy');
-    const cleared = { ...ctx, homey: { settings: { get: () => null } } };
-    observeFlowSamplePhases(cleared as never, 3000, 2);
+    ctx.homey.settings.unset(MAIN_FUSE_PHASE_METER_DEVICE_ID);
+    observeFlowSamplePhases(ctx as never, 3000, 2);
     expect(ctx.capacityGuard.phaseReadings.current().kind).toBe('none');
   });
 });
