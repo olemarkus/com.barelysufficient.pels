@@ -25,7 +25,9 @@ import { resolvePhaseRoomAxis } from '../phase/phaseRoom';
 import { withChargingPhaseOffCandidates } from './chargingPhaseRestore';
 import { phaseExportRoomKw } from '../phase/phasePower';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
-import { resolveAcknowledgedStepUpReservationKw } from '../planSteppedRestorePending';
+import {
+  resolveAcknowledgedStepUpReservationKw, resolveRunningInstallationReservationKw,
+} from '../planSteppedRestorePending';
 import { resolveCapacityAdmissionHeadroom } from '../planBudget';
 import {
   markOffDevicesStayOff,
@@ -98,7 +100,7 @@ export function applyRestorePlan(
   const storageHandedBack = new Set<string>();
   const ledger = buildCycleHeadroomLedger(power, context);
   reservePendingChargingPhases(ledger, state, deviceMap);
-  reserveAcknowledgedStepUps(ledger, planDevices);
+  reserveAuthorizedPower(ledger, planDevices);
   let restoredOneThisCycle = false;
   const batchState = context.grid.kind === 'on' ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
@@ -212,8 +214,12 @@ function buildCycleHeadroomLedger(power: MeasuredPower, context: PlanContext): R
 // meter cannot show yet. Unlike an unacknowledged one, it does not hold other
 // restores back (`restore/coordination.ts`), so it is debited from every axis
 // before any candidate is admitted, whatever its place in the priority order.
-function reserveAcknowledgedStepUps(ledger: RestoreHeadroomLedger, planDevices: readonly DevicePlanDevice[]): void {
-  for (const device of planDevices) ledger.commit(device, resolveAcknowledgedStepUpReservationKw(device));
+function reserveAuthorizedPower(ledger: RestoreHeadroomLedger, planDevices: readonly DevicePlanDevice[]): void {
+  for (const device of planDevices) {
+    ledger.commit(device, Math.max(
+      resolveAcknowledgedStepUpReservationKw(device), resolveRunningInstallationReservationKw(device),
+    ));
+  }
 }
 
 // The ordinary unrestricted restore pass (the shouldPlanRestores branch of

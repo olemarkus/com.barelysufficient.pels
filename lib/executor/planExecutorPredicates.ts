@@ -42,5 +42,6 @@ export function isSteppedLoadRestoreFromOff(
   intent: ExecutableSteppedLoadIntent | undefined,
   action: ExecutableSteppedLoadDevice | null,
 ): boolean {
-  return Boolean(intent !== undefined && intent.plannedShedTarget === undefined && action?.current.on === false);
+  return Boolean(intent !== undefined && intent.plannedShedTarget === undefined
+    && intent.controlAdapter?.chargingInstallation?.role !== 'main' && action?.current.on === false);
 }

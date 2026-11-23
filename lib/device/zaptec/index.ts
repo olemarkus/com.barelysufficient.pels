@@ -2,7 +2,9 @@ import type { DeviceAdapter } from '../deviceAdapter';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { applyNativeEvWiringOverlay, normalizeNativeEvCapabilityUpdate,
   buildNativeEvObservationCapabilityObj, withZaptecSessionState } from './charging';
-import { ZaptecInstallationSession, zaptecInstallationOf } from './session';
+import {
+  ZaptecInstallationSession, zaptecInstallationLevelW, zaptecInstallationOf, zaptecInstallationWattsPerAmp,
+} from './session';
 
 export const zaptecAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
@@ -35,6 +37,8 @@ export const zaptecAdapter: DeviceAdapter = {
       currentArguments: (currentA) => ({ current1: currentA, current2: currentA, current3: currentA }),
     }];
   },
+  installationLevelW: zaptecInstallationLevelW,
+  installationWattsPerAmp: zaptecInstallationWattsPerAmp,
   switchWrite: (snapshot, request) => {
     if (request.capabilityId === snapshot.binaryCapabilityId && snapshot.canSetControl === false) {
       return { kind: 'none' };

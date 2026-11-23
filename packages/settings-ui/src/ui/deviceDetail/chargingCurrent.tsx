@@ -9,6 +9,7 @@ import { refreshFlowConflictFactsExplicit } from '../flowConflictRefresh.ts';
 import { ChargingCurrentSetupView, ChargingCurrentLoadView } from '../views/ChargingCurrentSetup.tsx';
 
 let selectedDeviceId = '';
+let installationMainId: string | undefined;
 let loadVersion = 0;
 let pendingFocusVersion: number | null = null;
 let focusRequestGeneration = 0;
@@ -44,9 +45,10 @@ async function consumeChargingControlFocus(): Promise<void> {
  *   states. Only a charger's page can: any other device appears here only once
  *   the read lists it, so a failed read leaves no charger block on a heater.
  */
-export function setChargingCurrentDevice(deviceId: string, showProgress: boolean): void {
-  if (deviceId === selectedDeviceId) return;
+export function setChargingCurrentDevice(deviceId: string, showProgress: boolean, mainId?: string): void {
+  if (deviceId === selectedDeviceId && mainId === installationMainId) return;
   selectedDeviceId = deviceId;
+  installationMainId = mainId;
   const version = ++loadVersion;
   pendingFocusVersion = null;
   const container = document.getElementById('device-detail-charging-current');

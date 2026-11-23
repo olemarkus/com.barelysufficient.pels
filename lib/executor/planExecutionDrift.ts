@@ -14,6 +14,7 @@ import type {
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
 import { buildExecutableObservedDeviceState } from './executablePlanProjection';
+import { getBinaryOn, isBinaryControlled } from '../../packages/shared-domain/src/binaryControlState';
 import {
   isPendingBinaryCommandMatchingExpected,
   resolveExpectedBinaryStateForIntent,
@@ -55,8 +56,9 @@ export function hasPlanDeviceExecutionDrift(
   //
   // The hold is only ever set while the device is STILL observed off, so it is
   // a posture rather than a reading, and this layer never asks why.
-  if (externalOffHeld) return false;
   const intent = device.commands;
+  if (externalOffHeld && (!hasPlannedStep(intent)
+    || intent.steppedLoad.controlAdapter?.chargingInstallation?.role !== 'main')) return false;
   // A planned claim of the watt target is work by itself: the plan decides it
   // only while the device reads a mode other than `homey` and no accepted or
   // refused claim is still settling (`lib/device/targetPowerControlClaims.ts`),
@@ -139,6 +141,9 @@ function hasExecutableBinaryExecutionDrift(
   runtime: DriftRuntimeState,
   plannedCurrentStepId: string | undefined,
 ): boolean {
+  if (hasPlannedStep(intent) && hasBinaryCommand(intent) && isBinaryControlled(observed)
+    && !isPendingBinaryCommandMatchingExpected(runtime.pendingBinary, intent.binary.desiredOn ? 'on' : 'off')
+    && getBinaryOn(observed) !== intent.binary.desiredOn) return true;
   if (hasPlannedStep(intent)) {
     return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime, plannedCurrentStepId);
   }

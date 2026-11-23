@@ -58,7 +58,7 @@ const register = (smartTask: SmartTaskInProgressRead = 'none', hasSubHomes = fal
     () => ({ heater: true }),
     () => membership(hasSubHomes, pending),
     () => testLogger,
-    () => ({ status: 'resolved', deviceIds: new Set() }),
+    { readHomeBatteryDevices: () => ({ status: 'resolved', deviceIds: new Set() }), readDeviceControlAdapter: () => undefined },
   );
   const info = vi.fn();
   const normalizeTemperatureTarget = vi.fn((_deviceId: string, temperatureC: number) => Math.round(temperatureC * 2) / 2);

@@ -54,6 +54,7 @@ export type PlanEngineComposition = {
     | 'hasExecutionWorkOutstanding'
     | 'isInverterReleaseRecoveryReady'
     | 'getPendingInverterReleaseCount'
+    | 'hasPendingSharedChargingPause'
     | 'handleConfirmedBinaryCommand'
     | 'retainContestedCommands'
     | 'observeRelayShed'
@@ -210,6 +211,10 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public getPendingInverterReleaseCount(plan: ExecutionPlan): number {
     return this.executor.getPendingInverterReleaseCount(plan);
+  }
+
+  public hasPendingSharedChargingPause(plan: ExecutionPlan): boolean {
+    return this.executor.hasPendingSharedChargingPause(plan);
   }
 
   public hasPendingTargetCommandsOlderThan(thresholdMs: number): boolean {

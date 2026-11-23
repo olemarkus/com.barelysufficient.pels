@@ -1,4 +1,5 @@
 import {
+  groupModePriorityDeviceIds,
   normalizeModePriorities,
   rankActiveDevicePriorities,
   type ModePriorities,
@@ -68,11 +69,12 @@ export class ModePriorityCatalog {
     deviceIds: readonly string[],
     modes: readonly string[],
     ownsDevice: (deviceId: string) => boolean = () => true,
+    getGroupMainId?: (deviceId: string) => string | undefined,
   ): ModePriorities {
     const knownIds = [...new Set([
       ...Object.values(this.preferences).flatMap(Object.keys), ...deviceIds,
     ])].filter(ownsDevice);
-    return this.order(knownIds, modes);
+    return this.order(knownIds, modes, getGroupMainId);
   }
 
   /** Complete the configuration from the maps its two setting owners have admitted. */
@@ -95,10 +97,12 @@ export class ModePriorityCatalog {
     activeMode: string,
     homeId: string,
     membership: ModePriorityMembership | undefined,
+    getGroupMainId?: (deviceId: string) => string | undefined,
   ): ModePriorities {
     return this.resolve(
       configurationDeviceIds(managedDevices, targets), [activeMode, ...Object.keys(targets)],
       (deviceId) => (membership?.getHomeIdForDevice(deviceId) ?? homeId) === homeId,
+      getGroupMainId,
     );
   }
 
@@ -160,26 +164,42 @@ export class ModePriorityCatalog {
     deviceIds: readonly string[],
     sortsLastWhenUnranked: (deviceId: string) => boolean,
     isLastResort?: (deviceId: string) => boolean,
+    getGroupMainId?: (deviceId: string) => string | undefined,
   ): ModePriorityOrder {
     const ordinaryOrder = rankActiveDevicePriorities(
       deviceIds, (deviceId) => this.preferences[mode]?.[deviceId], sortsLastWhenUnranked,
     );
-    if (!isLastResort) return createPriorityOrder(ordinaryOrder);
-    const sorted = Object.entries(ordinaryOrder).sort((left, right) => left[1] - right[1]).map(([id]) => id);
-    return createPriorityOrder(Object.fromEntries([
-      ...sorted.filter(isLastResort), ...sorted.filter((id) => !isLastResort(id)),
-    ].map((id, index) => [id, index + 1])));
+    return createPriorityOrder(resolvePriorityGroups(ordinaryOrder, isLastResort, getGroupMainId));
   }
 
   /** Compact relative ranks for the current home/device roster, without stale entries. */
-  private order(deviceIds: readonly string[], modes: readonly string[]): ModePriorities {
+  private order(
+    deviceIds: readonly string[],
+    modes: readonly string[],
+    getGroupMainId: ((id: string) => string | undefined) | undefined,
+  ): ModePriorities {
     const knownModes = new Set([...Object.keys(this.preferences), ...modes]);
     return Object.fromEntries([...knownModes].map((mode) => [
       mode,
-      rankActiveDevicePriorities(deviceIds, (deviceId) => this.preferences[mode]?.[deviceId]),
+      resolvePriorityGroups(rankActiveDevicePriorities(deviceIds, (id) => this.preferences[mode]?.[id]),
+        undefined, getGroupMainId),
     ]));
   }
 }
+
+const resolvePriorityGroups = (
+  ranks: Record<string, number>,
+  isLastResort: ((id: string) => boolean) | undefined,
+  getGroupMainId: ((id: string) => string | undefined) | undefined,
+): Record<string, number> => {
+  if (!isLastResort && !getGroupMainId) return ranks;
+  const sorted = Object.entries(ranks).sort((left, right) => left[1] - right[1]).map(([id]) => id);
+  const partitioned = isLastResort
+    ? [...sorted.filter(isLastResort), ...sorted.filter((id) => !isLastResort(id))]
+    : sorted;
+  const grouped = getGroupMainId ? groupModePriorityDeviceIds(partitioned, getGroupMainId) : partitioned;
+  return Object.fromEntries(grouped.map((id, index) => [id, index + 1]));
+};
 
 /** External settings read: callers retain their owning catalog when this is unavailable. */
 export const readModePriorityCatalog = (value: unknown): ModePriorityCatalog | null => {

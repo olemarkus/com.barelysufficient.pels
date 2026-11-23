@@ -35,7 +35,7 @@ const createCatalog = (settings: MockSettings, owners = membership()) => createH
   () => ({ 'main-heater': true, 'area-heater': true, 'area-tank': true }),
   () => owners,
   () => testLogger,
-  () => ({ status: 'resolved', deviceIds: new Set(['battery']) }),
+  { readHomeBatteryDevices: () => ({ status: 'resolved', deviceIds: new Set(['battery']) }), readDeviceControlAdapter: () => undefined },
 );
 
 describe('device mode diagnostic configuration', () => {
@@ -91,7 +91,7 @@ describe('device mode diagnostic configuration', () => {
       resolveModeName: (name) => name,
     });
     const resolver = new HomeModeDeviceResolver(
-      settings, main, () => ({ 'area-heater': true }), () => membership(), () => ({ state: 'legacy' }),
+      settings, main, () => ({ 'area-heater': true }), () => membership(), () => ({ state: 'legacy' }), () => undefined,
     );
 
     expect(resolver.readConfiguration('area-heater')).toEqual({

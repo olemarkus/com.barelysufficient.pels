@@ -1,10 +1,14 @@
 import type {
-  AssociatedCarSnapshot, CarConfirmation, EvChargingCurrentLimits,
+  AssociatedCarSnapshot, CarConfirmation, ChargingInstallation, EvChargingCurrentLimits,
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 import type { EvChargingCurrentDiagnostics, EvChargingCurrentSource } from '../ports/evChargingCurrentDiagnostics';
+import type { HomeyDeviceLike } from '../utils/types';
+import type { CapabilityWrite } from './deviceAdapter';
+import { resolveChargingCurrentAdapter } from './chargingCurrentAdapter';
+import type { ChargingCurrentControl } from './chargingCurrentControl';
 import type { DeviceControlSettings } from './deviceControlSettings';
 import type { EvChargingCurrentPolicy } from './evChargingCurrentLimitSettings';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -15,6 +19,7 @@ import {
 import {
   hasUsableSteppedLoadLadder, isSteppedLoadOffStep, isSteppedLoadStepOff,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { resolveEvChargeAction } from '../../packages/shared-domain/src/evPlugState';
 import { chargingLadderCarriesCurrent } from '../../packages/shared-domain/src/settings/evChargingCurrentLimits';
 
 /** Live identity belongs to the existing car-matching owner, never to a copied snapshot. */
@@ -23,6 +28,23 @@ export type ChargingCarIdentity = {
   getCarConfirmation(deviceId: string): CarConfirmation | undefined;
 };
 
+type InstallationCurrent = Pick<ChargingCurrentControl,
+  'chargingInstallation' | 'installationLevelW' | 'installationWattsPerAmp'>;
+
+type InstallationRange =
+  | { kind: 'unrestricted' }
+  | { kind: 'hold' }
+  | { kind: 'limited'; limits: EvChargingCurrentLimits; wattsPerAmp: number };
+
+type InstallationClaimPreparation = { kind: 'ready' } | { kind: 'blocked' } | { kind: 'prepare'; watts: number };
+
+function isWithinInstallationRange(
+  watts: number | undefined, range: Extract<InstallationRange, { kind: 'limited' }>,
+): boolean {
+  return watts !== undefined && watts >= Math.round(range.limits.minA * range.wattsPerAmp)
+    && watts <= Math.round(range.limits.maxA * range.wattsPerAmp);
+}
+
 /** An identified car's range overrides the charger's default charging range. */
 export class EvChargingCurrentLimitPolicy {
   constructor(
@@ -30,6 +52,7 @@ export class EvChargingCurrentLimitPolicy {
       'resolveEvCarCurrentLimits' | 'resolveEvChargerCurrentLimits'>,
     private readonly cars: ChargingCarIdentity,
     private readonly snapshots: TransportSnapshotStore,
+    private readonly installations: InstallationCurrent,
   ) {}
 
   resolve(deviceId: string): EvChargingCurrentPolicy {
@@ -48,15 +71,123 @@ export class EvChargingCurrentLimitPolicy {
     return { policy: this.settings.resolveEvChargerCurrentLimits(deviceId), source: 'charger' };
   }
 
+  /**
+   * Any connected car may take the entire assignment as its peers pause.
+   * Paused cars remain eligible for a later resume at the same assignment.
+   */
+  private installationRange(installation: ChargingInstallation): InstallationRange {
+    const ranges = installation.memberIds
+      .filter((id) => this.mayTakeInstallationCurrent(id))
+      .map((id) => this.resolve(id));
+    if (ranges.some(({ kind }) => kind === 'hold')) return { kind: 'hold' };
+    const limits = ranges.flatMap((range) => range.kind === 'limited' ? [range.limits] : []);
+    if (!limits.length) return { kind: 'unrestricted' };
+    const minA = Math.max(...limits.map((range) => range.minA));
+    const maxA = Math.min(...limits.map((range) => range.maxA));
+    const wattsPerAmp = this.installations.installationWattsPerAmp(installation.mainId);
+    if (minA > maxA || wattsPerAmp === undefined) return { kind: 'hold' };
+    const range = { kind: 'limited' as const, limits: { minA, maxA }, wattsPerAmp };
+    const profile = this.snapshots.getSnapshotByDeviceId(installation.mainId)?.steppedLoadProfile;
+    return profile?.steps.some((step) => isWithinInstallationRange(step.planningPowerW, range))
+      ? range : { kind: 'hold' };
+  }
+
+  private mayTakeInstallationCurrent(deviceId: string): boolean {
+    const state = this.snapshots.getSnapshotByDeviceId(deviceId)?.evChargingState;
+    if (state === undefined) return true;
+    const action = resolveEvChargeAction(state);
+    return action !== 'blocked' && action !== 'offer' && state !== 'plugged_in_car_stopped';
+  }
+
+  private projectInstallationRange(
+    configuration: DeviceConfigurationRead, installation: ChargingInstallation,
+  ): DeviceConfigurationRead {
+    const range = this.installationRange(installation);
+    if (range.kind === 'unrestricted') return configuration;
+    if (range.kind === 'hold') return { ...configuration, carCurrentRangeUnavailable: true };
+    if (installation.role !== 'main' || configuration.controlModel !== 'stepped_load') return configuration;
+    const { steppedLoadProfile, targetPowerConfig } = configuration;
+    const steps = steppedLoadProfile.steps.map((step) => ({
+      ...step, planningCurrentA: step.planningPowerW / range.wattsPerAmp,
+    }));
+    const profile = { ...steppedLoadProfile, steps };
+    const limits = { ...targetPowerConfig, currentLimits: range.limits };
+    const usable = hasUsableSteppedLoadLadder(resolveEvTargetPowerPlannerProfile({
+      config: limits, confirmedProfile: profile, nowMs: Date.now(),
+    }));
+    return {
+      ...configuration, steppedLoadProfile: profile, targetPowerConfig: limits,
+      ...(!usable ? { carCurrentRangeUnavailable: true } : {}),
+    };
+  }
+
+  private assertInstallationCurrent(installation: ChargingInstallation, watts: number | undefined): void {
+    const range = this.installationRange(installation);
+    if (range.kind === 'unrestricted') return;
+    if (range.kind === 'limited' && isWithinInstallationRange(watts, range)) return;
+    throw new Error('The installation current is outside the active charging ranges.');
+  }
+
+  /** An out-of-range retained target must be replaced before its mode is claimed. */
+  prepareInstallationClaim(deviceId: string): InstallationClaimPreparation {
+    const installation = this.installations.chargingInstallation(deviceId);
+    if (!installation) return { kind: 'ready' };
+    const range = this.installationRange(installation);
+    if (range.kind === 'unrestricted') return { kind: 'ready' };
+    if (range.kind === 'hold') return { kind: 'blocked' };
+    const retained = this.snapshots.getTrackedRawDevice(deviceId)?.capabilitiesObj.target_power?.value;
+    if (typeof retained !== 'number' || !Number.isFinite(retained)) return { kind: 'blocked' };
+    if (retained === 0 || isWithinInstallationRange(retained, range)) return { kind: 'ready' };
+    const step = this.snapshots.getSnapshotByDeviceId(deviceId)?.steppedLoadProfile?.steps
+      .find((candidate) => isWithinInstallationRange(candidate.planningPowerW, range));
+    return step ? { kind: 'prepare', watts: step.planningPowerW } : { kind: 'blocked' };
+  }
+
+  /** Direct capability writes must obey the same range as planner step writes. */
+  assertInstallationCapability(
+    deviceId: string, raw: HomeyDeviceLike | undefined, write: CapabilityWrite,
+  ): void {
+    const installation = this.installations.chargingInstallation(deviceId);
+    if (!installation || !raw) return;
+    if (write.capabilityId === 'target_power' && typeof write.value === 'number' && write.value > 0) {
+      this.assertInstallationCurrent(installation, write.value);
+      return;
+    }
+    if (write.capabilityId === 'target_power_mode' && write.value === 'homey') {
+      this.assertInstallationModeClaim(installation, raw);
+      return;
+    }
+    const binding = resolveChargingCurrentAdapter(raw)?.current;
+    if (binding?.kind === 'capability' && write.capabilityId === binding.capabilityId
+      && typeof write.value === 'number') {
+      const wattsPerAmp = this.installations.installationWattsPerAmp(installation.mainId);
+      this.assertInstallationCurrent(installation, wattsPerAmp && write.value * wattsPerAmp);
+    }
+  }
+
+  private assertInstallationModeClaim(installation: ChargingInstallation, raw: HomeyDeviceLike): void {
+    const retained = raw.capabilitiesObj.target_power?.value;
+    if (retained !== 0) {
+      this.assertInstallationCurrent(installation, typeof retained === 'number' ? retained : undefined);
+    }
+  }
+
   /** Capture the projected configuration returned by DeviceConfigurationStore.get. */
   describe(configuration: DeviceConfigurationRead, nowMs: number): EvChargingCurrentDiagnostics | undefined {
-    if (configuration.controlModel !== 'stepped_load' || !boundsChargingCurrent(configuration)) return undefined;
-    const { policy, source } = this.resolveWithSource(configuration.id);
+    if (configuration.controlModel !== 'stepped_load') return undefined;
+    const installation = this.installations.chargingInstallation(configuration.id);
+    if (!installation && !boundsChargingCurrent(configuration)) return undefined;
+    const selection = installation
+      ? { policy: this.installationRange(installation), source: 'installation' as const }
+      : this.resolveWithSource(configuration.id);
+    const { policy, source } = selection;
     if (policy.kind === 'hold') return { kind: 'hold', cause: 'limits_unavailable', source };
     const plannerSteps = resolveEvTargetPowerPlannerProfile({
       config: configuration.targetPowerConfig, confirmedProfile: configuration.steppedLoadProfile, nowMs,
     }).steps.filter((step) => !isSteppedLoadStepOff(step));
-    if (policy.kind === 'unrestricted') return { kind: 'unrestricted', source: 'charger', plannerSteps };
+    if (policy.kind === 'unrestricted') {
+      return { kind: 'unrestricted', source: installation ? 'installation' : 'charger', plannerSteps };
+    }
     const effectiveLimits = configuration.targetPowerConfig?.currentLimits;
     if (!effectiveLimits) throw new Error('Projected charging current limits are unavailable.');
     const held = configuration.carCurrentRangeUnavailable === true || plannerSteps.length === 0;
@@ -67,6 +198,8 @@ export class EvChargingCurrentLimitPolicy {
   }
 
   projectConfiguration(configuration: DeviceConfigurationRead): DeviceConfigurationRead {
+    const installation = this.installations.chargingInstallation(configuration.id);
+    if (installation) return this.projectInstallationRange(configuration, installation);
     // An on/off charger or a published watt ladder has no current to bound,
     // so a range never holds it.
     if (configuration.controlModel !== 'stepped_load' || !boundsChargingCurrent(configuration)) {
@@ -100,6 +233,11 @@ export class EvChargingCurrentLimitPolicy {
   }
 
   assertStartAllowed(snapshot: TransportDeviceSnapshot): void {
+    const installation = this.installations.chargingInstallation(snapshot.id);
+    if (installation) {
+      this.assertInstallationCurrent(installation, this.installations.installationLevelW(installation.mainId));
+      return;
+    }
     if (!boundsChargingCurrent(snapshot)) return;
     const policy = this.resolve(snapshot.id);
     if (policy.kind === 'unrestricted') return;
@@ -115,6 +253,11 @@ export class EvChargingCurrentLimitPolicy {
   /** A previously decided command must still fit the car identified at delivery. */
   assertStepAllowed(request: SteppedLoadWrite): void {
     if (isSteppedLoadOffStep(request.profile, request.desiredStepId)) return;
+    const installation = this.installations.chargingInstallation(request.deviceId);
+    if (installation) {
+      this.assertInstallationCurrent(installation, request.planningPowerW);
+      return;
+    }
     const snapshot = this.snapshots.getSnapshotByDeviceId(request.deviceId);
     if (snapshot && !boundsChargingCurrent(snapshot)) return;
     const policy = this.resolve(request.deviceId);

@@ -76,7 +76,10 @@ export class CapabilityNativeSteppedLoadCommandAdapter implements NativeSteppedL
     if (!command || !step) return false;
     if (this.usesManualCurrentRoute() && command.capabilityId === 'target_power') return false;
     const write = getDeviceAdapter(this.raw).stepCommand(this.raw, step, command);
-    if (this.powerControlMode === 'automatic' && !supportsAutomaticStep(this.automaticProfile, step)) return false;
+    const writesWatts = write.capabilityId === 'target_power';
+    if (this.powerControlMode === 'automatic' && !supportsAutomaticStep(this.automaticProfile, step, writesWatts)) {
+      return false;
+    }
     if (write.capabilityId === 'target_power') return this.writeTargetPower(write, setCapability);
     await setCapability(write.capabilityId, write.value);
     return true;
@@ -184,9 +187,13 @@ function resolveAdapterReportedStep(
   });
 }
 
-function supportsAutomaticStep(profile: SteppedLoadProfile | undefined, step: SteppedLoadStep): boolean {
-  return profile?.steps.some((current) => current.planningPowerW === step.planningPowerW
-    && current.planningCurrentA === step.planningCurrentA) === true;
+function supportsAutomaticStep(
+  profile: SteppedLoadProfile | undefined, step: SteppedLoadStep, writesWatts: boolean,
+): boolean {
+  return profile?.steps.some((current) => (
+    current.planningPowerW === step.planningPowerW
+    && (current.planningCurrentA === step.planningCurrentA || (writesWatts && current.planningCurrentA === undefined))
+  )) === true;
 }
 
 function sameAutomaticProfile(previous: SteppedLoadProfile, next: SteppedLoadProfile | undefined): boolean {

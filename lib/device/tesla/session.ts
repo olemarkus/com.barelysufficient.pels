@@ -210,6 +210,8 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     for (const id of this.lastEvidence.keys()) if (!ids.has(id)) this.lastEvidence.delete(id);
   }
 
+  chargingInstallationOf(): undefined { return undefined; }
+
   observeDevice(device: HomeyDeviceLike): void {
     if (teslaDriver(device) === undefined) return;
     const previous = this.devices.get(device.id);

@@ -3,7 +3,7 @@ import type { SetupRecommendation } from './recommendationsModel.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
   FINISH_CHARGING_SETUP, hasBuiltInChargingAccess, lacksChargingCurrentRoute,
-  needsVehicleChargingConsent, requiresChargingAppUpdate,
+  needsVehicleChargingConsent, requiresChargingAppUpdate, usesInstallationCurrentWithoutSetup,
 } from './chargingSetupFacts.ts';
 
 /**
@@ -47,7 +47,7 @@ function setupRecommendations(
   access: ChargingAccessStatus,
 ): SetupRecommendation[] {
   return devices.flatMap((device): SetupRecommendation[] => {
-    if (device.sharedInstallation) return [];
+    if (device.sharedInstallation || usesInstallationCurrentWithoutSetup(device)) return [];
     let kind: string;
     let title: string;
     let body: string;

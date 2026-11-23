@@ -90,7 +90,7 @@ import { requireLatchedMeterReading } from '../power/lastTotalPower';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
-import { attachDeferredReleaseIntents } from './planBuilderDecoration';
+import { ChargingInstallationPlan, attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 
@@ -152,14 +152,14 @@ export class PlanBuilder {
   // permitted envelopes, while the execution hold gate reads the admitted task authority.
   private prepareDevicePlanningInputs(
     devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
-  ): DeferredDecorationBundle {
+  ): ChargingInstallationPlan {
     this.state.beginChargingPhaseCycle(this.deps.getChargingPhasePlanningRead(nowTs));
     const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
       this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
     ));
     this.state.chargingPhaseCycle.setRequirements(decoration.chargingPhaseRequirements);
     this.state.externalOffHoldLiftedIds = decoration.externalOffHoldLiftedDeviceIds;
-    return decoration;
+    return new ChargingInstallationPlan(decoration);
   }
 
   private get dailyBudgetSnapshot(): DailyBudgetUiPayload | null {
@@ -335,8 +335,8 @@ export class PlanBuilder {
     // lifecycle clock, not on this plan cycle. A home with no smart tasks binds
     // `decorateWithoutDeferredObjectives`, so the identity case arrives through
     // the seam like any other answer.
-    const decoration = this.prepareDevicePlanningInputs(devices, dailyBudgetSnapshot, nowTs);
-    const { admittedDevices } = decoration;
+    const installations = this.prepareDevicePlanningInputs(devices, dailyBudgetSnapshot, nowTs);
+    const decoration = installations.forCapacity();
 
     // One reading per build, resolved by `lib/power` — pure: the silence
     // policy (block + one shed pass) lives in the wiring's composed gate and
@@ -349,15 +349,15 @@ export class PlanBuilder {
     const { context, run } = trackPlanStage('plan_context_ms', () => {
       const timedRun = this.resolveCapacityTimedRun(capacity, settings, reading, decoration, nowTs);
       const cycleContext = buildPlanContext(
-        admittedDevices,
+        decoration.admittedDevices,
         settings,
         this.pacingTracker,
         // Every stage reads the capacity axis with the timed-run allowance.
         buildPlanLimits(
-          settings, timedRun.limit, this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
+          settings, timedRun.limit, this.computeDailySoftLimit(dailyBudgetSnapshot, installations.usageDevices, nowTs),
         ),
         // After the decoration, which is what stamps a smart task's deadline floor.
-        this.deps.resolveTemperatureSetpoints(admittedDevices),
+        this.deps.resolveTemperatureSetpoints(decoration.admittedDevices),
         nowTs,
       );
       return { context: cycleContext, run: timedRun.run };
@@ -367,7 +367,9 @@ export class PlanBuilder {
     // build — the silent-meter fail-closed pass — takes its directive here and
     // never constructs a `MeasuredPower` (owner ruling 2026-09-02).
     if (!reading.isMeasured) {
-      return { plan: this.silentMeter.build(context, reading, decoration, settings, nowTs), run };
+      return {
+        plan: installations.withSwitches(this.silentMeter.build(context, reading, decoration, settings, nowTs)), run,
+      };
     }
     // The first measured build inside this hour's drain keeps what the house
     // drew as the level the drain falls from (`CapacityDrainStart`). Before
@@ -375,10 +377,10 @@ export class PlanBuilder {
     this.state.capacityDrainStart.record(
       settings, this.pacingTracker, nowTs, this.resolvePacingDrawKw(reading.totalKw),
     );
-    const power = resolveMeasuredPower(reading, context, admittedDevices, this.deps.getMainFuse());
+    const power = resolveMeasuredPower(reading, context, installations.usageDevices, this.deps.getMainFuse());
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
-    const postureExcludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
+    const postureExcludeIds = resolvePostureExcludeIds(decoration, decoration.admittedDevices);
     const surplusOffers = this.allocateSurplus(context, power, postureExcludeIds, nowTs);
     // Restore and admission never spend the discharge PELS holds, nor a charge
     // increase not measured yet (`admissionPower`): the battery protects what
@@ -459,7 +461,7 @@ export class PlanBuilder {
       reasoned.budgetHeldDeviceIds,
     );
     return {
-      plan: {
+      plan: installations.withSwitches({
         meta,
         devices: decidedDevices,
         inverterDecisions: this.decideInverters(
@@ -467,7 +469,7 @@ export class PlanBuilder {
         ),
         chargingPhaseDecisions: this.state.chargingPhaseCycle.finish(decidedDevices, sheddingPlan.shedSet),
         storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
-      },
+      }),
       run,
     };
   }

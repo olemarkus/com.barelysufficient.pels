@@ -24,6 +24,12 @@ export type PlanInputProjectionSource = {
   isWaitingForCarAssociation: (deviceId: string) => boolean;
   /** Homey's control of a watt-stepped device, from its owner (`DeviceTransport.getTargetPowerControlClaim`). */
   getTargetPowerControlClaim: (deviceId: string) => 'needed' | 'refused' | undefined;
+  /**
+   * A charging installation's level in watts on its main's ladder, read from
+   * the main by its owner (`ChargingCurrentControl.installationLevelW`);
+   * `undefined` when unreadable or for a device that is not a main.
+   */
+  readChargingInstallationLevelW: (deviceId: string) => number | undefined;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   /**
    * The owner's device-control settings: target-power, boost and charge-target
@@ -56,7 +62,8 @@ export type ToPlanDeviceOptions = {
 };
 
 /** Planner input as served (`PlanInputSnapshotDevice`), plus the associated car the producer decorates on. */
-export type ToPlanDeviceInput = PlanInputSnapshotDevice & AssociatedCarDecoration;
+export type ToPlanDeviceInput = PlanInputSnapshotDevice & AssociatedCarDecoration
+  & Pick<PlanInputDeviceBase, 'chargingInstallationLoad'>;
 export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
 
 /**

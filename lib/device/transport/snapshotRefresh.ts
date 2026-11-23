@@ -262,35 +262,11 @@ function logCommittedSnapshot(
     logEvSnapshotChanges({ previousSnapshot, nextSnapshot: snapshot });
 }
 
-// Adopt the side effects of a committed snapshot: rebuild the tracking map /
-// native adapters and refresh the raw-device cache. Run only after the
-// abandon-grace guard commits, so a deferred transient empty read leaves the
-// previously-tracked devices, their native adapters, and the raw cache intact.
-//
-// Keyed off `fetchSource` (NOT the requested-targeted flag): a FULL read
-// (`raw_manager_devices`, whether intended-full OR a targeted refresh that
-// fell back to full) is authoritative — refresh `latestRawDevices` so the UI
-// picker doesn't show a stale list. A genuine targeted overlay
-// (`targeted_by_id`) may retain a network-missed device absent from
-// `effectiveList`, so its tracking is overlaid from the prior raw entries and
-// the raw cache is left intact (the partial read isn't the full picker list).
-//
-// `fetchedList` is Homey's list as fetched, before the read contract: on a full
-// read its ids are the inventory a device is truly gone from, readable or not.
-//
-// Rebuild the realtime tracking map and (re)sync native stepped-load command
-// adapters from a device list. Side-effecting, so the refresh workflow runs it
-// ONLY after the abandon-grace guard has committed the snapshot: a transient
-// empty SDK read must not tear down tracking/adapters for devices that are
-// still present. The guard already preserves the snapshot on such a read, so
-// the matching native adapters must be preserved too — otherwise a default-on
-// native stepped-load command (e.g. a Høiax heater) would silently no-op
-// (`NativeSteppedLoadCommandAdapters.setStep` returns false with no adapter) until the
-// next good read re-registered it.
+// Rebuild tracking and the native command adapters after accepting the snapshot.
+// A targeted overlay retains the prior raw reads of devices whose fetch missed.
 function adoptCommittedDeviceList(
     refresh: SnapshotRefreshService,
     effectiveList: HomeyDeviceLike[],
-    fetchedList: readonly HomeyDeviceLike[],
     fetchSource: DeviceFetchSource,
     committedSnapshot: readonly TargetDeviceSnapshot[],
 ): void {
@@ -303,9 +279,6 @@ function adoptCommittedDeviceList(
             priorRawById: refresh.reader.snapshotStore.getTrackedRawDevicesById(),
         });
     refresh.reader.syncTrackedDevices(trackingList, !isFullRead);
-    if (isFullRead) {
-        refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList, fetchedList);
-    }
 }
 
 // Snapshot pipeline contract: callers must pass an already-effective device
@@ -494,10 +467,12 @@ export class SnapshotRefreshService {
     await this.refresh({ includeLivePower: false, meterDeviceIds: [] });
   }
 
-  requestExternalPowerRefresh(): void {
-    if (this.reader.snapshotStore.getSnapshot().some((device) => device.externalPowerSocketId !== undefined)) {
-      this.requestInventoryRefresh();
-    }
+  requestDependentInventoryRefresh(reason: 'ownership' | 'claim'): void {
+    const needsRefresh = this.reader.snapshotStore.getSnapshot().some((device) => (
+      (reason === 'ownership' && device.externalPowerSocketId !== undefined)
+      || this.reader.chargingCurrentControl.needsInstallationRefresh(device)
+    ));
+    if (needsRefresh) this.requestInventoryRefresh();
   }
 
   /** A full inventory read, detached: a failure is logged, never thrown at the caller. */
@@ -570,6 +545,20 @@ export class SnapshotRefreshService {
     return commits;
   }
 
+  private acceptRawDevices(
+    devices: HomeyDeviceLike[], fetch: DeviceFetchResult, trustEpoch: string,
+  ): void {
+    const store = this.reader.snapshotStore;
+    if (fetch.fetchSource !== 'raw_manager_devices') {
+      for (const device of devices) store.updateAcceptedRawDevice(device);
+      return;
+    }
+    // Resolve membership against this accepted read before projecting current authority.
+    store.replaceLatestRawDevices(devices, fetch.devices);
+    this.reader.chargingCurrentControl.retainDevices(devices, trustEpoch, fetch.rejectedPayloads);
+    if (fetch.rejectedPayloads === 0) retainDeviceReadLogs(store, devices);
+  }
+
   private async runActiveRefresh(
     options: SnapshotRefreshOptions, refreshInventory: boolean, start: number,
   ): Promise<LiveMeterReadings | null> {
@@ -599,16 +588,7 @@ export class SnapshotRefreshService {
         this.reader.logger.structuredLog,
         this.reader.snapshotStore.getLastAcceptedRawDevice,
     ).map((source) => this.reader.mergeRefreshedBindingReads(source, start)));
-    // Only a full inventory can remove companions. Resolve membership before
-    // parsing publishes eligibility.
-    if (fetchSource === 'raw_manager_devices') {
-        this.reader.chargingCurrentControl.retainDevices(
-            acceptedRawDevices, inventoryTrustEpoch, fetchResult.rejectedPayloads,
-        );
-        if (fetchResult.rejectedPayloads === 0) {
-            retainDeviceReadLogs(this.reader.snapshotStore, acceptedRawDevices);
-        }
-    }
+    this.acceptRawDevices(acceptedRawDevices, fetchResult, inventoryTrustEpoch);
     const effectiveList = observeBatteryStateFromList(
         this.observationProducers.battery,
         this.observationProducers.solar,
@@ -649,7 +629,6 @@ export class SnapshotRefreshService {
     adoptCommittedDeviceList(
         this,
         acceptedRawDevices,
-        list,
         fetchSource,
         snapshot,
     );

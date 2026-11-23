@@ -31,7 +31,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
   const status = device.status ?? buildDeviceStatus({
     ...device, reason, controllable: device.controllable ?? true, available,
     carIdentificationState: device.carIdentificationState ?? 'not_waiting',
-    adapterUnavailableStatus: undefined,
+    adapterUnavailableStatus: undefined, chargingInstallation: undefined,
     unusedBuiltInControl: 'none', targetPowerControlRefused: false,
     // A card fixture that is Manual reads Power-limit control off.
     standingCommandGrant: false, powerLimitControlEnabled: false, hasPowerReading: true, powerSetupRequired: false,

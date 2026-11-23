@@ -1,7 +1,8 @@
 import { useLayoutEffect, useState } from 'preact/hooks';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } from '../../../../contracts/src/chargingControl.ts';
 import { MdFilledButton, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
-import { hasBuiltInChargingAccess, requiresChargingAppUpdate } from '../chargingSetupFacts.ts';
+import { hasBuiltInChargingAccess, requiresChargingAppUpdate, usesInstallationCurrentWithoutSetup } from '../chargingSetupFacts.ts';
 import { HomeyApiKeySetup, resolveHomeyApiKeySaveLabel, type HomeyApiKeyCopy } from './HomeyApiKeySetup.tsx';
 
 export type ChargingCurrentSetupProps = {
@@ -83,20 +84,40 @@ function CurrentControlStatus({ device }: { device: ChargingCurrentRead }) {
 }
 
 function currentControlHint(device: ChargingCurrentRead): string {
-  if (device.sharedInstallation) return 'Use a Flow to adjust current for this shared installation.';
+  if (device.sharedInstallation) return 'Use a Flow to adjust current for this shared installation. PELS starts and stops each managed charger separately.';
   if (requiresChargingAppUpdate(device)) return 'Update the charger’s app in Homey to use built-in current control, or use a Flow.';
   return 'Let PELS adjust charging current directly. No Flow needed.';
 }
 
+function ChargingInstallationHint({ installation }: { installation: NonNullable<ChargingCurrentRead['chargingInstallation']> }) {
+  const charger = installation.role === 'main' ? 'this charger' : formatDisplayDeviceName(installation.mainName);
+  return <p class="field__hint">PELS sets the available current for this installation through {charger}.
+    The chargers share that current between the cars that are charging.</p>;
+}
+
 export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
-  const { device, access, busy } = props;
+  const { device, busy } = props;
   useLayoutEffect(() => { props.onReady?.(); }, [device.deviceId, busy]);
+  const installation = device.chargingInstallation;
+  if (installation && usesInstallationCurrentWithoutSetup(device)) {
+    return <section class="charging-current-setup">
+      <h3 class="pels-text-settings-label">Charging current</h3>
+      <ChargingInstallationHint installation={installation} />
+    </section>;
+  }
+  return <SelectableChargingCurrentSetup {...props} />;
+}
+
+function SelectableChargingCurrentSetup(props: ChargingCurrentSetupProps) {
+  const { device, access, busy } = props;
   const [singleCharger, setSingleCharger] = useState(device.setup.confirmation === 'single_charger');
   const [vehicleControl, setVehicleControl] = useState(device.setup.confirmation === 'vehicle');
   // A charger-scoped command reaches only this charger, so it needs no confirmation.
   const scopeConfirmation: Record<ChargingCurrentRead['scope'], { confirmed: boolean; value: ChargingCurrentSetup['confirmation'] }> = {
     vehicle: { confirmed: vehicleControl, value: 'vehicle' },
-    installation: { confirmed: singleCharger, value: 'single_charger' },
+    installation: device.chargingInstallation
+      ? { confirmed: true, value: 'none' }
+      : { confirmed: singleCharger, value: 'single_charger' },
     charger: { confirmed: true, value: 'none' },
   };
   const { confirmed: confirmation, value: confirmedScope } = scopeConfirmation[device.scope];
@@ -127,7 +148,9 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   return <section class="charging-current-setup">
     <h3 class="pels-text-settings-label">Charging current</h3>
     {props.error && <p class="field__hint" role="alert">{props.error}</p>}
-    <p class="field__hint">{currentControlHint(device)}</p>
+    {device.chargingInstallation
+      ? <ChargingInstallationHint installation={device.chargingInstallation} />
+      : <p class="field__hint">{currentControlHint(device)}</p>}
     <CurrentControlStatus device={device} />
     {device.scope === 'vehicle' && <div>
       <label class="md-switch-row" id="device-detail-vehicle-control-row">
@@ -141,8 +164,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
         && <MdOutlinedButton disabled={busy}
           onClick={() => props.onSaveMethod({ ...device.setup, confirmation: vehicleControl ? 'vehicle' : 'none' })}>Save car control</MdOutlinedButton>}
     </div>}
-    {device.sharedInstallation && <p class="field__hint">This installation has more than one charger. Use a Flow for current control.</p>}
-    {device.scope === 'installation' && !device.sharedInstallation && <label class="md-switch-row">
+    {device.scope === 'installation' && !device.sharedInstallation && !device.chargingInstallation && <label class="md-switch-row">
       <span class="md-switch-row__content"><span class="md-switch-row__label">This installation has only one charger</span></span>
       <MdSwitch aria-label="This installation has only one charger" selected={singleCharger} disabled={busy}
         onChange={(event: Event) => setSingleCharger(readSwitchSelected(event))} />

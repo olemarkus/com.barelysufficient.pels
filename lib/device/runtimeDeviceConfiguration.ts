@@ -1,3 +1,4 @@
+import type { ChargingCurrentControl } from './chargingCurrentControl';
 import { DeviceConfigurationStore } from './deviceConfiguration';
 import { EvChargingCurrentLimitPolicy, type ChargingCarIdentity } from './evChargingCurrentLimitPolicy';
 import type { DeviceControlSettings } from './deviceControlSettings';
@@ -11,8 +12,9 @@ export class RuntimeDeviceConfiguration extends DeviceConfigurationStore {
     settings: Pick<DeviceControlSettings, 'resolveEvCarCurrentLimits' | 'resolveEvChargerCurrentLimits'>,
     cars: ChargingCarIdentity,
     snapshots: TransportSnapshotStore,
+    installations: ChargingCurrentControl,
   ) {
-    const currentLimitPolicy = new EvChargingCurrentLimitPolicy(settings, cars, snapshots);
+    const currentLimitPolicy = new EvChargingCurrentLimitPolicy(settings, cars, snapshots, installations);
     super(currentLimitPolicy);
     this.currentLimits = currentLimitPolicy;
   }

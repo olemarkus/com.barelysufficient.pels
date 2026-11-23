@@ -5,7 +5,7 @@ import {
 } from '../../packages/shared-domain/src/binaryControlState';
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
+import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import { runBinaryControl } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
@@ -107,7 +107,7 @@ export const applySteppedLoadCommand = async (
   // commands are real actuation too: suppress every one while the durable hold
   // is active, just as the binary restore funnels do.
   const { intent } = action;
-  if (ctx.feedback.isExternalOffHeld(intent.id)) {
+  if (intent.controlAdapter?.chargingInstallation?.role !== 'main' && ctx.feedback.isExternalOffHeld(intent.id)) {
     emitExecutorDebug({
       event: 'stepped_load_command_skipped',
       deviceId: intent.id,
@@ -153,7 +153,7 @@ const skipsHeldStepRaise = (
   if (intent.stepDirection !== 'down_only') return false;
   const live = ctx.readDevice(intent.id);
   const liveOn = live !== undefined && isBinaryOnOrUnknown(live);
-  if (isReportedStepDescent(intent.steppedLoadProfile, live, desiredStep)) return false;
+  if (isReportedStepDescent(intent, live, desiredStep)) return false;
   // An unknown native limit was prepared from measured draw, never from its
   // lowest-rung planning fallback. Recheck that decided descent against the
   // live reading; an OFF or a lower draw cannot authorize this held write.
@@ -169,11 +169,13 @@ const skipsHeldStepRaise = (
 
 /** Exact telemetry can prove a descent even when the new command ladder excludes its rung. */
 const isReportedStepDescent = (
-  profile: SteppedLoadProfile,
+  intent: ExecutableSteppedLoadIntent,
   live: ExecutorDeviceRead | undefined,
   desiredStep: SteppedLoadStep,
 ): boolean => {
-  if (!live || !isBinaryOnOrUnknown(live) || live.reportedStepId === undefined
+  const profile = intent.steppedLoadProfile;
+  const sharedLevel = intent.controlAdapter?.chargingInstallation?.role === 'main';
+  if (!live || (!sharedLevel && !isBinaryOnOrUnknown(live)) || live.reportedStepId === undefined
     || isSteppedLoadOffStep(profile, live.reportedStepId)) return false;
   const reportedPowerW = getSteppedLoadStep(profile, live.reportedStepId)?.planningPowerW ?? live.reportedStepPowerW;
   return reportedPowerW !== undefined && desiredStep.planningPowerW < reportedPowerW;

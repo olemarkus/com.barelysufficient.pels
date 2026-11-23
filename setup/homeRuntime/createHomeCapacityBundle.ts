@@ -406,7 +406,10 @@ export function createHomeCapacityBundle(
     () => ctx.deviceControlSettings.managedDevices,
     () => ctx.homeMembership,
     () => ctx.getStructuredLogger('homes'),
-    () => ctx.readHomeBatteryDevices(),
+    {
+      readHomeBatteryDevices: ctx.readHomeBatteryDevices,
+      readDeviceControlAdapter: (id) => ctx.deviceConfiguration.get(id)?.controlAdapter,
+    },
   );
   const {
     scope,

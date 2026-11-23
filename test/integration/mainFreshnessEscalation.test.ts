@@ -126,6 +126,23 @@ describe('main silent-meter escalation', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(completed);
   });
 
+  it('keeps an installation pause owed until the charger switches are confirmed off', async () => {
+    const { ctx, rebuildPlanFromCache, install } = buildCtx();
+    rebuildPlanFromCache.mockResolvedValue({ ...okOutcome, sharedChargingPausePending: true });
+    install();
+
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 60_000);
+    expect(rebuildPlanFromCache.mock.calls.length).toBeGreaterThan(1);
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(false);
+
+    rebuildPlanFromCache.mockResolvedValue({ ...okOutcome, appliedActions: false });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(true);
+    const completed = rebuildPlanFromCache.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(completed);
+  });
+
   it('does not interpret unresolved inverter ownership as no pending hand-back', async () => {
     const { ctx, rebuildPlanFromCache, install } = buildCtx();
     rebuildPlanFromCache.mockResolvedValue({ ...okOutcome, inverterReleaseRecoveryReady: false });

@@ -39,16 +39,10 @@ import {
   type ModeTargetSelection,
 } from './modeDeviceTargetWrite';
 
-/** Persisted mode settings that the active mode is resolved against. */
-export type HomeModeCatalogConfiguration = {
-  aliases: Record<string, string>;
-  priorities: Record<string, Record<string, number>>;
-  modePriorityCatalog: ModePriorityCatalog;
-  targets: Record<string, Record<string, number>>;
-};
-
-/** One accepted generation of mode settings for a single home. */
-export type HomeModeCatalogSnapshot = HomeModeCatalogConfiguration & { operatingMode: string };
+import type {
+  HomeModeCatalogConfiguration, HomeModeCatalogSnapshot, HomeModePriorityDevices, PersistedHomeModeCatalogRead,
+} from './homeModeCatalogTypes';
+export type { HomeModeCatalogSnapshot, PersistedHomeModeCatalogRead } from './homeModeCatalogTypes';
 
 /** Read and write surface for a home-owned mode catalog. */
 export type HomeModeCatalog = {
@@ -83,12 +77,6 @@ export type HomeModeCatalog = {
   isInitialized: () => boolean;
   reload: (allowPendingOwnershipGeneration?: boolean) => void;
 };
-
-/** Stateless read result for a catalog whose owning bundle may not be live. */
-export type PersistedHomeModeCatalogRead =
-  | { state: 'resolved'; snapshot: HomeModeCatalogSnapshot }
-  | { state: 'legacy' }
-  | { state: 'unavailable' };
 
 const DEFAULT_MODE = 'Home';
 
@@ -360,14 +348,18 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
      * The home batteries, whose unplaced rank is after every other unplaced
      * device. `unavailable` before the device layer has told them apart.
      */
-    private readonly readHomeBatteries: () => HomeBatteryDevicesRead,
+    private readonly priorityDevices: HomeModePriorityDevices,
   ) {
     this.lastGood = homeId === MAIN_HOME_ID ? defaultSnapshot() : getMainSnapshot();
     this.lastLoggedMode = this.lastGood.operatingMode;
     this.deviceModeResolver = new HomeModeDeviceResolver(
       settings, this, getManagedDevices, getMembership, readPersistedHomeModeCatalog,
+      this.readPriorityGroup,
     );
   }
+
+  private readPriorityGroup = (deviceId: string): string | undefined =>
+    this.priorityDevices.readDeviceControlAdapter(deviceId)?.chargingInstallation?.mainId;
 
   getSnapshot = (): HomeModeCatalogSnapshot => ({
     ...this.lastGood,
@@ -377,6 +369,7 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
       this.lastGood.operatingMode,
       this.homeId,
       this.getMembership(),
+      this.readPriorityGroup,
     ),
   });
 
@@ -388,7 +381,8 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     // Before the batteries are known no device ranks as one: an order is only
     // inferred then, and the persisted ranks wait (`persistMissingRanks`).
     this.lastGood.modePriorityCatalog.getOrder(
-      this.lastGood.operatingMode, deviceIds, homeBatteryPredicate(this.readHomeBatteries()), isLastResort,
+      this.lastGood.operatingMode, deviceIds, homeBatteryPredicate(this.priorityDevices.readHomeBatteryDevices()),
+      isLastResort, this.readPriorityGroup,
     )
   );
 
@@ -542,7 +536,7 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
   private persistMissingRanks(freshness: Exclude<PrioritiesFreshness, 'retained'>): void {
     const membership = this.getMembership();
     if (!membership?.isOwnershipReady() || membership.hasPendingOwnershipGeneration()) return;
-    const batteries = this.readHomeBatteries();
+    const batteries = this.priorityDevices.readHomeBatteryDevices();
     if (batteries.status !== 'resolved') return;
     const ownsDevice = (deviceId: string): boolean => membership.getHomeIdForDevice(deviceId) === this.homeId;
     const managedDevices = this.getManagedDevices();
@@ -602,10 +596,10 @@ export const createHomeModeCatalog = (
   getManagedDevices: () => Readonly<Record<string, boolean>>,
   getMembership: () => HomeMembershipPort | undefined,
   getLogger: () => PinoLogger,
-  readHomeBatteries: () => HomeBatteryDevicesRead,
+  priorityDevices: HomeModePriorityDevices,
 ): HomeModeCatalog => {
   const catalog = new HomeModeCatalogOwner(
-    homeId, settings, getMainSnapshot, getManagedDevices, getMembership, getLogger, readHomeBatteries,
+    homeId, settings, getMainSnapshot, getManagedDevices, getMembership, getLogger, priorityDevices,
   );
   // Main has no registry insertion barrier. A sub-home is reloaded only after
   // HomeRuntimeRegistry has published its bundle, so marker-last writes cannot

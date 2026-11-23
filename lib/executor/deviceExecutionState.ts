@@ -37,7 +37,9 @@ function resolveDesiredBinary(intent: PlannedDeviceCommands): DeviceExecutionSta
     if (intent.release.kind === 'binary_restore') return 'on';
     if (intent.release.kind === 'binary_release') return 'off';
   }
-  if (hasPlannedStep(intent)) return resolveExpectedBinaryStateForSteppedIntent(intent.steppedLoad) ?? null;
+  if (hasPlannedStep(intent) && !hasBinaryCommand(intent)) {
+    return resolveExpectedBinaryStateForSteppedIntent(intent.steppedLoad) ?? null;
+  }
   return resolveExpectedBinaryStateForIntent(intent) ?? null;
 }
 

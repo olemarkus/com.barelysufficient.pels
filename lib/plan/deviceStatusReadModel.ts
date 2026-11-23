@@ -43,10 +43,15 @@ import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
 import type { DevicePlanDevice } from './planTypes';
 import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/homeyEnergySetup';
+import type { ChargingInstallationCard } from './chargingInstallationCardText';
+
+export type { ChargingInstallationCard } from './chargingInstallationCardText';
 
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
   /** The adapter's live presentation, independently of its plan-time configuration. */
   adapterUnavailableStatus: AdapterUnavailableStatus | undefined;
+  /** The charger's place on a charging installation PELS controls as one load (`chargingInstallationCardText.ts`). */
+  chargingInstallation: ChargingInstallationCard | undefined;
   /** Why PELS does not set the level itself although it could. */
   unusedBuiltInControl: UnusedBuiltInControl;
   /** The device's app refused Homey's control of its power level, so PELS only switches it. */

@@ -22,7 +22,8 @@ import {
 } from './planOverviewTemperatureState';
 import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
-import { buildDeviceStatus } from './deviceStatusReadModel';
+import { buildDeviceStatus, type ChargingInstallationCard } from './deviceStatusReadModel';
+import { withChargingInstallation } from './chargingInstallationCardText';
 import {
   buildHomeBatteryStatus,
   buildSettingsUiPlanHomeBattery,
@@ -209,11 +210,38 @@ function buildHomeBatteryOverviewDevice(
   };
 }
 
+/**
+ * What a charger's card says about its charging installation: the main shows
+ * the members' total observed draw beside its own, a secondary names the
+ * charger its current is set through. Each card keeps its own draw.
+ */
+function resolveChargingInstallationCard(
+  deviceId: string,
+  deps: SettingsOverviewReadModelDeps,
+  nameById: ReadonlyMap<string, string>,
+): ChargingInstallationCard | undefined {
+  const installation = deps.getDeviceControlAdapter(deviceId)?.chargingInstallation;
+  if (!installation) return undefined;
+  if (installation.role === 'secondary') {
+    return { role: 'secondary', mainName: nameById.get(installation.mainId) ?? 'another charger' };
+  }
+  const draws = installation.memberIds.flatMap((id) => {
+    const drawKw = deps.getDeviceExecutionState(id).currentDrawKw;
+    return drawKw === undefined ? [] : [drawKw];
+  });
+  return {
+    role: 'main',
+    memberCount: installation.memberIds.length,
+    totalKw: draws.length > 0 ? draws.reduce((sum, kw) => sum + kw, 0) : undefined,
+  };
+}
+
 /** Every device's card but a home battery's. */
 function buildLoadOverviewDevice(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
   reasonAnchorMs: number,
+  nameById: ReadonlyMap<string, string>,
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
   // The battery level comes from the seam that owns it
@@ -243,6 +271,7 @@ function buildLoadOverviewDevice(
   const overviewShape = {
     ...device,
     adapterUnavailableStatus: deps.getDeviceControlAdapter(device.id)?.unavailableStatus,
+    chargingInstallation: resolveChargingInstallationCard(device.id, deps, nameById),
     unusedBuiltInControl: deps.getUnusedBuiltInControl(device.id),
     targetPowerControlRefused: deps.isTargetPowerControlRefused(device.id),
     standingCommandGrant: deps.hasStandingCommandGrant(device.id),
@@ -264,7 +293,9 @@ function buildLoadOverviewDevice(
     carChargingState: deps.getAssociatedCarChargingState(device.id),
     carIdentificationState: deps.getCarIdentificationState(device.id, deps.nowMs),
   };
-  const presentation = buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs);
+  const presentation = withChargingInstallation(
+    overviewShape, buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs),
+  );
   const status = presentation.reason?.countdown ? { ...presentation, reason: { ...presentation.reason,
     text: formatDeviceStatusReason(presentation, deps.nowMs)!,
   } } : presentation;
@@ -291,6 +322,7 @@ export function buildSettingsOverviewReadModel(
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).
   const steppedLoadProfileById = deps.getSteppedLoadProfileById();
   const mainExport = resolveMainExportEvidence(plan.meta);
+  const nameById = new Map(plan.devices.map((device) => [device.id, device.name]));
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
@@ -309,6 +341,7 @@ export function buildSettingsOverviewReadModel(
         device,
         deps,
         plan.generatedAtMs ?? deps.nowMs,
+        nameById,
         steppedLoadProfileById.get(device.id),
       )];
     }),

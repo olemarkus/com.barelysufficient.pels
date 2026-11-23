@@ -565,6 +565,8 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   lastResortCommand?: 'off' | 'on';
   lastResortOwnedOffAtMs?: number;
   relayShedDecision?: import('../planContract/executionPlan').RelayShedDecision;
+  /** This member's own switch decision, independent of the installation's current. */
+  chargingInstallationSwitch?: import('../planContract/executionPlan').PlannedBinaryCommand;
   // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it
   // runs its own mode, and on every device that is not a battery. Stamped by
   // the storage stages (`attachStorageDecisions`).

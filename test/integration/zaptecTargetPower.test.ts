@@ -276,10 +276,13 @@ describe('Zaptec native target power', () => {
       id, name: id, data: { id, installationId },
     });
     const ZAPTEC_ID = 'zaptec-target-power';
+    // A shared installation with a charger PELS does not manage stays as before
+    // (a fully managed one is controlled as one load: sharedZaptecInstallation*.test.ts).
+    const isManaged = (id: string) => id !== 'zaptec-second';
     const shared = () => [buildZaptecTargetPowerDevice(), onInstallation('zaptec-second', 'zaptec-installation')];
 
     it('is not offered watt stepping, so PELS neither claims its mode nor writes watts', async () => {
-      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), { settings: { isManaged } });
       await seedTransportDevices(transport, shared());
       const parsed = transport.getSnapshotByDeviceId(ZAPTEC_ID);
 
@@ -312,7 +315,7 @@ describe('Zaptec native target power', () => {
           },
         };
       };
-      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), { settings: { isManaged } });
       await seedTransportDevices(transport, shared().map(neverWritten));
       expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)?.nativeWriteCapabilities).toBeUndefined();
       const put = vi.fn().mockResolvedValue(undefined);
@@ -337,7 +340,7 @@ describe('Zaptec native target power', () => {
           target_power_mode: { ...base.capabilitiesObj?.target_power_mode, value: 'homey' },
         },
       });
-      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), { settings: { isManaged } });
       await seedTransportDevices(transport, [claimed, onInstallation('zaptec-second', 'zaptec-installation')]);
       const parsed = transport.getSnapshotByDeviceId(ZAPTEC_ID);
       expect(parsed).toMatchObject({ nativeWriteCapabilities: ['target_power'], reportedStepId: '2530w' });
@@ -358,7 +361,7 @@ describe('Zaptec native target power', () => {
 
     it('steps a saved EV preset through the Flow, never as watts', async () => {
       const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
-        settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase', max: 22080 }) },
+        settings: { isManaged, getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase', max: 22080 }) },
       });
       await seedTransportDevices(transport, shared());
       const profile = transport.getSnapshotByDeviceId(ZAPTEC_ID)?.steppedLoadProfile;
@@ -373,7 +376,7 @@ describe('Zaptec native target power', () => {
     });
 
     it('keeps the full refresh\'s decision through a device update, until a refresh lists it alone', async () => {
-      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), { settings: { isManaged } });
       await initWithLiveFeed(transport);
       await seedTransportDevices(transport, shared());
 
@@ -386,7 +389,7 @@ describe('Zaptec native target power', () => {
     });
 
     it('is offered watt stepping beside a Sense on the same installation', async () => {
-      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), { settings: { isManaged } });
       await seedTransportDevices(transport, [buildZaptecTargetPowerDevice(), buildZaptecSenseDevice()]);
 
       expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)).toMatchObject({
@@ -395,7 +398,7 @@ describe('Zaptec native target power', () => {
     });
 
     it('is offered watt stepping beside a charger on another installation', async () => {
-      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), { settings: { isManaged } });
       await seedTransportDevices(transport, [
         buildZaptecTargetPowerDevice(), onInstallation('zaptec-elsewhere', 'other-installation'),
       ]);

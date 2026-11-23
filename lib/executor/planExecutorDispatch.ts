@@ -1,5 +1,6 @@
 import {
-  hasPlannedStep, hasTargetPowerClaim, type ExecutionPlan, type PlannedDeviceCommands, type PlannedStepBaseline,
+  hasPlannedStep, hasTargetPowerClaim, type ExecutionPlan, type PlannedDeviceCommands, type PlannedDeviceExecution,
+  type PlannedStepBaseline,
 } from '../planContract/executionPlan';
 import { applyTargetPowerClaim } from './targetPowerClaim';
 import { isBinaryDrivenIntent } from './executableDesiredState';
@@ -69,6 +70,7 @@ type DispatchDelta = {
   deviceWriteCount: number;
   commandRequestCount: number;
 };
+type DispatchOutcome = { ok: true; delta: DispatchDelta } | { ok: false };
 
 const delta = (deviceWriteCount: number, commandRequestCount: number): DispatchDelta => ({
   deviceWriteCount,
@@ -169,6 +171,18 @@ const dispatchSteppedLoadCommand = async (
   snapshot: ExecutorDeviceSnapshot | undefined,
 ): Promise<boolean> => (action ? applySteppedLoadCommand(ctx, action, snapshot) : false);
 
+function applyIndependentBinaryIntent(
+  ctx: ExecutorCommandContext,
+  device: ResolvedDeviceIntent,
+): Promise<boolean> {
+  const command = device.binaryCommand;
+  if (!command) return Promise.resolve(false);
+  if (command.meterSilencePausePrimaryId !== undefined && !ctx.isAuthorityCurrent()) return Promise.resolve(false);
+  return command.desiredOn
+    ? applyBinaryRestore(ctx, command, device.observed)
+    : applyBinaryShedIntent(ctx, command);
+}
+
 const applyUncontrolledDeviceIntent = async (
   ctx: ExecutorCommandContext,
   device: ResolvedDeviceIntent,
@@ -243,6 +257,9 @@ const applySteppedShedRestoreIntent = async (
   let commandRequestCount = 0;
   if (steppedAction) {
     if (await applySteppedLoadCommand(ctx, steppedAction, snapshot)) commandRequestCount += 1;
+    if (steppedAction.intent.controlAdapter?.chargingInstallation?.role === 'main') {
+      return delta(Number(await applyIndependentBinaryIntent(ctx, device)), commandRequestCount);
+    }
     if (await applySteppedLoadShedOff(ctx, steppedAction, snapshot)) deviceWriteCount += 1;
     const restored = await applySteppedLoadRestore(ctx, steppedAction, snapshot, hasShedDevices);
     if (restored.wroteBinary) deviceWriteCount += 1;
@@ -255,12 +272,12 @@ const applyDefaultBinaryIntent = async (
   ctx: ExecutorCommandContext,
   device: ResolvedDeviceIntent,
 ): Promise<DispatchDelta> => {
-  const { observed, targetCommand, binaryCommand, releaseCommand } = device;
+  const { observed, targetCommand, releaseCommand } = device;
   let deviceWriteCount = 0;
   if (await applyDeferredBinaryCommand(ctx, releaseCommand, observed)) {
     return delta(1, 0);
   }
-  if (await applyBinaryRestore(ctx, binaryCommand, observed)) deviceWriteCount += 1;
+  if (await applyIndependentBinaryIntent(ctx, device)) deviceWriteCount += 1;
   if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
   return delta(deviceWriteCount, 0);
 };
@@ -276,7 +293,8 @@ const applyDeviceIntent = async (
   if (shouldSkipUnavailable(observed?.snapshot, intent.name, 'actuation')) return ZERO_DELTA;
   // Homey's control of the watt target first: a step that follows is written under it.
   const claimed = hasTargetPowerClaim(intent) && await applyTargetPowerClaim(ctx, intent.targetPowerClaim);
-  const applied = await applyDecidedCommands(ctx, intent, observed, hasShedDevices, steppedFallback);
+  const applied = ctx.isAuthorityCurrent()
+    ? await applyDecidedCommands(ctx, intent, observed, hasShedDevices, steppedFallback) : ZERO_DELTA;
   return claimed ? delta(applied.deviceWriteCount, applied.commandRequestCount + 1) : applied;
 };
 
@@ -310,7 +328,7 @@ const applyDecidedCommands = async (
       : ZERO_DELTA;
   }
   if (device.binaryCommand?.desiredOn === false) {
-    return (await applyBinaryShedIntent(ctx, device.binaryCommand)) ? delta(1, 0) : ZERO_DELTA;
+    return (await applyIndependentBinaryIntent(ctx, device)) ? delta(1, 0) : ZERO_DELTA;
   }
   return applyDefaultBinaryIntent(ctx, device);
 };
@@ -325,6 +343,7 @@ export const dispatchPlanActions = async (
   devices: ExecutorDeviceRead[],
   storage: StorageLane,
   chargingPhases: ChargingPhaseExecutor,
+  canRunSharedPause: () => boolean,
 ): Promise<PlanActuationResult> => {
   const phaseIntents = new Map(plan.chargingPhaseDecisions.map((decision) => [decision.deviceId, decision]));
   const observedMap = new Map(devices.map((device) => [
@@ -337,12 +356,15 @@ export const dispatchPlanActions = async (
   // Devices are independent decisions: a slow write must not delay another
   // device's shed. Keep each device's command sequence intact and settle all
   // devices before storage runs or the caller flushes batched persistence.
-  const results = await Promise.all(plan.devices.map(async (device) => {
+  const results = await dispatchInSharedPauseOrder(plan.devices, async (device) => {
+    const inSharedPause = sharedPausePrimary(device) !== undefined;
+    if (inSharedPause && !canRunSharedPause()) return { ok: true, delta: ZERO_DELTA };
+    const commandContext = inSharedPause ? { ...ctx, isAuthorityCurrent: canRunSharedPause } : ctx;
     try {
       const applied = await withChargingPhaseControl(chargingPhases, device.commands,
         observedMap.get(device.commands.id),
         phaseIntents.get(device.commands.id), () => applyDeviceIntent(
-        ctx,
+        commandContext,
         device.commands,
         observedMap.get(device.commands.id),
         plan.hasShedDevices,
@@ -357,10 +379,11 @@ export const dispatchPlanActions = async (
       });
       return { ok: false as const };
     }
-  }));
+  });
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
   let deviceApplyFailureCount = 0;
+  logInstallationSwitches(plan, results);
   for (const result of results) {
     if (result.ok) {
       deviceWriteCount += result.delta.deviceWriteCount;
@@ -376,6 +399,52 @@ export const dispatchPlanActions = async (
     deviceApplyFailureCount: deviceApplyFailureCount + storageResult.failureCount,
   };
 };
+
+function sharedPausePrimary({ commands }: PlannedDeviceExecution): string | undefined {
+  return hasBinaryCommand(commands) ? commands.binary.meterSilencePausePrimaryId : undefined;
+}
+
+/** Other devices proceed in parallel; each member waits only for its own primary's attempt. */
+function dispatchInSharedPauseOrder(
+  devices: readonly PlannedDeviceExecution[], dispatch: (device: PlannedDeviceExecution) => Promise<DispatchOutcome>,
+): Promise<DispatchOutcome[]> {
+  const isFirst = (device: PlannedDeviceExecution) => {
+    const primary = sharedPausePrimary(device);
+    return primary === undefined || primary === device.commands.id;
+  };
+  if (devices.every(isFirst)) return Promise.all(devices.map(dispatch));
+  const first = new Map(devices.filter(isFirst).map((device) => [device.commands.id, dispatch(device)]));
+  return Promise.all(devices.map(async (device) => {
+    const running = first.get(device.commands.id);
+    if (running) return running;
+    const primary = sharedPausePrimary(device);
+    if (primary !== undefined) await first.get(primary);
+    return dispatch(device);
+  }));
+}
+
+function logInstallationSwitches(plan: ExecutionPlan, results: readonly DispatchOutcome[]): void {
+  const installations = new Map<string, {
+    value: boolean;
+    members: { memberId: string; outcome: 'requested' | 'not_requested' | 'failed' }[];
+  }>();
+  for (const [index, { commands }] of plan.devices.entries()) {
+    if (!hasBinaryCommand(commands) || !commands.binary.chargingInstallationId) continue;
+    const { chargingInstallationId, desiredOn, deviceId } = commands.binary;
+    const result = results[index]!;
+    let outcome: 'requested' | 'not_requested' | 'failed' = 'not_requested';
+    if (!result.ok) outcome = 'failed';
+    else if (result.delta.deviceWriteCount > 0) outcome = 'requested';
+    const entry = installations.get(chargingInstallationId) ?? { value: desiredOn, members: [] };
+    // eslint-disable-next-line functional/immutable-data -- Local log accumulator.
+    entry.members.push({ memberId: deviceId, outcome });
+    installations.set(chargingInstallationId, entry);
+  }
+  for (const [installationId, entry] of installations) {
+    if (entry.members.every(({ outcome }) => outcome === 'not_requested')) continue;
+    logger.info({ event: 'charging_installation_switch', installationId, ...entry });
+  }
+}
 
 /** The plan's home-battery decisions, through the storage lane (none in a meter area). */
 const dispatchStorageDecisions = async (

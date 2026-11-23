@@ -4,6 +4,9 @@ import type { HomeyFlowAction } from './transport/homeyActionAccess';
 import { resolveDeviceActionCard, type FlowActionCardIds } from './flowActionCards';
 
 import type { ChargingCurrentBinding } from './deviceAdapter';
+import type { DeviceCapabilityMap } from './managerControl';
+import type { TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 
 export function resolveChargingCurrentAdapter(device: HomeyDeviceLike): ChargingCurrentBinding | undefined {
   return getDeviceAdapter(device).currentBindings(device)[0];
@@ -74,4 +77,22 @@ export function chargingInstallationGroups(
     group: numbers.get(installationId) ?? 0,
     chargers: counts.get(installationId) ?? 0,
   }]));
+}
+
+/** Translate an installation-current observation onto its configured watt ladder. */
+export function resolveInstallationCurrentTargetPowerObservation(
+  config: TargetPowerSteppedLoadConfig,
+  current: DeviceCapabilityMap[string],
+): { value: number; observedAt?: DeviceCapabilityMap[string]['lastUpdated'] } | undefined {
+  const wattsPerAmp = installationPresetWattsPerAmp(config);
+  if (!wattsPerAmp || typeof current.value !== 'number' || !Number.isFinite(current.value)) return undefined;
+  return {
+    value: Math.round(current.value * wattsPerAmp),
+    observedAt: current.lastUpdated,
+  };
+}
+
+export function installationPresetWattsPerAmp(config: TargetPowerSteppedLoadConfig): number | undefined {
+  const phases = resolveTargetPowerPresetPhaseCount(config.preset);
+  return phases ? 230 * phases : undefined;
 }

@@ -28,6 +28,10 @@ export type PlannedBinaryCommand = RelayShedDecision & {
   lastResortMaximumW?: number;
   binarySwitchGeneration?: number;
   source: 'controlled' | 'uncontrolled';
+  /** Set when the installation's capacity decision selected this member's switch. */
+  chargingInstallationId?: string;
+  /** A fail-closed pause follows the primary's current preparation attempt. */
+  meterSilencePausePrimaryId?: string;
 };
 export type PlannedReleaseCommand = PlannedReleaseIntent & {
   deviceId: string;
@@ -131,6 +135,8 @@ export type DroppedSteppedShedIntent = {
 };
 /** The execution boundary excludes planner reasons, admission state, UI fields and raw inputs. */
 export type ExecutionPlan = {
+  /** Evidence stamp that still authorizes the shared fail-closed pauses. */
+  meterSilenceStamp?: number;
   chargingPhaseDecisions: import('./chargingPhaseDecision').ChargingPhaseDecision[];
   devices: PlannedDeviceExecution[];
   hasShedDevices: boolean;

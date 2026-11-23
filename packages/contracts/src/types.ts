@@ -271,9 +271,28 @@ export type AdapterUnavailableStatus = {
     reasonText: string | null;
 };
 
+/**
+ * A charger that shares one available current with the other chargers on its
+ * installation, which PELS controls as one load because it manages every one
+ * of them. Resolved by the device layer from the charger app's installation
+ * (`ChargingCurrentControl.chargingInstallation`); absent for a charger alone on
+ * its installation or when any member lacks its integration identity, Managed
+ * or Power-limit control. The `main` receives the shared current command. Each
+ * member has its own switch and a `secondary` receives no amp or watt commands.
+ */
+export type ChargingInstallation = {
+    /** Opaque: the same for every member of one installation. */
+    id: string;
+    role: 'main' | 'secondary';
+    mainId: string;
+    /** Every member's device id, the main included. */
+    memberIds: string[];
+};
+
 export type DeviceControlAdapterSnapshot = {
     activationOrder?: 'current_before_start';
     currentControl?: 'built_in';
+    chargingInstallation?: ChargingInstallation;
     kind: 'capability_adapter';
     activationAvailable?: boolean;
     activationRequired: boolean;

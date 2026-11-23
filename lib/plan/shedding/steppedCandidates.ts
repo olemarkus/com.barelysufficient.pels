@@ -49,6 +49,7 @@ import {
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { resolveSteppedShedTargetStep } from '../planSteppedShedResolution';
+import { resolveCapacityShedBehavior } from './capacityShedBehavior';
 import { buildTemperatureCandidate } from './candidateBuilders';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
@@ -262,7 +263,7 @@ export function buildSteppedCandidate(params: SteppedCandidateParams): LoadShedC
     const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
     if (shed.action === 'set_temperature') return buildSteppedTemperatureCandidate(params, shed.limitC);
   }
-  const shedBehavior = getShedBehavior(device.id);
+  const shedBehavior = resolveCapacityShedBehavior(device, getShedBehavior);
   return buildSteppedStepDownCandidate(
     params,
     shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',

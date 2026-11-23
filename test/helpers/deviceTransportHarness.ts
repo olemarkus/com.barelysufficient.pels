@@ -109,7 +109,12 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
     ...inputs.flowBacked,
   },
   batteryManaged: { isManaged: () => true, ...inputs.batteryManaged },
-  chargingCurrent: inputs.chargingCurrent ?? { requiresManualControl: () => false, withdrawsCurrentLadder: () => false },
+  chargingCurrent: inputs.chargingCurrent ?? {
+    requiresManualControl: () => false,
+    withdrawsCurrentLadder: () => false,
+    withholdsInstallationSteps: () => false,
+    isInstallationMain: () => false,
+  },
 });
 
 /**
@@ -193,11 +198,17 @@ export function createTestDeviceTransport(
     ?? createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   const journal = deviceJournal ?? createDeviceEventStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   const owners = testTransportOwners(inputs);
+  const externalPower = rest.externalPower ?? {
+    settings: { devicePowerSources: {}, managedDevices: {}, isMeteringSocketReserved: () => false,
+      isMainFusePhaseMeter: () => false },
+    resolveHome: () => 'main',
+  };
   const resolvedPowerState = testPowerState(powerState);
   if (injected) {
     return new DeviceTransport(homey, logger, resolvedPowerState, {
       ...rest,
       ...owners,
+      externalPower,
       onSnapshotMutated,
       onDeviceInventoryRefreshed,
       observedStateDispatcher: injected,
@@ -210,6 +221,7 @@ export function createTestDeviceTransport(
   const transport = new DeviceTransport(homey, logger, resolvedPowerState, {
     ...rest,
     ...owners,
+    externalPower,
     onSnapshotMutated,
     onDeviceInventoryRefreshed,
     observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),

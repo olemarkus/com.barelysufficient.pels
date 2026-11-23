@@ -4500,6 +4500,12 @@ label.pels-text-settings-label {
   overflow-wrap: anywhere;
 }
 
+.mode-row .device-row__name:has(.mode-row__shared-priority) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
 .device-row__title {
   min-width: 0;
   overflow: hidden;

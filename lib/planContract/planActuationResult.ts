@@ -25,6 +25,8 @@ export type PlanActuationResult = {
  * the silence escalation, and the rebuild trace (`lib/utils/planRebuildTrace.ts`).
  */
 export type PlanRebuildOutcome = PlanActuationResult & {
+  /** An available charger selected for the fail-closed pause has yet to report off. */
+  sharedChargingPausePending?: true;
   /** False while durable inverter ownership cannot be resolved at its owner. */
   inverterReleaseRecoveryReady: boolean;
   buildMs: number;
