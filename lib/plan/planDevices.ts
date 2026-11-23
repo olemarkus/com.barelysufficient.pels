@@ -174,6 +174,7 @@ function resolvePlannedTarget(
   // Reset every cycle for every device so a stale true never lingers.
   state.surplusAbsorbActiveByDevice[dev.id] = false;
   if (!isTemperaturePlanDevice(dev)) return undefined;
+  if (dev.waitingForTaskPlan) return dev.currentTarget;
   const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
   const lifted = isSurplusLiftEngaged(
     dev, resolvePriceOptimizationConfig(deps.getPriceOptimizationSettings(), dev.id), state,
@@ -194,7 +195,7 @@ function resolvePriceTargetShift(
   temperatureSetpoints: TemperatureSetpointsByDevice,
   plannedTarget: ResolvedPlannedTarget,
 ): PriceTargetShift {
-  if (!isTemperaturePlanDevice(dev)) return NO_PRICE_TARGET_SHIFT;
+  if (!isTemperaturePlanDevice(dev) || dev.waitingForTaskPlan) return NO_PRICE_TARGET_SHIFT;
   const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
   return plannedTarget === setpoints.keepC ? setpoints.keepPriceShift : NO_PRICE_TARGET_SHIFT;
 }

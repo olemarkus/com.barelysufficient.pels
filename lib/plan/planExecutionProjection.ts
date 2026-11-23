@@ -24,12 +24,6 @@ export function buildExecutablePlan(plan: DevicePlan): PlannedCommandPlan {
 }
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
-  if (planDevice.plannedState === 'keep' && planDevice.continueRunningDuringTaskHandoff) {
-    return {
-      id: planDevice.id, name: planDevice.name,
-      commandAuthority: planDevice.control.commandAuthority, projection: 'decided',
-    };
-  }
   const target = planDevice.targetCommand;
   const binary = buildPlannedBinaryCommand(planDevice);
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
@@ -160,6 +154,7 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
 
 /** The binary intent projected from a finalized device decision. */
 export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
+  if (dev.waitingForTaskPlan && dev.plannedState !== 'shed') return undefined;
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
   // A device can remain visible before power setup, or after losing its power
@@ -176,7 +171,6 @@ export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
   if (dev.plannedState === 'shed') return buildExecutableBinaryShedIntent(dev);
-  if (dev.continueRunningDuringTaskHandoff) return undefined;
   return { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'controlled' };
 };
 

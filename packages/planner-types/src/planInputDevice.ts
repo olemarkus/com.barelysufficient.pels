@@ -737,13 +737,11 @@ export type PlanInputDeviceBase = {
    */
   startPolicyInForce: DeviceStartPolicy;
   /**
-   * A smart task is ACTIVELY DRIVING this device this cycle, so its
-   * start-policy baseline of off does not apply — the one thing in PELS that
-   * positively starts a device has booked this hour (with or without energy
-   * promised) and wants it running.
+   * The task lifts the start-policy baseline when it books the current hour
+   * or when the already-running device is waiting for a replacement plan.
+   * Only the booked hour can request a start.
    *
-   * Stamped by `applyDeferredAdmissionToInput` on a `planned` admission
-   * decision, and only there. It is a per-cycle DERIVATION,
+   * Stamped by `applyDeferredAdmissionToInput`. It is a per-cycle derivation,
    * deliberately not a rewrite of {@link startPolicyInForce} above: runtime code
    * overwriting a producer-resolved setting mid-cycle is the exact shape the
    * `controllable: true` admission write was removed for — every downstream
@@ -779,10 +777,9 @@ export type PlanInputDeviceBase = {
    * active reads its presence (starvation eligibility, and the shed side's recovery
    * rule `isNonSteppedDeviceRecovering`).
    */
-  // The planner resolves 'off_unless_running' before shedding and restoration.
-  deferredHold?: 'off' | 'configured' | 'off_unless_running';
-  /** Existing draw may continue under live limits while its task awaits a replan. */
-  continueRunningDuringTaskHandoff?: true;
+  deferredHold?: 'off' | 'configured';
+  /** Live limits still apply while a queued task cannot request starts or increases. */
+  waitingForTaskPlan?: true;
   /**
    * The charger's target battery level, resolved against what PELS knows about
    * the car right now: does the target ask PELS to hold this device OFF, and is

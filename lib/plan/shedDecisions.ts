@@ -189,12 +189,22 @@ export class ShedDecisions {
         || (this.standingShedIds.has(device.id)
           && (!isPlanDeviceObservedOn(device) || pendingBinaryCommands.hasActiveTurnOff(device.id))))
       .map(({ id }) => id));
-    this.lastPlannedShedIds = new Set(shedIds);
+    const priorShedIds = this.lastPlannedShedIds;
+    const priorNonCapacityHoldIds = this.lastPlannedNonCapacityHoldIds;
+    // Waiting issues no restore. Keep a prior shed in the admission history
+    // until the next real decision, including when its setpoint is still low.
+    const retainsShed = (device: DevicePlanDevice): boolean => (
+      device.waitingForTaskPlan === true && device.plannedState !== 'shed' && priorShedIds.has(device.id)
+    );
+    this.lastPlannedShedIds = new Set([...shedIds, ...planDevices.filter(retainsShed).map(({ id }) => id)]);
     this.lastPlannedNonCapacityHoldIds = new Set(planDevices
-      .filter((device) => device.plannedState === 'shed' && device.nonCapacityHoldShed === true)
+      .filter((device) => device.plannedState === 'shed'
+        ? device.nonCapacityHoldShed === true
+        : retainsShed(device) && priorNonCapacityHoldIds.has(device.id))
       .map(({ id }) => id));
     this.lastPlannedKeptIds = new Set(planDevices
-      .filter((device) => device.plannedState === 'keep' && device.control.commandAuthority)
+      .filter((device) => device.plannedState === 'keep'
+        && device.control.commandAuthority && !device.waitingForTaskPlan)
       .map(({ id }) => id));
     this.lastPlannedDeviceIds = new Set(devices.map(({ id }) => id));
     if (devices.length > 0) this.hasRecordedPlan = true;

@@ -12,7 +12,8 @@ import * as policyHorizon from '../../lib/objectives/deferredObjectives/policyHo
 import { applyDeferredAdmissionToInput, applyDeferredObjectiveAdmission, buildDeferredReleaseIntents } from '../../lib/objectives/deferredObjectives/admission';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildInitialPlanDevicesForSpec, buildPlanInputDevice, sheddingPlanFixture } from '../utils/planTestUtils';
-import { buildIdentityDecorationBundle, resolveDeferredRunningHolds } from '../../lib/plan/planBuilderDecoration';
+import { resolveStartPolicyHold } from '../../lib/plan/shedding/startPolicyHold';
+import { isRestoreLiveEligibleDevice, isSwapRestoreCandidate } from '../../lib/plan/restore/devices';
 import { buildExecutableDeviceIntent } from '../../lib/plan/planExecutionProjection';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanCycle } from '../utils/planContextPowerFixture';
@@ -524,7 +525,47 @@ describe('bounded smart-task planning turns', () => {
   });
 });
 
-describe('temperature task hourly handoff', () => {
+describe('device control during a queued replan', () => {
+  it.each([
+    ['EV charge level', { kind: 'ev_soc', targetPercent: 55 }, {
+      isEvCharger: true, stateOfCharge: { level: { kind: 'known', percent: 50, carId: null } },
+    }, 50],
+    ['temperature', { kind: 'temperature', targetTemperatureC: 23 }, {
+      deviceType: 'temperature', currentTemperature: 20,
+    }, 20],
+    ['delivered energy', { kind: 'energy', targetEnergyKWh: 1 }, {}, 0],
+  ] as const)('applies the same queued replan decision to a %s task', (_label, objective, observation, progress) => {
+    const home = createHarness(2);
+    const lower = home.devices[1]!;
+    home.devices[1] = { ...lower, ...observation, currentDrawKw: 1 };
+    home.settings.objectivesByDeviceId[lower.id] = {
+      ...objective, enabled: true, enforcement: 'soft', deadlineAtMs: DEADLINE_MS,
+    };
+    home.powerTracker.objectiveProfiles = {
+      [lower.id]: {
+        updatedAtMs: START_MS,
+        lastSample: { observedAtMs: START_MS, value: progress },
+        kwhPerUnit: { sampleCount: 50, mean: 0.5, m2: 0, min: 0.5, max: 0.5, confidence: 'high', lastUpdatedMs: START_MS },
+        acceptedSamples: 50,
+        rejectedSamples: 0,
+      },
+    };
+    home.tick(START_MS);
+    home.tick(START_MS + 30_000);
+    expect(home.recorder.getActivePlan(lower.id)?.latest).toBeTruthy();
+
+    home.settings.objectivesByDeviceId['load-1'] = {
+      enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 1.2, deadlineAtMs: DEADLINE_MS,
+    };
+    expect(freshIds(home.tick(START_MS + 60_000))).toEqual(['load-1']);
+
+    const queued = home.evaluate(START_MS + 90_000, SERVING_LANE);
+    const evaluations = queued.map(({ evaluation }) => evaluation);
+    const decisions = applyDeferredObjectiveAdmission(evaluations);
+    expect(decisions.get(lower.id)).toEqual({ kind: 'waiting', budgetExempt: false });
+    expect(buildDeferredReleaseIntents(decisions)[lower.id]).toBeUndefined();
+  });
+
   it('keeps an already-running heater on without task authority or a new command while it awaits its turn', () => {
     const home = createHarness(2);
     const heaters = home.devices.map(({ id }, index) => buildPlanInputDevice({
@@ -560,17 +601,12 @@ describe('temperature task hourly handoff', () => {
       const reports = home.evaluate(time, SERVING_LANE);
       const decisions = applyDeferredObjectiveAdmission(reports.map(({ evaluation }) => evaluation), devices);
       const input = applyDeferredAdmissionToInput(devices, decisions);
-      const decoration = resolveDeferredRunningHolds({
-        ...buildIdentityDecorationBundle(input.devices),
-        forceShedSet: input.forceShedSet,
-        deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
-      }, pending);
-      const { context } = buildPlanCycle({ devices: decoration.admittedDevices, total: 2, softLimit: 20 });
+      const { context } = buildPlanCycle({ devices: input.devices, total: 2, softLimit: 20 });
       const plan = buildInitialPlanDevicesForSpec({
         context,
         state,
         sheddingPlan: sheddingPlanFixture({
-          shedSet: new Set([...decoration.forceShedSet, ...(capacityShed ? ['load-2'] : [])]),
+          shedSet: new Set([...input.forceShedSet, ...(capacityShed ? ['load-2'] : [])]),
           shedReasons: new Map(capacityShed ? [['load-2', { code: PLAN_REASON_CODES.capacity }]] : []),
         }),
         deps: {
@@ -581,7 +617,7 @@ describe('temperature task hourly handoff', () => {
         },
       });
       return {
-        decisions, decoration, lowerPlan: plan.find(({ id }) => id === 'load-2')!,
+        decisions, input, lowerPlan: plan.find(({ id }) => id === 'load-2')!,
         lowerReport: reports.find(({ evaluation }) => evaluation.deviceId === 'load-2'),
       };
     };
@@ -590,7 +626,7 @@ describe('temperature task hourly handoff', () => {
     const settleAt = START_MS + HOUR_MS;
     const before = admissionAt(settleAt - 1_000);
     expect(before.decisions.get('load-2')).toMatchObject({ kind: 'planned' });
-    expect(before.decoration.forceShedSet.has('load-2')).toBe(false);
+    expect(before.input.forceShedSet.has('load-2')).toBe(false);
     expect(before.lowerPlan?.plannedState).toBe('keep');
 
     home.devices[0]!.currentTemperature = 19;
@@ -600,9 +636,9 @@ describe('temperature task hourly handoff', () => {
     const priceReadsBeforeWait = home.priceReadCount();
     const waiting = admissionAt(settleAt + 1_000);
     expect(waiting.lowerReport?.diagnostic.reasonCode).toBe('objective_waiting_for_plan');
-    expect(waiting.decisions.get('load-2')).toMatchObject({ kind: 'idle', budgetExempt: false });
-    expect(waiting.decoration.deferredReleaseIntentByDeviceId['load-2']).toBeUndefined();
-    expect(waiting.decoration.forceShedSet.has('load-2')).toBe(false);
+    expect(waiting.decisions.get('load-2')).toMatchObject({ kind: 'waiting', budgetExempt: false });
+    expect(buildDeferredReleaseIntents(waiting.decisions)['load-2']).toBeUndefined();
+    expect(waiting.input.forceShedSet.has('load-2')).toBe(false);
     expect(waiting.lowerPlan.plannedState).toBe('keep');
     const commands = buildExecutableDeviceIntent(waiting.lowerPlan);
     expect(commands).not.toHaveProperty('binary');
@@ -612,8 +648,7 @@ describe('temperature task hourly handoff', () => {
 
     pending.record('load-2', { desired: false, startedMs: Date.now() });
     const pendingOff = admissionAt(settleAt + 1_000);
-    expect(pendingOff.decoration.deferredReleaseIntentByDeviceId['load-2']).toBe('binary_release');
-    expect(pendingOff.lowerPlan).toMatchObject({ plannedState: 'shed', shedAction: 'turn_off' });
+    expect(buildExecutableDeviceIntent(pendingOff.lowerPlan)).not.toHaveProperty('binary');
     pending.clear('load-2');
 
     const [first, second] = heaters;
@@ -622,11 +657,28 @@ describe('temperature task hourly handoff', () => {
       currentTemperature: 20, currentTarget: 23, currentDrawKw: 0, expectedPowerKw: 1,
       controllable: true, binaryControl: { on: false }, priority: 2,
     });
-    expect(admissionAt(settleAt + 1_000, [first!, stopped]).lowerPlan.plannedState).toBe('shed');
-    expect(admissionAt(settleAt + 1_000, [
+    const offWhileWaiting = admissionAt(settleAt + 1_000, [first!, stopped]).lowerPlan;
+    expect(isRestoreLiveEligibleDevice(offWhileWaiting)).toBe(false);
+    expect(buildExecutableDeviceIntent(offWhileWaiting)).not.toHaveProperty('binary');
+    expect(buildExecutableDeviceIntent(admissionAt(settleAt + 1_000, [
       { ...first!, reservesStartupPower: true, currentDrawKw: 0 }, second!,
-    ]).lowerPlan.plannedState).toBe('shed');
-    expect(admissionAt(settleAt + 4 * 60_000).lowerPlan.plannedState).toBe('shed');
+    ]).lowerPlan)).not.toHaveProperty('binary');
+    expect(buildExecutableDeviceIntent(admissionAt(settleAt + 4 * 60_000).lowerPlan)).not.toHaveProperty('binary');
+
+    const charger = buildPlanInputDevice({
+      id: 'load-2', isEvCharger: true, controlModel: 'stepped_load',
+      binaryControl: { on: true }, currentDrawKw: 1.3, expectedPowerKw: 1.38, priority: 2,
+      startPolicyInForce: 'pels_only', selectedStepId: '6a',
+      steppedLoadProfile: { steps: [
+        { id: 'off', planningPowerW: 0 }, { id: '6a', planningPowerW: 1380 }, { id: '8a', planningPowerW: 1840 },
+      ] },
+    });
+    const waitingCharger = admissionAt(settleAt + 1_000, [first!, charger]);
+    expect(resolveStartPolicyHold(waitingCharger.input.devices).holdIds.has(charger.id)).toBe(false);
+    expect(waitingCharger.lowerPlan.plannedState).toBe('keep');
+    expect(isRestoreLiveEligibleDevice(waitingCharger.lowerPlan)).toBe(false);
+    expect(isSwapRestoreCandidate(waitingCharger.lowerPlan)).toBe(true);
+    expect(buildExecutableDeviceIntent(waitingCharger.lowerPlan)).not.toHaveProperty('steppedLoad');
     const limited = admissionAt(settleAt + 1_000, heaters, true);
     expect(limited.lowerPlan.plannedState).toBe('shed');
     expect(buildExecutableDeviceIntent(limited.lowerPlan)).toMatchObject({ binary: { desiredOn: false } });
@@ -634,7 +686,7 @@ describe('temperature task hourly handoff', () => {
     expect(freshIds(home.tick(settleAt + 30_000))).toEqual(['load-2']);
     const replanned = admissionAt(settleAt + 31_000);
     expect(replanned.decisions.get('load-2')).toMatchObject({ kind: 'planned' });
-    expect(replanned.decoration.forceShedSet.has('load-2')).toBe(false);
+    expect(replanned.input.forceShedSet.has('load-2')).toBe(false);
     expect(replanned.lowerPlan?.plannedState).toBe('keep');
   });
 });

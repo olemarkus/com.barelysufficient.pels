@@ -268,7 +268,8 @@ export const resolveSteppedStatusLine = (
   // A RUNNING stepped device denied a step up never reaches `resolveOffStatusLine`
   // below, so this branch stays — but the sentence itself now comes from the
   // shared formatter, which the device-detail page and the logs also use.
-  if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
+  if (device.reason.code === PLAN_REASON_CODES.shedInvariant
+    || device.reason.code === PLAN_REASON_CODES.deferredObjectiveWaitingForPlan) {
     return formatDeviceReasonUserFacing(device.reason);
   }
   if (device.reason.code === PLAN_REASON_CODES.waitingForOtherDevices) {

@@ -244,6 +244,55 @@ describe('start policy through a whole plan build', () => {
     expect(resolvePlannedShedTargetKind(device!)).toBe('binary_off');
   });
 
+  it.each([true, false])('leaves a stepped charger at its observed state during replanning (on=%s)', async (on) => {
+    const plan = await buildBuilder({
+      getShedBehavior: () => ({ action: 'set_step' }),
+      decorateDeferredObjectives: decorateWithDecision('charger', { kind: 'waiting', budgetExempt: false }),
+    }).buildDevicePlanSnapshot([steppedCharger('pels_only', on)]);
+
+    const device = plan.devices[0];
+    expect(device).toMatchObject({ plannedState: on ? 'keep' : 'inactive', waitingForTaskPlan: true });
+    const intent = buildExecutableDeviceIntent(device!, plan.meta);
+    expect(intent).not.toHaveProperty('binary');
+    expect(intent).not.toHaveProperty('steppedLoad');
+    expect(intent).not.toHaveProperty('release');
+  });
+
+  it('still holds a charger that has reached its configured charge target while replanning', async () => {
+    const plan = await buildBuilder({
+      decorateDeferredObjectives: decorateWithDecision('charger', { kind: 'waiting', budgetExempt: false }),
+    }).buildDevicePlanSnapshot([{
+      ...steppedCharger('pels_only'),
+      chargeTargetHold: { kind: 'target_reached', targetPercent: 80 },
+    }]);
+
+    expect(plan.devices[0]).toMatchObject({
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.chargeTargetReached },
+    });
+  });
+
+  it('requires headroom to resume an off device when the waiting task gets its plan', async () => {
+    let decision: DeferredAdmissionDecision = idleDecision;
+    const builder = buildBuilder({
+      getCapacitySettings: () => configuredHardCap(TIGHT_CAPACITY),
+      getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
+      decorateDeferredObjectives: (input) => decorateWithDecision('charger', decision)(input),
+    });
+    const device = charger('unrestricted', { on: false });
+    const idle = await builder.buildDevicePlanSnapshot([device]);
+    expect(idle.devices[0]?.plannedState).toBe('shed');
+
+    decision = { kind: 'waiting', budgetExempt: false };
+    const wait = await builder.buildDevicePlanSnapshot([device]);
+    expect(wait.devices[0]?.reason.code).toBe(PLAN_REASON_CODES.deferredObjectiveWaitingForPlan);
+
+    decision = plannedDecision;
+    const resume = await builder.buildDevicePlanSnapshot([device]);
+    expect(resume.devices[0]?.reason.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
+    const intent = buildExecutableDeviceIntent(resume.devices[0]!, resume.meta);
+    expect(hasBinaryCommand(intent) && intent.binary.desiredOn).toBe(false);
+  });
+
   it('keeps holding a device whose task is inactive', async () => {
     // The blunt case the feature was built for: a task whose precondition failed
     // (an EV that will not report its state of charge) must leave the device

@@ -44,6 +44,7 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.reservedForStart },
   { code: PLAN_REASON_CODES.startupStabilization },
   { code: PLAN_REASON_CODES.capacityControlOff },
+  { code: PLAN_REASON_CODES.deferredObjectiveWaitingForPlan },
 ] as const;
 
 const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
@@ -56,7 +57,6 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.dailyBudget },
   { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
   { code: PLAN_REASON_CODES.deferredObjectiveSatisfied },
-  { code: PLAN_REASON_CODES.deferredObjectiveWaitingForPlan },
   { code: PLAN_REASON_CODES.awaitingSolarSurplus },
   // The "Only PELS starts this device" hold. Legal for `shed` and nothing else:
   // the posture's whole expression IS a standing shed intent, and it is

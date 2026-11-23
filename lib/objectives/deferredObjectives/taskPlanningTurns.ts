@@ -10,12 +10,6 @@ import { isPastHourSettleMark, SCHEDULE_SETTLE_OFFSET_MS } from './settleWindow'
 
 const HOUR_MS = 3_600_000;
 
-// Bound continuation to the :58 settle and the first two minutes of the new
-// hour, even when a queued task cannot get a usable plan.
-export const isInHourlyHandoff = (nowMs: number): boolean => (
-  (nowMs + HOUR_MS - SCHEDULE_SETTLE_OFFSET_MS) % HOUR_MS < 4 * 60_000
-);
-
 export type TaskAllocationMode = 'ordinary' | 'fresh' | 'serve' | 'wait';
 
 export const resolveTaskAllocationMode = (

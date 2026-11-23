@@ -25,7 +25,7 @@ export type RestoreCandidate =
   | { kind: 'binary' | 'stepped' | 'charging_phase'; device: MeteredDevicePlanDevice }
   | { kind: 'storage'; device: DevicePlanDevice; lever: StorageLeverState };
 
-export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
+function isEligibleForLivePowerControl(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
   // Resuming a device is admitting its draw into available power, which only a
   // device with a power reading can be priced for. A temperature device planned
   // without one keeps its setpoint logic and is never a restore, swap or
@@ -37,10 +37,14 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is
     // "Leave off until turned on again": the single gate every restore-candidate
     // predicate funnels through, so excluding the device here removes it from
     // binary restore, stepped restore, headroom reservation, and swap
-    // beneficiary selection at once. The device stays managed and its measured
+    // participation at once. The device stays managed and its measured
     // draw still counts toward whole-home power — PELS just never resumes it.
     && device.externalOffHoldActive !== true
     && device.carCurrentRangeHeld !== true;
+}
+
+export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
+  return !device.waitingForTaskPlan && isEligibleForLivePowerControl(device);
 }
 
 /**
@@ -183,7 +187,7 @@ export function isActiveSteppedRestoreCandidate(device: DevicePlanDevice): boole
 
 export function isSwapRestoreCandidate(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
   const observedState = resolveRestoreObservedState(device);
-  return isRestoreLiveEligibleDevice(device) && (observedState === 'on' || observedState === 'target_only');
+  return isEligibleForLivePowerControl(device) && (observedState === 'on' || observedState === 'target_only');
 }
 
 export function getOffDevices(

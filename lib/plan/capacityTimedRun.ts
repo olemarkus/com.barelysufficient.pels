@@ -169,7 +169,8 @@ function resolveStart(hour: TimedRunHour): CapacityTimedRun {
   if (projectedBaseKw > input.paceKw) return { kind: 'none' };
   // Only the device restore would start first, so the room goes to it.
   const heldOff = input.devices.filter((device) => (
-    isCommandable(device) && input.heldOffIds.has(device.id) && !input.forceShedIds.has(device.id)
+    isCommandable(device) && !device.waitingForTaskPlan
+      && input.heldOffIds.has(device.id) && !input.forceShedIds.has(device.id)
   ));
   const device = pickHighestPriority(heldOff);
   if (device === null || !isTimedRunDevice(device) || device.currentState !== 'off') return { kind: 'none' };
