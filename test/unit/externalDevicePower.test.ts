@@ -61,6 +61,15 @@ describe('external device power', () => {
     expect(external.allowsWrite('socket')).toBe(false);
   });
 
+  it('does not offer last-resort control for an unmanaged socket with a real zero reading', () => {
+    const { inventory, external } = setup();
+    const source = socket(0);
+    inventory.replaceLatestRawDevices([target, source], [target]);
+    expect(external.readSetup().devices).toContainEqual(expect.objectContaining({
+      id: 'socket', defaultBinarySwitchAvailable: true, lastResortAvailable: false,
+    }));
+  });
+
   it('withdraws the power capability if the socket turns off, is moved or is removed', () => {
     const { inventory, external } = setup();
     for (const source of [socket(500, false), { ...socket(500), zone: 'garage' }, undefined]) {

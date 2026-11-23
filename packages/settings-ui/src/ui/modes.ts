@@ -1,4 +1,4 @@
-import { allowLastResortPriorityMove, appendLastResortLabel, isLastResortConfigured } from './devicePowerSetup.ts';
+import { allowLastResortPriorityMove, isLastResortConfigured } from './devicePowerSetup.ts';
 import Sortable from 'sortablejs';
 import { currentSetupJourney } from './setupJourneyState.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
@@ -186,15 +186,15 @@ export const getDesiredTarget = (device: SettingsUiDeviceListItem) => {
   return null;
 };
 
-const buildNoTemperaturePlaceholder = (): HTMLElement => {
+const buildModeTargetPlaceholder = (text: string): HTMLElement => {
   const placeholder = document.createElement('span');
   placeholder.className = 'mode-target-placeholder';
-  placeholder.textContent = 'No temperature target';
+  placeholder.textContent = text;
   return placeholder;
 };
 
 const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number | null): HTMLElement => {
-  if (!supportsTemperatureDevice(device)) return buildNoTemperaturePlaceholder();
+  if (!supportsTemperatureDevice(device)) return buildModeTargetPlaceholder('No temperature target');
   const target = getPrimaryTemperatureTarget(device);
   const tempInput = document.createElement('md-filled-text-field') as MaterialTextFieldElement;
   markDecimalField(tempInput);
@@ -237,10 +237,9 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   nameText.className = 'mode-row__name-text';
   nameText.textContent = formatDisplayDeviceName(device.name);
   name.appendChild(nameText);
-  appendLastResortLabel(name, device.id);
 
-  const desired = getDesiredTarget(device);
-  const input = buildModeTargetInput(device, desired);
+  const input = isLastResortConfigured(device.id) ? buildModeTargetPlaceholder('Last resort')
+    : buildModeTargetInput(device, getDesiredTarget(device));
 
   const badge = document.createElement('span');
   badge.className = 'priority-badge pels-text-caption';
@@ -263,6 +262,8 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
     resolveManagedState(device.id)
     && getHomeIdForUiDevice(device.id) === selectedHomeId
   ));
+  const lastResortHelp = document.getElementById('priority-last-resort-help');
+  if (lastResortHelp) lastResortHelp.hidden = !managedDevices.some(({ id }) => isLastResortConfigured(id));
   if (!managedDevices.length) {
     priorityEmpty.textContent = EMPTY_MODE_COPY;
     priorityEmpty.hidden = false;

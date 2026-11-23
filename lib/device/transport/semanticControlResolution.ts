@@ -3,8 +3,11 @@ import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/
 import type { NativeRelayBinding, NativeRelayOffResult } from '../../ports/nativeRelay';
 import type { EvCarLinkProducer } from '../evCarLinkProducer';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
+import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceWriteService } from './deviceWrites';
 import { resolveNativeRelayBinding, writeNativeRelayOff } from './nativeRelay';
+import { hasAcceptedBinarySwitch } from './binarySwitchBinding';
+import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 export { buildBinaryCommandConfirmationSnapshot } from './binaryCommandConfirmationSnapshot';
 
 export function resolveTemperatureTarget(
@@ -24,6 +27,17 @@ export function readNativeRelayBinding(
     return resolveNativeRelayBinding(store.getSnapshotByDeviceId(deviceId), store.getLastAcceptedRawDevice(deviceId));
 }
 
+function allowsCurrentLastResortSwitch(
+    store: TransportSnapshotStore, snapshot: TransportDeviceSnapshot | undefined, raw: HomeyDeviceLike | undefined,
+): boolean {
+    const observation = snapshot?.binaryControlObservation;
+    return snapshot?.available === true && raw?.available === true && snapshot.canSetControl === true
+        && observation !== undefined && observation.capabilityId === snapshot.binaryCapabilityId
+        && snapshot.binaryControl?.on === observation.observedValue
+        && hasAcceptedBinarySwitch(raw, observation.capabilityId, observation.observedValue)
+        && !store.externalPower?.sourceForDevice(snapshot.id) && !hasObservedMeasuredPower(snapshot);
+}
+
 /** Resolve the switch from the current binding at dispatch, including its accepted Flow routing. */
 // eslint-disable-next-line max-params -- Preserve optional authority values on the existing transport seam.
 export async function requestBinaryControl(
@@ -38,8 +52,10 @@ export async function requestBinaryControl(
 ): Promise<NativeRelayOffResult | void | false> {
     if (!store.binarySwitches.allows(deviceId, binarySwitchGeneration)
         || !store.binarySwitches.allowsLastResortWrite(deviceId, lastResortMaximumW)) return false;
+    const raw = store.getTrackedRawDevice(deviceId);
     store.externalPower?.assertAllowsWrite(deviceId);
     const snapshot = store.getSnapshotByDeviceId(deviceId);
+    if (lastResortMaximumW !== undefined && !allowsCurrentLastResortSwitch(store, snapshot, raw)) return false;
     const capabilityId = snapshot?.binaryCapabilityId;
     if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);
     // Even a stop routed to a current limit is PELS's stop when matching a later car-link event.

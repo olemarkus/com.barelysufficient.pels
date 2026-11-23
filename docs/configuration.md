@@ -412,7 +412,7 @@ Follow [Getting Started](/getting-started) to confirm your meter, choose one dev
 
 ### Last-resort control for an unmetered relay
 
-If a relay has no device power reading, open **Devices** and find it under **Add device or change its power source**. Enable **Turn off as a last resort** and enter the maximum watts the connected load can draw. Save the setup and enable **Managed by PELS**.
+If a relay has no device power reading, open **Devices** and find it under **Device setup**. Enable **Turn off as a last resort** and enter the maximum watts the connected load can draw. Save the setup and enable **Managed by PELS**.
 
 PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
 

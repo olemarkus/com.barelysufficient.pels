@@ -5,7 +5,7 @@ import type { resolveDeviceDetailControlState } from './controlState.ts';
 import {
   HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT, needsHomeyEnergySetup,
 } from '../../../../shared-domain/src/homeyEnergySetup.ts';
-import { devicePowerSetupHint, isSocketReservedForPower } from '../devicePowerSetup.ts';
+import { devicePowerSetupHint, isSocketReservedForPower, readDevicePowerSetupDetail } from '../devicePowerSetup.ts';
 import {
   deviceDetailControllable,
   deviceDetailManaged,
@@ -48,14 +48,40 @@ export const renderManagedControl = (
     managedHint.textContent = setupHint ?? resolveManagedHint(device, controlState);
     managedHint.dataset.tone = device && needsHomeyEnergySetup(device) ? 'warning' : 'neutral';
   }
+  const setup = device ? readDevicePowerSetupDetail(device.id) : undefined;
+  renderPowerSetupDetail(setup);
+  renderHomeyEnergySetupLink(needsHomeyEnergySetup(device) && !setup?.socketPending);
+};
+
+function renderHomeyEnergySetupLink(visible: boolean): void {
   const energySetupLink = document.getElementById('device-detail-homey-energy-setup');
   if (energySetupLink) {
-    energySetupLink.hidden = !device || !needsHomeyEnergySetup(device);
+    energySetupLink.hidden = !visible;
     energySetupLink.setAttribute('href', HOMEY_ENERGY_SETUP_DOCS_URL);
     energySetupLink.setAttribute('target', '_blank');
     energySetupLink.setAttribute('rel', 'noopener noreferrer');
   }
-};
+}
+
+function renderPowerSetupDetail(setup: ReturnType<typeof readDevicePowerSetupDetail>): void {
+  const summary = document.getElementById('device-detail-power-setup-summary');
+  const edit = document.getElementById('device-detail-open-power-setup');
+  const socketFallback = setup?.socketMissing ? 'Metering socket unavailable' : '';
+  const switchFallback = setup?.switchMissing ? 'Selected on/off control unavailable' : '';
+  const socketText = setup?.socket ? `Metering socket is ${setup.socket}` : socketFallback;
+  const switchText = setup?.switchName ? `On/off control uses ${setup.switchName}` : switchFallback;
+  setPowerSetupSummary('device-detail-metering-socket', socketText);
+  setPowerSetupSummary('device-detail-on-off-control', switchText);
+  if (summary) summary.hidden = !socketText && !switchText;
+  if (edit) edit.hidden = !setup?.editable;
+}
+
+function setPowerSetupSummary(id: string, text: string): void {
+  const row = document.getElementById(id);
+  if (!row) return;
+  row.hidden = !text;
+  row.textContent = text;
+}
 
 const resolveManagedHint = (
   device: SettingsUiDeviceView | null,

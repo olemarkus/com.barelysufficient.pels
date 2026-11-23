@@ -45,13 +45,13 @@ export function readDeviceMeasuredPowerObservation(params: {
     deviceEnergyW = null,
     homeyEnergyObservedAtMs,
   } = params;
-  const measurePower = readFinitePowerCapability(capabilities, capabilityObj, 'measure_power');
+  const measurePower = readMeasurePowerCapability(capabilities, capabilityObj);
   const meterPower = readFinitePowerCapability(capabilities, capabilityObj, 'meter_power');
   // The live report lists only top-zone devices; the device read carries the
   // same figure for a device in any zone.
   const homeyEnergyLiveW = toFiniteNumber(livePowerWByDeviceId[deviceId]) ?? deviceEnergyW ?? undefined;
   return {
-    measurePower: toDirectPowerReading(measurePower),
+    measurePower,
     meterEnergy: toMeterEnergyReading(meterPower),
     homeyEnergyLive: homeyEnergyLiveW === undefined
       ? undefined
@@ -59,11 +59,11 @@ export function readDeviceMeasuredPowerObservation(params: {
   };
 }
 
-// A watt value is a reading only with the stamp that places it; the device-read
-// contract guarantees a conforming read carries both.
-function toDirectPowerReading(
-  read: { value?: number; observedAtMs?: number },
+// A watt value is a reading only with the stamp that places it.
+export function readMeasurePowerCapability(
+  capabilities: readonly string[], capabilityObj: Partial<DeviceCapabilityMap>,
 ): DirectPowerReading | undefined {
+  const read = readFinitePowerCapability(capabilities, capabilityObj, 'measure_power');
   return read.value !== undefined && read.observedAtMs !== undefined
     ? { watts: read.value, observedAtMs: read.observedAtMs }
     : undefined;
@@ -91,7 +91,7 @@ function toFiniteNumber(value: unknown): number | undefined {
 
 function readFinitePowerCapability(
   capabilities: readonly string[],
-  capabilityObj: DeviceCapabilityMap,
+  capabilityObj: Partial<DeviceCapabilityMap>,
   capabilityId: PowerCapabilityId,
 ): { value?: number; observedAtMs?: number } {
   const value = toFiniteNumber(getExactPowerCapabilityValue(capabilities, capabilityObj, capabilityId));

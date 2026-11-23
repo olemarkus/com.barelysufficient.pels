@@ -26,6 +26,7 @@ export type SetupDeviceChoices =
 
 type SetupDevicePickerProps = {
   choices: SetupDeviceChoices;
+  deviceSetupAvailable?: boolean;
   onManaged: (id: string, value: boolean) => void;
   onOpen: (id: string, focus: DeviceDetailFocus) => void;
   onRetry: () => void;
@@ -53,7 +54,9 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
       </section>
     ))}
     {props.choices.state === 'ready' && props.choices.devices.length === 0 && (
-      <p>No suitable devices found. Check the devices available in Homey.</p>
+      <p>No suitable devices found. {props.deviceSetupAvailable
+        ? <>Use <strong>Device setup</strong> above to add a device with a switch or metering socket.</>
+        : 'Check the devices available in Homey.'}</p>
     )}
   </div>
 );

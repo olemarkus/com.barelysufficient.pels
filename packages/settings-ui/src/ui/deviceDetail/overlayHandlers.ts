@@ -20,6 +20,10 @@ import { dispatchOpenSmartTaskCreate } from '../smartTaskCreate.ts';
 import { findLatestDevice, state } from '../state.ts';
 import { showPendingSteppedLoadReminder } from './steppedLoadFlowSetup.ts';
 
+import { openDevicePowerSetup } from '../devicePowerSetup.ts';
+import { currentSetupJourney } from '../setupJourneyState.ts';
+import { showTab } from '../tabNavigation.ts';
+
 /**
  * The device-detail overlay's DOM subscriptions: close/escape/backdrop, the
  * whole-row switch tap, the deferred `open-device-detail` request, and the
@@ -108,6 +112,14 @@ const initDeviceDetailCloseHandlers = (
   ctx: DeviceDetailDismissContext,
 ) => {
   deviceDetailClose?.addEventListener('click', () => requestDeviceDetailClose(ctx));
+  document.getElementById('device-detail-open-power-setup')?.addEventListener('click', () => {
+    const deviceId = ctx.getCurrentDetailDeviceId();
+    if (!deviceId) return;
+    const journey = currentSetupJourney();
+    ctx.closeDeviceDetail();
+    showTab('devices', journey ? 'devices' : undefined);
+    openDevicePowerSetup(deviceId);
+  });
   deviceDetailOverlay?.addEventListener('click', (event) => {
     if (event.target === deviceDetailOverlay) {
       requestDeviceDetailClose(ctx);

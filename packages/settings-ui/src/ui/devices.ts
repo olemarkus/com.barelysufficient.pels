@@ -460,10 +460,11 @@ const buildDeviceClassCard = (group: DeviceGroup): HTMLElement => {
   return card;
 };
 
-const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLElement): void => {
+const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLElement, setupAvailable: boolean) => {
   if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();
   render(SetupDevicePicker({
     choices: readSetupDeviceChoices(devices),
+    deviceSetupAvailable: setupAvailable,
     onManaged: (id, value) => {
       void trackSetupSave(`managed:${id}`, () => buildManagedToggleHandler(id)(value))
         .catch((error) => showToastError(error, 'Could not save the device.'))
@@ -478,24 +479,22 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
   if (!target) return;
   const journey = currentSetupJourney();
+  const deviceSetupAvailable = renderDevicePowerSetup(refreshDevices, journey !== 'goals');
+  emptyState.hidden = true;
   if (journey === 'devices') {
-    emptyState.hidden = true;
-    renderSetupDevices(devices, target);
+    renderSetupDevices(devices, target, deviceSetupAvailable);
     return;
   }
   if (journey === 'goals') {
-    emptyState.hidden = true;
     renderSetupGoals(target, () => renderDevices(state.latestDevices));
     return;
   }
   render(null, target);
-  renderDevicePowerSetup(refreshDevices);
   target.replaceChildren();
   if (!devices.length) {
     emptyState.hidden = false;
     return;
   }
-  emptyState.hidden = true;
 
   if (!state.initialLoadComplete) {
     const loadingNotice = document.createElement('div');

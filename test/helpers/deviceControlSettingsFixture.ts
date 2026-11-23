@@ -11,12 +11,14 @@ import {
   DEVICE_POWER_CONTROL_MODES,
   DEVICE_TARGET_POWER_REACHABILITY,
   MANAGED_DEVICES,
+  LAST_RESORT_DEVICES,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 
 type DeviceControlSettingsFixture = {
   controllableDevices?: Record<string, boolean>;
   managedDevices?: Record<string, boolean>;
+  lastResortDevices?: Record<string, number>;
   deviceStartPolicies?: Record<string, DeviceStartPolicy>;
   phaseConnections?: Record<string, DevicePhaseConnection>;
   deviceTargetPowerConfigs?: DeviceTargetPowerConfigsWithReachability;
@@ -32,6 +34,7 @@ export const deviceControlSettingsFixture = (maps: DeviceControlSettingsFixture 
   const values = new Map<string, unknown>([[TEMPERATURE_CONTROL_DISABLED_DEVICES, {}]]);
   if (maps.controllableDevices) values.set(CONTROLLABLE_DEVICES, maps.controllableDevices);
   if (maps.managedDevices) values.set(MANAGED_DEVICES, maps.managedDevices);
+  if (maps.lastResortDevices) values.set(LAST_RESORT_DEVICES, maps.lastResortDevices);
   if (maps.deviceStartPolicies) values.set(DEVICE_START_POLICIES, maps.deviceStartPolicies);
   if (maps.phaseConnections) values.set(DEVICE_PHASE_CONNECTIONS, maps.phaseConnections);
   if (maps.devicePowerControlModes) values.set(DEVICE_POWER_CONTROL_MODES, maps.devicePowerControlModes);
