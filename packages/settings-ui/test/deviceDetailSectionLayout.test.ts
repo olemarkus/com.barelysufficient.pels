@@ -38,6 +38,7 @@ const SECTION_IDS = [
   'device-detail-setup-section',
   'device-detail-diagnostics-section',
   'device-detail-activity-log-section',
+  'device-detail-power-setup',
 ];
 
 const buildDom = () => {
@@ -148,10 +149,11 @@ describe('applyDeviceDetailSectionLayout', () => {
       'device-detail-surplus-opt-row',
       'device-detail-dump-load-row',
     ]);
-    // Activity log reads before advanced diagnostics.
+    // Activity log, then the rarely needed External sensors, then advanced diagnostics.
     const order = sectionOrder();
     expect(order.indexOf('device-detail-activity-log-section'))
-      .toBeLessThan(order.indexOf('device-detail-diagnostics-section'));
+      .toBeLessThan(order.indexOf('device-detail-power-setup'));
+    expect(order.indexOf('device-detail-power-setup') + 1).toBe(order.indexOf('device-detail-diagnostics-section'));
   });
 
   it('leaves a rendered EV page untouched on a refresh', async () => {

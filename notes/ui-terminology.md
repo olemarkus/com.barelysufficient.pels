@@ -1041,20 +1041,23 @@ correct it, not as a settled fact. Reading `expectedPowerSource` to say where th
 number came from is its one sanctioned use — no surface may branch on it to
 decide behaviour.
 
-### Device-page "Power and control" and the "Add a device" card
+### Device-page "External sensors" and the "Add a device" card
 
-A device's Setup section carries **Power and control** under **Managed by PELS**:
-**Power source** (`This device` or a metering socket), **On/off control**
-(`Default` or the device's other switch), **External thermostat**
-(`No external thermostat` or a thermostat) and **Turn off as a last resort** with
-its **Maximum power**. Every select names its default choice; none renders empty.
-Save stays off until something changes.
+A device's page has its own collapsed **External sensors** section near the
+bottom, above Diagnostics, because few devices need it: **Power source**
+(`This device` when the device has its own reading, with that reading in the
+help line, `None` when it has none, or a metering socket), **On/off control** (`Default` or the
+device's other switch), **External thermostat** (`No external thermostat` or a
+thermostat) and **Turn off as a last resort** with its **Maximum power**. Every
+select names its default choice; none renders empty. Save stays off until
+something changes.
 
-Device cards and the Managed hint point there with "under Power and control",
-for example `Metering socket unavailable. Choose another power source under Power
-and control.` A device that is not in the device list yet is set up from the
-**Add a device** card at the top of Devices, which lists only those devices and
-hides when there are none.
+For an on/off device without power information, the Managed hint adds what
+External sensors offers it, such as `Or choose a metering socket or last-resort
+control under External sensors.` Other hints point there with "under External sensors", for example `Metering socket
+unavailable. Choose another power source under External sensors.` A device that
+is not in the device list yet is set up from the **Add a device** card at the top
+of Devices, which lists only those devices and hides when there are none.
 
 ### "Check the power for <Device>" — the power-figure recommendation
 

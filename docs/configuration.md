@@ -412,7 +412,7 @@ Follow [Getting Started](/getting-started) to confirm your meter, choose one dev
 
 ### Use an external thermostat
 
-Open the load in **Devices**, go to **Setup → Power and control**, and select an **External thermostat** in the same home. The picker shows its current temperature and target. The thermostat must already control the load, either through its own wiring or through Homey Flows. Before enabling **Power-limit control**, change the target from the thermostat's Homey tile and check that the load responds.
+Open the load in **Devices**, open **External sensors**, and select an **External thermostat** in the same home. The picker shows its current temperature and target. The thermostat must already control the load, either through its own wiring or through Homey Flows. Before enabling **Power-limit control**, change the target from the thermostat's Homey tile and check that the load responds.
 
 PELS changes the thermostat's target and reads the load's power from the device or its assigned metering socket. Leave the thermostat itself unmanaged in PELS. Each thermostat can serve one load.
 
@@ -420,7 +420,7 @@ If PELS cannot use the thermostat, the selection remains saved and temperature c
 
 ### Last-resort control for an unmetered relay
 
-If a relay has no device power reading, open it in **Devices** and go to **Setup → Power and control**. Enable **Turn off as a last resort**, enter the maximum watts the connected load can draw, press **Save** and enable **Managed by PELS**.
+If a relay has no device power reading, open it in **Devices** and open **External sensors**. Enable **Turn off as a last resort**, enter the maximum watts the connected load can draw, press **Save** and enable **Managed by PELS**.
 
 PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
 

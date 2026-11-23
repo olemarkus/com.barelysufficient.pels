@@ -34,7 +34,7 @@ export const devicePowerSetupHint = (deviceId: string): string | null => {
   if (entry?.sourceId && !entry.sourceReady) {
     return entry.sources.some(({ id }) => id === entry.sourceId)
       ? 'Waiting for a power reading from the metering socket.'
-      : 'Metering socket unavailable. Choose another power source under Power and control.';
+      : 'Metering socket unavailable. Choose another power source under External sensors.';
   }
   return null;
 };
@@ -44,23 +44,23 @@ export const devicePowerSetupWarning = (deviceId: string): string | null => {
   const entry = findSetupEntry(deviceId);
   if (!entry) return null;
   if (entry.thermostatId && (!thermostatChoice(entry, entry.thermostatId) || !entry.thermostatReady)) {
-    return 'External thermostat unavailable. Check it in Homey or change it under Power and control.';
+    return 'External thermostat unavailable. Check it in Homey or change it under External sensors.';
   }
   if (entry.binarySwitchId && !entry.binarySwitches?.some(({ id }) => id === entry.binarySwitchId)) {
-    return 'Selected on/off control unavailable. Check the device in Homey or change it under Power and control.';
+    return 'Selected on/off control unavailable. Check the device in Homey or change it under External sensors.';
   }
   return null;
 };
 
-/** What Power and control offers a device that has no power reading yet. */
+/** What External sensors offers a device that has no power reading yet. */
 export const devicePowerSetupAlternative = (deviceId: string): string | null => {
   const entry = findSetupEntry(deviceId);
   if (!entry || entry.sourceId) return null;
   const socket = entry.sources.some(({ state }) => state === 'selectable');
   const lastResort = entry.lastResortAvailable === true;
-  if (socket && lastResort) return 'Or choose a metering socket or last-resort control under Power and control.';
-  if (socket) return 'Or choose a metering socket under Power and control.';
-  return lastResort ? 'Or turn on last-resort control under Power and control.' : null;
+  if (socket && lastResort) return 'Or choose a metering socket or last-resort control under External sensors.';
+  if (socket) return 'Or choose a metering socket under External sensors.';
+  return lastResort ? 'Or turn on last-resort control under External sensors.' : null;
 };
 
 export const LAST_RESORT_NEEDS_MANAGED_HINT = 'Turn on Managed by PELS to use last-resort control.';
@@ -86,7 +86,7 @@ export function readLastResortSetup(deviceId: string) {
       maximumW: entry.lastResortMaximumW,
     };
   }
-  return { hint: 'Review last-resort control under Power and control.' };
+  return { hint: 'Review last-resort control under External sensors.' };
 }
 
 export const readDevicePowerSetupDetail = (deviceId: string) => {
@@ -169,7 +169,9 @@ function sourceOptions(entry: DevicePowerSetupEntry | undefined, selected: strin
   if (selected && !options.some(({ value }) => value === selected)) {
     options.push({ value: selected, label: 'Metering socket unavailable', disabled: true });
   }
-  return [{ value: '', label: 'This device' }, ...options];
+  // "This device" only when it has a reading of its own to use.
+  const ownLabel = entry?.ownPowerW === undefined ? 'None' : 'This device';
+  return [{ value: '', label: ownLabel }, ...options];
 }
 
 function sourceHelp(entry: DevicePowerSetupEntry | undefined, selected: string): string {
@@ -180,7 +182,14 @@ function sourceHelp(entry: DevicePowerSetupEntry | undefined, selected: string):
       : 'The configured metering socket is unavailable. Choose another power source.';
   }
   if (socket?.state && socket.state !== 'selectable') return unavailableReason(socket.state);
-  return 'Choose an unmanaged metering socket if this device has no power reading of its own.';
+  const own = entry.ownPowerW;
+  if (socket) {
+    const name = formatDisplayDeviceName(socket.name);
+    return own === undefined ? `PELS reads this device's power from ${name}.`
+      : `PELS uses ${name} instead of this device's own reading.`;
+  }
+  return own === undefined ? 'This device has no power reading. Choose a metering socket to measure it.'
+    : `Uses this device's own reading, now ${own.toLocaleString()} W.`;
 }
 
 function switchOptions(entry: DevicePowerSetupEntry | undefined, selected: string): SetupOption[] {

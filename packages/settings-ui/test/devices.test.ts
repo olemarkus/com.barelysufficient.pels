@@ -121,18 +121,19 @@ describe('devices render — redesign shell', () => {
     ] });
     const switchDevice = { deviceType: 'onoff' as const, deviceClass: 'socket', powerCapable: false,
       binaryControllable: true, capabilities: ['onoff'] };
-    renderDevices([
+    state.latestDevices = [
       buildDevice({ ...switchDevice, id: 'relay', name: 'Relay' }),
       buildDevice({ ...switchDevice, id: 'heater', name: 'Heater' }),
       buildDevice({ ...switchDevice, id: 'load', name: 'Load' }),
-    ]);
+    ];
+    renderDevices(state.latestDevices);
 
     expect(document.querySelector('[data-device-id="relay"] .pels-device-card__power-warning')
-      ?.getAttribute('aria-label')).toContain('or turn on last-resort control under Power and control');
+      ?.getAttribute('aria-label')).toContain('or turn on last-resort control under External sensors');
     expect(document.querySelector('[data-device-id="heater"]')?.textContent)
-      .toContain('Metering socket unavailable. Choose another power source under Power and control.');
+      .toContain('Metering socket unavailable. Choose another power source under External sensors.');
     expect(document.querySelector('[data-device-id="load"]')?.textContent)
-      .toContain('External thermostat unavailable. Check it in Homey or change it under Power and control.');
+      .toContain('External thermostat unavailable. Check it in Homey or change it under External sensors.');
   });
 
   it('renders one surface card per device class with managed count chip', async () => {

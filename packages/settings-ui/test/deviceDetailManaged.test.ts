@@ -216,7 +216,7 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('dormant');
     await flushPromises();
     expect(hint?.textContent).toBe(
-      'Selected on/off control unavailable. Check the device in Homey or change it under Power and control.',
+      'Selected on/off control unavailable. Check the device in Homey or change it under External sensors.',
     );
     expect(energyLink?.hidden).toBe(true);
     expect(form?.hidden).toBe(false);
