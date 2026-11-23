@@ -314,6 +314,15 @@ describe('formatPlanHistoryCostNarrative', () => {
     expect(line).not.toContain('kr/kWh');
   });
 
+  it('shows the recorded amount without a per-kWh average for a device-idle outcome', () => {
+    const line = formatPlanHistoryCostNarrative(
+      buildEntry({
+        outcome: 'device_idle', totalCost: 1237, deliveredKWh: 2, costDisplay: { unit: 'kr/kWh', divisor: 100 },
+      }),
+    );
+    expect(line).toBe('≈\u00a012.37\u00a0kr');
+  });
+
   it('collapses to the bare cost when delivery is missing or zero', () => {
     const line = formatPlanHistoryCostNarrative(
       buildEntry({ totalCost: 7, deliveredKWh: undefined, costDisplay: { unit: 'kr', divisor: 1 } }),

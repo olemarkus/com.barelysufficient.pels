@@ -87,9 +87,8 @@ export type ObjectiveDeviceInput = {
   // missing from planner input and nothing noticed.
   isEvCharger: boolean;
   deviceType: 'temperature' | 'onoff';
-  /** Physical control and sizing facts retained from the planner input. */
-  controlModel?: DeviceControlModel;
-  expectedPowerSource?: ExpectedPowerSource;
+  /** The projected relay and sized-load facts allow an energy task to watch for an idle load. */
+  energyIdleCapable: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   /**
    * Producer-resolved "there is no creditable session to make progress in",
@@ -168,7 +167,9 @@ export type ObjectiveStateOfCharge = {
 };
 
 /** Planner device data before metering and observer direction are resolved. */
-export type ObjectiveDeviceSource = Omit<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>;
+export type ObjectiveDeviceSource = Omit<
+  ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection' | 'energyIdleCapable'
+> & { controlModel?: DeviceControlModel; expectedPowerSource: ExpectedPowerSource };
 
 /** Future physical permission reaches every objective consumer without replacing live device geometry. */
 export function withPermittedChargingEnvelopes<T extends ObjectiveDeviceSource>(
@@ -200,13 +201,18 @@ export const selectObjectiveDevices = <T extends ObjectiveDeviceSource>(
   ))
 );
 
-/** Add the observer's resolved temperature-demand direction to metered inputs. */
+/** Resolve the device's task capabilities from metering, control and planning input. */
 export const resolveObjectiveDeviceInputs = <T extends ObjectiveDeviceSource>(
   devices: readonly T[],
   getThermalDirection: (deviceId: string) => ThermalDirection,
-): Array<T & Pick<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>> => (
-  selectObjectiveDevices(devices).map((device) => ({
-    ...device,
-    thermalDirection: getThermalDirection(device.id),
-  }))
+): ObjectiveDeviceInput[] => (
+  selectObjectiveDevices(devices).map((source) => {
+    const { controlModel, expectedPowerSource, ...device } = source;
+    return {
+      ...device,
+      thermalDirection: getThermalDirection(device.id),
+      energyIdleCapable: !device.isEvCharger && controlModel === 'binary_power'
+        && device.expectedPowerKw > 0 && expectedPowerSource !== 'default',
+    };
+  })
 );

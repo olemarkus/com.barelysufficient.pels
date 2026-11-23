@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import type { TaskDeliveryCause, TaskDeliveryEvidence } from '../../packages/contracts/src/taskDelivery';
 import type { TaskDeliveryFacts } from '../../lib/objectives/deferredObjectives/deliveryEvidence';
 import {
-  isDeviceIdleOutcome, observeDeviceIdleEvidence, reconcileIdleAtDeadline,
+  isDeviceIdleOutcome, mergeDeviceIdleEvidence, observeDeviceIdleEvidence, reconcileIdleAtDeadline,
 } from '../../lib/objectives/deferredObjectives/deviceIdleOutcome';
 import type { InProgressRecord } from '../../lib/objectives/deferredObjectives/planHistoryInProgressState';
 import { partialDouble } from '../helpers/partialDouble';
@@ -66,6 +66,15 @@ const withEarlierBlocker = (cause: TaskDeliveryCause, fromMs: number): TaskDeliv
 });
 
 describe('energy task device-idle outcome', () => {
+  it('combines the observed periods on either side of history recovery without counting downtime', () => {
+    const saved = { planningSpeedKw: 2, firstIdleAtMs: 1_000, lastAcceptedAtMs: 5_000, permittedIdleMs: 4_000 };
+    const live = { planningSpeedKw: 3, firstIdleAtMs: 15_000, lastAcceptedAtMs: 18_000, permittedIdleMs: 3_000 };
+    expect(mergeDeviceIdleEvidence(saved, live)).toEqual({
+      planningSpeedKw: 2, firstIdleAtMs: 1_000, lastAcceptedAtMs: 18_000, permittedIdleMs: 7_000,
+    });
+    expect(mergeDeviceIdleEvidence(undefined, live)).toEqual(live);
+  });
+
   it('retains feasible planning speed and only adds confirmed, contiguous permitted time', () => {
     const record = run({ deviceIdleEvidence: undefined, deliveryEvidence: { ...accepted, energyIdle: undefined } });
     const first = observeDeviceIdleEvidence(record, permittedIdle, accepted, CONFIRMED_AT_MS, 30_000);

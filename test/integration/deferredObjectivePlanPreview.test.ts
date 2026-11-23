@@ -56,6 +56,9 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // so the preview is exercised against the same device/profile/snapshot shapes
 // the live diagnostic path uses) ────────────────────────────────────────────
 
+type ObjectivePlanDeviceFixture = MeteredPlanInputDevice
+  & Pick<ObjectiveDeviceInput, 'thermalDirection' | 'energyIdleCapable'>;
+
 const buildEvDevice = (
   overrides: Partial<MeteredPlanInputDevice> & FixtureBoostFields & {
     evChargingState?: string;
@@ -70,7 +73,7 @@ const buildEvDevice = (
 // so its return type is `Omit<T, 'evChargingState'>`. Setting `evChargingState` on
 // a fixture without it would leave the resolved bits unset and hand these tests a
 // plan device the producer would never build.
-): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withMaterializedEvPlugState(withFixtureResidualKw({
+): ObjectivePlanDeviceFixture => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -91,10 +94,11 @@ const buildEvDevice = (
   },
   ...overrides,
   thermalDirection: overrides.thermalDirection ?? 'heating',
+  energyIdleCapable: false,
   // The power axis: a smart task plans only for a device with a reading, so
   // every fixture here has one, resolved the way the shared builders resolve it.
   currentDrawKw: fixtureCurrentDrawKw(overrides),
-})) as unknown as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
+})) as unknown as ObjectivePlanDeviceFixture;
 
 const buildTemperatureDevice = (
   overrides: Partial<MeteredPlanInputDevice> & TemperatureDiscriminantProbe & {
@@ -105,7 +109,7 @@ const buildTemperatureDevice = (
 // `binaryControl` when the capability id is absent). Keep the additive
 // `withTemperatureDiscriminant` regrouper and cast at the fixture boundary so the
 // `binaryControl` + `controlModel` survive verbatim, matching the original literal.
-): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withTemperatureDiscriminant(withFixtureResidualKw({
+): ObjectivePlanDeviceFixture => withTemperatureDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
@@ -122,10 +126,11 @@ const buildTemperatureDevice = (
   },
   ...overrides,
   thermalDirection: overrides.thermalDirection ?? 'heating',
+  energyIdleCapable: false,
   // The power axis: a smart task plans only for a device with a reading, so
   // every fixture here has one, resolved the way the shared builders resolve it.
   currentDrawKw: fixtureCurrentDrawKw(overrides),
-})) as unknown as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
+})) as unknown as ObjectivePlanDeviceFixture;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline(nowMs, 'UTC', deadlineLocalTime);

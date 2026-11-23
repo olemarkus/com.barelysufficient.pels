@@ -3,7 +3,7 @@ import type {
   DeferredObjectiveActivePlansV2, DeferredObjectiveActivePlanV1, DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRoster, DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
-import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import type { ObjectiveDeviceInput, ObjectiveDeviceSource } from '../../lib/objectives/types';
 import { ObjectiveTaskReservationSource } from '../../lib/objectives/deferredObjectives/taskReservationSource';
 import { buildObjectiveSignatureForEntry } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import { reservationEnergy, reservationPowerKW } from '../../lib/battery/batteryTaskReservations';
@@ -29,9 +29,11 @@ const END = START + HOUR_MS;
 const objective: DeferredObjectiveSettingsEntry = {
   enabled: true, kind: 'energy', targetEnergyKWh: 0.56, enforcement: 'soft', deadlineAtMs: END,
 };
-const device: ObjectiveDeviceInput = {
+type ReservationDevice = ObjectiveDeviceInput & ObjectiveDeviceSource;
+const device: ReservationDevice = {
   id: 'heater', name: 'Heater', deviceType: 'onoff', isEvCharger: false,
   currentDrawKw: 0, expectedPowerKw: 3, control: { managed: true, commandAuthority: true },
+  expectedPowerSource: 'manual', energyIdleCapable: false,
   objectiveSessionInactive: false, waitingForCarAssociation: false, thermalDirection: 'heating',
   steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 3000 }] },
 };
@@ -63,7 +65,7 @@ const reservationReaders = (tasks: DeferredObjectiveActivePlansV2, devices: Obje
 const source = (
   tasks = active(),
   settings: DeferredObjectiveRoster | undefined = roster(),
-  devices: ObjectiveDeviceInput[] = [device],
+  devices: ReservationDevice[] = [device],
 ) => new ObjectiveTaskReservationSource(reservationReaders(tasks, devices), () => settings, () => devices, (input) => input);
 const ids = new Set(['heater']);
 
@@ -132,7 +134,7 @@ describe('objective-owned battery task reservations', () => {
 
   it('uses the held ceiling for a legacy booking that crosses its expiry', () => {
     const task = plan({ reservationSegments: undefined, hours: [{ ...booking, plannedAdmissionPowerKw: undefined }] });
-    const devices: ObjectiveDeviceInput[] = [];
+    const devices: ReservationDevice[] = [];
     const getCapacitySettings = vi.fn(() => ({
       ...limits, periodMinutes: 15 as const,
       monthPeak: { limitKw: 7.5, endsAtMs: START + HOUR_MS / 2 },

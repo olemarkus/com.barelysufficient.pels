@@ -20,6 +20,23 @@ export type DeviceIdleEvidence = {
   permittedIdleMs: number;
 };
 
+/** Recovered evidence precedes the live run. Combine their durations without crediting downtime. */
+export const mergeDeviceIdleEvidence = (
+  saved: DeviceIdleEvidence | undefined, live: DeviceIdleEvidence | undefined,
+): DeviceIdleEvidence | undefined => {
+  if (saved === undefined || live === undefined) return saved ?? live;
+  const { firstIdleAtMs, lastAcceptedAtMs } = saved;
+  return {
+    // An estimate change cannot give either period more credit retroactively.
+    planningSpeedKw: Math.min(saved.planningSpeedKw, live.planningSpeedKw),
+    firstIdleAtMs: firstIdleAtMs === null || live.firstIdleAtMs === null
+      ? firstIdleAtMs ?? live.firstIdleAtMs : Math.min(firstIdleAtMs, live.firstIdleAtMs),
+    lastAcceptedAtMs: lastAcceptedAtMs === null || live.lastAcceptedAtMs === null
+      ? lastAcceptedAtMs ?? live.lastAcceptedAtMs : Math.max(lastAcceptedAtMs, live.lastAcceptedAtMs),
+    permittedIdleMs: saved.permittedIdleMs + live.permittedIdleMs,
+  };
+};
+
 export const isDeviceIdleEvidence = (raw: unknown): raw is DeviceIdleEvidence => {
   if (!raw || typeof raw !== 'object') return false;
   const value = raw as Record<string, unknown>;

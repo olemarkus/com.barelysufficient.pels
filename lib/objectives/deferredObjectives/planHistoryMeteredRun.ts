@@ -3,6 +3,8 @@ import type { InProgressCommitment, InProgressRecord } from './planHistoryInProg
 import { appendHourlyContribution } from './planHistoryV4Helpers';
 import { mergeHourStartBookings } from './planHistoryHourStartBookings';
 import { persistTaskNonDelivery, restoreTaskNonDelivery } from './taskDeliveryState';
+import { restoreEnergyTaskIdle } from './deliveryEvidence';
+import { mergeDeviceIdleEvidence } from './deviceIdleOutcome';
 
 /**
  * An in-progress run across a restart: the row the recorder (`planHistory.ts`)
@@ -72,6 +74,8 @@ export const mergeSavedRun = (
   for (const contribution of record.hourlyContributions) {
     hourlyContributions = appendHourlyContribution(hourlyContributions, contribution);
   }
+  const deviceIdleEvidence = mergeDeviceIdleEvidence(state.deviceIdleEvidence, record.deviceIdleEvidence);
+  const energyIdle = restoreEnergyTaskIdle(state.deliveryEvidence.energyIdle);
   return {
     ...record,
     startedAtMs: Math.min(record.startedAtMs, state.startedAtMs),
@@ -80,9 +84,11 @@ export const mergeSavedRun = (
     // live record's own first trusted reading.
     startProgressValue: state.startProgressValue ?? record.startProgressValue,
     deliveryEvidence: {
-      ...state.deliveryEvidence, nonDelivery: restoreTaskNonDelivery(state.deliveryEvidence.nonDelivery),
+      explanation: state.deliveryEvidence.explanation,
+      nonDelivery: restoreTaskNonDelivery(state.deliveryEvidence.nonDelivery),
+      ...(energyIdle === undefined ? {} : { energyIdle }),
     },
-    ...(state.deviceIdleEvidence === undefined ? {} : { deviceIdleEvidence: state.deviceIdleEvidence }),
+    ...(deviceIdleEvidence === undefined ? {} : { deviceIdleEvidence }),
     commitment: resumeSavedCommitment(state),
     deliveredKWh: state.deliveredKWh + record.deliveredKWh,
     totalCost: state.totalCost + record.totalCost,

@@ -6,7 +6,7 @@ import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 
 const device = (id: string, powerKw: number, commandAuthority = true): ObjectiveDeviceInput => ({
-  id, name: id, deviceType: 'onoff', isEvCharger: false,
+  id, name: id, deviceType: 'onoff', isEvCharger: false, energyIdleCapable: false,
   currentDrawKw: 0, expectedPowerKw: powerKw,
   control: { managed: true, commandAuthority },
   objectiveSessionInactive: false, waitingForCarAssociation: false, thermalDirection: 'heating',

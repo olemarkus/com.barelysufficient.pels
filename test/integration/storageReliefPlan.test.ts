@@ -374,6 +374,14 @@ describe('storage relief in the plan build', () => {
     expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1100, stepW: 5 });
   });
 
+  it('limits the lower-priority battery first when a higher-priority relay uses available power', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const relay: PlanInputDevice = { ...heater(true, 2, 'relay', 1), usesAvailablePower: true };
+    const plan = await build(4_200, [relay, battery({ signedPowerW: 2000 }, { priority: 3 })]);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 700, stepW: 5 });
+  });
+
   it('first in the order, is not touched while the devices below it cover the deficit', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({ signedPowerW: 1500 }, { priority: 1 })]);

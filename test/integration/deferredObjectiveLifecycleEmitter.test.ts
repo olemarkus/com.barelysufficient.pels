@@ -30,7 +30,7 @@ import { createDeferredObjectiveHoursRemainingBus } from '../../lib/objectives/d
 import {
   createDeferredObjectiveHoursRemainingTracker,
 } from '../../lib/objectives/deferredObjectives/hoursRemainingCrossings';
-import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import type { ObjectiveDeviceSource } from '../../lib/objectives/types';
 import { withMaterializedEvPlugState } from '../utils/planTestUtils';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
@@ -41,12 +41,13 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // SoC so the diagnostic resolves to a real (non-`unknown`) trajectory status
 // rather than short-circuiting on missing data.
 const buildEvDevice = (
-  overrides: Partial<ObjectiveDeviceInput> & { evChargingState?: string } = {},
-): ObjectiveDeviceInput => withMaterializedEvPlugState({
+  overrides: Partial<ObjectiveDeviceSource> & { evChargingState?: string } = {},
+): ObjectiveDeviceSource => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',
   thermalDirection: 'heating',
   isEvCharger: true,
+  expectedPowerSource: 'default',
   deviceType: 'onoff',
   evChargingState: 'plugged_in_paused',
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
@@ -60,7 +61,7 @@ const buildEvDevice = (
   // A smart task plans energy, so its device has a power reading (paused: 0 kW).
   currentDrawKw: 0,
   ...overrides,
-}) as ObjectiveDeviceInput;
+}) as ObjectiveDeviceSource;
 
 const buildEvSettings = (deadlineAtMs: number): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
@@ -174,11 +175,15 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const relay = {
       id: 'relay',
       name: 'Water heater relay',
-      thermalDirection: 'heating',
+      isEvCharger: false,
+      deviceType: 'onoff',
+      controlModel: 'binary_power',
+      control: { managed: true, commandAuthority: true },
       currentDrawKw: 2,
       expectedPowerKw: 2,
+      expectedPowerSource: 'manual',
       objectiveSessionInactive: false, waitingForCarAssociation: false,
-    } as ObjectiveDeviceInput;
+    } satisfies ObjectiveDeviceSource & { currentDrawKw: number };
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => ({
         objectivesByDeviceId: {
@@ -413,7 +418,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
   it('owns no fallback before the deadline, satisfied or not, and releases it when the task disappears', () => {
     const onFallbackInactive = vi.fn();
     const onDeadlineReached = vi.fn();
-    let devices: ObjectiveDeviceInput[] = [buildEvDevice({
+    let devices: ObjectiveDeviceSource[] = [buildEvDevice({
       stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: NOW_MS }),
       evChargingState: 'plugged_in_charging',
     })];

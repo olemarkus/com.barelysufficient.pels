@@ -116,4 +116,30 @@ describe('energized loads using available power', () => {
     expect(devices.get(waiting.id)?.plannedState).toBe('shed');
     expect(ledger.availableFor(waiting)).toBe(1);
   });
+
+  it('keeps a lower-priority donor whose phase cannot help the waiting load', () => {
+    const donors = (['L1', 'L2'] as const).map((phase, index) => buildPlanDevice({
+      id: phase, priority: index + 3, currentState: 'on', currentDrawKw: 0, expectedPowerKw: 2,
+      usesAvailablePower: true, phaseFootprint: { kind: 'single', phase },
+    }));
+    const waiting = buildPlanDevice({
+      id: 'booked', currentState: 'off', currentDrawKw: 0, expectedPowerKw: 2, plannedState: 'shed',
+      phaseFootprint: { kind: 'single', phase: 'L1' },
+      reason: {
+        code: PLAN_REASON_CODES.insufficientHeadroom, needKw: 2.3, availableKw: 1,
+        admissionMarginKw: -1.3, penaltyExtraKw: null, swapReserveKw: null, effectiveAvailableKw: null,
+      },
+    });
+    const devices = new Map([...donors, waiting].map((device) => [device.id, device]));
+    const ledger = buildRestoreHeadroomLedger({
+      capacity: { kind: 'off' }, grid: { kind: 'off' }, budget: { kind: 'off' },
+      phase: { kind: 'on', roomKw: { L1: 3, L2: 3, L3: 3 } },
+    });
+    const energized = accountForAvailablePowerDevices(devices, ledger, () => 0);
+    yieldAvailablePower(devices, energized, ledger);
+
+    expect(devices.get('L1')?.plannedState).toBe('shed');
+    expect(devices.get('L2')?.plannedState).toBe('keep');
+    expect(ledger.availableFor(waiting)).toBe(1);
+  });
 });

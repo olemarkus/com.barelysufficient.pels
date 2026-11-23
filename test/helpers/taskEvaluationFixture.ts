@@ -6,12 +6,15 @@ import {
   type TaskEvaluationSnapshot,
 } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
+import { resolveObjectiveDeviceInputs, type ObjectiveDeviceInput, type ObjectiveDeviceSource } from '../../lib/objectives/types';
 
 // The flat shape specs build a cycle from: its snapshot and readers together,
 // with the shared roster owner and a preview candidate as optional knobs. Runtime keeps
 // the snapshot, readers and lane apart; a fixture is easier to read and override in one literal.
-export type TaskEvaluationFixture = Omit<TaskEvaluationSnapshot, 'allocationRoster'>
+export type TaskEvaluationFixture = Omit<TaskEvaluationSnapshot, 'allocationRoster' | 'devices'>
 & Omit<TaskEvaluationReaders, 'prefersContinuousCharging'> & {
+  devices: readonly (ObjectiveDeviceInput
+    | (ObjectiveDeviceSource & Pick<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>))[];
   prefersContinuousCharging?: TaskEvaluationReaders['prefersContinuousCharging'];
   // Omitted: a roster that has seen nothing, as on a fresh runtime.
   allocationRosterOwner?: TaskAllocationRoster;
@@ -34,15 +37,18 @@ const splitFixture = (
     getEnergyIdleState,
     allocationRosterOwner,
     forceFreshDeviceId,
+    devices,
     ...snapshot
   } = fixture;
+  const objectiveDevices = devices.flatMap((device) => 'energyIdleCapable' in device
+    ? [device] : resolveObjectiveDeviceInputs([device], () => device.thermalDirection));
   const owner = allocationRosterOwner ?? new TaskAllocationRoster(() => new Date(snapshot.nowMs));
   if (forceFreshDeviceId === undefined) {
-    owner.observe(snapshot.devices, snapshot.nowMs, (deviceId) => resolveDeviceExclusion(deviceId) !== null);
+    owner.observe(objectiveDevices, snapshot.nowMs, (deviceId) => resolveDeviceExclusion(deviceId) !== null);
     owner.retainObjectiveDeviceIds(new Set(Object.keys(snapshot.settings.objectivesByDeviceId)));
   }
   return [
-    { ...snapshot, allocationRoster: owner.read(snapshot.nowMs) },
+    { ...snapshot, devices: objectiveDevices, allocationRoster: owner.read(snapshot.nowMs) },
     {
       prefersContinuousCharging,
       buildPriceHorizon,
