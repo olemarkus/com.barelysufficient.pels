@@ -13,7 +13,9 @@ const setupDom = () => {
   emptyStateEl.id = 'empty-state';
   const refreshBtn = document.createElement('button');
   refreshBtn.id = 'refresh-button';
-  root.append(deviceListEl, cardListEl, emptyStateEl, refreshBtn);
+  const setupCandidates = document.createElement('div');
+  setupCandidates.id = 'device-setup-candidates';
+  root.append(deviceListEl, setupCandidates, cardListEl, emptyStateEl, refreshBtn);
 };
 
 const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -87,7 +89,7 @@ describe('devices render — redesign shell', () => {
     const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
     state.initialLoadComplete = true;
     acceptDevicePowerSetup({ devices: [{
-      id: 'relay', name: 'Relay', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      id: 'relay', name: 'Relay', homeId: 'main', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
       lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
     }] });
     const switchDevice = { deviceType: 'onoff' as const, deviceClass: 'socket', powerCapable: false,
@@ -107,13 +109,13 @@ describe('devices render — redesign shell', () => {
     expect(relay()?.textContent).toContain('Last resort.');
   });
 
-  it('points an unmetered relay to last-resort control and names a missing socket', async () => {
+  it('offers setup for an unmetered relay and names a missing socket for a managed device', async () => {
     const { renderDevices } = await importDevicesInRedesign();
     const { state } = await import('../src/ui/state.ts');
     const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
     state.initialLoadComplete = true;
     state.managedMap = { heater: true };
-    const base = { configured: true, sourceId: null, sourceReady: true, usedBy: null, sources: [] };
+    const base = { homeId: 'main', configured: true, sourceId: null, sourceReady: true, usedBy: null, sources: [] };
     acceptDevicePowerSetup({ devices: [
       { ...base, id: 'relay', name: 'Relay', lastResortAvailable: true, defaultBinarySwitchAvailable: true },
       { ...base, id: 'heater', name: 'Heater', sourceId: 'gone', sourceReady: false },
@@ -126,8 +128,8 @@ describe('devices render — redesign shell', () => {
     ];
     renderDevices(state.latestDevices);
 
-    expect(document.querySelector('[data-device-id="relay"] .pels-device-card__power-warning')
-      ?.getAttribute('aria-label')).toContain('or turn on last-resort control under Power limiting');
+    expect(document.querySelector('#device-setup-candidates [aria-label="Set up Relay"]')).not.toBeNull();
+    expect(document.querySelector('[data-device-id="relay"]')).toBeNull();
     expect(document.querySelector('[data-device-id="heater"]')?.textContent)
       .toContain('Metering socket unavailable. Choose another power source under External sensors.');
   });

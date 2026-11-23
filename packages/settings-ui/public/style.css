@@ -9369,8 +9369,37 @@ md-switch {
   display: none;
 }
 
-:where(#device-power-setup[hidden]) ~ p #empty-state-device-setup {
-  display: none;
+.device-setup-candidates {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+}
+
+.device-setup-candidates__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  overflow-wrap: anywhere;
+}
+
+#device-power-setup {
+  max-height: calc(100dvh - var(--spacing-8));
+}
+
+#device-power-setup [data-setup="details"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-3);
+}
+
+#device-power-setup [slot="content"],
+#device-power-setup .field__hint {
+  color: var(--pels-text-primary);
+}
+
+#device-power-setup [slot="actions"] {
+  flex-wrap: wrap;
 }
 
 /* Refresh devices and Missing a device? belong to the device list; `Choose what PELS does` lists choices, not devices. */

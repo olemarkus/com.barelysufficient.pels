@@ -187,7 +187,7 @@ describe('device detail managed state saves', () => {
       targets: [], capabilities: ['onoff'], powerCapable: false };
     state.latestDevices = [buildDevice('active', 'Active relay', relay), buildDevice('dormant', 'Dormant relay', relay)];
     const configuration = {
-      name: 'Relay', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      name: 'Relay', homeId: 'main', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
       lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
     };
     acceptDevicePowerSetup({ devices: [

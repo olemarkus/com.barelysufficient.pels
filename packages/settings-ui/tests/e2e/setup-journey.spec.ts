@@ -1,4 +1,4 @@
-import { expect, renderTest as test, type Page } from './fixtures/test';
+import { expect, injectHomeyHostCss, renderTest as test, type Page } from './fixtures/test';
 
 const seed = async (
   page: Page, market = 'NL', solarAvailable = false, solarDevice = true, powerSource: string | null = null,
@@ -603,4 +603,110 @@ test('a fresh install goes from the Overview setup card to Start managing in one
   await page.getByRole('tab', { name: 'Settings', exact: true }).click();
   await expect(page.locator('#settings-nav-chip-simulation')).toBeHidden();
   await expect(page.locator('[data-settings-target="simulation"]')).toBeVisible();
+});
+
+const seedGuidedSpa = async (page: Page) => {
+  await page.addInitScript(() => {
+    const ready = {
+      id: 'ordinary', name: 'Pool pump', available: true, deviceClass: 'socket', deviceType: 'onoff',
+      isEvCharger: false, isBatteryOrSolar: false, binaryControllable: true, canSetControl: true,
+      powerCapable: true, capabilities: ['onoff', 'measure_power'], targets: [], measuredPowerKw: 1,
+      batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
+    };
+    const spa = { ...ready, id: 'spa', name: 'Tuins Spa', deviceClass: 'other' };
+    const meter = { ...ready, id: 'meter', name: 'Spa-stroommeter', measuredPowerKw: 1.7 };
+    const w = window as unknown as {
+      __PELS_HOMEY_STUB__: unknown;
+      Homey: { __stub: { getSetting: (key: string) => unknown } };
+    };
+    const devices = () => {
+      const managed = w.Homey.__stub.getSetting('managed_devices') as Record<string, boolean>;
+      const sources = w.Homey.__stub.getSetting('device_power_sources') as Record<string, string>;
+      const switches = w.Homey.__stub.getSetting('device_binary_switches') as Record<string, string>;
+      const sourceReady = w.Homey.__stub.getSetting('test_spa_meter_ready') === true && sources.spa === 'meter';
+      return {
+        devices: [ready, meter, ...(sourceReady ? [spa] : [])]
+          .map((device) => ({ ...device, managed: managed[device.id] === true })),
+        devicePowerSetup: { devices: [{
+          id: 'spa', name: 'Tuins Spa', homeId: 'main', configured: Object.hasOwn(sources, 'spa'),
+          sourceId: sources.spa ?? null, sourceReady, binarySwitchId: switches.spa ?? null,
+          defaultBinarySwitchAvailable: true, binarySwitches: [{ id: 'onoff.heater', name: 'Heater' }],
+          lastResortAvailable: true, usedBy: null,
+          sources: [{ id: 'meter', name: 'Spa-stroommeter', state: managed.meter ? 'managed' : 'selectable',
+            ...(sourceReady ? { measuredPowerW: 1700 } : {}) }],
+        }, {
+          id: 'light', name: 'Hall light', homeId: 'main', configured: false, sourceId: null,
+          sourceReady: true, defaultBinarySwitchAvailable: true, usedBy: null, sources: [],
+        }] },
+        chargerPhasePresets: { state: 'resolved', presets: {} },
+      };
+    };
+    w.__PELS_HOMEY_STUB__ = {
+      settings: {
+        target_devices_snapshot: [ready, meter], managed_devices: { meter: true }, controllable_devices: {},
+        device_power_sources: {}, device_binary_switches: {}, capacity_dry_run: true,
+        ui_hub_market_country: 'NL',
+      },
+      apiHandlers: { 'GET /ui_devices': devices, 'POST /ui_refresh_devices': devices },
+    };
+  });
+};
+
+test('sets up a named spa without changing how ready devices are managed', async ({
+  page, browser, browserName, baseURL,
+}, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await seedGuidedSpa(page);
+  await page.goto('/?page=settings/devices');
+  await expect(page.getByRole('button', { name: 'Set up Tuins Spa' })).toBeVisible();
+  await page.goto('/?page=settings/devices&setup=devices');
+  await expect(page.getByRole('switch', { name: 'Manage Pool pump' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Set up Pool pump' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Set up Hall light' })).toHaveCount(0);
+  const search = page.getByRole('textbox', { name: 'Find another device' });
+  await search.fill('hall');
+  await expect(page.getByRole('button', { name: 'Set up Hall light' })).toBeVisible();
+  await search.clear();
+  await page.getByRole('button', { name: 'Set up Tuins Spa' }).click();
+  const dialog = page.locator('#device-power-setup');
+  await expect(page.getByRole('dialog', { name: 'Set up Tuins Spa' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('spa-setup-320.png'), animations: 'disabled' });
+  await dialog.getByRole('button', { name: 'Use Spa-stroommeter only as a meter' }).click();
+  await expect.poll(() => stored(page, 'managed_devices')).toEqual({ meter: false });
+  const review = dialog.getByRole('button', { name: 'Review setup' });
+  await expect(review).toBeDisabled();
+  await dialog.getByRole('combobox', { name: 'On/off control' }).click();
+  await dialog.getByRole('option', { name: 'Heater', exact: true }).click();
+  await review.click();
+  await expect(dialog).toContainText('PELS can turn off Heater.');
+  await expect(dialog).toContainText('Simulation mode is on.');
+  await dialog.getByRole('button', { name: 'Add to PELS' }).click();
+  await expect(dialog.getByRole('status')).toContainText('Wait for its first power reading');
+  await expect.poll(() => stored(page, 'managed_devices')).toEqual({ meter: false });
+  await expect.poll(() => stored(page, 'device_power_sources')).toEqual({ spa: 'meter' });
+  await expect.poll(() => stored(page, 'device_binary_switches')).toEqual({ spa: 'onoff.heater' });
+  await page.setViewportSize({ width: 480, height: 840 });
+  await page.screenshot({ path: testInfo.outputPath('spa-waiting-480.png'), animations: 'disabled' });
+  await page.evaluate(() => {
+    (window as unknown as { Homey: { __stub: { setSetting: (key: string, value: unknown) => void } } })
+      .Homey.__stub.setSetting('test_spa_meter_ready', true);
+  });
+  await dialog.getByRole('button', { name: 'Check meter' }).click();
+  await expect(page.getByRole('dialog', { name: 'Set up Tuins Spa' })).toBeHidden();
+  await expect(page.getByRole('switch', { name: 'Manage Tuins Spa' })).toBeChecked();
+  await expect.poll(() => stored(page, 'controllable_devices')).toMatchObject({ spa: true });
+  expect(await stored(page, 'capacity_dry_run')).toBe(true);
+  if (browserName !== 'chromium') return;
+  const touch = await browser.newContext({ baseURL, viewport: { width: 480, height: 840 }, isMobile: true, hasTouch: true });
+  try {
+    const mobile = await touch.newPage();
+    await injectHomeyHostCss(mobile);
+    await seedGuidedSpa(mobile);
+    await mobile.goto('/?page=settings/devices&setup=devices');
+    await mobile.getByRole('button', { name: 'Set up Tuins Spa' }).tap();
+    await expect(mobile.getByRole('dialog', { name: 'Set up Tuins Spa' })).toBeVisible();
+    await mobile.screenshot({ path: testInfo.outputPath('spa-setup-480-touch.png'), animations: 'disabled' });
+  } finally {
+    await touch.close();
+  }
 });

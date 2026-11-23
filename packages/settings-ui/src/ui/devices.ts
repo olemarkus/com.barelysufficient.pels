@@ -2,7 +2,9 @@ import { acceptDevicePowerSetup, devicePowerSetupHint, renderDevicePowerSetup } 
 import { render } from 'preact';
 import { SetupDevicePicker } from './views/SetupJourney.tsx';
 import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
-import { readSetupDeviceChoices, retrySetupDeviceReads } from './setupDevices.ts';
+import {
+  createGuidedManageAction, renderGuidedDeviceChoices, readSetupDeviceChoices, retrySetupDeviceReads,
+} from './setupDevices.ts';
 import { renderSetupGoals } from './setupGoalsRender.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
@@ -461,16 +463,28 @@ const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLEle
   }), target);
 };
 
+const refreshGuidedDevices = async (): Promise<boolean> => {
+  // A refresh started before a settings write cannot confirm that write.
+  while (state.isBusy) await deviceRefreshInProgress;
+  return refreshDevices();
+};
+
+const guidedSetupActions = {
+  refresh: refreshGuidedDevices,
+  manage: createGuidedManageAction((id, enabled) => buildManagedToggleHandler(id)(enabled), refreshGuidedDevices),
+  simulation: () => state.dryRun,
+};
+
 export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
   if (!target) return;
   const journey = currentSetupJourney();
-  const deviceSetupAvailable = renderDevicePowerSetup(
-    refreshDevices, journey !== 'goals', new Set(devices.map(({ id }) => id)),
-  );
+  renderDevicePowerSetup(guidedSetupActions);
+  const candidates = renderGuidedDeviceChoices(devices, journey);
+  const readyDevices = devices.filter(({ id }) => !candidates.has(id));
   emptyState.hidden = true;
   if (journey === 'devices') {
-    renderSetupDevices(devices, target, deviceSetupAvailable);
+    renderSetupDevices(readyDevices, target, candidates.size > 0);
     return;
   }
   if (journey === 'goals') {
@@ -479,8 +493,8 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   }
   render(null, target);
   target.replaceChildren();
-  if (!devices.length) {
-    emptyState.hidden = false;
+  if (!readyDevices.length) {
+    emptyState.hidden = candidates.size > 0;
     return;
   }
 
@@ -492,25 +506,19 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   }
 
   const fragment = document.createDocumentFragment();
-  groupDevicesByClass(devices).forEach((group) => {
+  groupDevicesByClass(readyDevices).forEach((group) => {
     fragment.appendChild(buildDeviceClassCard(group));
   });
   target.appendChild(fragment);
 };
 
-const deriveRefreshedDevices = (response: SettingsUiDevicesPayload | null | undefined) => {
-  acceptDevicePowerSetup(response?.devicePowerSetup);
-  return Array.isArray(response?.devices) ? parseDeviceList(response.devices) : null;
-};
-
-export const refreshDevices = async (options?: { render?: boolean }) => {
-  if (state.isBusy) return;
+const runDeviceRefresh = async (options?: { render?: boolean }) => {
   setBusy(true);
-  const shouldRender = options?.render ?? true;
   try {
     const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
-    const refreshedDevices = deriveRefreshedDevices(response);
+    const refreshedDevices = Array.isArray(response?.devices) ? parseDeviceList(response.devices) : null;
     if (refreshedDevices) {
+      acceptDevicePowerSetup(response.devicePowerSetup);
       // The refresh endpoint answers for the WHOLE home, so it may only re-seed
       // the bare entry; every home-scoped entry it did not refresh is dropped
       // rather than left to serve a pre-refresh device list.
@@ -546,21 +554,28 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     const devices = refreshedDevices ?? await getTargetDevices();
     state.latestDevices = devices;
     state.devicesLoaded = true;
-    if (shouldRender) {
+    if (options?.render !== false) {
       renderDevices(devices);
       renderPriorities(devices);
       renderPriceConfigDevices();
     }
     document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
-    await refreshPlan();
+    return await refreshPlan().then(() => refreshedDevices !== null && response?.devicePowerSetup !== undefined);
   } catch (error) {
     await logSettingsError('Failed to refresh devices', error, 'refreshDevices');
     const message = error instanceof Error && error.message
       ? error.message
       : 'Unable to load devices. Check Homey logs for details.';
     await showToast(message, 'warn');
+    return false;
   } finally {
     setBusy(false);
   }
 };
+
+let deviceRefreshInProgress = Promise.resolve(false);
+
+export const refreshDevices = (options?: { render?: boolean }): Promise<boolean> => (
+  state.isBusy ? Promise.resolve(false) : (deviceRefreshInProgress = runDeviceRefresh(options))
+);

@@ -1,12 +1,11 @@
+import type { MdDialog } from '@material/web/dialog/dialog.js';
 import type { MdFilledSelect } from '@material/web/select/filled-select.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DevicePowerSetupEntry } from '../../contracts/src/settingsUi/devices.ts';
+import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
-  DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES,
-} from '../../shared-domain/src/settings/settingsKeys.ts';
-import {
-  acceptDevicePowerSetup, readLastResortSetup, renderDeviceDetailPowerSetup,
-  renderDevicePowerSetup,
+  acceptDevicePowerSetup, openGuidedDeviceSetup, readLastResortSetup,
+  renderDeviceDetailPowerSetup, renderDevicePowerSetup,
 } from '../src/ui/devicePowerSetup.ts';
 
 const write = vi.hoisted(() => vi.fn());
@@ -16,227 +15,183 @@ vi.mock('../src/ui/deviceDetail/settingsWrite.ts', () => ({
 }));
 
 const device = (overrides: Partial<DevicePowerSetupEntry> = {}): DevicePowerSetupEntry => ({
-  id: 'heater',
-  name: 'Heater',
-  configured: true,
-  sourceId: 'socket',
-  sourceReady: true,
-  binarySwitchId: 'onoff.heater',
+  id: 'spa',
+  name: 'Tuins Spa',
+  homeId: 'main',
+  configured: false,
+  sourceId: null,
+  sourceReady: false,
   defaultBinarySwitchAvailable: true,
-  binarySwitches: [{ id: 'onoff.heater', name: 'Heater switch' }],
+  binarySwitches: [{ id: 'onoff.heater', name: 'Heater' }],
   lastResortAvailable: true,
-  sources: [{ id: 'socket', name: 'Metering socket', state: 'selectable' }],
+  sources: [{ id: 'socket', name: 'Spa-stroommeter', state: 'selectable', measuredPowerW: 1700 }],
   usedBy: null,
   ...overrides,
 });
 
-// The Add a device card holds every part behind one Save; its controls carry this id prefix.
-const PREFIX = 'device-power-setup';
-// A Material select cannot show an option with an empty value, so defaults use this one.
-const DEFAULT = 'pels-default';
+const accept = (overrides?: Partial<DevicePowerSetupEntry>) => {
+  acceptDevicePowerSetup({ devices: [device(overrides)] });
+};
 
-const query = <T extends HTMLElement>(suffix: string, prefix = PREFIX): T => {
-  const element = document.querySelector<T>(`#${prefix}-${suffix}`);
-  if (!element) throw new Error(`Missing device setup control ${prefix}-${suffix}`);
+const prefix = 'device-power-setup';
+const query = <T extends HTMLElement>(suffix: string, id = prefix): T => {
+  const element = document.querySelector<T>(`#${id}-${suffix}`);
+  if (!element) throw new Error(`Missing device setup control ${id}-${suffix}`);
   return element;
 };
 
-const rerender = (refresh: () => Promise<void>, listed: readonly string[] = []) => (
-  renderDevicePowerSetup(refresh, true, new Set(listed))
-);
-
-const selectTarget = (id: string) => {
-  const target = query<MdFilledSelect>('target');
-  target.value = id || DEFAULT;
-  target.dispatchEvent(new Event('change'));
+const select = (suffix: string, value: string) => {
+  const control = query<MdFilledSelect>(suffix);
+  control.value = value;
+  control.dispatchEvent(new Event('change'));
+  return control;
 };
 
 const setup = () => {
   document.body.innerHTML = `
-    <details id="device-power-setup" hidden><div data-setup-host></div></details>
+    <md-dialog id="device-power-setup">
+      <h3 slot="headline"></h3>
+      <div data-setup-host></div><p data-setup-review></p><p data-setup-simulation></p><p data-setup-status></p>
+      <button data-setup-dismiss></button><button data-setup="save"></button>
+    </md-dialog>
     <section id="device-detail-power-setup" hidden><div data-setup-host></div></section>
     <div id="device-detail-binary-switch" hidden></div>
     <div id="device-detail-last-resort" hidden></div>`;
-  const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-  rerender(refresh);
-  selectTarget('heater');
-  const control = query<MdFilledSelect>('binary');
-  // jsdom has no Element.animate; a quick select opens its menu without animating.
-  control.quick = true;
-  const source = query<MdFilledSelect>('source');
-  const toggle = query<HTMLElement & { selected: boolean; disabled: boolean }>('last-resort-toggle');
-  const maximum = query<HTMLInputElement>('maximum');
+  const dialog = document.getElementById(prefix) as MdDialog;
+  vi.spyOn(dialog, 'show').mockImplementation(async () => { dialog.open = true; });
+  vi.spyOn(dialog, 'close').mockImplementation(async () => { dialog.open = false; });
+  const refresh = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
+  const manage = vi.fn<(id: string, enabled: boolean) => Promise<boolean>>().mockResolvedValue(true);
+  const actions = { refresh, manage, simulation: () => true };
+  renderDevicePowerSetup(actions);
+  openGuidedDeviceSetup('spa');
   const save = query<HTMLButtonElement>('save');
-  return { control, source, toggle, maximum, save, refresh };
+  return { dialog, refresh, manage, actions, save };
 };
 
-const change = (control: HTMLElement, type = 'change') => control.dispatchEvent(new Event(type));
+const configured = { configured: true, binarySwitchId: 'onoff.heater', sourceId: 'socket' } as const;
+const review = (save: HTMLButtonElement) => {
+  select('source', 'socket');
+  select('binary', 'onoff.heater');
+  expect(save.disabled).toBe(false);
+  save.click();
+};
 
-describe('Device setup', () => {
+describe('Guided device setup', () => {
   beforeEach(() => {
-    write.mockReset();
-    acceptDevicePowerSetup({ devices: [device()] });
+    write.mockReset().mockResolvedValue({});
+    accept();
   });
 
-  it('keeps cleared selections and maximum through equivalent refresh and a partial save', async () => {
-    const { control, source, toggle, maximum, save, refresh } = setup();
-    const selectedOption = control.lastElementChild;
-    control.showPicker();
-    await control.updateComplete;
-    const menu = control.shadowRoot?.querySelector('md-menu');
-    expect(menu).toHaveProperty('open', true);
-    expect(control.value).toBe('onoff.heater');
-    expect(source.value).toBe('socket');
-    source.value = DEFAULT;
-    change(source);
-    control.value = DEFAULT;
-    change(control);
-    toggle.selected = true;
-    change(toggle);
-    maximum.value = '6000';
-    change(maximum, 'input');
-
-    acceptDevicePowerSetup({ devices: [device()] });
-    rerender(refresh);
-    await control.updateComplete;
-    expect(control.lastElementChild).toBe(selectedOption);
-    expect(control.shadowRoot?.querySelector('md-menu')).toBe(menu);
-    expect(menu).toHaveProperty('open', true);
-    expect(selectedOption?.isConnected).toBe(true);
-    expect(control.value).toBe(DEFAULT);
-    expect(source.value).toBe(DEFAULT);
-    expect(maximum.value).toBe('6000');
-
-    write.mockResolvedValueOnce({}).mockResolvedValueOnce(null);
+  it('requires an explicit switch choice and activates only after reading back the wiring', async () => {
+    const { dialog, refresh, manage, save } = setup();
+    expect(dialog.querySelector('[slot="headline"]')?.textContent).toBe('Set up Tuins Spa');
+    expect(save.disabled).toBe(true);
+    select('source', 'socket');
+    expect(query('help').textContent).toContain('1,700 W');
+    expect(save.disabled).toBe(true);
+    select('binary', 'onoff.heater');
+    expect(write).not.toHaveBeenCalled();
+    save.click();
+    expect(dialog.querySelector('[data-setup-review]')?.textContent).toContain('PELS can turn off Heater.');
+    expect(save.textContent).toBe('Add to PELS');
     refresh.mockImplementation(async () => {
-      acceptDevicePowerSetup({ devices: [device({ binarySwitchId: null })] });
-      rerender(refresh);
+      expect(manage).not.toHaveBeenCalled();
+      accept({ ...configured, sourceReady: true });
+      return true;
     });
     save.click();
-    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    await vi.waitFor(() => expect(dialog.open).toBe(false));
+    expect(manage).toHaveBeenCalledExactlyOnceWith('spa', true);
     expect(write.mock.calls.map(([request]) => request.key)).toEqual([DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES]);
-    expect(control.value).toBe(DEFAULT);
-    expect(source.value).toBe(DEFAULT);
-    expect(toggle.selected).toBe(true);
-    expect(maximum.value).toBe('6000');
   });
 
-  it('keeps acknowledged selections until a refresh includes their readback', async () => {
-    const { control, source, save, refresh } = setup();
-    source.value = DEFAULT;
-    change(source);
-    control.value = DEFAULT;
-    change(control);
-    write.mockResolvedValue({});
-
+  it('keeps wiring and retries without activating while a meter has no reading', async () => {
+    const { dialog, refresh, manage, save } = setup();
+    review(save);
+    refresh.mockImplementation(async () => {
+      accept(configured);
+      return true;
+    });
     save.click();
-    await vi.waitFor(() => expect(save.disabled).toBe(false));
-    expect(refresh).toHaveBeenCalledOnce();
-    expect(control.value).toBe(DEFAULT);
-    expect(source.value).toBe(DEFAULT);
+    await vi.waitFor(() => expect(dialog.textContent).toContain('Wait for its first power reading'));
+    expect(manage).not.toHaveBeenCalled();
+    refresh.mockImplementation(async () => {
+      accept({ ...configured, sourceReady: true });
+      return true;
+    });
+    save.click();
+    await vi.waitFor(() => expect(dialog.open).toBe(false));
+    expect(write).toHaveBeenCalledTimes(2);
+  });
 
-    acceptDevicePowerSetup({ devices: [device({ binarySwitchId: null, sourceId: null })] });
-    rerender(refresh);
-    acceptDevicePowerSetup({ devices: [device()] });
-    rerender(refresh);
+  it('retains the draft for retry after a partial save or skipped refresh', async () => {
+    const { actions, dialog, refresh, manage, save } = setup();
+    review(save);
+    const control = query<MdFilledSelect>('binary');
+    write.mockResolvedValueOnce({}).mockResolvedValueOnce(null);
+    refresh.mockImplementationOnce(async () => {
+      accept({ binarySwitchId: 'onoff.heater' });
+      renderDevicePowerSetup(actions);
+      return true;
+    }).mockResolvedValueOnce(false);
+    save.click();
+    await vi.waitFor(() => expect(dialog.textContent).toContain('Try again'));
+    expect(save.disabled).toBe(false);
     expect(control.value).toBe('onoff.heater');
-    expect(source.value).toBe('socket');
+    expect(query<MdFilledSelect>('source').value).toBe('socket');
+    save.click();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    expect(manage).not.toHaveBeenCalled();
   });
 
-  it('names the own reading of the device, or None, and keeps Save off until something changes', () => {
-    acceptDevicePowerSetup({ devices: [device({ sourceId: null, binarySwitchId: null, ownPowerW: 850 })] });
-    const { source, control, save, refresh } = setup();
-    expect(source.value).toBe(DEFAULT);
-    expect(source.querySelector(`[value="${DEFAULT}"]`)?.textContent).toContain('This device');
-    expect(query('help').textContent).toBe(`Uses this device's own reading, now ${(850).toLocaleString()} W.`);
-    acceptDevicePowerSetup({ devices: [device({ sourceId: null, binarySwitchId: null })] });
-    rerender(refresh);
-    expect(source.querySelector(`[value="${DEFAULT}"]`)?.textContent).toContain('None');
-    expect(query('help').textContent).toBe('This device has no power reading. Choose a metering socket to measure it.');
-    expect(control.value).toBe(DEFAULT);
-    expect(save.disabled).toBe(true);
-    source.value = 'socket';
-    change(source);
-    expect(query('help').textContent).toBe("PELS reads this device's power from Metering socket.");
-    expect(save.disabled).toBe(false);
+  it('offers a managed socket as a meter only after the user releases it and the app confirms', async () => {
+    accept({ sources: [{ id: 'socket', name: 'Spa-stroommeter', state: 'managed' }] });
+    const { refresh, manage } = setup();
+    const picker = query<MdFilledSelect>('source');
+    expect(picker.querySelector('[value="socket"]')).toHaveProperty('disabled', true);
+    refresh.mockImplementation(async () => { accept(); return true; });
+    query('managed-sockets').querySelector<HTMLElement>('md-text-button')?.click();
+    await vi.waitFor(() => expect(picker.value).toBe('socket'));
+    expect(manage).toHaveBeenCalledExactlyOnceWith('socket', false);
+    expect(write).not.toHaveBeenCalled();
   });
 
-  it('offers only devices outside the device list for adding and hides the card without any', () => {
-    acceptDevicePowerSetup({ devices: [device(), device({ id: 'spa', name: 'Spa', configured: false, sourceId: null })] });
-    const { refresh } = setup();
-    rerender(refresh, ['heater']);
-    const card = document.querySelector<HTMLElement>('#device-power-setup');
-    const target = document.querySelector<MdFilledSelect>('#device-power-setup-target');
-    expect(card?.hidden).toBe(false);
-    expect([...target?.querySelectorAll('[value]') ?? []].map((option) => option.textContent?.trim()))
-      .toEqual(['Select a device', 'Spa']);
-    expect(document.querySelector<HTMLElement>('#device-power-setup-details')?.hidden).toBe(true);
-    expect(rerender(refresh, ['heater', 'spa'])).toBe(false);
-    expect(card?.hidden).toBe(true);
-  });
-
-  it('shows each device-page part in its own section only where it applies', () => {
-    acceptDevicePowerSetup({ devices: [device({ sourceId: null })] });
-    setup();
-    const shown = () => ['device-detail-power-setup', 'device-detail-binary-switch', 'device-detail-last-resort']
-      .map((id) => !document.getElementById(id)?.hidden);
-    renderDeviceDetailPowerSetup('heater');
-    expect(shown()).toEqual([true, true, true]);
-    expect(document.querySelector('#device-detail-binary-switch-binary')).not.toBeNull();
-    expect(document.querySelector('#device-detail-binary-switch-source')).toBeNull();
-    expect(document.querySelector('#device-detail-last-resort-last-resort-toggle')).not.toBeNull();
-
-    // A metering socket rules out last resort; a device with one switch has nothing to choose.
-    acceptDevicePowerSetup({ devices: [device({ binarySwitchId: null, binarySwitches: [] })] });
-    renderDeviceDetailPowerSetup('heater');
-    expect(shown()).toEqual([true, false, false]);
-  });
-
-  it('hides the device page form for a socket that measures another device', () => {
-    acceptDevicePowerSetup({ devices: [device(), device({ id: 'socket', name: 'Socket', usedBy: 'heater' })] });
-    setup();
-    renderDeviceDetailPowerSetup('socket');
-    expect(document.getElementById('device-detail-power-setup')?.hidden).toBe(true);
-    renderDeviceDetailPowerSetup('heater');
-    expect(document.getElementById('device-detail-power-setup')?.hidden).toBe(false);
-  });
-
-  it('gives the selected metering socket precedence over a stale last-resort maximum', () => {
-    acceptDevicePowerSetup({ devices: [device({ lastResortMaximumW: 4500 })] });
-    expect(readLastResortSetup('heater')).toBeUndefined();
-  });
-
-  it('requires an available selected switch and offers removal if a saved switch goes away', () => {
-    acceptDevicePowerSetup({ devices: [device({
-      sourceId: null,
-      binarySwitchId: null,
-      defaultBinarySwitchAvailable: false,
-    })] });
-    const { control, toggle, save, refresh } = setup();
+  it('offers a maximum for last-resort control only if a usable switch is chosen', () => {
+    accept({ defaultBinarySwitchAvailable: false });
+    const { save } = setup();
+    const toggle = query<HTMLElement & { selected: boolean; disabled: boolean }>('last-resort-toggle');
     expect(toggle.disabled).toBe(true);
-    expect(control.textContent).toContain('No on/off control');
-    expect(query('last-resort-help').textContent).toContain('Choose an available on/off control');
-
-    control.value = 'onoff.heater';
-    change(control);
+    select('binary', 'onoff.heater');
     expect(toggle.disabled).toBe(false);
-
-    // Pick no device to discard the edit before reading accepted settings again.
-    selectTarget('');
-    acceptDevicePowerSetup({ devices: [device({
-      sourceId: null,
-      defaultBinarySwitchAvailable: false,
-      binarySwitches: [],
-      lastResortAvailable: false,
-      lastResortMaximumW: 6000,
-    })] });
-    rerender(refresh);
-    selectTarget('heater');
-    expect(toggle.selected).toBe(true);
-    expect(toggle.disabled).toBe(false);
+    toggle.selected = true;
+    toggle.dispatchEvent(new Event('change'));
     expect(save.disabled).toBe(true);
-    toggle.selected = false;
-    change(toggle);
+    const maximum = query<HTMLInputElement>('maximum');
+    maximum.value = '6000';
+    maximum.dispatchEvent(new Event('input'));
     expect(save.disabled).toBe(false);
+  });
+});
+
+describe('Device detail setup', () => {
+  beforeEach(() => accept());
+
+  it('shows each part in its own section and hides parts for a reserved socket', () => {
+    setup();
+    const parts = ['device-detail-power-setup', 'device-detail-binary-switch', 'device-detail-last-resort'];
+    renderDeviceDetailPowerSetup('spa');
+    expect(parts.map((id) => document.getElementById(id)?.hidden)).toEqual([false, false, false]);
+    accept({ ...configured, sourceReady: true, binarySwitchId: null, binarySwitches: [] });
+    renderDeviceDetailPowerSetup('spa');
+    expect(parts.map((id) => document.getElementById(id)?.hidden)).toEqual([false, true, true]);
+    accept({ usedBy: 'heater' });
+    renderDeviceDetailPowerSetup('spa');
+    expect(parts.map((id) => document.getElementById(id)?.hidden)).toEqual([true, true, true]);
+  });
+
+  it('keeps the external meter ahead of a stale last-resort maximum', () => {
+    accept({ ...configured, lastResortMaximumW: 4500 });
+    expect(readLastResortSetup('spa')).toBeUndefined();
   });
 });

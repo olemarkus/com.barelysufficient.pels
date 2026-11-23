@@ -285,13 +285,15 @@ If the socket stops reporting, PELS stops limiting the device until the socket r
 
 Some devices have more than one on/off switch, such as a spa with a main switch and a separate heating switch. For such a device, **Setup** shows **On/off control** after **Control model**. Choose the switch and press **Save**. PELS then limits the device with that switch and leaves the others alone. **Default** uses the device's standard switch.
 
-### Add a device that is not in the list {#add-a-device}
+### Set up a device that needs a meter or switch {#add-a-device}
 
-**Devices** lists heaters, thermostats, heat pumps, air conditioners, air treatment units, sockets and EV chargers on its own. Another device with an on/off switch or a temperature control, such as a spa, is added from **Add a device** at the top of **Devices**: choose the device, its **On/off control** and, if needed, a **Power source**, then press **Save**. The device then appears in the list, and you manage it like any other device. The card shows only when such a device exists.
+In **Devices** and during first-run setup, look for your appliance under **Needs setup**. Use **Find another device** to search by name when it is not shown. Choose **Set up** next to the appliance. For example, select your spa, choose the socket that measures its power, then choose its heating switch under **On/off control**. Select **Review setup**, then **Add to PELS**. If the meter has not reported yet, choose **Check meter** after it reports.
+
+If PELS already manages the socket, **Use only as a meter** turns off PELS management for the socket. The socket can then measure the appliance while PELS limits it through the selected switch. Devices that are ready to manage still have a **Managed by PELS** toggle.
 
 ### Last-resort control for an unmetered relay {#last-resort}
 
-If a relay has no device power reading, open it in **Devices** and open **Power limiting**. Enable **Turn off as a last resort**, enter the maximum watts the connected load can draw, press **Save** and enable **Managed by PELS**.
+If a relay has no device power reading, choose **Turn off as a last resort** during setup and enter the maximum watts the connected load can draw. For an already listed relay, you can also open its **Power limiting** settings to make this change.
 
 PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
 

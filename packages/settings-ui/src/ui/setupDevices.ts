@@ -1,12 +1,17 @@
 import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
-import { readLastResortSetup } from './devicePowerSetup.ts';
+import { h, render } from 'preact';
+import {
+  devicePowerSetupHint, openGuidedDeviceSetup, readDeviceSetupEntries, readLastResortSetup,
+} from './devicePowerSetup.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { DeviceDetailFocus } from './cardActivation.ts';
 import { readHomeMembership, refreshHomeScopeAndNotify } from './homeScope.ts';
-import { setupSavePending } from './setupJourneyState.ts';
+import { setupSavePending, type SetupJourneyStep } from './setupJourneyState.ts';
 import { resolveDeviceManageability } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { SetupDeviceChoices } from './views/SetupJourney.tsx';
+import { DeviceSetupCandidates } from './views/DeviceSetupCandidates.tsx';
 import {
   requiresNativeWiringForActivation, supportsTemperatureDevice, supportsPowerDevice, type SettingsUiDeviceListItem,
 } from './deviceUtils.ts';
@@ -14,7 +19,7 @@ import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from './devic
 import { resolveDeviceDetailControlState } from './deviceDetail/controlState.ts';
 import { isSurplusTrackingDeviceShape } from './deviceDetail/solarSurplusTracking.ts';
 import { isDumpLoadDeviceShape } from './deviceDetail/solarSurplus.ts';
-import { hasActiveDeadlineObjective, state } from './state.ts';
+import { hasActiveDeadlineObjective, resolveManagedState, state } from './state.ts';
 import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplusTrackingCopy.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { needsHomeyEnergySetup, HOMEY_ENERGY_SETUP_REASON } from '../../../shared-domain/src/homeyEnergySetup.ts';
@@ -126,6 +131,52 @@ const setupDeviceHint = (
 export const retrySetupDeviceReads = (): void => {
   if (state.devicesReadState === 'unavailable') document.dispatchEvent(new Event('request-load-devices'));
   if (readHomeMembership().state === 'unavailable') void refreshHomeScopeAndNotify();
+};
+
+export const readGuidedDeviceChoices = (devices: SettingsUiDeviceListItem[], firstRun: boolean) => {
+  if (!state.initialLoadComplete || state.devicesReadState === 'unavailable') return [];
+  const roster = new Map(devices.map((device) => [device.id, device]));
+  return readDeviceSetupEntries().filter((entry) => {
+    if (typeof entry.homeId !== 'string' || (firstRun && entry.homeId !== MAIN_HOME_ID) || entry.usedBy) return false;
+    const device = roster.get(entry.id);
+    if (!device) return true;
+    const manageability = resolveDeviceManageability(device);
+    if (manageability.isManaged || manageability.nativeWiringRequired) return false;
+    const offersMeterOrLastResort = entry.lastResortAvailable || entry.sources.some(
+      ({ state: sourceState }) => sourceState === 'selectable' || sourceState === 'managed',
+    );
+    if (needsHomeyEnergySetup(device) && !manageability.supportsTemperature
+      && !readLastResortSetup(device.id) && offersMeterOrLastResort) return true;
+    return !manageability.canManage && (!manageability.supportsManage || devicePowerSetupHint(device.id) !== null);
+  }).map(({ id, name, configured, binarySwitchId, binarySwitches, lastResortMaximumW }) => ({
+    id, name: formatDisplayDeviceName(name),
+    suggested: roster.has(id) || configured || Boolean(binarySwitchId || binarySwitches?.length || lastResortMaximumW),
+  }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+};
+
+export const renderGuidedDeviceChoices = (devices: SettingsUiDeviceListItem[], journey: SetupJourneyStep | null) => {
+  const candidates = journey === 'goals' ? [] : readGuidedDeviceChoices(devices, journey === 'devices');
+  const mount = document.getElementById('device-setup-candidates');
+  if (mount) {
+    mount.hidden = candidates.length === 0;
+    render(candidates.length
+      ? h(DeviceSetupCandidates, { devices: candidates, onOpen: openGuidedDeviceSetup }) : null, mount);
+  }
+  return new Set(candidates.map(({ id }) => id));
+};
+
+export const createGuidedManageAction = (
+  setManaged: (deviceId: string, enabled: boolean) => Promise<void>, refresh: () => Promise<boolean>,
+) => async (deviceId: string, enabled: boolean): Promise<boolean> => {
+  if (enabled) {
+    const device = state.latestDevices.find(({ id }) => id === deviceId);
+    if (!device || !resolveDeviceManageability(device).canManage || !state.initialLoadComplete) return false;
+  }
+  if (resolveManagedState(deviceId) !== enabled) await setManaged(deviceId, enabled);
+  if (resolveManagedState(deviceId) !== enabled) return false;
+  if (!enabled) return true;
+  return await refresh() && state.latestDevices.some((device) => device.id === deviceId && device.managed);
 };
 
 export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): SetupDeviceChoices => {

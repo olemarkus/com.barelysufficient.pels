@@ -46,6 +46,11 @@ function readSocketPowerCapability(source: HomeyDeviceLike): HomeyDeviceLike['ca
   return powerAt !== undefined && offAt !== undefined && powerAt > offAt ? power : undefined;
 }
 
+function readSocketPowerW(source: HomeyDeviceLike): number | undefined {
+  const watts = readSocketPowerCapability(source)?.value;
+  return typeof watts === 'number' && normalizeMeasuredPowerKw(watts / 1000) !== null ? Math.round(watts) : undefined;
+}
+
 const isPowerCapability = (id: string): boolean => id === 'measure_power' || id === 'meter_power';
 
 /** Give the normal device parser a single, selected power capability. */
@@ -142,10 +147,13 @@ export class ExternalDevicePower {
     source: HomeyDeviceLike,
     resolveHome = this.resolveEligibleHome,
   ): boolean {
+    return this.settings.managedDevices[source.id] !== true && this.matchesSource(target, source, resolveHome);
+  }
+
+  private matchesSource(target: HomeyDeviceLike, source: HomeyDeviceLike, resolveHome: PowerSourceHome): boolean {
     if (source.id === target.id || !hasGenericSetupControls(target) || !supportsSocketPower(source)) return false;
     if (getDeviceAdapter(target).sourceDeviceId(target) !== target.id
       || getDeviceAdapter(source).sourceDeviceId(source) !== source.id) return false;
-    if (this.settings.managedDevices[source.id] === true) return false;
     const home = resolveHome(target.id, resolveZoneId(target) ?? null);
     return home !== undefined && resolveHome(source.id, resolveZoneId(source) ?? null) === home;
   }
@@ -184,7 +192,7 @@ export class ExternalDevicePower {
     const eligible = inventory.filter((device) => hasGenericSetupControls(device)
       || configuredSwitch(device.id) || this.settings.lastResortDevices?.[device.id] !== undefined);
     const devices: DevicePowerSetupEntry[] = eligible.map((device) => ({
-      id: device.id, name: device.name, configured: this.setupSelected(device.id),
+      id: device.id, name: device.name, homeId: homes.get(device.id) ?? null, configured: this.setupSelected(device.id),
       sourceId: this.sourceForDevice(device.id) ?? null,
       lastResortMaximumW: this.settings.lastResortDevices?.[device.id],
       lastResortAvailable: this.canSetUpLastResort(device),
@@ -196,7 +204,11 @@ export class ExternalDevicePower {
       ...ownPowerReading(device),
       sources: sockets.flatMap((socket) => {
         if (socket.id === device.id) return [];
-        return [{ id: socket.id, name: socket.name, state: this.sourceState(device, socket, resolveHome) }];
+        const state = this.sourceState(device, socket, resolveHome);
+        const measuredPowerW = state === 'selectable' ? readSocketPowerW(socket) : undefined;
+        return [{
+          id: socket.id, name: socket.name, state, ...(measuredPowerW === undefined ? {} : { measuredPowerW }),
+        }];
       }),
       sourceReady: this.isSourceReady(device),
     }));
@@ -215,11 +227,10 @@ export class ExternalDevicePower {
     socket: HomeyDeviceLike,
     resolveHome: PowerSourceHome,
   ): DevicePowerSetupEntry['sources'][number]['state'] {
-    if (this.settings.managedDevices[socket.id] === true) return 'managed';
     const assigned = this.targetForSocket(socket.id);
     if (assigned && assigned !== device.id) return 'assigned';
-    return this.classifySource(device, socket, resolveHome) && !this.sourceForDevice(socket.id)
-      ? 'selectable' : 'unavailable';
+    if (!this.matchesSource(device, socket, resolveHome) || this.sourceForDevice(socket.id)) return 'unavailable';
+    return this.settings.managedDevices[socket.id] === true ? 'managed' : 'selectable';
   }
 
   private isSourceReady(device: HomeyDeviceLike): boolean {
