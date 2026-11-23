@@ -9,6 +9,8 @@ Use this pattern when PELS should limit a device by lowering its temperature, bu
 
 PELS limits a device only when it has a power reading for that device. Here the reading and the temperature setting sit on two different Homey devices. A virtual thermostat brings them together: PELS manages the virtual thermostat, and three Flows connect it to the real device and the meter.
 
+If the meter is a smart plug, you do not need this how-to: open the device in PELS, expand **External sensors**, and choose the plug as its **Power source** ([Measure a device with a metering socket](/configuration#metering-socket)). PELS then reads the plug's power for the device and never switches the plug. Use the virtual thermostat below when the meter is a sub-meter that is not a plug, or when PELS does not offer the device under **External sensors**.
+
 Don't let PELS manage the smart plug itself. PELS would limit it by switching it off, which stops the whole unit, fans included.
 
 ## What You Need

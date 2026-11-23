@@ -9,6 +9,8 @@ Use a virtual device when a device's Homey app offers custom on/off commands, bu
 
 The physical socket stays powered. PELS manages the virtual device, and your Flows send the real device's commands.
 
+If the device has a normal Homey on/off switch and a metering socket measures it, you do not need a virtual device: choose the socket as its **Power source** under **External sensors** on its device page ([Measure a device with a metering socket](/configuration#metering-socket)).
+
 ## What You Need
 
 - The device's custom on/off actions in Homey. These might be called **Disable / Enable** or **Pause / Resume**.

@@ -39,7 +39,7 @@ lowered, paused, or turned off, three things must all be true:
    and it can be simulating while Simulation mode is off.
 
 A device with **Power-limit control** turned off stays under PELS's planning but
-is never limited to protect the hard cap. To limit a device for power, PELS needs a live reading from that device or from Homey Energy for it. Check whether its power changes in Homey when it runs. A value entered under **Power when running** changes the estimated load. A temperature device can still follow mode targets and prices while waiting for its first power reading. See [Configuration → Devices](/configuration#settings-devices).
+is never limited to protect the hard cap. To limit a device for power, PELS needs a live reading from that device, from Homey Energy for it, or from a metering socket chosen under **External sensors** on its device page. Check whether its power changes in Homey when it runs. A value entered under **Power when running** changes the estimated load. A temperature device can still follow mode targets and prices while waiting for its first power reading. See [Configuration → Devices](/configuration#settings-devices).
 
 ## Manual action needed
 
