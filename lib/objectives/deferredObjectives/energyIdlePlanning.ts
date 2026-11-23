@@ -2,7 +2,6 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { EnergyTaskIdleState } from '../../../packages/contracts/src/taskDelivery';
-import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 import { resolveObjectiveProgressDirectionRead } from '../types';
 import { resolveHigherPriorityContentionEvaluation } from './contentionOverlay';
 import { reportHigherPriorityContention } from './contentionReporting';
@@ -21,9 +20,7 @@ import type { TaskAllocationMode } from './taskPlanningTurns';
 
 const supportsEnergyIdle = (task: OrderedDeferredObjective): boolean => {
   const { objective, device } = task;
-  return objective.kind === 'energy' && device !== undefined && !isEvDevice(device)
-    && device.controlModel === 'binary_power' && device.expectedPowerKw > 0
-    && device.expectedPowerSource !== undefined && device.expectedPowerSource !== 'default';
+  return objective.kind === 'energy' && device?.energyIdleCapable === true;
 };
 
 const hasBookingAfterDrawResumed = (
@@ -65,7 +62,7 @@ const withoutIdleBookings = (
   if (evaluation.planning.kind !== 'allocated') {
     return { ...diagnostic, evaluation: { ...evaluation, permissions: NO_TASK_PERMISSIONS, usesAvailablePower: true } };
   }
-  const { frozenRead, ...source } = evaluation.planning.plan;
+  const { frozenRead: _frozenRead, ...source } = evaluation.planning.plan;
   const { currentBucket } = source;
   const plan = {
     ...source,
@@ -77,7 +74,7 @@ const withoutIdleBookings = (
     plannedBuckets: source.plannedBuckets.map((bucket) => ({
       ...bucket, plannedUsefulEnergyKWh: 0, plannedAdmissionPowerKw: 0,
     })),
-    ...(write ? {} : { frozenRead }),
+    ...(write ? {} : { frozenRead: true as const }),
   };
   return {
     ...diagnostic,
@@ -99,7 +96,9 @@ const resolveEnergyIdleDiagnostic = (
   if (energyIdle === 'available_power') return withoutIdleBookings(diagnostic, selected);
   if (energyIdle !== 'reopening') return diagnostic;
   if (hasFreshPositiveEnergy(diagnostic)) return { ...diagnostic, restoresIdleBookings: true };
-  return withoutIdleBookings(evaluate('serve_idle'), selected);
+  // Serving the prior idle posture keeps this unsuccessful allocation in the
+  // planning queue. There is no new booking to commit.
+  return withoutIdleBookings(evaluate('serve_idle'), false);
 };
 
 type EvaluateTaskAllocation = (

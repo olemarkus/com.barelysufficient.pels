@@ -2888,7 +2888,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const deadlineAtMs = H0 + 2 * HOUR_MS;
       const savedRun: PersistedMeteredDeliveryState = {
       version: 1,
-        deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+        deliveryEvidence: {
+          explanation: { kind: 'legacy_unrecorded' },
+          nonDelivery: { kind: 'confirmed', sinceMs: H0 },
+          energyIdle: { kind: 'accepted' },
+        },
         commitment: { kind: 'known', kwh: 5 },
         deviceId: 'dev', deadlineAtMs, startedAtMs: H0, startProgressValue: 50,
         deliveredKWh: 0.5, totalCost: 0, costDisplay: null,
@@ -2917,6 +2921,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recovered = true;
       expect(recorder.flushIfDirty()).toBe(true);
       expect(savedMetered).toHaveLength(1);
+      expect(recorder.getDeliveryEvidence('dev', deadlineAtMs).energyIdle).toEqual({ kind: 'uncertain' });
       // The saved booking, captured when the hour began, replaces the live one.
       expect(savedMetered[0]).toMatchObject({ startedAtMs: H0, hourStartBookings: [{ atMs: H0, endsAtMs: (H0) + HOUR_MS, bookedKWh: 3 }] });
 

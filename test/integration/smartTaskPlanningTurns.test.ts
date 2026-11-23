@@ -35,7 +35,7 @@ const START_MS = Date.UTC(2026, 0, 14, 17, 58);
 const DEADLINE_MS = Date.UTC(2026, 0, 15, 2);
 
 const deviceFor = (id: string): ObjectiveDeviceInput => ({
-  id, name: id, deviceType: 'onoff', isEvCharger: false,
+  id, name: id, deviceType: 'onoff', isEvCharger: false, energyIdleCapable: false,
   objectiveSessionInactive: false, waitingForCarAssociation: false, thermalDirection: 'heating',
   currentDrawKw: 0, expectedPowerKw: 1,
   control: { managed: true, commandAuthority: true },
@@ -64,12 +64,14 @@ const createHarness = (count: number, load: () => DeferredObjectiveActivePlansV2
   let priceReads = 0;
   let priceOptimizationEnabled = true;
   let readPrices = (_startMs: number, _endMs: number): PriceHorizonEntry[] => prices();
+  let readEnergyIdle: TaskEvaluationReaders['getEnergyIdleState'];
   const readers: TaskEvaluationReaders = {
     prefersContinuousCharging: () => false,
     getPrioritiesForDevices: createFixturePriorityQuery(devices.map(({ id }, index) => ({ id, priority: index + 1 }))),
     resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
     hasObservedTask: () => false, getDeliveredEnergyKWh: noDeliveredEnergy,
     isReservationSuppressed: noReservationSuppression,
+    getEnergyIdleState: (deviceId, deadlineAtMs) => readEnergyIdle?.(deviceId, deadlineAtMs),
     buildPriceHorizon: (startMs, endMs) => { priceReads += 1; return readPrices(startMs, endMs); },
   };
   const snapshotAt = (nowMs: number): TaskEvaluationSnapshot => {
@@ -93,6 +95,7 @@ const createHarness = (count: number, load: () => DeferredObjectiveActivePlansV2
     priceReadCount: () => priceReads,
     setPriceRead: (read: typeof readPrices) => { readPrices = read; },
     setPriceEnabled: (enabled: boolean) => { priceOptimizationEnabled = enabled; },
+    setEnergyIdleRead: (read: typeof readEnergyIdle) => { readEnergyIdle = read; },
   };
 };
 
@@ -103,6 +106,25 @@ const freshIds = (reports: readonly TaskEvaluationReport[]): string[] => reports
 
 describe('bounded smart-task planning turns', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('retries a failed idle reopening on the next planning turn', () => {
+    const home = createHarness(1);
+    home.devices[0] = {
+      ...home.devices[0], steppedLoadProfile: undefined, energyIdleCapable: true,
+    };
+    expect(freshIds(home.tick(START_MS))).toEqual(['load-1']);
+    const reopening = START_MS + HOUR_MS;
+    home.setEnergyIdleRead(() => ({ kind: 'reopened', sinceMs: reopening }));
+    home.setPriceRead(() => []);
+
+    const [failed] = home.tick(reopening);
+    expect(failed?.evaluation).toMatchObject({
+      usesAvailablePower: true, planning: { kind: 'allocated', plan: { frozenRead: true, plannedUsefulEnergyKWh: 0 } },
+    });
+    home.setPriceRead(prices);
+    const [retried] = home.tick(reopening + 30_000);
+    expect(retried?.diagnostic).toMatchObject({ scheduledReplan: true, restoresIdleBookings: true });
+  });
 
   it('reports price-off ahead of a queued cached allocation and retains its planning turn', () => {
     const home = createHarness(2);

@@ -85,6 +85,9 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
   ));
 };
 
+type ObjectivePlanDeviceFixture = MeteredPlanInputDevice
+  & Pick<ObjectiveDeviceInput, 'thermalDirection' | 'energyIdleCapable'>;
+
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & MeteredDiscriminantProbe & FixtureBoostFields & {
     evChargingState?: string;
@@ -93,7 +96,7 @@ const buildDevice = (
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withMaterializedEvPlugState(withFixtureResidualKw({
+): ObjectivePlanDeviceFixture => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   expectedPowerKw: 1,
   name: 'Driveway EV',
@@ -115,12 +118,13 @@ const buildDevice = (
   },
   ...overrides,
   thermalDirection: overrides.thermalDirection ?? 'heating',
+  energyIdleCapable: false,
   // The power axis: every fixture here has a reading, resolved the way the
   // shared builders resolve it when the spec does not spell one.
   currentDrawKw: fixtureCurrentDrawKw(overrides),
   control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
-})) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
+})) as ObjectivePlanDeviceFixture;
 
 const buildTemperatureDevice = (
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & MeteredDiscriminantProbe & {
@@ -129,7 +133,7 @@ const buildTemperatureDevice = (
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+): ObjectivePlanDeviceFixture => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
   name: 'Connected 300',
@@ -150,10 +154,11 @@ const buildTemperatureDevice = (
   },
   ...overrides,
   thermalDirection: overrides.thermalDirection ?? 'heating',
+  energyIdleCapable: false,
   currentDrawKw: fixtureCurrentDrawKw(overrides),
   control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
-}))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
+}))) as ObjectivePlanDeviceFixture;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline(nowMs, 'UTC', deadlineLocalTime);

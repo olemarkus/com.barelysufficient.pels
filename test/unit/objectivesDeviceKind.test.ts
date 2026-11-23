@@ -4,7 +4,7 @@ import { buildObjectiveProfileSample, type ObjectiveSampleDevice } from '../../l
 import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
-import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import { resolveObjectiveDeviceInputs, type ObjectiveDeviceInput } from '../../lib/objectives/types';
 
 // Objectives identify EV chargers through the canonical `isEvDevice`, never a
 // class literal of their own. The EV fixture carries the producer-resolved
@@ -18,6 +18,7 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
   id: 'ev-cap',
   name: 'EV (capability only)',
   isEvCharger: true,
+  energyIdleCapable: false,
   deviceType: 'onoff',
   currentDrawKw: 3,
   expectedPowerKw: 7,
@@ -30,9 +31,20 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
 // Non-EV, non-temperature device drawing 3 kW (a relay an energy task runs):
 // one synthetic rung at its live draw, not at the expected power.
 const plainOnOff: ObjectiveDeviceInput = {
+  energyIdleCapable: false,
   id: 'x', name: 'Plain', isEvCharger: false, deviceType: 'onoff', currentDrawKw: 3, expectedPowerKw: 7,
   control: { managed: true, commandAuthority: true }, objectiveSessionInactive: false, waitingForCarAssociation: false, thermalDirection: 'heating',
 };
+
+it('projects idle capability only for a sized non-EV load using a relay', () => {
+  const relay = { ...plainOnOff, controlModel: 'binary_power', expectedPowerSource: 'manual' } as const;
+  const devices = resolveObjectiveDeviceInputs([
+    relay, { ...relay, expectedPowerSource: 'default' }, { ...relay, isEvCharger: true },
+    { ...relay, controlModel: 'stepped_load' },
+  ], () => 'heating');
+
+  expect(devices.map(({ energyIdleCapable }) => energyIdleCapable)).toEqual([true, false, false, false]);
+});
 
 describe('lib/objectives de-kind — capability-only EV takes the EV branch', () => {
   it('resolveObjectiveSteps emits a charge step for a capability-only EV', () => {

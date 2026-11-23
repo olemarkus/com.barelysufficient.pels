@@ -98,20 +98,39 @@ function resolveReleases(
 ): EnergizedDevice[] {
   let axes = startingAxes;
   for (const [index, donor] of donors.entries()) {
-    axes = afterRemoving(axes, donor);
+    axes = changeDonorDraw(axes, donor, 'yield');
     const room = restoreHeadroomFor(axes, target);
-    if (room !== null && room >= needKw) return donors.slice(0, index + 1);
+    if (room !== null && room >= needKw) return pruneReleases(donors.slice(0, index + 1), target, axes, needKw);
   }
   return [];
 }
 
-function afterRemoving(axes: RestoreHeadroomAxes, donor: EnergizedDevice): RestoreHeadroomAxes {
+/** Keep earlier (lower-priority) donors when they can cover the need instead. */
+function pruneReleases(
+  releases: readonly EnergizedDevice[], target: DevicePlanDevice, releasedAxes: RestoreHeadroomAxes, needKw: number,
+): EnergizedDevice[] {
+  let axes = releasedAxes;
+  const retained = new Set<EnergizedDevice>();
+  for (const donor of releases.slice().reverse()) {
+    const afterKeeping = changeDonorDraw(axes, donor, 'keep');
+    const room = restoreHeadroomFor(afterKeeping, target);
+    if (room === null || room < needKw) continue;
+    axes = afterKeeping;
+    retained.add(donor);
+  }
+  return releases.filter((donor) => !retained.has(donor));
+}
+
+function changeDonorDraw(
+  axes: RestoreHeadroomAxes, donor: EnergizedDevice, decision: 'yield' | 'keep',
+): RestoreHeadroomAxes {
   const { device, possibleDrawKw } = donor;
+  const changeKw = decision === 'yield' ? -possibleDrawKw : possibleDrawKw;
   return {
-    capacity: spendLimitHeadroom(axes.capacity, -possibleDrawKw),
-    grid: spendLimitHeadroom(axes.grid, -possibleDrawKw),
-    budget: device.budgetExempt ? axes.budget : spendLimitHeadroom(axes.budget, -possibleDrawKw),
-    phase: spendPhaseRoom(axes.phase, device.phaseFootprint, -possibleDrawKw),
+    capacity: spendLimitHeadroom(axes.capacity, changeKw),
+    grid: spendLimitHeadroom(axes.grid, changeKw),
+    budget: device.budgetExempt ? axes.budget : spendLimitHeadroom(axes.budget, changeKw),
+    phase: spendPhaseRoom(axes.phase, device.phaseFootprint, changeKw),
   };
 }
 

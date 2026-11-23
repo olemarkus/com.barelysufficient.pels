@@ -403,7 +403,7 @@ export const formatPlanHistoryShortfallChip = (
 /**
  * Composes the cost narrative line rendered on the Succeeded and Missed
  * shapes. Returns `null` when `totalCost` is not recorded, when the cost
- * unit is empty, or on outcomes other than met / missed — any of these
+ * unit is empty, or on outcomes other than met, missed, or device idle — any of these
  * leaves nothing honest to surface.
  *
  * Succeeded (chart-overhaul Phase 1B receipt-first redesign, signed-off
@@ -428,7 +428,7 @@ export const formatPlanHistoryCostNarrative = (
     'outcome' | 'totalCost' | 'costDisplay' | 'deliveredKWh'
   >,
 ): string | null => {
-  if (entry.outcome !== 'met' && entry.outcome !== 'missed') return null;
+  if (entry.outcome !== 'met' && entry.outcome !== 'missed' && entry.outcome !== 'device_idle') return null;
   // Format with the display the entry was RECORDED under, not a live one — a
   // later price-scheme switch must not relabel an archived figure. Legacy
   // entries fall back to the recording-era øre/kr default.
@@ -442,7 +442,9 @@ export const formatPlanHistoryCostNarrative = (
   if (entry.outcome === 'missed') {
     return formatReceiptCostNarrative(APPROX_GLYPH, Math.round(displayCost), unit);
   }
-  const parts = [formatReceiptCostAmount(APPROX_GLYPH, formatCostFigure(displayCost, unit), unit)];
+  const amount = formatReceiptCostAmount(APPROX_GLYPH, formatCostFigure(displayCost, unit), unit);
+  if (entry.outcome === 'device_idle') return amount;
+  const parts = [amount];
   const delivered = entry.deliveredKWh;
   if (typeof delivered === 'number' && Number.isFinite(delivered) && delivered > 0) {
     parts.push(

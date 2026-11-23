@@ -24,6 +24,7 @@ const elbillader: ObjectiveDeviceInput = {
   id: 'elbillader',
   name: 'Elbillader',
   isEvCharger: true,
+  energyIdleCapable: false,
   deviceType: 'onoff',
   steppedLoadProfile: {
     steps: [
