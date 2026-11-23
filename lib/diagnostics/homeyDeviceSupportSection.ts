@@ -2,6 +2,7 @@ import type { SupportReportSection, SupportReportValue } from '../../packages/co
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceDiagnosticConfigurationRead } from './deviceDiagnosticConfiguration';
+import { chargingInstallationGroups } from '../device/chargingCurrentAdapter';
 
 const readCapabilityIds = (device: HomeyDeviceLike): string[] => (
   Array.isArray(device.capabilities)
@@ -108,32 +109,39 @@ export const SUPPORT_REPORT_MAX_HOMEY_DEVICES = 500;
  * Every device on the Homey and the app that provides it, managed by PELS or
  * not. A log names a device by id only, and how a device behaves when PELS
  * writes to it depends on that app. `isManaged` is `undefined` for a device
- * PELS does not hold.
+ * PELS does not hold. A charger whose current is set for its whole
+ * installation names that installation by number, with how many chargers
+ * share it.
  */
 export const reportHomeyDevices = (
   devices: readonly HomeyDeviceLike[],
   isManaged: (deviceId: string) => boolean | undefined,
   readConfiguration: (deviceId: string) => DeviceDiagnosticConfigurationRead | undefined,
-): SupportReportSection => ({
-  title: 'Current Homey devices',
-  values: {
-    devices: devices.slice(0, SUPPORT_REPORT_MAX_HOMEY_DEVICES).map((device) => {
-      const managed = isManaged(device.id);
-      const configuration = readConfiguration(device.id);
-      return {
-        id: device.id,
-        name: toReportValue(device.name),
-        class: device.class,
-        ownerUri: device.ownerUri,
-        driverId: device.driverId,
-        available: device.available,
-        ...(managed === undefined ? {} : { managed }),
-        ...(configuration === undefined ? {} : { configuration }),
-      };
-    }),
-    leftOut: Math.max(0, devices.length - SUPPORT_REPORT_MAX_HOMEY_DEVICES),
-  },
-});
+): SupportReportSection => {
+  const installations = chargingInstallationGroups(devices);
+  return {
+    title: 'Current Homey devices',
+    values: {
+      devices: devices.slice(0, SUPPORT_REPORT_MAX_HOMEY_DEVICES).map((device) => {
+        const managed = isManaged(device.id);
+        const configuration = readConfiguration(device.id);
+        const chargingInstallation = installations.get(device.id);
+        return {
+          id: device.id,
+          name: toReportValue(device.name),
+          class: device.class,
+          ownerUri: device.ownerUri,
+          driverId: device.driverId,
+          available: device.available,
+          ...(managed === undefined ? {} : { managed }),
+          ...(configuration === undefined ? {} : { configuration }),
+          ...(chargingInstallation === undefined ? {} : { chargingInstallation }),
+        };
+      }),
+      leftOut: Math.max(0, devices.length - SUPPORT_REPORT_MAX_HOMEY_DEVICES),
+    },
+  };
+};
 
 /**
  * One Homey device as a device support request describes it, listed by PELS
