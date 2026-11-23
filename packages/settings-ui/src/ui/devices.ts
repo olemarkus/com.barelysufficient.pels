@@ -289,7 +289,7 @@ const buildRedesignNameCell = (device: SettingsUiDeviceListItem, offersHomeyEner
   if (offersHomeyEnergy) {
     const titleLine = document.createElement('div');
     titleLine.className = 'pels-device-card__title-line';
-    titleLine.append(nameText, createPowerSetupWarning(formatDisplayDeviceName(device.name)));
+    titleLine.append(nameText, createPowerSetupWarning(device.id, formatDisplayDeviceName(device.name)));
     nameWrap.append(titleLine);
   } else {
     nameWrap.appendChild(nameText);
@@ -381,7 +381,7 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
   }
   row.dataset.deviceId = device.id;
 
-  const setup = resolveDevicePowerSetupPresentation(device);
+  const setup = resolveDevicePowerSetupPresentation(device, manageability.isManaged);
   const titles: RowSwitchTitles = {
     managed: getManagedTitle(isLoadingComplete, manageability.supportsManage, manageability.nativeWiringRequired),
     limit: resolveBatteryLimitTitle(device)

@@ -30,9 +30,39 @@ export const devicePowerSetupHint = (deviceId: string): string | null => {
     return target ? `Used as the thermostat for ${formatDisplayDeviceName(target.name)}.`
       : 'Used as an external thermostat.';
   }
-  if (entry?.sourceId && !entry.sourceReady) return 'Waiting for a power reading from the metering socket.';
+  if (entry?.sourceId && !entry.sourceReady) {
+    return entry.sources.some(({ id }) => id === entry.sourceId)
+      ? 'Waiting for a power reading from the metering socket.'
+      : 'Metering socket unavailable. Choose another power source in Device setup.';
+  }
   return null;
 };
+
+/** A saved choice that stopped working. Unlike the setup hint, it never blocks Managed. */
+export const devicePowerSetupWarning = (deviceId: string): string | null => {
+  const entry = findSetupEntry(deviceId);
+  if (!entry) return null;
+  if (entry.thermostatId && (!thermostatChoice(entry, entry.thermostatId) || !entry.thermostatReady)) {
+    return 'External thermostat unavailable. Check it in Homey or change it in Device setup.';
+  }
+  if (entry.binarySwitchId && !entry.binarySwitches?.some(({ id }) => id === entry.binarySwitchId)) {
+    return 'Selected on/off control unavailable. Check the device in Homey or change it in Device setup.';
+  }
+  return null;
+};
+
+export const LAST_RESORT_NEEDS_MANAGED_HINT = 'Turn on Managed by PELS to use last-resort control.';
+
+/** The last-resort line for a device card or page, which also says when Managed is missing. */
+export const resolveLastResortHint = (
+  setup: ReturnType<typeof readLastResortSetup>, managed: boolean,
+): string | undefined => (
+  setup?.maximumW !== undefined && !managed ? LAST_RESORT_NEEDS_MANAGED_HINT : setup?.hint
+);
+
+export const isLastResortOffered = (deviceId: string): boolean => (
+  findSetupEntry(deviceId)?.lastResortAvailable === true
+);
 
 export function readLastResortSetup(deviceId: string) {
   const entry = findSetupEntry(deviceId);
@@ -136,7 +166,7 @@ function sourceHelp(entry: DevicePowerSetupEntry | undefined, selected: string):
   const socket = entry.sources.find(({ id }) => id === selected);
   if (selected && selected === entry.sourceId && !entry.sourceReady) {
     return socket ? `Waiting for a power reading from ${formatDisplayDeviceName(socket.name)}.`
-      : 'The configured metering socket is unavailable.';
+      : 'The configured metering socket is unavailable. Choose another power source.';
   }
   if (socket?.state && socket.state !== 'selectable') return unavailableReason(socket.state);
   return 'Choose an unmanaged metering socket if this device has no power reading of its own.';

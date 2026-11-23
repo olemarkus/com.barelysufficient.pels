@@ -6,7 +6,8 @@ import {
   HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT, needsHomeyEnergySetup,
 } from '../../../../shared-domain/src/homeyEnergySetup.ts';
 import {
-  devicePowerSetupHint, isDeviceReservedBySetup, readDevicePowerSetupDetail, THERMOSTAT_MANUAL_RESTART_HINT,
+  devicePowerSetupHint, devicePowerSetupWarning, isDeviceReservedBySetup, readDevicePowerSetupDetail,
+  resolveLastResortHint, THERMOSTAT_MANUAL_RESTART_HINT,
 } from '../devicePowerSetup.ts';
 import {
   deviceDetailControllable,
@@ -45,15 +46,19 @@ export const renderManagedControl = (
     deviceDetailManaged.disabled = !controlState.canManageDevice || reservedCompanion
       || (!controlState.isManaged && setupHint !== null);
   }
-  renderManagedPowerSetup(device, resolveManagedHint(device, controlState), setupHint);
+  renderManagedPowerSetup(device, resolveManagedHint(device, controlState), setupHint, controlState.isManaged);
 };
 
 function renderManagedPowerSetup(
-  device: SettingsUiDeviceView | null, defaultHint: string, setupHint: string | null,
+  device: SettingsUiDeviceView | null, defaultHint: string, setupHint: string | null, managed: boolean,
 ): void {
   const setup = device ? readDevicePowerSetupDetail(device.id) : undefined;
   const offersHomeyEnergy = needsHomeyEnergySetup(device) && !setup?.lastResort;
-  renderManagedSetupHint(setupHint ?? setup?.lastResort?.hint ?? defaultHint, offersHomeyEnergy);
+  const warning = device ? devicePowerSetupWarning(device.id) : null;
+  renderManagedSetupHint(
+    setupHint ?? warning ?? resolveLastResortHint(setup?.lastResort, managed) ?? defaultHint,
+    offersHomeyEnergy || warning !== null,
+  );
   renderPowerSetupDetail(setup);
   renderHomeyEnergySetupLink(offersHomeyEnergy && !setup?.socketPending);
 }

@@ -202,6 +202,10 @@ describe('device detail managed state saves', () => {
     const hint = document.getElementById('device-detail-managed-hint');
     const maximum = document.getElementById('device-detail-last-resort-maximum');
     const energyLink = document.getElementById('device-detail-homey-energy-setup');
+    expect(hint?.textContent).toBe('Turn on Managed by PELS to use last-resort control.');
+    state.managedMap = { active: true };
+    openDeviceDetail('active');
+    await flushPromises();
     expect(hint?.textContent).toMatch(/^Last resort/);
     expect(hint?.dataset.tone).toBe('neutral');
     expect(maximum?.textContent).toBe(`Maximum power ${(4500).toLocaleString()} W`);
@@ -210,7 +214,9 @@ describe('device detail managed state saves', () => {
 
     openDeviceDetail('dormant');
     await flushPromises();
-    expect(hint?.textContent).toBe('Review last-resort control in Device setup.');
+    expect(hint?.textContent).toBe(
+      'Selected on/off control unavailable. Check the device in Homey or change it in Device setup.',
+    );
     expect(maximum?.hidden).toBe(true);
     expect(energyLink?.hidden).toBe(true);
     expect(document.getElementById('device-detail-open-power-setup')?.hidden).toBe(false);
