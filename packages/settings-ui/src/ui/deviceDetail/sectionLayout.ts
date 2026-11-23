@@ -117,6 +117,9 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
   placeBefore(row, document.getElementById('device-detail-budget-exempt-row'));
   // Managed's hint points to Homey Energy, so its link follows it.
   placeAfter(document.getElementById('device-detail-homey-energy-setup'), row);
+  // Which switch PELS uses belongs with how it controls the device.
+  placeAfter(document.getElementById('device-detail-binary-switch'),
+    document.getElementById('device-detail-control-model-row'));
 };
 
 // Power-limit control and the two rows that refine it ("Only PELS starts this
@@ -137,6 +140,8 @@ const placePowerLimitRows = (kind: DeviceDetailKind): void => {
   const shedField = document.getElementById('device-detail-shed-field');
   placeBefore(startPolicy, shedField);
   placeBefore(controllable, startPolicy);
+  // Last resort refines Power-limit control for a device without a power reading.
+  placeAfter(document.getElementById('device-detail-last-resort'), controllable);
   placeBefore(respectExternalOff, document.getElementById('device-detail-electrical-connection-row'));
 };
 

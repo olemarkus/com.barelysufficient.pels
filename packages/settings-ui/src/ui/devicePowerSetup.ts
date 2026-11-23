@@ -4,7 +4,7 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 import { createSelectOption } from './materialSelectOption.ts';
 import type { MaterialSelectOptionElement } from './components.ts';
 import { persistDeviceSetup, type SetupDraft } from './devicePowerSetupWrites.ts';
-import { buildDevicePowerSetupForm } from './devicePowerSetupMarkup.ts';
+import { buildDevicePowerSetupForm, type SetupPart } from './devicePowerSetupMarkup.ts';
 
 let entries: readonly DevicePowerSetupEntry[] = [];
 
@@ -39,7 +39,7 @@ export const devicePowerSetupWarning = (deviceId: string): string | null => {
   const entry = findSetupEntry(deviceId);
   if (!entry) return null;
   if (entry.binarySwitchId && !entry.binarySwitches?.some(({ id }) => id === entry.binarySwitchId)) {
-    return 'Selected on/off control unavailable. Check the device in Homey or change it under External sensors.';
+    return 'Selected on/off control unavailable. Check the device in Homey or change it under Setup.';
   }
   return null;
 };
@@ -50,9 +50,11 @@ export const devicePowerSetupAlternative = (deviceId: string): string | null => 
   if (!entry || entry.sourceId) return null;
   const socket = entry.sources.some(({ state }) => state === 'selectable');
   const lastResort = entry.lastResortAvailable === true;
-  if (socket && lastResort) return 'Or choose a metering socket or last-resort control under External sensors.';
+  if (socket && lastResort) {
+    return 'Or choose a metering socket under External sensors, or turn on last-resort control under Power limiting.';
+  }
   if (socket) return 'Or choose a metering socket under External sensors.';
-  return lastResort ? 'Or turn on last-resort control under External sensors.' : null;
+  return lastResort ? 'Or turn on last-resort control under Power limiting.' : null;
 };
 
 export const LAST_RESORT_NEEDS_MANAGED_HINT = 'Turn on Managed by PELS to use last-resort control.';
@@ -77,7 +79,7 @@ export function readLastResortSetup(deviceId: string) {
       maximumW: entry.lastResortMaximumW,
     };
   }
-  return { hint: 'Review last-resort control under External sensors.' };
+  return { hint: 'Review last-resort control under Power limiting.' };
 }
 
 export const readDevicePowerSetupDetail = (deviceId: string) => {
@@ -194,26 +196,35 @@ const setupControl = <T extends HTMLElement = HTMLElement>(root: HTMLElement, na
   root.querySelector<T>(`[data-setup="${name}"]`)
 );
 
+type Toggle = HTMLElement & { selected: boolean; disabled: boolean };
+type NumberField = HTMLElement & { value: string; disabled: boolean };
+
+/** One form's controls; a device page's form carries only its own part. */
 function readSetupFields(root: HTMLElement) {
-  const targetField = setupControl(root, 'target-field');
   const details = setupControl(root, 'details');
+  const save = setupControl<HTMLElement & { disabled: boolean }>(root, 'save');
+  if (!details || !save) return undefined;
   const target = setupControl<SetupSelect>(root, 'target');
+  const targetField = setupControl(root, 'target-field');
   const source = setupControl<SetupSelect>(root, 'source');
   const help = setupControl(root, 'help');
   const control = setupControl<SetupSelect>(root, 'binary');
   const switchField = setupControl(root, 'binary-field');
   const switchHelp = setupControl(root, 'binary-help');
   const lastResort = setupControl(root, 'last-resort');
-  const lastResortToggle = setupControl<HTMLElement & { selected: boolean; disabled: boolean }>(
-    root, 'last-resort-toggle',
-  );
+  const lastResortToggle = setupControl<Toggle>(root, 'last-resort-toggle');
   const lastResortHelp = setupControl(root, 'last-resort-help');
-  const maximum = setupControl<HTMLElement & { value: string; disabled: boolean }>(root, 'maximum');
-  const save = setupControl<HTMLElement & { disabled: boolean }>(root, 'save');
-  if (!targetField || !details || !target || !source || !help || !control || !switchField || !switchHelp
-    || !lastResort || !lastResortToggle || !lastResortHelp || !maximum || !save) return undefined;
-  return { targetField, details, target, source, help, control, switchField, switchHelp, lastResort, lastResortToggle,
-    lastResortHelp, maximum, save };
+  const maximum = setupControl<NumberField>(root, 'maximum');
+  return {
+    details,
+    save,
+    target: target && targetField ? { select: target, field: targetField } : undefined,
+    source: source && help ? { select: source, help } : undefined,
+    binary: control && switchField && switchHelp
+      ? { select: control, field: switchField, help: switchHelp } : undefined,
+    lastResort: lastResort && lastResortToggle && lastResortHelp && maximum
+      ? { section: lastResort, toggle: lastResortToggle, help: lastResortHelp, maximum } : undefined,
+  };
 }
 
 type SetupFields = NonNullable<ReturnType<typeof readSetupFields>>;
@@ -227,18 +238,24 @@ function canEnableLastResort(entry: DevicePowerSetupEntry | undefined, switchId:
   return entry?.lastResortAvailable === true && hasUsableSwitch(entry, switchId);
 }
 
-function syncLastResort(fields: SetupFields, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft): boolean {
-  const { lastResort, lastResortToggle, maximum, lastResortHelp } = fields;
-  const offered = entry?.lastResortAvailable === true || entry?.lastResortMaximumW !== undefined;
+/** Whether a device's last-resort setup applies: an unmetered relay without a socket. */
+const offersLastResort = (entry: DevicePowerSetupEntry | undefined, draft: SetupDraft): boolean => (
+  (entry?.lastResortAvailable === true || entry?.lastResortMaximumW !== undefined) && !draft.source
+);
+
+function syncLastResort(
+  fields: NonNullable<SetupFields['lastResort']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
+): boolean {
+  const { section, toggle, maximum, help } = fields;
   const usableSwitch = hasUsableSwitch(entry, draft.switchId);
   const canEnable = canEnableLastResort(entry, draft.switchId);
   const maximumIsValid = isLastResortMaximumW(Number(draft.maximum));
-  const displayed = offered && !draft.source;
-  lastResort.hidden = !displayed;
-  lastResortToggle.disabled = !canEnable && !draft.lastResort;
+  const displayed = offersLastResort(entry, draft);
+  section.hidden = !displayed;
+  toggle.disabled = !canEnable && !draft.lastResort;
   (maximum.closest<HTMLElement>('.md-field-row') ?? maximum).hidden = !draft.lastResort;
   maximum.disabled = !canEnable;
-  lastResortHelp.textContent = resolveLastResortHelp(usableSwitch, canEnable, draft, maximumIsValid);
+  help.textContent = resolveLastResortHelp(usableSwitch, canEnable, draft, maximumIsValid);
   return displayed && draft.lastResort && (!canEnable || !maximumIsValid);
 }
 
@@ -264,11 +281,37 @@ export const allowLastResortPriorityMove = (dragged: HTMLElement, related: HTMLE
   isLastResortConfigured(dragged.dataset.deviceId ?? '') === isLastResortConfigured(related.dataset.deviceId ?? '')
 );
 
+function renderSourcePart(
+  part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
+  disabled: boolean,
+): void {
+  const { select, help } = part;
+  updateOptions(select, sourceOptions(entry, draft.source), draft.source);
+  select.disabled = disabled;
+  help.textContent = sourceHelp(entry, draft.source);
+}
+
+function renderSwitchPart(
+  part: NonNullable<SetupFields['binary']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
+  disabled: boolean,
+): void {
+  const { select, field, help } = part;
+  updateOptions(select, switchOptions(entry, draft.switchId), draft.switchId);
+  select.disabled = disabled;
+  field.hidden = !draft.switchId && !entry?.binarySwitches?.length;
+  help.textContent = draft.switchId && !hasUsableSwitch(entry, draft.switchId)
+    ? 'PELS cannot use this switch right now.' : 'Choose which switch PELS uses for power limiting.';
+}
+
 /**
  * `add` lists the devices that are not in the device list yet, behind a device
- * picker; `device` edits the one device whose page is open.
+ * picker, with every part; `device` edits one part of the device whose page is open.
  */
 type SetupFormMode = 'add' | 'device';
+
+const hasSwitchChoice = (entry: DevicePowerSetupEntry): boolean => (
+  Boolean(entry.binarySwitches?.length || entry.binarySwitchId)
+);
 
 class DevicePowerSetupForm {
   private selectedId = '';
@@ -282,23 +325,26 @@ class DevicePowerSetupForm {
     private readonly fields: SetupFields,
     private readonly mode: SetupFormMode,
   ) {
-    const { target, source, control, lastResortToggle, maximum, save } = fields;
-    target.onchange = () => this.select(readSelectValue(target));
-    source.onchange = () => this.edit();
-    control.onchange = () => this.edit();
-    lastResortToggle.onchange = () => this.edit();
-    maximum.oninput = () => this.edit();
+    const { target, source, binary, lastResort, save } = fields;
+    if (target) target.select.onchange = () => this.select(readSelectValue(target.select));
+    if (source) source.select.onchange = () => this.edit();
+    if (binary) binary.select.onchange = () => this.edit();
+    if (lastResort) {
+      lastResort.toggle.onchange = () => this.edit();
+      lastResort.maximum.oninput = () => this.edit();
+    }
     save.onclick = () => this.save();
   }
 
   private updateSave(): void {
     const entry = findSetupEntry(this.selectedId);
     const current = this.draft ?? acceptedDraft(entry);
-    const invalidLastResort = syncLastResort(this.fields, entry, current);
+    const { lastResort } = this.fields;
+    const invalidLastResort = lastResort ? syncLastResort(lastResort, entry, current) : false;
     const reserved = Boolean(companionTarget(entry));
-    if (this.saving) {
-      this.fields.lastResortToggle.disabled = true;
-      this.fields.maximum.disabled = true;
+    if (this.saving && lastResort) {
+      lastResort.toggle.disabled = true;
+      lastResort.maximum.disabled = true;
     }
     // Adding a device saves even its default choices; otherwise Save needs a change.
     const unchanged = (this.mode === 'device' || entry?.configured === true)
@@ -329,10 +375,14 @@ class DevicePowerSetupForm {
     this.render();
   }
 
+  /** A device page's part shows only where it applies to that device. */
   private isShown(): boolean {
     if (this.mode === 'add') return this.candidates.length > 0;
     const entry = findSetupEntry(this.selectedId);
-    return entry !== undefined && !companionTarget(entry);
+    if (!entry || companionTarget(entry)) return false;
+    if (this.fields.source) return true;
+    if (this.fields.binary) return hasSwitchChoice(entry);
+    return offersLastResort(entry, this.draft ?? acceptedDraft(entry));
   }
 
   render(): void {
@@ -341,25 +391,20 @@ class DevicePowerSetupForm {
     const entry = findSetupEntry(this.selectedId);
     const current = this.readCurrentDraft(entry);
     const disabled = this.saving || !entry || Boolean(companionTarget(entry));
-    const fields = this.fields;
-    if (this.mode === 'add') {
-      updateOptions(fields.target, [{ value: '', label: 'Select a device' }, ...this.candidates.map((candidate) => ({
+    const { target, source, binary, lastResort, details } = this.fields;
+    if (target) {
+      updateOptions(target.select, [{ value: '', label: 'Select a device' }, ...this.candidates.map((candidate) => ({
         value: candidate.id, label: formatDisplayDeviceName(candidate.name),
       }))], entry?.id ?? '');
+      target.select.disabled = this.saving;
     }
-    updateOptions(fields.source, sourceOptions(entry, current.source), current.source);
-    updateOptions(fields.control, switchOptions(entry, current.switchId), current.switchId);
-    fields.target.disabled = this.saving;
-    fields.targetField.hidden = this.mode === 'device';
-    fields.details.hidden = !entry;
-    fields.source.disabled = disabled;
-    fields.control.disabled = disabled;
-    fields.help.textContent = sourceHelp(entry, current.source);
-    fields.switchField.hidden = !current.switchId && !entry?.binarySwitches?.length;
-    fields.switchHelp.textContent = current.switchId && !hasUsableSwitch(entry, current.switchId)
-      ? 'PELS cannot use this switch right now.' : 'Choose which switch PELS uses for power limiting.';
-    if (fields.lastResortToggle.selected !== current.lastResort) fields.lastResortToggle.selected = current.lastResort;
-    if (fields.maximum.value !== current.maximum) fields.maximum.value = current.maximum;
+    details.hidden = !entry;
+    if (source) renderSourcePart(source, entry, current, disabled);
+    if (binary) renderSwitchPart(binary, entry, current, disabled);
+    if (lastResort) {
+      if (lastResort.toggle.selected !== current.lastResort) lastResort.toggle.selected = current.lastResort;
+      if (lastResort.maximum.value !== current.maximum) lastResort.maximum.value = current.maximum;
+    }
     this.updateSave();
   }
 
@@ -375,16 +420,20 @@ class DevicePowerSetupForm {
     this.awaitingReadback = false;
   }
 
+  /** The edited parts over the saved setup; parts this form does not show stay as saved. */
   private edit(): void {
     if (this.saving) return;
+    const entry = findSetupEntry(this.selectedId);
+    const { source, binary, lastResort } = this.fields;
+    const draft = { ...acceptedDraft(entry), ...this.draft };
     this.awaitingReadback = false;
     this.draft = {
-      source: readSelectValue(this.fields.source),
-      switchId: readSelectValue(this.fields.control),
-      lastResort: this.fields.lastResortToggle.selected,
-      maximum: this.fields.maximum.value,
+      source: source ? readSelectValue(source.select) : draft.source,
+      switchId: binary ? readSelectValue(binary.select) : draft.switchId,
+      lastResort: lastResort ? lastResort.toggle.selected : draft.lastResort,
+      maximum: lastResort ? lastResort.maximum.value : draft.maximum,
     };
-    this.fields.help.textContent = sourceHelp(findSetupEntry(this.selectedId), this.draft.source);
+    if (source) source.help.textContent = sourceHelp(entry, this.draft.source);
     this.updateSave();
   }
 
@@ -413,10 +462,13 @@ class DevicePowerSetupForm {
 let refreshDeviceSetup: () => Promise<void> = async () => {};
 const setupForms = new WeakMap<HTMLElement, DevicePowerSetupForm>();
 
-function formFor(container: HTMLElement, host: HTMLElement, mode: SetupFormMode): DevicePowerSetupForm | undefined {
+function formFor(
+  container: HTMLElement, mode: SetupFormMode, parts: readonly SetupPart[],
+): DevicePowerSetupForm | undefined {
   const existing = setupForms.get(container);
   if (existing) return existing;
-  if (!setupControl(host, 'save')) buildDevicePowerSetupForm(host, container.id);
+  const host = container.querySelector<HTMLElement>('[data-setup-host]') ?? container;
+  if (!setupControl(host, 'save')) buildDevicePowerSetupForm(host, container.id, parts);
   const fields = readSetupFields(host);
   if (!fields) return undefined;
   const form = new DevicePowerSetupForm(container, fields, mode);
@@ -424,34 +476,40 @@ function formFor(container: HTMLElement, host: HTMLElement, mode: SetupFormMode)
   return form;
 }
 
-const setupHost = (container: HTMLElement): HTMLElement => (
-  container.querySelector<HTMLElement>('[data-setup-host]') ?? container
-);
+/** Each part of a device's setup, in the device-page section it belongs to. */
+const DEVICE_PAGE_PARTS: readonly (readonly [string, SetupPart])[] = [
+  ['device-detail-power-setup', 'source'],
+  ['device-detail-binary-switch', 'switch'],
+  ['device-detail-last-resort', 'lastResort'],
+];
 
-const deviceFormContainer = (): HTMLElement | null => document.getElementById('device-detail-power-setup');
+const devicePageContainers = (): HTMLElement[] => DEVICE_PAGE_PARTS.flatMap(([id]) => {
+  const container = document.getElementById(id);
+  return container ? [container] : [];
+});
 
 /**
  * Render the "Add a device" card for setup devices missing from the device list,
- * and refresh the open device page's form. Returns whether the card is shown.
+ * and refresh the open device page's forms. Returns whether the card is shown.
  */
 export function renderDevicePowerSetup(
   refresh: () => Promise<void>, visible: boolean, listedIds: ReadonlySet<string>,
 ): boolean {
   refreshDeviceSetup = refresh;
-  const detail = deviceFormContainer();
-  if (detail) setupForms.get(detail)?.render();
+  devicePageContainers().forEach((container) => setupForms.get(container)?.render());
   const root = document.querySelector<HTMLDetailsElement>('#device-power-setup');
   if (!root) return false;
-  const form = formFor(root, setupHost(root), 'add');
+  const form = formFor(root, 'add', ['target', 'source', 'switch', 'lastResort']);
   if (!form) return false;
   form.show(undefined, listedIds);
   if (!visible) root.hidden = true;
   return !root.hidden;
 }
 
-/** Show the setup form for the device whose page is open, or hide it. */
+/** Show the setup parts for the device whose page is open, or hide them. */
 export function renderDeviceDetailPowerSetup(deviceId: string | undefined): void {
-  const container = deviceFormContainer();
-  if (!container) return;
-  formFor(container, setupHost(container), 'device')?.show(deviceId);
+  for (const [id, part] of DEVICE_PAGE_PARTS) {
+    const container = document.getElementById(id);
+    if (container) formFor(container, 'device', [part])?.show(deviceId);
+  }
 }

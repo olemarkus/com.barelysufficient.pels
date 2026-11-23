@@ -1275,6 +1275,7 @@
                    says the setting is paused. It is shown only for a device
                    with a Smart task: it means "runs only for a Smart task"
                    (startPolicy.ts). -->
+              <div id="device-detail-last-resort" class="device-setup-form" hidden></div>
               <label class="md-switch-row" id="device-detail-start-policy-row" hidden>
                 <md-switch aria-label="Only PELS starts this device" id="device-detail-start-policy"></md-switch>
                 <span class="md-switch-row__content">
@@ -1737,6 +1738,7 @@
                   </span>
                 </label>
 
+                <div id="device-detail-binary-switch" class="device-setup-form" hidden></div>
                 <div class="md-field-row" id="device-detail-control-model-row">
                   <span class="field__label pels-text-settings-label" id="device-detail-control-model-label">Control model</span>
                   <md-filled-select id="device-detail-control-model" aria-label="Control model">
@@ -1780,7 +1782,7 @@
           <details class="settings-collapse detail-collapse" id="device-detail-power-setup-disclosure">
             <summary>
               <h3 class="section-title">External sensors</h3>
-              <span class="section-hint">Metering socket, on/off switch and last resort</span>
+              <span class="section-hint">A metering socket that measures this device</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content device-setup-form" data-setup-host></div>
