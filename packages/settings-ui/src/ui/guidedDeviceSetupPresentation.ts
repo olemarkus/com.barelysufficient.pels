@@ -31,9 +31,12 @@ function describeGuidedSetup(entry: DevicePowerSetupEntry, draft: SetupDraft): s
     const watts = Number(draft.maximum).toLocaleString();
     return [`Last-resort control at up to ${watts} W.`, control].filter(Boolean).join(' ');
   }
+  if (draft.source && !socket) return 'The selected metering socket is unavailable.';
   const measurement = socket ? `PELS measures power using ${formatDisplayDeviceName(socket.name)}.`
     : 'PELS uses the device’s own power reading.';
-  return [measurement, control].filter(Boolean).join(' ');
+  const watts = socket ? socket.measuredPowerW : entry.ownPowerW;
+  const reading = watts === undefined ? 'No power reading yet.' : `Latest reading: ${watts.toLocaleString()} W.`;
+  return [measurement, reading, control].filter(Boolean).join(' ');
 }
 
 export function describeSetupReadbackError(submitted: SetupDraft, accepted?: SetupDraft): string {
