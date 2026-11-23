@@ -49,8 +49,13 @@ const applyTarget = async (
   transport: ActuatorTransport,
   command: Extract<DeviceCommand, { kind: 'target' }>,
 ): Promise<ActuatorOutcome> => {
-  const requestedTargetValue = await transport.requestTemperatureTarget(command.deviceId, command.value);
-  return { requested: true, kind: 'target', requestedTargetValue };
+  const { deviceId, value, temperatureBindingGeneration } = command;
+  const requestedTargetValue = await (temperatureBindingGeneration === undefined
+    ? transport.requestTemperatureTarget(deviceId, value)
+    : transport.requestTemperatureTarget(deviceId, value, temperatureBindingGeneration));
+  return requestedTargetValue === false
+    ? { requested: false }
+    : { requested: true, kind: 'target', requestedTargetValue };
 };
 
 const applyStep = async (

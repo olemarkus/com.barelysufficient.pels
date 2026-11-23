@@ -6,6 +6,10 @@ import type { EvChargingCurrentLimitPolicy } from '../evChargingCurrentLimitPoli
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { OwnCapabilityWrite } from './ownCapabilityWrites';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
+
+/** Temperature dispatch was refused, or the binding changed before the write answered. */
+export const TEMPERATURE_WRITE_NOT_APPLIED = Symbol('temperature_write_not_applied');
 
 export function normalizeCapabilityValue(
   snapshot: TransportDeviceSnapshot | undefined, id: string, value: unknown,
@@ -52,4 +56,53 @@ export function resolveSdkWrite(
   }
   const write = raw ? getDeviceAdapter(raw).capabilityWrite(raw, requested) : requested;
   return { kind: 'write', write, readBackAsWritten: true };
+}
+
+type CapabilityWriteRoute = {
+  homeyDeviceId: string;
+  raw: HomeyDeviceLike | undefined;
+  temperatureAuthority?: OwnCapabilityWrite['temperatureAuthority'];
+  targetStillCurrent: () => boolean;
+};
+
+/** Resolve the logical device's command to the physical device owning that capability. */
+export function resolveCapabilityWriteRoute(
+  store: TransportSnapshotStore,
+  deviceId: string,
+  capabilityId: string,
+  snapshot: TransportDeviceSnapshot | undefined,
+  generation: number | undefined,
+): CapabilityWriteRoute | undefined {
+  const thermostats = store.externalThermostats;
+  if (capabilityId === 'target_temperature' && hasExternalTarget(store, deviceId, snapshot, generation)) {
+    if (generation === undefined || snapshot?.temperature?.target.temperatureBindingGeneration !== generation) {
+      return undefined;
+    }
+    const donorId = thermostats?.resolveWrite(deviceId, generation);
+    if (donorId === undefined) return undefined;
+    return {
+      homeyDeviceId: donorId,
+      raw: store.getLastAcceptedRawDevice(donorId),
+      temperatureAuthority: { deviceId, generation },
+      targetStillCurrent: () => thermostats?.resolveWrite(deviceId, generation) === donorId,
+    };
+  }
+  const targetStillCurrent = () => capabilityId !== 'target_temperature'
+    || thermostats?.allowsNativeTemperatureWrite(deviceId) !== false;
+  if (!targetStillCurrent()) return undefined;
+  return {
+    homeyDeviceId: store.sourceDeviceId(deviceId),
+    raw: store.getTrackedRawDevice(deviceId),
+    targetStillCurrent,
+  };
+}
+
+function hasExternalTarget(
+  store: TransportSnapshotStore,
+  deviceId: string,
+  snapshot: TransportDeviceSnapshot | undefined,
+  generation: number | undefined,
+): boolean {
+  return generation !== undefined || store.externalThermostats?.donorFor(deviceId) !== undefined
+    || snapshot?.externalThermostatDonorId !== undefined;
 }

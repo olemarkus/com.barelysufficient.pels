@@ -125,6 +125,9 @@ export function mergeTemperatureRejectionsIntoDeviceUpdate(
     snapshot: TransportDeviceSnapshot,
     sourceDevice: HomeyDeviceLike,
 ): DeviceUpdateTemperatureMerge {
+    if (snapshot.externalThermostatDonorId !== undefined) {
+        return { admitted: true, sourceDatedCapabilityIds: TEMPERATURE_PAIR_CAPABILITY_IDS };
+    }
     const hadTemperature = snapshot.temperature !== undefined;
     const retiredRejection = mergeTemperatureRejectionObservations(state, snapshot, sourceDevice, 'device_update');
     if (lostOnlyControlFacet(hadTemperature, snapshot)) return { admitted: false };
@@ -149,6 +152,7 @@ function mergeTemperatureRejectionObservations(
     sourceDevice: HomeyDeviceLike,
     readPath: MergedReadPath,
 ): boolean {
+    if (snapshot.externalThermostatDonorId !== undefined) return false;
     let retired = false;
     for (const capabilityId of ['target_temperature', 'measure_temperature'] as const) {
         const observationKey = buildCapabilityObservationKey(snapshot.id, capabilityId);
@@ -206,7 +210,14 @@ function mergeSnapshotObservationsForDevice(
     sourceDevice: HomeyDeviceLike,
     readPath: MergedReadPath = 'snapshot_refresh',
 ): void {
+    if (previous.externalThermostatDonorId !== snapshot.externalThermostatDonorId) {
+        for (const id of TEMPERATURE_PAIR_CAPABILITY_IDS) {
+            state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, id));
+        }
+    }
     const mergeReading = (capabilityId: string): void => {
+        if (snapshot.externalThermostatDonorId !== undefined
+            && (capabilityId === 'measure_temperature' || capabilityId === 'target_temperature')) return;
         const observation = state.capabilityObservations.get(buildCapabilityObservationKey(snapshot.id, capabilityId));
         // Device updates retire temperature rejections in the dedicated merge
         // below, which retains the admitted pair at its source dates. Retiring

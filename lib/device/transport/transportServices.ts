@@ -1,3 +1,6 @@
+import { isThermostatTemperatureCapability } from './externalThermostats';
+import { resolveControlReport } from './controlReport';
+import { THERMOSTAT_MODE_CAPABILITY_ID } from './thermostatModeRealtime';
 import { isIgnoredOwnStepEcho } from './nativeSteppedRealtime';
 import { withAcceptedCapabilityReport } from './deviceReadContract';
 import type { OwnCapabilityWrite } from './ownCapabilityWrites';
@@ -54,7 +57,13 @@ export class RealtimeIngestService {
     if (this.reader.snapshotStore.binarySwitches.selection(device)) {
       this.reader.snapshotStore.noteRealtimeSwitchRead(device.id, Date.now());
     }
-    handleRealtimeDeviceUpdateEvent(this, device);
+    const thermostat = this.reader.externalThermostats;
+    handleRealtimeDeviceUpdateEvent(this, thermostat?.mergeRefreshRead(device, Date.now()) ?? device);
+    const thermostatLoad = thermostat?.loadFor(device.id);
+    if (thermostatLoad) {
+      thermostat?.noteDeviceUpdate(device.id, Date.now());
+      this.rebuildFromAcceptedRead(thermostatLoad);
+    }
     const target = this.reader.externalPower?.targetForSocket(device.id);
     if (target) {
       this.reader.externalPower?.noteRealtimeSocketUpdate(device.id, Date.now());
@@ -63,9 +72,9 @@ export class RealtimeIngestService {
   }
 
   /** Re-admit a device's facets from its accepted read, as a whole-device update would. */
-  rebuildFromAcceptedRead(deviceId: string): void {
+  rebuildFromAcceptedRead(deviceId: string, temperatureEcho = false): void {
     const accepted = this.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
-    if (accepted) handleRealtimeViewUpdate(this, accepted);
+    if (accepted) handleRealtimeViewUpdate(this, accepted, temperatureEcho);
   }
 
   /** Only a complete, accepted device read may update integration session evidence. */
@@ -177,13 +186,54 @@ export class RealtimeIngestService {
     return target !== undefined || (capabilityId === 'measure_power' && power.sourceForDevice(deviceId) !== undefined);
   }
 
+  private handleThermostatReport(
+    sourceId: string, capabilityId: string, value: unknown, echo: OwnCapabilityWrite | undefined,
+  ): boolean {
+    const isTemperature = isThermostatTemperatureCapability(capabilityId);
+    if (!isTemperature && capabilityId !== THERMOSTAT_MODE_CAPABILITY_ID) return false;
+    const thermostat = this.reader.externalThermostats;
+    const loadId = thermostat?.loadFor(sourceId);
+    if (!thermostat || !loadId) return thermostat?.donorFor(sourceId) !== undefined;
+    const source = this.reader.snapshotStore.getLastAcceptedRawDevice(sourceId);
+    if (!source) return true;
+    const atMs = Date.now();
+    if (isTemperature) thermostat.noteReport(sourceId, capabilityId, value, atMs);
+    else thermostat.noteDeviceUpdate(sourceId, atMs);
+    this.reader.snapshotStore.updateAcceptedRawDevice(withAcceptedCapabilityReport(source, capabilityId, value, atMs));
+    if (echo) this.observationProducers.temperature.observeTimedOutEcho(loadId, echo.transactionId, atMs);
+    this.rebuildFromAcceptedRead(loadId, echo !== undefined);
+    if (!echo) this.publishExternalThermostatReport(loadId, capabilityId, value, atMs);
+    return true;
+  }
+
+  private publishExternalThermostatReport(deviceId: string, capabilityId: string, value: unknown, atMs: number): void {
+    const snapshot = this.reader.snapshotStore.getSnapshotByDeviceId(deviceId);
+    if (snapshot?.temperature?.target.temperatureBindingGeneration === undefined) return;
+    const report = resolveControlReport(snapshot, capabilityId, value, atMs);
+    if (report) this.observationBridge.dispatchControlReported(report);
+  }
+
+  private takeCurrentCapabilityEcho(
+    sourceId: string, capabilityId: string, transactionId: string | undefined,
+  ): OwnCapabilityWrite | undefined {
+    const echo = this.observationBridge.state.ownWrites.takeEcho(sourceId, capabilityId, transactionId);
+    if (!echo || capabilityId !== 'target_temperature') return echo;
+    const thermostat = this.reader.externalThermostats;
+    const loadId = thermostat?.loadFor(sourceId);
+    const authority = echo.temperatureAuthority;
+    if (authority === undefined) return loadId === undefined ? echo : undefined;
+    return authority.deviceId === loadId
+      && thermostat?.resolveWrite(authority.deviceId, authority.generation) === sourceId ? echo : undefined;
+  }
+
   handleCapabilityUpdate(
     homeyDeviceId: string, reportedCapabilityId: string, value: unknown, transactionId: string | undefined,
   ): void {
     // Classified once per Homey event, under the Homey device and capability PELS
     // wrote: whatever the adapter derives from PELS's echo is PELS's echo too.
-    const echoed = this.observationBridge.state.ownWrites.takeEcho(homeyDeviceId, reportedCapabilityId, transactionId);
+    const echoed = this.takeCurrentCapabilityEcho(homeyDeviceId, reportedCapabilityId, transactionId);
     const pelsEcho = echoed !== undefined;
+    if (this.handleThermostatReport(homeyDeviceId, reportedCapabilityId, value, echoed)) return;
     // The view the report belongs to, and the capability as it reads it (`projectRead`).
     const source = this.reader.snapshotStore.getLastAcceptedRawDevice(homeyDeviceId);
     const { deviceId, capabilityId } = source
@@ -210,6 +260,9 @@ export class RealtimeIngestService {
       }
     } else {
       handleRealtimeCapabilityUpdateWithProbe(this, deviceId, capabilityId, value, pelsEcho);
+    }
+    if (capabilityId === 'onoff' || capabilityId.startsWith('onoff.')) {
+      this.reader.externalThermostats?.confirmManualStart(deviceId);
     }
     if (!this.reader.snapshotStore.getSnapshotByDeviceId(deviceId)) this.deviceConfiguration.remove(deviceId);
   }

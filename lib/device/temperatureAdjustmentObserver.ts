@@ -35,6 +35,17 @@ export class TemperatureAdjustmentObserver {
   private readonly awaitingAnswer = new Map<string, TemperatureCommand>();
   private readonly timedOutCommands = new Map<string, TimedOutCommand[]>();
 
+  private readonly bindingGenerations = new Map<string, number>();
+
+  updateBinding(deviceId: string, generation: number | undefined): void {
+    if (this.bindingGenerations.get(deviceId) === generation) return;
+    if (generation === undefined) this.bindingGenerations.delete(deviceId);
+    else this.bindingGenerations.set(deviceId, generation);
+    this.commands.delete(deviceId);
+    this.awaitingAnswer.delete(deviceId);
+    this.forgetTimedOutCommand(deviceId);
+  }
+
   recordCommand(deviceId: string, value: number, atMs: number): TemperatureCommand {
     const commands = this.commands.get(deviceId) ?? [];
     const recent = commands
@@ -133,10 +144,14 @@ export class TemperatureAdjustmentObserver {
       && change.previousValue !== 'unknown' && change.previousValue !== 'absent'
       && change.previousValue !== change.nextValue);
     if (!snapshot?.temperature || !changed) return undefined;
+    if (event.pelsEcho && snapshot.temperature.target.temperatureBindingGeneration !== undefined) return undefined;
     return this.observe(event.deviceId, snapshot.temperature.target.value, event.observedAtMs ?? Date.now());
   }
 
   retainDevices(deviceIds: ReadonlySet<string>): void {
+    for (const id of this.bindingGenerations.keys()) {
+      if (!deviceIds.has(id)) this.bindingGenerations.delete(id);
+    }
     for (const id of this.commands.keys()) {
       if (!deviceIds.has(id)) this.commands.delete(id);
     }

@@ -77,7 +77,8 @@ import {
 import type { NativeRelayBinding, NativeRelayOffResult } from '../ports/nativeRelay';
 import { BinarySettleEvidenceService } from './transport/binarySettleEvidence';
 import {
-    buildBinaryCommandConfirmationSnapshot, readNativeRelayBinding, requestBinaryControl, resolveTemperatureTarget,
+    buildBinaryCommandConfirmationSnapshot, readNativeRelayBinding, requestBinaryControl,
+    requestTemperatureTarget, resolveTemperatureTarget,
 } from './transport/semanticControlResolution';
 import { DeviceWriteService } from './transport/deviceWrites';
 import type { ZoneTree } from './transport/managerZones';
@@ -654,14 +655,8 @@ export class DeviceTransport {
         return resolveTemperatureTarget(this.snapshotStore.getSnapshot(), deviceId, desired);
     }
 
-    /** Semantic primary-temperature write; transport resolves the SDK target. */
-    async requestTemperatureTarget(deviceId: string, desired: number): Promise<number> {
-        const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-        const target = snapshot?.targets.find((entry) => entry.id.startsWith('target_temperature'));
-        if (!target) throw new Error(`No temperature target binding for device ${deviceId}`);
-        const requested = await this.writeService.setCapability(deviceId, target.id, desired);
-        if (typeof requested !== 'number') throw new Error(`Invalid temperature request for device ${deviceId}`);
-        return requested;
+    requestTemperatureTarget(deviceId: string, desired: number, generation?: number): Promise<number | false> {
+        return requestTemperatureTarget(this.snapshotStore, this.writeService, deviceId, desired, generation);
     }
 
     isFlowBackedCapability(deviceId: string, capabilityId: string): boolean {

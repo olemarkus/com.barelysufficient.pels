@@ -599,7 +599,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             // PELS sheds the device. The transport keeps the turn-off optimistic
             // (mutates binaryControl in place without a realtime event), so the
             // projection must receive the dispatched delta to stay faithful.
-            await h.transport.setCapability('dev1', 'onoff', false);
+            await expect(h.transport.setCapability('dev1', 'onoff', false)).resolves.toBe(false);
 
             expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(true);
             expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);

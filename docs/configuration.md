@@ -410,6 +410,14 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 
 Follow [Getting Started](/getting-started) to confirm your meter, choose one device, review the settings for your home, then preview and start managing. Setup offers the controls your device supports. You can add more devices, change priorities or enable a [daily budget](/daily-budget) later.
 
+### Use an external thermostat
+
+Open **Devices → Device setup**, choose the load, and select an **External thermostat** in the same home. The picker shows its current temperature and target. The thermostat must already control the load, either through its own wiring or through Homey Flows. Before enabling **Power-limit control**, change the target from the thermostat's Homey tile and check that the load responds.
+
+PELS changes the thermostat's target and reads the load's power from the device or its assigned metering socket. Leave the thermostat itself unmanaged in PELS. Each thermostat can serve one load.
+
+If PELS cannot use the thermostat, the selection remains saved and temperature control pauses. When converting a last-resort relay, switch the load on yourself to finish setup. PELS waits for that ON observation before adjusting the target, and the hold remains if you unlink before finishing setup.
+
 ### Last-resort control for an unmetered relay
 
 If a relay has no device power reading, open **Devices** and find it under **Device setup**. Enable **Turn off as a last resort** and enter the maximum watts the connected load can draw. Save the setup and enable **Managed by PELS**.

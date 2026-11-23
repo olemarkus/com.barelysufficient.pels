@@ -288,6 +288,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     controlAdapter: dev.controlAdapter,
     ...(dev.binarySwitchGeneration !== undefined ? { binarySwitchGeneration: dev.binarySwitchGeneration } : {}),
     ...buildLastResortFields(inputs),
+    externalThermostatRole: dev.externalThermostatRole,
+    temperatureBindingGeneration: dev.temperatureBindingGeneration,
     // `commandableNow` MUST be carried. Dropping it is what forced consumers
     // back onto raw-field re-derivation against fields the plan device does not
     // have, so every plan-device `isCommandableNow` answered from absence and

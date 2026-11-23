@@ -258,11 +258,11 @@ type SetpointShedPostureDevice = ControlPostureDevice
  * A temperature device the setpoint is the only way to limit: a temperature
  * target model (never a step ladder), no on/off this read, a target to write.
  */
-const isSetpointOnlyShedDevice = (device: SetpointShedPostureDevice): boolean => (
-  device.controlModel === 'temperature_target'
-  && device.binaryControl === undefined
-  && getPrimaryTargetCapability(device.targets) !== null
-);
+function isSetpointOnlyShedDevice(device: SetpointShedPostureDevice): boolean {
+  const target = getPrimaryTargetCapability(device.targets);
+  return device.controlModel === 'temperature_target' && target !== null
+    && (device.binaryControl === undefined || target.temperatureBindingGeneration !== undefined);
+}
 
 function resolveSetpointOnlyShed(
   configured: ConfiguredShedBehavior,

@@ -29,9 +29,11 @@ export function getPendingTargetCommandDecision(
   deviceId: string,
   desired: number,
   nowMs: number,
+  temperatureBindingGeneration?: number,
 ): PendingTargetDecision {
   const pending = state.pendingTargetCommands[deviceId];
-  if (!pending || pending.desired !== desired) {
+  if (!pending || pending.desired !== desired
+    || pending.temperatureBindingGeneration !== temperatureBindingGeneration) {
     return { type: 'send' };
   }
   if (nowMs >= pending.nextRetryAtMs) {
@@ -52,15 +54,18 @@ export function recordTargetCommandAttempt(
   nowMs: number,
   status: PendingTargetCommandState['status'],
   observedValue: unknown,
+  temperatureBindingGeneration?: number,
 ): PendingTargetCommandState {
   const { pendingTargetCommands } = state;
   const previous = pendingTargetCommands[deviceId];
-  const isRetry = previous !== undefined && previous.desired === desired;
+  const isRetry = previous !== undefined && previous.desired === desired
+    && previous.temperatureBindingGeneration === temperatureBindingGeneration;
   const retryCount = isRetry ? previous.retryCount + 1 : 0;
   const waitingConfirmation = status === 'waiting_confirmation';
   const retainedObservedValue = isRetry ? previous.lastObservedValue : undefined;
   const entry: PendingTargetCommandState = {
     desired,
+    ...(temperatureBindingGeneration === undefined ? {} : { temperatureBindingGeneration }),
     startedMs: isRetry ? previous.startedMs : nowMs,
     lastAttemptMs: nowMs,
     retryCount,

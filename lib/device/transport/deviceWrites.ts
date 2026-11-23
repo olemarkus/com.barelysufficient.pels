@@ -1,5 +1,6 @@
 import {
-  captureBinaryWriteAuthority, normalizeCapabilityValue, readBackFromSnapshot, resolveSdkWrite, targetsBinarySwitch,
+  captureBinaryWriteAuthority, normalizeCapabilityValue, readBackFromSnapshot, resolveCapabilityWriteRoute,
+  resolveSdkWrite, targetsBinarySwitch, TEMPERATURE_WRITE_NOT_APPLIED,
 } from './capabilityWriteResolution';
 import { resolveCommandableNow } from '../../../packages/shared-domain/src/commandableNow';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
@@ -61,6 +62,10 @@ function emitCapabilityWriteDebug(
     value: unknown,
     write: CapabilityWrite,
 ): void {
+    if (event === 'device_capability_write_requested') {
+        incPerfCounter('device_action_total');
+        incPerfCounter(`device_action.capability.${capabilityId}`);
+    }
     emitTransportDebug({
         event,
         deviceId,
@@ -143,6 +148,7 @@ export class DeviceWriteService {
   canTurnOnDevice(deviceId: string): boolean {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     return snapshot !== undefined
+      && this.snapshotStore.externalThermostats?.allowsBinaryWrite(deviceId, true) !== false
       && this.snapshotStore.externalPower?.allowsWrite(deviceId) !== false
       && snapshot.available !== false
       && isCanSetControl(snapshot)
@@ -184,6 +190,7 @@ export class DeviceWriteService {
   private assertBinaryWriteAllowed(snapshot: TransportDeviceSnapshot | undefined, requested: CapabilityWrite): void {
     if (!targetsBinarySwitch(snapshot, requested.capabilityId)) return;
     if (!snapshot || snapshot.binaryCapabilityId !== requested.capabilityId
+        || this.snapshotStore.externalThermostats?.allowsBinaryWrite(snapshot.id, requested.value === true) === false
         || !this.snapshotStore.binarySwitches.allows(snapshot.id, snapshot.binarySwitchGeneration)) {
       throw new Error('Binary control is unavailable for this device.');
     }
@@ -197,16 +204,22 @@ export class DeviceWriteService {
     this.currentLimitPolicy.assertStartAllowed(snapshot);
   }
 
-  async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
+  async setCapability(
+    deviceId: string, capabilityId: string, value: unknown, temperatureBindingGeneration?: number,
+  ): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const binaryAuthority = captureBinaryWriteAuthority(snapshotBefore, capabilityId);
+    const route = resolveCapabilityWriteRoute(
+      this.snapshotStore, deviceId, capabilityId, snapshotBefore, temperatureBindingGeneration,
+    );
+    if (route === undefined) return TEMPERATURE_WRITE_NOT_APPLIED;
     this.assertControlAllowed(deviceId);
     const normalizedValue = normalizeCapabilityValue(snapshotBefore, capabilityId, value);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);
     const sdkWrite = resolveSdkWrite(
-      snapshotBefore, this.snapshotStore.getTrackedRawDevice(deviceId), requested, this.currentLimitPolicy,
+      snapshotBefore, route.raw, requested, this.currentLimitPolicy,
     );
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
     if (sdkWrite.kind === 'none') {
@@ -216,12 +229,11 @@ export class DeviceWriteService {
     }
     const { write, readBackAsWritten } = sdkWrite;
 
-    incPerfCounter('device_action_total');
-    incPerfCounter(`device_action.capability.${capabilityId}`);
     // The Homey device behind the view: the write and its echo are the Homey device's.
-    const homeyDeviceId = this.snapshotStore.sourceDeviceId(deviceId);
+    const { homeyDeviceId, targetStillCurrent, temperatureAuthority } = route;
     const ownWrite = this.observationState.ownWrites.begin(
       homeyDeviceId, write.capabilityId, Date.now(), binaryAuthority,
+      temperatureAuthority,
     );
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
@@ -232,11 +244,17 @@ export class DeviceWriteService {
     );
     // Recorded once Homey answered (a failure too: it may have landed), so a
     // read started while the write was on its way does not take it.
-    await sendWithTemperatureWriteEvidence(
+    const sent = await sendWithTemperatureWriteEvidence(
       this.observationProducers.temperature, this.snapshotStore, deviceId, requested, ownWrite,
       () => this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId,
-        this.answerTimes.kindOf(snapshotBefore, requested, write, readBackAsWritten)),
-    ).finally(() => this.observationState.noteWriteAnswered(deviceId, ownWrite, snapshotBefore, capabilityId));
+        this.answerTimes.kindOf(snapshotBefore, requested, write, readBackAsWritten), targetStillCurrent),
+      targetStillCurrent,
+    ).finally(() => {
+      if (targetStillCurrent()) {
+        this.observationState.noteWriteAnswered(deviceId, ownWrite, snapshotBefore, capabilityId);
+      }
+    });
+    if (!sent || !targetStillCurrent()) return TEMPERATURE_WRITE_NOT_APPLIED;
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,
@@ -248,7 +266,7 @@ export class DeviceWriteService {
     if (binaryAuthority && !this.snapshotStore.binarySwitches.allows(deviceId, binaryAuthority.generation)) {
       return normalizedValue;
     }
-    if (readBackAsWritten && readBackFromSnapshot(snapshotBefore)) {
+    if (!temperatureAuthority && readBackAsWritten && readBackFromSnapshot(snapshotBefore)) {
         recordLocalWriteObservation({
             state: this.observationState.getObservationState(),
             latestSnapshot: this.snapshotStore.getSnapshot(),
@@ -544,10 +562,13 @@ export class DeviceWriteService {
   /** Send `write`; a session that reads the device differently after the answer has it published again. */
   private async sendCapabilityWrite(
     deviceId: string, homeyDeviceId: string, write: CapabilityWrite, transactionId: string, kind: WriteAnswerKind,
-  ): Promise<void> {
+    stillCurrent: () => boolean,
+  ): Promise<boolean> {
+    if (!stillCurrent()) return false;
     const failure = await this.answerTimes.timeWrite(deviceId, kind, () => setRawCapabilityValue(
       homeyDeviceId, write.capabilityId, write.value, transactionId,
     )).then(() => null, (error: unknown) => ({ error }));
+    if (!stillCurrent()) return false;
     try {
       const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
       if (this.chargingCurrentControl.observeWriteOutcome(deviceId, write, failure) && snapshot) {
@@ -561,6 +582,7 @@ export class DeviceWriteService {
       });
     }
     if (failure) throw failure.error;
+    return true;
   }
 
   private async triggerSteppedFlow(

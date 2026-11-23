@@ -5,7 +5,9 @@ import type { resolveDeviceDetailControlState } from './controlState.ts';
 import {
   HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT, needsHomeyEnergySetup,
 } from '../../../../shared-domain/src/homeyEnergySetup.ts';
-import { devicePowerSetupHint, isSocketReservedForPower, readDevicePowerSetupDetail } from '../devicePowerSetup.ts';
+import {
+  devicePowerSetupHint, isDeviceReservedBySetup, readDevicePowerSetupDetail, THERMOSTAT_MANUAL_RESTART_HINT,
+} from '../devicePowerSetup.ts';
 import {
   deviceDetailControllable,
   deviceDetailManaged,
@@ -37,10 +39,10 @@ export const renderManagedControl = (
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): void => {
   const setupHint = device ? devicePowerSetupHint(device.id) : null;
-  const reservedSocket = device ? isSocketReservedForPower(device.id) : false;
+  const reservedCompanion = device ? isDeviceReservedBySetup(device.id) : false;
   if (deviceDetailManaged) {
-    deviceDetailManaged.selected = controlState.isManaged && !reservedSocket;
-    deviceDetailManaged.disabled = !controlState.canManageDevice || reservedSocket
+    deviceDetailManaged.selected = controlState.isManaged && !reservedCompanion;
+    deviceDetailManaged.disabled = !controlState.canManageDevice || reservedCompanion
       || (!controlState.isManaged && setupHint !== null);
   }
   renderManagedPowerSetup(device, resolveManagedHint(device, controlState), setupHint);
@@ -76,20 +78,30 @@ function renderHomeyEnergySetupLink(visible: boolean): void {
 function renderPowerSetupDetail(setup: ReturnType<typeof readDevicePowerSetupDetail>): void {
   const summary = document.getElementById('device-detail-power-setup-summary');
   const edit = document.getElementById('device-detail-open-power-setup');
-  const socketFallback = setup?.socketMissing ? 'Metering socket unavailable' : '';
   const switchFallback = setup?.switchMissing ? 'Selected on/off control unavailable' : '';
-  const socketText = setup?.socket ? `Metering socket is ${setup.socket}` : socketFallback;
   const switchText = setup?.switchName ? `On/off control uses ${setup.switchName}` : switchFallback;
   const maximum = setup?.lastResort?.maximumW;
   const lastResortText = maximum === undefined ? '' : `Maximum power ${maximum.toLocaleString()} W`;
   const rows = [
     ['device-detail-last-resort-maximum', lastResortText],
-    ['device-detail-metering-socket', socketText],
+    ['device-detail-metering-socket', meteringSocketText(setup)],
     ['device-detail-on-off-control', switchText],
+    ['device-detail-external-thermostat', setup?.thermostat ?? ''],
+    ['device-detail-thermostat-manual-restart', thermostatRestartText(setup)],
+
   ] as const;
   rows.forEach(([id, text]) => setPowerSetupSummary(id, text));
   if (summary) summary.hidden = !rows.some(([, text]) => text);
   if (edit) edit.hidden = !setup?.editable;
+}
+
+function meteringSocketText(setup: ReturnType<typeof readDevicePowerSetupDetail>): string {
+  if (setup?.socket) return `Metering socket is ${setup.socket}`;
+  return setup?.socketMissing ? 'Metering socket unavailable' : '';
+}
+
+function thermostatRestartText(setup: ReturnType<typeof readDevicePowerSetupDetail>): string {
+  return setup?.thermostatWaitingForManualOn ? THERMOSTAT_MANUAL_RESTART_HINT : '';
 }
 
 function setPowerSetupSummary(id: string, text: string): void {

@@ -9,7 +9,9 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 
 /** The setpoint the plan moves a temperature device to; `undefined` when it moves none. */
 function resolvePlanWantedTarget(device: DevicePlanDevice): number | undefined {
-  return isTemperaturePlanDevice(device) && device.plannedTarget !== device.currentTarget
+  return isTemperaturePlanDevice(device)
+    && (!device.externalThermostatRole || device.temperatureBindingGeneration !== undefined)
+    && device.plannedTarget !== device.currentTarget
     && typeof device.plannedTarget === 'number'
     ? device.plannedTarget
     : undefined;
@@ -25,7 +27,8 @@ export function planStillWantsPendingTarget(
   device: DevicePlanDevice,
   pending: PendingTargetCommandRead,
 ): boolean {
-  return resolvePlanWantedTarget(device) === pending.desired;
+  return resolvePlanWantedTarget(device) === pending.desired
+    && device.temperatureBindingGeneration === pending.temperatureBindingGeneration;
 }
 
 /**
@@ -38,7 +41,12 @@ export function resolveWantedPendingTargetCommands(plan: DevicePlan): ReadonlyMa
     const desired = resolvePlanWantedTarget(device);
     return [device.id, desired === undefined
       ? { kind: 'none', name: device.name }
-      : { kind: 'target', desired, name: device.name }];
+      : {
+        kind: 'target', desired, name: device.name,
+        ...(device.temperatureBindingGeneration === undefined ? {} : {
+          temperatureBindingGeneration: device.temperatureBindingGeneration,
+        }),
+      }];
   }));
 }
 

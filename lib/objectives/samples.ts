@@ -66,6 +66,7 @@ export const resolveObjectiveSampleDevices = (
   devices: readonly ObjectiveSampleSourceDevice[],
   getThermalDirection: (deviceId: string) => ThermalDirection,
 ): ObjectiveSampleDevice[] => devices.flatMap((device) => {
+  if (device.temperature?.target.temperatureBindingGeneration !== undefined) return [];
   const observedQuantity = resolveObjectiveObservedQuantity(device);
   return observedQuantity === null
     ? []

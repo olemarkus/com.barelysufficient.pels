@@ -28,6 +28,7 @@ export type OwnCapabilityWrite = {
   writtenCapabilityId: string;
   sentAtMs: number;
   binaryAuthority?: { generation: number | undefined };
+  temperatureAuthority?: { deviceId: string; generation: number };
 };
 
 /**
@@ -45,6 +46,7 @@ export class OwnCapabilityWrites {
     writtenCapabilityId: string,
     nowMs: number,
     binaryAuthority?: OwnCapabilityWrite['binaryAuthority'],
+    temperatureAuthority?: OwnCapabilityWrite['temperatureAuthority'],
   ): OwnCapabilityWrite {
     this.pruneUnanswered(nowMs);
     const write: OwnCapabilityWrite = {
@@ -53,6 +55,7 @@ export class OwnCapabilityWrites {
       writtenCapabilityId,
       sentAtMs: nowMs,
       ...(binaryAuthority ? { binaryAuthority } : {}),
+      ...(temperatureAuthority ? { temperatureAuthority } : {}),
     };
     this.byTransactionId.set(write.transactionId, write);
     return write;
@@ -77,7 +80,11 @@ export class OwnCapabilityWrites {
    * never by its echo.
    */
   settledByEcho(write: OwnCapabilityWrite, snapshot: TransportDeviceSnapshot, capabilityId: string): boolean {
-    return write.deviceId === snapshot.id && write.writtenCapabilityId === capabilityId
+    const authority = write.temperatureAuthority;
+    const matches = authority === undefined ? write.deviceId === snapshot.id
+      : authority.deviceId === snapshot.id
+          && authority.generation === snapshot.temperature?.target.temperatureBindingGeneration;
+    return matches && write.writtenCapabilityId === capabilityId
       && echoSettlesWrite(snapshot, capabilityId) && !this.byTransactionId.has(write.transactionId);
   }
 
