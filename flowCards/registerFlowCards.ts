@@ -193,8 +193,8 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     // takes out every card after it. The newest one goes at the end.
     registerCapacityShortfallSustainedTrigger(deps);
     registerEvCarAssociationCards(deps);
-    registerDeviceLimitCards(deps);
   } finally {
     stopSpan();
   }
+  registerDeviceLimitCards(deps);
 }
