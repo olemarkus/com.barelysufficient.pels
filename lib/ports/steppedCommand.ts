@@ -1,9 +1,12 @@
+import type { SteppedDeviceLimitChange } from './deviceLimitEvents';
+
 /** A stepped command issued through the actuator, including its acknowledgement policy. */
 export type MarkSteppedLoadDesiredStepIssuedParams = {
   deviceId: string;
   desiredStepId: string;
   previousStepId?: string;
   issuedAtMs?: number;
+  deviceLimitChange?: SteppedDeviceLimitChange;
   confirmationPolicy?: 'required' | 'assume_applied';
   planningPowerW?: number;
   previousPlanningPowerW?: number;

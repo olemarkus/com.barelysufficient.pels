@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { DeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
@@ -237,6 +238,19 @@ const handleTargetCommandPreflight = (
   return { type: 'skip', result: { applied: false, reason: 'skipped' } };
 };
 
+const resolveTargetDeviceLimitChange = (
+  ctx: ExecutorCommandContext,
+  command: ExecutableTargetCommand,
+  skipContext: TargetSkipContext,
+): DeviceLimitChange | undefined => {
+  if (ctx.owner !== 'ordinary' || !ctx.recordDeviceLimitChange) return undefined;
+  if (skipContext === 'shedding' && ctx.deviceLimit) {
+    return { kind: 'limited', ...ctx.deviceLimit, action: 'temperature_setback' };
+  }
+  if (!ctx.deviceLimit && 'isRestoring' in command && command.isRestoring === true) return { kind: 'resumed' };
+  return undefined;
+};
+
 const executeTargetCommandDispatch = async (
   ctx: ExecutorCommandContext,
   command: ExecutableTargetCommand,
@@ -264,6 +278,7 @@ const executeTargetCommandDispatch = async (
     const requestedValue = outcome.requestedTargetValue;
     const pending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
+      resolveTargetDeviceLimitChange(ctx, command, skipContext),
     );
     ctx.execution.controlContests.commandSent({
       homeId: ctx.homeId,
@@ -295,6 +310,7 @@ const executeTargetCommandDispatch = async (
   } catch (error) {
     const failedPending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, desired, nowMs, 'temporary_unavailable', latestObservedValue ?? observedValue,
+      isHomeyRequestTimeout(error) ? resolveTargetDeviceLimitChange(ctx, command, skipContext) : undefined,
     );
     const details = {
       targetCommandId, deviceId, deviceName: name, target: 'temperature', desired, skipContext,

@@ -18,14 +18,19 @@
  * without selecting a profile or validating the report again.
  */
 import type { SteppedCommandStore } from './steppedCommandStore';
-import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
+import type { SteppedCommandConfirmation, SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 
+
+type OnReportedSteppedCommand = (
+  deviceId: string, report: Extract<SteppedCommandConfirmation, { state: 'observed' }>,
+) => void;
 
 export type SyncSteppedCommandsParams = {
   store: SteppedCommandStore;
   devices: readonly SteppedSettleDevice[];
   nowMs?: number;
+  onReportedStep?: OnReportedSteppedCommand;
 };
 
 /**
@@ -47,7 +52,7 @@ export type SyncSteppedCommandsParams = {
  */
 export const syncSteppedCommands = (params: SyncSteppedCommandsParams): boolean => {
   const {
-    store, devices, nowMs = Date.now(),
+    store, devices, nowMs = Date.now(), onReportedStep,
   } = params;
   let changed = store.pruneStale(nowMs);
 
@@ -65,6 +70,7 @@ export const syncSteppedCommands = (params: SyncSteppedCommandsParams): boolean 
     const confirmation = device.steppedCommandConfirmation;
     if (confirmation.state === 'observed') {
       store.noteReportedStep(device.id, confirmation.observedStepId, confirmation.observedAtMs);
+      onReportedStep?.(device.id, confirmation);
     }
 
     store.reconcileInitializationLatch(device.id, device.lowestActiveStepId);
@@ -84,7 +90,8 @@ export const syncTrackedSteppedCommands = (
   store: SteppedCommandStore,
   reported: SteppedReportedStepStore,
   getDevices: () => readonly SteppedSettleDevice[],
+  onReportedStep?: OnReportedSteppedCommand,
 ): boolean => {
   if (!store.hasTrackedState() && !reported.hasAny()) return false;
-  return syncSteppedCommands({ store, devices: getDevices() });
+  return syncSteppedCommands({ store, devices: getDevices(), onReportedStep });
 };

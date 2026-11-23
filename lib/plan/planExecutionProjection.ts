@@ -13,7 +13,7 @@ import { hasStorageDecision } from '../planContract/storageDecision';
 import { hasPlannedStep, type PlannedDeviceCommands, type PlannedBinaryCommand, type PlannedReleaseCommand,
   type StableExecutionOperation, type PlannedSteppedCommand, type ExecutionPlan,
   type PlannedBinaryDrive, type PlannedCommandAxes, type PlannedTargetPowerClaim } from '../planContract/executionPlan';
-import type { DroppedSteppedShedIntent } from '../planContract/executionPlan';
+import type { DeviceLimitReason, DroppedSteppedShedIntent } from '../planContract/executionPlan';
 type PlanDevice = DevicePlan['devices'][number];
 type PlanMeta = DevicePlan['meta'];
 type PlannedCommandPlan = { devices: PlannedDeviceCommands[] };
@@ -24,6 +24,8 @@ export function buildExecutablePlan(plan: DevicePlan): PlannedCommandPlan {
 }
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
+  const limitReason = resolveDeviceLimitReason(planDevice);
+  const availablePowerKw = planMeta?.powerIsMeasured ? planMeta.headroomKw : null;
   const target = planDevice.targetCommand;
   const installation = planDevice.controlAdapter?.chargingInstallation;
   const binary = installation ? planDevice.chargingInstallationSwitch : buildPlannedBinaryCommand(planDevice);
@@ -43,6 +45,12 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     name: planDevice.name,
     commandAuthority: planDevice.control.commandAuthority,
     projection: 'decided',
+    ...(limitReason ? {
+      deviceLimit: {
+        reason: limitReason,
+        ...(availablePowerKw !== null ? { availablePowerKw } : {}),
+      },
+    } : {}),
     ...(target ? { target } : {}),
     ...(binary ? { binary } : {}),
     ...(release ? { release } : {}),
@@ -63,6 +71,23 @@ function installationStepOnly(
       ? { ...desired, stepId: undefined } : desired,
     transition: transition && { ...transition, binaryTarget: null },
   };
+}
+
+function resolveDeviceLimitReason(device: PlanDevice): DeviceLimitReason | undefined {
+  if (device.plannedState !== 'shed' || device.deferredReleaseIntent?.kind === 'shed_release') return undefined;
+  switch (device.reason?.code) {
+    case PLAN_REASON_CODES.awaitingSolarSurplus: return 'solar_surplus';
+    case PLAN_REASON_CODES.dailyBudget: return 'daily_budget';
+    case PLAN_REASON_CODES.gridImport: return 'grid_import';
+    case PLAN_REASON_CODES.phaseLimit: return 'main_fuse';
+    case PLAN_REASON_CODES.meterSilent: return 'meter_unavailable';
+    case PLAN_REASON_CODES.capacity:
+    case PLAN_REASON_CODES.hourlyBudget:
+    case PLAN_REASON_CODES.endOfHourDrain:
+    case PLAN_REASON_CODES.swappedOut:
+    case PLAN_REASON_CODES.shortfall: return 'capacity';
+    default: return undefined;
+  }
 }
 
 function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {

@@ -17,8 +17,7 @@
  *
  * SDK-boundary e2e: the device's `device.update` arrives on the live feed's
  * socket (`test/helpers/liveFeedSocketHarness.ts`), the home total through the
- * real Homey API seam, and the only assertion is the capability command PELS
- * writes back.
+ * real Homey API seam, and the assertions read the capability commands and Flow trigger calls PELS sends.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -110,6 +109,9 @@ function configureCapacity(): void {
   mockHomeyInstance.settings.set('overshoot_behaviors', { [HEATER_ID]: { action: 'turn_off' } });
 }
 
+const limitTriggers = () => mockHomeyInstance.flow._triggerCardTriggers.pels_device_limited ?? [];
+const resumeTriggers = () => mockHomeyInstance.flow._triggerCardTriggers.pels_device_resumed ?? [];
+
 describe('a device that turns itself back on', () => {
   beforeEach(() => {
     // 'Date' and 'performance' MUST be faked: the plan-rebuild scheduler reads
@@ -148,6 +150,7 @@ describe('a device that turns itself back on', () => {
     ).length;
     await drainUntil(() => offWrites() >= 1);
     const offWritesAfterShed = offWrites();
+    await drainUntil(() => limitTriggers().length === 1);
 
     // The heater comes back on by itself, and the house is over the cap again.
     announceTurnedItselfOn(2000);
@@ -162,6 +165,7 @@ describe('a device that turns itself back on', () => {
     // wrong twice over — first by re-asserting the committed plan (inc_26449fb9),
     // then by re-planning against a reading taken before the change.
     expect(offWrites()).toBe(offWritesAfterShed);
+    expect(resumeTriggers()).toHaveLength(0);
 
     // The reading that sees it converges the device. This bound IS the safety
     // argument for removing the trigger: without it, nothing would.
@@ -171,5 +175,70 @@ describe('a device that turns itself back on', () => {
     // full-suite CPU load.
     await drainUntil(() => offWrites() > offWritesAfterShed);
     expect(offWrites()).toBeGreaterThan(offWritesAfterShed);
+    await drainUntil(() => limitTriggers().length === 2);
+    expect(resumeTriggers()).toHaveLength(0);
+  });
+
+  it('runs the limit and resume cards once with matching device and usage tags', async () => {
+    const heater = await buildHeater();
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    configureCapacity();
+    let totalW = 4000;
+    reportHomePower(() => totalW);
+
+    await createApp().onInit();
+    await vi.advanceTimersByTimeAsync(ONE_READING_MS);
+    await drainUntil(() => limitTriggers().length === 1);
+    expect(limitTriggers()[0]).toEqual({
+      state: { deviceId: HEATER_ID },
+      tokens: {
+        device_name: 'Heater',
+        hourly_usage_kwh: expect.any(Number),
+        available_power_known: true,
+        available_power_kw: expect.any(Number),
+        reason: 'capacity',
+        action: 'turned_off',
+      },
+    });
+
+    const flow = mockHomeyInstance.flow;
+    const choices = await flow._triggerCardAutocompleteListeners.pels_device_limited.device('');
+    expect(choices).toEqual([{ id: 'pels:any-device', name: 'Any device' }, { id: HEATER_ID, name: 'Heater' }]);
+    const matches = flow._triggerCardRunListeners.pels_device_limited;
+    const state = limitTriggers()[0]?.state;
+    expect(await matches({ device: { id: HEATER_ID } }, state)).toBe(true);
+    expect(await matches({ device: { id: 'pels:any-device' } }, state)).toBe(true);
+    expect(await matches({ device: { id: 'another-heater' } }, state)).toBe(false);
+    expect(await matches({}, state)).toBe(false);
+
+    await heater.setCapabilityValue('measure_power', 0);
+    totalW = 500;
+    await vi.advanceTimersByTimeAsync(360_000);
+    await drainUntil(() => resumeTriggers().length === 1);
+    expect(resumeTriggers()[0]).toEqual({
+      state: { deviceId: HEATER_ID },
+      tokens: {
+        device_name: 'Heater',
+        hourly_usage_kwh: expect.any(Number),
+        limited_minutes: expect.any(Number),
+      },
+    });
+    expect(resumeTriggers()[0]?.tokens.limited_minutes).toBeGreaterThan(0);
+    expect(limitTriggers()).toHaveLength(1);
+  });
+
+  it('keeps both cards quiet in Simulation mode', async () => {
+    setMockDrivers({ driverA: new MockDriver('driverA', [await buildHeater()]) });
+    configureCapacity();
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
+    let totalW = 4000;
+    reportHomePower(() => totalW);
+
+    await createApp().onInit();
+    await vi.advanceTimersByTimeAsync(ONE_READING_MS);
+    totalW = 500;
+    await vi.advanceTimersByTimeAsync(360_000);
+    expect(limitTriggers()).toHaveLength(0);
+    expect(resumeTriggers()).toHaveLength(0);
   });
 });

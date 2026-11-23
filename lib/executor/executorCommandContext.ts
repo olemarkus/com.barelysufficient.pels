@@ -8,6 +8,8 @@ import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCom
 import type { ExecutorDeviceRead, ObserverDeviceRead } from './executorDeviceRead';
 import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
 import type { CommandClaim, CommandClaimState, TargetCommandOwner } from './commandClaim';
+import type { DeviceLimitChange } from '../ports/deviceLimitEvents';
+import type { DeviceLimitDecision } from '../planContract/executionPlan';
 import type { HomeId } from '../utils/settingsKeys';
 
 /** Records one actuation against the executor's clocks and diagnostics. */
@@ -79,6 +81,9 @@ export type ExecutorCommandContext = {
   onBinaryCommandClaimReleased?: (released: CommandClaimState<boolean>) => void;
   onSteppedCommandClaimReleased?: (released: CommandClaimState<string>) => void;
   onTargetCommandClaimReleased?: (released: CommandClaimState<number>) => void;
+  /** Attribution for the ordinary lane's current device decision. */
+  deviceLimit?: DeviceLimitDecision;
+  recordDeviceLimitChange?: (deviceId: string, name: string, now: number, change: DeviceLimitChange) => void;
   recordShedActuation: ActuationRecorder;
   /**
    * Diagnostic-only recorder for the smart-task lifecycle-end disable path:

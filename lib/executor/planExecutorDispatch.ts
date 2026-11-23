@@ -381,7 +381,8 @@ export const dispatchPlanActions = async (
       const applied = await withChargingPhaseControl(chargingPhases, device.commands,
         observedMap.get(device.commands.id),
         phaseIntents.get(device.commands.id), () => applyDeviceIntent(
-        commandContext,
+        device.commands.deviceLimit
+          ? { ...commandContext, deviceLimit: device.commands.deviceLimit } : commandContext,
         device.commands,
         observedMap.get(device.commands.id),
         plan.hasShedDevices,

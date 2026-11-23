@@ -1,3 +1,5 @@
+import type { DeviceLimitChange, DeviceLimitEvent } from '../ports/deviceLimitEvents';
+import { DeviceLimitEpisodes } from './deviceLimitEpisodes';
 import { resolveLatchedMeterReading, resolveMeterEvidenceAtMs } from '../power/lastTotalPower';
 import type { RelayMeterObservation } from '../ports/nativeRelay';
 import { RelayShedRecovery } from './relayShedRecovery';
@@ -17,6 +19,7 @@ import type { PendingBinaryCommandStore, PendingBinaryConfirmation } from '../ob
 import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { ExecutorCommandContext } from './executorCommandContext';
+import type { SteppedCommandConfirmation } from '../observer/steppedSettleSnapshot';
 import type { SteppedCommandStore } from './steppedCommandStore';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
@@ -60,6 +63,7 @@ const logger = getLogger('executor/plan');
  */
 export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & {
   chargingPhaseOwner: ChargingPhaseOwner;
+  emitDeviceLimitEvent?: (event: DeviceLimitEvent) => void;
   getRelayShedObservation?: (id: string) => RelayMeterObservation | undefined;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   /**
@@ -105,6 +109,7 @@ export class PlanExecutor {
   private controlPersistenceBatchDepth = 0;
   private readonly relayShed: RelayShedRecovery;
   private readonly shortfallExecutor: ShortfallExecutor;
+  private readonly deviceLimitEpisodes?: DeviceLimitEpisodes;
 
   /** The storage lane; a meter area builds none, and its plans carry no storage decision. */
   private readonly storage: StorageLane;
@@ -118,6 +123,7 @@ export class PlanExecutor {
     private readonly feedback: PlannerExecutionFeedback) {
     this.chargingPhases = new ChargingPhaseExecutor(deps.chargingPhaseOwner);
     this.shortfallExecutor = new ShortfallExecutor(deps);
+    if (deps.emitDeviceLimitEvent) this.deviceLimitEpisodes = new DeviceLimitEpisodes(deps.emitDeviceLimitEvent);
     this.relayShed = new RelayShedRecovery({
       binding: (id) => {
         const config = deps.getDeviceConfiguration(id);
@@ -160,6 +166,7 @@ export class PlanExecutor {
         getOwnedTargetPending: (deviceId) => this.lifecycleFallback.getOwnedTargetPending(deviceId),
       },
       isAuthorityCurrent: () => true,
+      recordDeviceLimitChange: this.deviceLimitEpisodes ? this.recordDeviceLimitChange.bind(this) : undefined,
       recordShedActuation: (deviceId, name, now) => this.recordShedActuation(deviceId, name, now),
       recordReleaseShedActuation: (deviceId, name, now) => this.recordReleaseShedActuation(deviceId, name, now),
       recordRestoreActuation: (deviceId, name, now) => this.recordRestoreActuation(deviceId, name, now),
@@ -196,6 +203,23 @@ export class PlanExecutor {
    * binary OFF confirmed after a later plan is read against that later plan.
    */
   private nonCapacityHoldShedIds: ReadonlySet<string> = new Set();
+
+  public recordDeviceLimitChange(deviceId: string, name: string, now: number, change: DeviceLimitChange): void {
+    if (!this.deps.getCapacityDryRun()) {
+      this.deviceLimitEpisodes?.record(deviceId, name, now, change);
+    } else if (change.kind === 'resumed') {
+      this.deviceLimitEpisodes?.forget(deviceId);
+    }
+  }
+
+  public recordReportedStepLimit(
+    store: SteppedCommandStore,
+    deviceId: string,
+    report: Extract<SteppedCommandConfirmation, { state: 'observed' }>,
+  ): void {
+    const event = store.takeReportedDeviceLimitChange(deviceId, this.deps.homeId, report);
+    if (event) this.recordDeviceLimitChange(deviceId, event.deviceName, report.observedAtMs, event.change);
+  }
 
   private recordShedActuation(deviceId: string, name: string, now: number): void {
     // A hold is a planning decision, not capacity pressure, exactly like a smart
@@ -251,13 +275,19 @@ export class PlanExecutor {
     // Already OFF before the repeat. Its logical echo cannot establish another
     // capacity actuation; the episode's meter evidence tracks the electrical result.
     if (pending.relayRepeat) return;
+    if (pending.deviceLimitChange) {
+      this.recordDeviceLimitChange(deviceId, liveDevice.name, now, pending.deviceLimitChange);
+    }
     if (pending.desired) {
       // Any confirmed turn-on undoes PELS's shed at once: an owner who switches
       // the device off again before the next build is not overruled later.
       this.feedback.noteShedReleased(deviceId);
       if (pending.logContext === 'capacity_control_off') {
+        this.deviceLimitEpisodes?.forget(deviceId);
         this.execution.actuation.clearShed(deviceId);
       } else {
+        // Starting at a lower step can leave the planning limit in force.
+        this.deviceLimitEpisodes?.noteRunning(deviceId);
         this.execution.actuation.markConfirmedBinaryRestore(deviceId, pending.startedMs, now);
         if (pending.lastResortMaximumW !== undefined) {
           this.execution.actuation.reserveLastResortRestore(
@@ -386,15 +416,19 @@ export class PlanExecutor {
    */
   public retainContestedCommands(plan: ExecutionPlan, observationRevisionAtBuild?: number): void {
     this.relayShed.retain(plan, observationRevisionAtBuild);
-    this.execution.controlContests.retainPlanned(this.deps.homeId, new Map(plan.devices.map((decision) => {
-      const device = decision.commands;
-      const planned = resolvePlannedCommandValues(device, this.feedback.isExternalOffHeld(device.id));
-      return [device.id, {
+    const plannedCommands = new Map(plan.devices.map(({ commands }) => {
+      const planned = resolvePlannedCommandValues(commands, this.feedback.isExternalOffHeld(commands.id));
+      return [commands.id, {
         ...planned,
-        charging_phases: this.deps.chargingPhaseOwner.getDesiredForceSingle(device.id),
-        temperature: this.resolvePlannedTemperature(device.id, planned.temperature),
+        charging_phases: this.deps.chargingPhaseOwner.getDesiredForceSingle(commands.id),
+        temperature: this.resolvePlannedTemperature(commands.id, planned.temperature),
       }] as const;
-    })));
+    }));
+    this.deviceLimitEpisodes?.retainDevices(plannedCommands, (id) => (
+      !this.deps.pendingBinaryCommandStore.peekActive(id)
+      && this.deps.getObservedState(id)?.binaryControl?.on === true
+    ));
+    this.execution.controlContests.retainPlanned(this.deps.homeId, plannedCommands);
   }
 
   /** A device with no setpoint the transport can resolve takes no temperature command. */

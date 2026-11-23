@@ -1,3 +1,4 @@
+import type { DeviceLimitChange } from './deviceLimitEvents';
 import type { PendingObservationSource } from './controlCommandConfirmation';
 
 /** Binary command facts shared by execution, observation and planner read ports. */
@@ -26,6 +27,8 @@ export type PendingBinaryCommand = {
   lifecycleRelease?: boolean;
   /** Reasserting an already-OFF relay settles without counting a further shed. */
   relayRepeat?: true;
+  /** Event attributed to this exact pending command if its observation confirms. */
+  deviceLimitChange?: DeviceLimitChange;
   lastObservedValue?: boolean | string;
   lastObservedSource?: PendingObservationSource;
   lastObservedAtMs?: number;

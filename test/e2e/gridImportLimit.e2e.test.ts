@@ -211,6 +211,15 @@ describe('grid import control through Homey', () => {
     for (let i = 0; i < 66; i += 1) await poll();
     expect(home.shedCalls()).toHaveLength(2);
     expect(home.app.getLatestPlanSnapshotForUi()?.meta?.powerIsMeasured).toBe(false);
+    const events = mockHomeyInstance.flow._triggerCardTriggers.pels_device_limited;
+    expect(events).toHaveLength(2);
+    for (const { tokens } of events) {
+      expect(tokens).toMatchObject({
+        reason: 'meter_unavailable',
+        available_power_known: false,
+        available_power_kw: 0,
+      });
+    }
   });
 
   it('preserves net export as headroom while grid control is enabled', async () => {

@@ -12,6 +12,7 @@ import { resolveCommandPreviousStepId } from './executablePlan';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedDeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
 import type { ActuatorOutcome } from '../actuator/deviceCommand';
 import { getDebugEmitter, getLogger } from '../logging/logger';
@@ -148,6 +149,7 @@ const markAcceptedSteppedLoadCommand = (
   desiredStep: SteppedLoadStep,
   now: number,
   options: SteppedCommandOptions,
+  deviceLimitChange: SteppedDeviceLimitChange | undefined,
 ): void => {
   if (
     options.preserveMaterializedConfirmation === true
@@ -168,6 +170,7 @@ const markAcceptedSteppedLoadCommand = (
     desiredStepId: desiredStep.id,
     previousStepId: resolveCommandPreviousStepId(action),
     issuedAtMs: now,
+    ...(deviceLimitChange === undefined ? {} : { deviceLimitChange }),
   });
 };
 
@@ -221,33 +224,35 @@ const logAcceptedSteppedLoadCommand = (
   });
 };
 
-const recordAcceptedSteppedLoadPlanActuation = (
-  ctx: ExecutorCommandContext,
+type SteppedLoadPlanActuation = 'limited' | 'resumed';
+
+const resolveSteppedLoadPlanActuation = (
   action: ExecutableSteppedLoadDevice,
-  desiredStep: SteppedLoadStep,
-  now: number,
+  desiredStepId: string,
   options: SteppedCommandOptions,
-  // An unacknowledged write still stamps the cooldown CLOCKS — see the caller
-  // for why that is the conservative reading in both directions — but it must
-  // not open a starvation activation attempt, because that is a claim about
-  // what the DEVICE started doing, and nothing here saw the device do anything.
+): SteppedLoadPlanActuation | undefined => {
+  if (options.recordPlanActuation === false) return undefined;
+  const effectiveTransition = action.intent.transition?.effectiveTransition;
+  if (effectiveTransition === 'step_down_while_on') return 'limited';
+  if (effectiveTransition === 'step_up_while_on' || effectiveTransition === 'restore_from_off_at_low'
+    || isSteppedLoadRestoreStepIncrease(action, desiredStepId)) return 'resumed';
+  return undefined;
+};
+
+const recordSteppedLoadPlanActuation = (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableSteppedLoadIntent,
+  now: number,
+  actuation: SteppedLoadPlanActuation | undefined,
   recordActivationAttempt: boolean,
 ): void => {
-  if (options.recordPlanActuation === false) return;
-  const { intent } = action;
-  const effectiveTransition = intent.transition?.effectiveTransition;
-  if (effectiveTransition === 'step_down_while_on') {
+  if (actuation === 'limited') {
     ctx.recordShedActuation(intent.id, intent.name, now);
-    return;
   }
-  if (
-    effectiveTransition !== 'step_up_while_on'
-    && effectiveTransition !== 'restore_from_off_at_low'
-    && !isSteppedLoadRestoreStepIncrease(action, desiredStep.id)
-  ) return;
-  ctx.recordRestoreActuation(intent.id, intent.name, now);
-  if (!recordActivationAttempt) return;
-  ctx.recordActivationAttemptStarted(intent.id, intent.name, now);
+  if (actuation === 'resumed') {
+    ctx.recordRestoreActuation(intent.id, intent.name, now);
+    if (recordActivationAttempt) ctx.recordActivationAttemptStarted(intent.id, intent.name, now);
+  }
 };
 
 const isSteppedLoadRestoreStepIncrease = (
@@ -287,6 +292,7 @@ const markUnacknowledgedSteppedLoadCommand = (
   action: ExecutableSteppedLoadDevice,
   desiredStep: SteppedLoadStep,
   now: number,
+  deviceLimitChange: SteppedDeviceLimitChange | undefined,
 ): void => {
   // Deliberately WITHOUT the accepted path's `preserveMaterializedConfirmation`
   // guard, and the omission is load-bearing.
@@ -318,6 +324,7 @@ const markUnacknowledgedSteppedLoadCommand = (
     previousStepId: resolveCommandPreviousStepId(action),
     issuedAtMs: now,
     unacknowledged: true,
+    ...(deviceLimitChange === undefined ? {} : { deviceLimitChange }),
   });
 };
 
@@ -346,6 +353,25 @@ const logUnacknowledgedSteppedLoadCommand = (
     commandTransport: outcome.transport,
     ...(outcome.reasonCode === 'command_request_timed_out' ? { err: outcome.err } : {}),
   });
+};
+
+const steppedDeviceLimitChange = (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableSteppedLoadIntent,
+  actuation: SteppedLoadPlanActuation | undefined,
+): SteppedDeviceLimitChange | undefined => {
+  if (ctx.owner !== 'ordinary' || !ctx.recordDeviceLimitChange) return undefined;
+  if (actuation === 'limited' && ctx.deviceLimit) {
+    return {
+      homeId: ctx.homeId,
+      deviceName: intent.name,
+      change: { kind: 'limited', ...ctx.deviceLimit, action: 'lower_step' },
+    };
+  }
+  if (actuation === 'resumed' && !ctx.deviceLimit && intent.transition?.stepPreparationPurpose !== 'prepare_for_on') {
+    return { homeId: ctx.homeId, deviceName: intent.name, change: { kind: 'resumed' } };
+  }
+  return undefined;
 };
 
 /**
@@ -383,9 +409,11 @@ const recordUnacknowledgedSteppedLoadCommand = (
   options: SteppedCommandOptions,
   outcome: UnacknowledgedStep,
 ): boolean => {
-  markUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now);
+  const actuation = resolveSteppedLoadPlanActuation(action, desiredStep.id, options);
+  const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation);
+  markUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now, limitChange);
   logUnacknowledgedSteppedLoadCommand(action, desiredStep, options, outcome);
-  recordAcceptedSteppedLoadPlanActuation(ctx, action, desiredStep, now, options, false);
+  recordSteppedLoadPlanActuation(ctx, action.intent, now, actuation, false);
   return true;
 };
 
@@ -397,9 +425,11 @@ const recordAcceptedSteppedLoadCommand = (
   options: SteppedCommandOptions,
   commandTransport: SteppedLoadStepRequestTransport,
 ): boolean => {
-  markAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options);
+  const actuation = resolveSteppedLoadPlanActuation(action, desiredStep.id, options);
+  const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation);
+  markAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, limitChange);
   logAcceptedSteppedLoadCommand(action, desiredStep, options, commandTransport);
-  recordAcceptedSteppedLoadPlanActuation(ctx, action, desiredStep, now, options, true);
+  recordSteppedLoadPlanActuation(ctx, action.intent, now, actuation, true);
   return true;
 };
 

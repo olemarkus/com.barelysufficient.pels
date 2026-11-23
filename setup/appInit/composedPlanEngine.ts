@@ -56,6 +56,8 @@ export type PlanEngineComposition = {
     | 'getPendingInverterReleaseCount'
     | 'hasPendingSharedChargingPause'
     | 'handleConfirmedBinaryCommand'
+    | 'recordDeviceLimitChange'
+    | 'recordReportedStepLimit'
     | 'retainContestedCommands'
     | 'observeRelayShed'
     | 'getRelayShedNoAck'
@@ -160,6 +162,7 @@ export class ComposedPlanEngine implements PlanEngine {
   ): boolean {
     return syncPendingTargetCommands(
       this.execution, devices, source, (payload) => this.structuredLog.info(payload),
+      this.executor.recordDeviceLimitChange.bind(this.executor),
     );
   }
 
@@ -180,7 +183,10 @@ export class ComposedPlanEngine implements PlanEngine {
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {
-    return syncTrackedSteppedCommands(this.steppedCommandStore, this.steppedReportedStore, getDevices);
+    return syncTrackedSteppedCommands(
+      this.steppedCommandStore, this.steppedReportedStore, getDevices,
+      (deviceId, report) => this.executor.recordReportedStepLimit(this.steppedCommandStore, deviceId, report),
+    );
   }
 
   public syncStorageCommands(): void {

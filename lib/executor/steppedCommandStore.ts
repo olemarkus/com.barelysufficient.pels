@@ -45,6 +45,9 @@ import {
   type SteppedLoadDesiredRuntimeState,
 } from './steppedCommandState';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
+import type { SteppedDeviceLimitChange } from '../ports/deviceLimitEvents';
+import type { HomeId } from '../utils/settingsKeys';
+import type { SteppedCommandConfirmation } from '../observer/steppedSettleSnapshot';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { ControlContestRecording } from '../ports/controlContest';
@@ -239,6 +242,21 @@ export class SteppedCommandStore {
   noteReportedStep(deviceId: string, stepId: string, reportedAtMs: number): void {
     noteSteppedLoadReportedStep(this.state, deviceId, stepId, reportedAtMs);
     this.contests.controlReported({ deviceId, setting: 'level', value: stepId, reportedAtMs });
+  }
+
+  /** Consume an issued limit or resume only for this home's matching physical report. */
+  takeReportedDeviceLimitChange(
+    deviceId: string,
+    homeId: HomeId,
+    report: Extract<SteppedCommandConfirmation, { state: 'observed' }>,
+  ): SteppedDeviceLimitChange | undefined {
+    const desired = this.getDesired(deviceId);
+    if (!desired || desired.deviceLimitChange?.homeId !== homeId || desired.status !== 'success'
+      || desired.stepId !== report.observedStepId || desired.lastIssuedAtMs === undefined
+      || report.observedAtMs < desired.lastIssuedAtMs) return undefined;
+    const { deviceLimitChange, ...remaining } = desired;
+    this.state.steppedLoadDesiredByDeviceId.set(deviceId, remaining);
+    return deviceLimitChange;
   }
 
   /**

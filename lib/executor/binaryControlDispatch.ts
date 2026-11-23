@@ -208,6 +208,7 @@ function recordPendingForDispatch(
     ...(decision.lastResortMaximumW === undefined ? {} : { lastResortMaximumW: decision.lastResortMaximumW }),
     ...(sameValueOff ? { relayRepeat: true } : {}),
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
+    ...(decision.deviceLimitChange ? { deviceLimitChange: decision.deviceLimitChange } : {}),
   });
 }
 
