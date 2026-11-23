@@ -88,12 +88,14 @@ describe('Guided device setup', () => {
     expect(dialog.querySelector('[slot="headline"]')?.textContent).toBe('Set up Tuins Spa');
     expect(save.disabled).toBe(true);
     select('source', 'socket');
-    expect(query('help').textContent).toContain('1,700 W');
+    expect(query('help').textContent).toContain(`${(1700).toLocaleString()} W`);
     expect(save.disabled).toBe(true);
     select('binary', 'onoff.heater');
     expect(write).not.toHaveBeenCalled();
     save.click();
     expect(dialog.querySelector('[data-setup-review]')?.textContent).toContain('PELS can turn off Heater.');
+    expect(dialog.querySelector('[data-setup-review]')?.textContent)
+      .toContain(`Latest reading: ${(1700).toLocaleString()} W.`);
     expect(save.textContent).toBe('Add to PELS');
     refresh.mockImplementation(async () => {
       expect(manage).not.toHaveBeenCalled();
@@ -123,6 +125,13 @@ describe('Guided device setup', () => {
     save.click();
     await vi.waitFor(() => expect(dialog.open).toBe(false));
     expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows zero watts from a device with its own meter when reviewing setup', () => {
+    accept({ ownPowerW: 0, binarySwitches: [] });
+    const { dialog, save } = setup();
+    save.click();
+    expect(dialog.querySelector('[data-setup-review]')?.textContent).toContain('Latest reading: 0 W.');
   });
 
   it('retains the draft for retry after a partial save or skipped refresh', async () => {
