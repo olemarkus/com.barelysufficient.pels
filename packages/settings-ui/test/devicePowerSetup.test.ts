@@ -5,7 +5,8 @@ import {
   DEVICE_BINARY_SWITCHES, DEVICE_EXTERNAL_THERMOSTATS, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES,
 } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
-  acceptDevicePowerSetup, isDeviceReservedBySetup, openDevicePowerSetup, readLastResortSetup, renderDevicePowerSetup,
+  acceptDevicePowerSetup, isDeviceReservedBySetup, readLastResortSetup, renderDeviceDetailPowerSetup,
+  renderDevicePowerSetup,
 } from '../src/ui/devicePowerSetup.ts';
 
 const write = vi.hoisted(() => vi.fn());
@@ -29,43 +30,35 @@ const device = (overrides: Partial<DevicePowerSetupEntry> = {}): DevicePowerSetu
   ...overrides,
 });
 
+// The device page's form; its controls carry this id prefix.
+const PREFIX = 'device-detail-power-setup';
+// A Material select cannot show an option with an empty value, so defaults use this one.
+const DEFAULT = 'pels-default';
+
 const query = <T extends HTMLElement>(suffix: string): T => {
-  const element = document.querySelector<T>(`#device-power-setup-${suffix}`);
+  const element = document.querySelector<T>(`#${PREFIX}-${suffix}`);
   if (!element) throw new Error(`Missing device setup control ${suffix}`);
   return element;
 };
 
+const rerender = (refresh: () => Promise<void>, listed: readonly string[] = ['heater']) => (
+  renderDevicePowerSetup(refresh, true, new Set(listed))
+);
+
 const setup = () => {
   document.body.innerHTML = `
-    <details id="device-power-setup" hidden>
-      <summary>Device setup</summary>
-      <md-filled-select id="device-power-setup-target"></md-filled-select>
-      <md-filled-select id="device-power-setup-source"></md-filled-select>
-      <div id="device-power-setup-help"></div>
-      <div id="device-power-setup-binary-field"></div>
-      <md-filled-select id="device-power-setup-binary" quick></md-filled-select>
-      <div id="device-power-setup-binary-help"></div>
-      <div id="device-power-setup-thermostat-field"></div>
-      <md-filled-select id="device-power-setup-thermostat"></md-filled-select>
-      <div id="device-power-setup-thermostat-preview"></div>
-      <div id="device-power-setup-thermostat-status"></div>
-      <div id="device-power-setup-thermostat-confirm"></div>
-      <div id="device-power-setup-last-resort"></div>
-      <div id="device-power-setup-last-resort-help"></div>
-      <div id="device-power-setup-last-resort-toggle"></div>
-      <input id="device-power-setup-maximum">
-      <button id="device-power-setup-save"></button>
-    </details>`;
+    <details id="device-power-setup" hidden><div data-setup-host></div></details>
+    <div id="${PREFIX}" hidden><div data-setup-host></div></div>`;
+  const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+  rerender(refresh);
+  renderDeviceDetailPowerSetup('heater');
   const control = query<MdFilledSelect>('binary');
   const source = query<MdFilledSelect>('source');
   const thermostat = query<MdFilledSelect>('thermostat');
   const confirmation = Object.assign(query('thermostat-confirm'), { returnValue: '', show: vi.fn() });
-  const toggle = Object.assign(query('last-resort-toggle'), { selected: false, disabled: false });
+  const toggle = query<HTMLElement & { selected: boolean; disabled: boolean }>('last-resort-toggle');
   const maximum = query<HTMLInputElement>('maximum');
   const save = query<HTMLButtonElement>('save');
-  const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-  renderDevicePowerSetup(refresh, true);
-  openDevicePowerSetup('heater');
   return { control, source, thermostat, confirmation, toggle, maximum, save, refresh };
 };
 
@@ -86,9 +79,9 @@ describe('Device setup', () => {
     expect(menu).toHaveProperty('open', true);
     expect(control.value).toBe('onoff.heater');
     expect(source.value).toBe('socket');
-    source.value = '';
+    source.value = DEFAULT;
     change(source);
-    control.value = '';
+    control.value = DEFAULT;
     change(control);
     toggle.selected = true;
     change(toggle);
@@ -96,65 +89,84 @@ describe('Device setup', () => {
     change(maximum, 'input');
 
     acceptDevicePowerSetup({ devices: [device()] });
-    renderDevicePowerSetup(refresh, true);
+    rerender(refresh);
     await control.updateComplete;
     expect(control.lastElementChild).toBe(selectedOption);
     expect(control.shadowRoot?.querySelector('md-menu')).toBe(menu);
     expect(menu).toHaveProperty('open', true);
     expect(selectedOption?.isConnected).toBe(true);
-    expect(control.value).toBe('');
-    expect(source.value).toBe('');
+    expect(control.value).toBe(DEFAULT);
+    expect(source.value).toBe(DEFAULT);
     expect(maximum.value).toBe('6000');
 
     write.mockResolvedValueOnce({}).mockResolvedValueOnce(null);
     refresh.mockImplementation(async () => {
       acceptDevicePowerSetup({ devices: [device({ binarySwitchId: null })] });
-      renderDevicePowerSetup(refresh, true);
+      rerender(refresh);
     });
     save.click();
     await vi.waitFor(() => expect(save.disabled).toBe(false));
     expect(write.mock.calls.map(([request]) => request.key)).toEqual([DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES]);
-    expect(control.value).toBe('');
-    expect(source.value).toBe('');
+    expect(control.value).toBe(DEFAULT);
+    expect(source.value).toBe(DEFAULT);
     expect(toggle.selected).toBe(true);
     expect(maximum.value).toBe('6000');
   });
 
   it('keeps acknowledged selections until a refresh includes their readback', async () => {
     const { control, source, save, refresh } = setup();
-    source.value = '';
+    source.value = DEFAULT;
     change(source);
-    control.value = '';
+    control.value = DEFAULT;
     change(control);
     write.mockResolvedValue({});
 
     save.click();
     await vi.waitFor(() => expect(save.disabled).toBe(false));
     expect(refresh).toHaveBeenCalledOnce();
-    expect(control.value).toBe('');
-    expect(source.value).toBe('');
+    expect(control.value).toBe(DEFAULT);
+    expect(source.value).toBe(DEFAULT);
 
     acceptDevicePowerSetup({ devices: [device({ binarySwitchId: null, sourceId: null })] });
-    renderDevicePowerSetup(refresh, true);
+    rerender(refresh);
     acceptDevicePowerSetup({ devices: [device()] });
-    renderDevicePowerSetup(refresh, true);
+    rerender(refresh);
     expect(control.value).toBe('onoff.heater');
     expect(source.value).toBe('socket');
   });
 
-  it('remembers a requested device when the setup form is initially hidden', () => {
-    const { control, refresh } = setup();
-    const root = document.querySelector<HTMLDetailsElement>('#device-power-setup');
-    if (!root) throw new Error('Missing setup form');
-    openDevicePowerSetup('');
-    root.open = false;
-    renderDevicePowerSetup(refresh, false);
+  it('shows default choices by name and keeps Save off until something changes', () => {
+    acceptDevicePowerSetup({ devices: [device({ sourceId: null, binarySwitchId: null })] });
+    const { source, control, save } = setup();
+    expect(source.value).toBe(DEFAULT);
+    expect(source.querySelector(`[value="${DEFAULT}"]`)?.textContent).toContain('This device');
+    expect(control.value).toBe(DEFAULT);
+    expect(save.disabled).toBe(true);
+    source.value = 'socket';
+    change(source);
+    expect(save.disabled).toBe(false);
+  });
 
-    openDevicePowerSetup('heater');
-    expect(root.open).toBe(false);
-    renderDevicePowerSetup(refresh, true);
-    expect(root.open).toBe(true);
-    expect(control.value).toBe('onoff.heater');
+  it('offers only devices outside the device list for adding and hides the card without any', () => {
+    acceptDevicePowerSetup({ devices: [device(), device({ id: 'spa', name: 'Spa', configured: false, sourceId: null })] });
+    const { refresh } = setup();
+    const card = document.querySelector<HTMLElement>('#device-power-setup');
+    const target = document.querySelector<MdFilledSelect>('#device-power-setup-target');
+    expect(card?.hidden).toBe(false);
+    expect([...target?.querySelectorAll('[value]') ?? []].map((option) => option.textContent?.trim()))
+      .toEqual(['Select a device', 'Spa']);
+    expect(document.querySelector<HTMLElement>('#device-power-setup-details')?.hidden).toBe(true);
+    expect(rerender(refresh, ['heater', 'spa'])).toBe(false);
+    expect(card?.hidden).toBe(true);
+  });
+
+  it('hides the device page form for a socket that measures another device', () => {
+    acceptDevicePowerSetup({ devices: [device(), device({ id: 'socket', name: 'Socket', usedBy: 'heater' })] });
+    setup();
+    renderDeviceDetailPowerSetup('socket');
+    expect(document.getElementById(PREFIX)?.hidden).toBe(true);
+    renderDeviceDetailPowerSetup('heater');
+    expect(document.getElementById(PREFIX)?.hidden).toBe(false);
   });
 
   it('gives the selected metering socket precedence over a stale last-resort maximum', () => {
@@ -192,7 +204,7 @@ describe('Device setup', () => {
     ));
     refresh.mockImplementation(async () => {
       acceptDevicePowerSetup({ devices: [linked] });
-      renderDevicePowerSetup(refresh, true);
+      rerender(refresh);
     });
     save.click();
     confirmation.returnValue = 'confirm';
@@ -223,7 +235,7 @@ describe('Device setup', () => {
     const { thermostat, confirmation, save } = setup();
     expect(isDeviceReservedBySetup('thermostat')).toBe(true);
     expect(thermostat.textContent).toContain('Configured thermostat unavailable');
-    thermostat.value = '';
+    thermostat.value = DEFAULT;
     change(thermostat);
     write.mockImplementation(({ mutate, fallbackValue }) => Promise.resolve(mutate(fallbackValue)));
     save.click();
@@ -249,8 +261,8 @@ describe('Device setup', () => {
     change(control);
     expect(toggle.disabled).toBe(false);
 
-    // Select another target to discard the edit before reading accepted settings again.
-    openDevicePowerSetup('');
+    // Leave the device page to discard the edit before reading accepted settings again.
+    renderDeviceDetailPowerSetup(undefined);
     acceptDevicePowerSetup({ devices: [device({
       sourceId: null,
       defaultBinarySwitchAvailable: false,
@@ -258,8 +270,8 @@ describe('Device setup', () => {
       lastResortAvailable: false,
       lastResortMaximumW: 6000,
     })] });
-    openDevicePowerSetup('heater');
-    renderDevicePowerSetup(refresh, true);
+    renderDeviceDetailPowerSetup('heater');
+    rerender(refresh);
     expect(toggle.selected).toBe(true);
     expect(toggle.disabled).toBe(false);
     expect(save.disabled).toBe(true);

@@ -6,8 +6,9 @@ import {
   HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT, needsHomeyEnergySetup,
 } from '../../../../shared-domain/src/homeyEnergySetup.ts';
 import {
-  devicePowerSetupHint, devicePowerSetupWarning, isDeviceReservedBySetup, readDevicePowerSetupDetail,
-  resolveLastResortHint, THERMOSTAT_MANUAL_RESTART_HINT,
+  devicePowerSetupAlternative, devicePowerSetupHint, devicePowerSetupWarning, isDeviceReservedBySetup,
+  readDevicePowerSetupDetail,
+  renderDeviceDetailPowerSetup, resolveLastResortHint,
 } from '../devicePowerSetup.ts';
 import {
   deviceDetailControllable,
@@ -55,12 +56,19 @@ function renderManagedPowerSetup(
   const setup = device ? readDevicePowerSetupDetail(device.id) : undefined;
   const offersHomeyEnergy = needsHomeyEnergySetup(device) && !setup?.lastResort;
   const warning = device ? devicePowerSetupWarning(device.id) : null;
-  renderManagedSetupHint(
-    setupHint ?? warning ?? resolveLastResortHint(setup?.lastResort, managed) ?? defaultHint,
-    offersHomeyEnergy || warning !== null,
-  );
-  renderPowerSetupDetail(setup);
+  const hint = setupHint ?? warning ?? resolveLastResortHint(setup?.lastResort, managed)
+    ?? withPowerSetupAlternative(device, defaultHint, offersHomeyEnergy);
+  renderManagedSetupHint(hint, offersHomeyEnergy || warning !== null);
+  renderDeviceDetailPowerSetup(device?.id);
   renderHomeyEnergySetupLink(offersHomeyEnergy && !setup?.socketPending);
+}
+
+/** A device waiting for a power reading also learns what Power and control offers it. */
+function withPowerSetupAlternative(
+  device: SettingsUiDeviceView | null, hint: string, offersHomeyEnergy: boolean,
+): string {
+  const alternative = offersHomeyEnergy && device ? devicePowerSetupAlternative(device.id) : null;
+  return alternative ? `${hint} ${alternative}` : hint;
 }
 
 function renderManagedSetupHint(text: string, warning: boolean): void {
@@ -78,42 +86,6 @@ function renderHomeyEnergySetupLink(visible: boolean): void {
     energySetupLink.setAttribute('target', '_blank');
     energySetupLink.setAttribute('rel', 'noopener noreferrer');
   }
-}
-
-function renderPowerSetupDetail(setup: ReturnType<typeof readDevicePowerSetupDetail>): void {
-  const summary = document.getElementById('device-detail-power-setup-summary');
-  const edit = document.getElementById('device-detail-open-power-setup');
-  const switchFallback = setup?.switchMissing ? 'Selected on/off control unavailable' : '';
-  const switchText = setup?.switchName ? `On/off control uses ${setup.switchName}` : switchFallback;
-  const maximum = setup?.lastResort?.maximumW;
-  const lastResortText = maximum === undefined ? '' : `Maximum power ${maximum.toLocaleString()} W`;
-  const rows = [
-    ['device-detail-last-resort-maximum', lastResortText],
-    ['device-detail-metering-socket', meteringSocketText(setup)],
-    ['device-detail-on-off-control', switchText],
-    ['device-detail-external-thermostat', setup?.thermostat ?? ''],
-    ['device-detail-thermostat-manual-restart', thermostatRestartText(setup)],
-
-  ] as const;
-  rows.forEach(([id, text]) => setPowerSetupSummary(id, text));
-  if (summary) summary.hidden = !rows.some(([, text]) => text);
-  if (edit) edit.hidden = !setup?.editable;
-}
-
-function meteringSocketText(setup: ReturnType<typeof readDevicePowerSetupDetail>): string {
-  if (setup?.socket) return `Metering socket is ${setup.socket}`;
-  return setup?.socketMissing ? 'Metering socket unavailable' : '';
-}
-
-function thermostatRestartText(setup: ReturnType<typeof readDevicePowerSetupDetail>): string {
-  return setup?.thermostatWaitingForManualOn ? THERMOSTAT_MANUAL_RESTART_HINT : '';
-}
-
-function setPowerSetupSummary(id: string, text: string): void {
-  const row = document.getElementById(id);
-  if (!row) return;
-  row.hidden = !text;
-  row.textContent = text;
 }
 
 const resolveManagedHint = (

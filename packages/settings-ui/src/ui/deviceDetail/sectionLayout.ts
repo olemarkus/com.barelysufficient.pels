@@ -113,6 +113,10 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
     return;
   }
   placeBefore(row, document.getElementById('device-detail-budget-exempt-row'));
+  // Managed's hint points to these, so they follow it.
+  const energyLink = document.getElementById('device-detail-homey-energy-setup');
+  placeAfter(energyLink, row);
+  placeAfter(document.getElementById('device-detail-power-setup'), energyLink ?? row);
 };
 
 // Power-limit control and the two rows that refine it ("Only PELS starts this

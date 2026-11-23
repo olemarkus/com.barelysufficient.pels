@@ -45,10 +45,7 @@ const buildDom = () => {
         <md-switch id="device-detail-managed"></md-switch>
         <small id="device-detail-managed-hint"></small>
         <a id="device-detail-homey-energy-setup" hidden></a>
-        <div id="device-detail-power-setup-summary" hidden>
-          <div id="device-detail-last-resort-maximum" hidden></div>
-        </div>
-        <md-text-button id="device-detail-open-power-setup" hidden></md-text-button>
+        <div id="device-detail-power-setup" hidden><div data-setup-host></div></div>
         <md-switch id="device-detail-controllable"></md-switch>
         <md-switch id="device-detail-price-opt"></md-switch>
         <md-switch id="device-detail-budget-exempt"></md-switch>
@@ -177,7 +174,7 @@ describe('device detail managed state saves', () => {
     expect(hint?.dataset.tone).toBe('neutral');
   });
 
-  it('shows active maximum power and leaves dormant last-resort setup editable', async () => {
+  it('edits active and dormant last-resort setup on the device page', async () => {
     mockDeviceDetailCollaborators();
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock());
@@ -200,7 +197,10 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('active');
     await flushPromises();
     const hint = document.getElementById('device-detail-managed-hint');
-    const maximum = document.getElementById('device-detail-last-resort-maximum');
+    const form = document.getElementById('device-detail-power-setup');
+    const maximum = document.getElementById('device-detail-power-setup-maximum') as HTMLInputElement | null;
+    const toggle = document.getElementById('device-detail-power-setup-last-resort-toggle') as
+      (HTMLElement & { selected: boolean }) | null;
     const energyLink = document.getElementById('device-detail-homey-energy-setup');
     expect(hint?.textContent).toBe('Turn on Managed by PELS to use last-resort control.');
     state.managedMap = { active: true };
@@ -208,18 +208,20 @@ describe('device detail managed state saves', () => {
     await flushPromises();
     expect(hint?.textContent).toMatch(/^Last resort/);
     expect(hint?.dataset.tone).toBe('neutral');
-    expect(maximum?.textContent).toBe(`Maximum power ${(4500).toLocaleString()} W`);
-    expect(maximum?.hidden).toBe(false);
+    expect(form?.hidden).toBe(false);
+    expect(toggle?.selected).toBe(true);
+    expect(maximum?.value).toBe('4500');
     expect(energyLink?.hidden).toBe(true);
 
     openDeviceDetail('dormant');
     await flushPromises();
     expect(hint?.textContent).toBe(
-      'Selected on/off control unavailable. Check the device in Homey or change it in Device setup.',
+      'Selected on/off control unavailable. Check the device in Homey or change it under Power and control.',
     );
-    expect(maximum?.hidden).toBe(true);
     expect(energyLink?.hidden).toBe(true);
-    expect(document.getElementById('device-detail-open-power-setup')?.hidden).toBe(false);
+    expect(form?.hidden).toBe(false);
+    expect(document.getElementById('device-detail-power-setup-binary')?.textContent)
+      .toContain('Selected switch unavailable');
   });
 
   it('keeps the currently open device panel stable when an earlier managed save resolves late', async () => {
