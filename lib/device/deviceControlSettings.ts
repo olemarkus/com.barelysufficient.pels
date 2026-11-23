@@ -1,5 +1,6 @@
 import {
-  DeviceBinarySwitchSettings, DeviceExternalThermostatSettings, readDevicePowerSourcesSetting,
+  DeviceBinarySwitchSettings, DeviceExternalThermostatSettings, pruneDeviceSetupForMissingDevices,
+  readDevicePowerSourcesSetting,
   type DevicePowerSources, type LastResortDevices,
 } from './deviceSetupSettings';
 import type { SettingsPort } from '../ports/homeyRuntime';
@@ -240,6 +241,11 @@ export class DeviceControlSettings {
   constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'> & Partial<Pick<SettingsPort, 'set'>>) {
     this.binarySwitchSettings = new DeviceBinarySwitchSettings(settings);
     this.externalThermostatSettings = new DeviceExternalThermostatSettings(settings);
+  }
+
+  /** Release the setup choices of devices Homey no longer lists. */
+  pruneSetupForMissingDevices(homeyDeviceIds: ReadonlySet<string>): void {
+    pruneDeviceSetupForMissingDevices(this.settings, homeyDeviceIds);
   }
 
   getBinarySwitchSelection(deviceId: string): string | undefined {
