@@ -22,7 +22,9 @@
  * always takes precedence over them. The conflicts are kept across a restart
  * (`NativeFlowConflictState`).
  */
-import type { DeviceDescriptorRead, PendingSteppedLoad } from '../../packages/contracts/src/types';
+import type {
+  DeviceDescriptorRead, TargetDeviceSnapshot, PendingSteppedLoad,
+} from '../../packages/contracts/src/types';
 import type { ChargingCurrentRead } from '../../packages/contracts/src/chargingControl';
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type { AcceptedFlowConflictSlice, NativeFlowConflicts } from '../flowApi/acceptedFlowConflictStore';
@@ -117,6 +119,14 @@ export class BuiltInControlFlowConflicts {
     return resolveNativeWiringEnabled(
       deviceId, this.ownerChoices.nativeEvWiringDevices, this.autoDecisions, this.conflicts.all,
     );
+  }
+
+  /** A gated native candidate needs an explicit choice or a known conflict to use Flow. */
+  awaitsNativeStepRoute(device: Pick<TargetDeviceSnapshot, 'id' | 'controlAdapter'>): boolean {
+    return device.controlAdapter?.activationAvailable === true
+      && !device.controlAdapter.activationEnabled
+      && this.ownerChoices.nativeEvWiringDevices[device.id] !== false
+      && this.conflicts.get(device.id) === undefined;
   }
 
   /** The native-write capabilities a user Flow drives on this device, for the device-detail notice. */
