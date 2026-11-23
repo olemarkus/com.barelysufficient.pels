@@ -247,7 +247,7 @@ const buildPlannedReleaseCommand = (
   if (dev.plannedState !== 'keep') return undefined;
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return undefined;
-  return { kind, deviceId: dev.id, name: dev.name, ...binarySwitchAuthority(dev) };
+  return { ...release, deviceId: dev.id, name: dev.name, ...binarySwitchAuthority(dev) };
 };
 
 /** Project a finalized decision at the planner's outward boundary. No observation or command lifecycle runs here. */

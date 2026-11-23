@@ -1,4 +1,5 @@
-import type { RestoreDrawEvidence } from '../ports/actuationHistory';
+import type { ConfirmedTaskSwitchOn, RestoreDrawEvidence } from '../ports/actuationHistory';
+import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 
 /**
  * Executor-owned command history and in-flight work, one per home.
@@ -28,6 +29,7 @@ export class ActuationRecord {
 
   /** Binary power may arrive between dispatch and the ON confirmation that starts pacing. */
   private readonly binaryRestoreDrawEvidenceFromMs: Record<string, number> = {};
+  private readonly taskSwitchOns = new Map<string, ConfirmedTaskSwitchOn>();
   private readonly lastResortRestoreReserve = new Map<string, { maximumW: number; untilMs: number }>();
 
   /** The last restore of any device — the restore cooldown's anchor. */
@@ -115,6 +117,19 @@ export class ActuationRecord {
     this.markRestore(deviceId, confirmedAtMs);
     // A delayed ON confirmation cannot make power from before a newer step-up count.
     this.binaryRestoreDrawEvidenceFromMs[deviceId] = evidenceFromMs;
+  }
+
+  /** Keep an observed switch-on tied to the task whose command caused it. */
+  observeConfirmedBinaryCommand(deviceId: string, command: PendingBinaryCommand, confirmedAtMs: number): void {
+    if (command.desired && command.energyTask) {
+      this.taskSwitchOns.set(deviceId, { task: command.energyTask, dispatchedAtMs: command.startedMs, confirmedAtMs });
+    } else {
+      this.taskSwitchOns.delete(deviceId);
+    }
+  }
+
+  getConfirmedTaskSwitchOn(deviceId: string): ConfirmedTaskSwitchOn | undefined {
+    return this.taskSwitchOns.get(deviceId);
   }
 
   reserveLastResortRestore(deviceId: string, maximumW: number, untilMs: number): void {

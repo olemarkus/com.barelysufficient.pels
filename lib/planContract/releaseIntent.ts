@@ -1,3 +1,5 @@
+import type { DeferredReleaseIntent } from '../../packages/planner-types/src/deferredDecoration';
+
 /** The decided idle-task posture, distinct from a capacity-driven shed. */
 export type ShedReleasePosture =
   | { kind: 'binary_off' }
@@ -6,5 +8,5 @@ export type ShedReleasePosture =
 
 /** A resolved release decision. Execution never reads the policy that selected it. */
 export type PlannedReleaseIntent =
-  | { kind: 'binary_restore' | 'binary_release' }
+  | Exclude<DeferredReleaseIntent, { kind: 'shed_release' }>
   | { kind: 'shed_release'; posture: ShedReleasePosture };

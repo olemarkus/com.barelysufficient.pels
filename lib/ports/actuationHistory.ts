@@ -1,3 +1,11 @@
+import type { BinaryEnergyTask } from '../../packages/planner-types/src/deferredDecoration';
+
+export type ConfirmedTaskSwitchOn = {
+  task: BinaryEnergyTask;
+  dispatchedAtMs: number;
+  confirmedAtMs: number;
+};
+
 /** One restore's pacing anchor and the command window that its measured draw must follow. */
 export type RestoreDrawEvidence = {
   readonly deviceId: string;
@@ -11,6 +19,7 @@ export type ActuationHistoryRead = {
   readonly lastDeviceControlledMs: Readonly<Record<string, number>>;
   readonly lastDeviceShedMs: Readonly<Record<string, number>>;
   readonly lastDeviceRestoreMs: Readonly<Record<string, number>>;
+  getConfirmedTaskSwitchOn(deviceId: string): ConfirmedTaskSwitchOn | undefined;
   readRestoreDrawEvidence(): readonly RestoreDrawEvidence[];
   readonly lastRestoreMs: number | null;
   hasInFlight(): boolean;

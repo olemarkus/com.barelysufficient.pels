@@ -66,9 +66,9 @@ export function attachDeferredReleaseIntents(
   return planDevices.map((device) => {
     const deferredReleaseIntent = intentByDeviceId[device.id];
     if (!deferredReleaseIntent) return device;
-    if (deferredReleaseIntent === 'binary_restore' && !binaryRestoreAllowed) return device;
-    if (deferredReleaseIntent !== 'shed_release') {
-      return { ...device, deferredReleaseIntent: { kind: deferredReleaseIntent } };
+    if (deferredReleaseIntent.kind === 'binary_restore' && !binaryRestoreAllowed) return device;
+    if (deferredReleaseIntent.kind !== 'shed_release') {
+      return { ...device, deferredReleaseIntent };
     }
     const posture = resolveShedReleasePosture(device, getShedBehavior(device.id));
     return posture ? { ...device, deferredReleaseIntent: { kind: 'shed_release', posture } } : device;

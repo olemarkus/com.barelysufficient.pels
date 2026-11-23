@@ -27,6 +27,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import { assembleActivePlansUiView } from '../../lib/objectives/deferredObjectives/activePlansUiView';
 import { emitDeferredObjectiveActivePlansUpdatedForApp } from '../settingsUiAppRuntime';
+import { TaskDeviceRunTracker } from '../../lib/objectives/deferredObjectives/taskDeviceRun';
 
 export { WATERMARK_IDLE_REFRESH_MS } from '../../lib/objectives/deferredObjectives/planHistoryObservation';
 
@@ -90,7 +91,14 @@ export function createDeferredObjectivePlanHistoryRecorder(
     getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
     getDeliveryControl: (deviceId) => requirePlanService(ctx).getTaskDeliveryControl(deviceId),
     isLiveMeasuredDraw: (deviceId) => ctx.observer.isLiveMeasuredDraw(deviceId),
-  });
+  }, new TaskDeviceRunTracker({
+    readSwitchOn: (deviceId) => requirePlanService(ctx).getConfirmedTaskSwitchOn(deviceId),
+    hasStartedDrawing: (deviceId, dispatchedAtMs, nowMs) => (
+      ctx.observer.hasStartedDrawingSince(deviceId, dispatchedAtMs, nowMs)
+    ),
+    hasSwitchedOffSince: (deviceId, confirmedAtMs) => ctx.observer.hasSwitchedOffSince(deviceId, confirmedAtMs),
+    isSimulation: () => ctx.capacityDryRun,
+  }));
   runStartupBackfill(ctx, recorder);
   return recorder;
 }

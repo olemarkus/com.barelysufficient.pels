@@ -1,4 +1,5 @@
 import type { RelayShedRecovery } from './relayShedRecovery';
+import type { BinaryEnergyTask } from '../../packages/planner-types/src/deferredDecoration';
 import type { PlannedBinaryCommand } from '../planContract/executionPlan';
 import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
@@ -69,6 +70,7 @@ export type BinaryControlDecision = {
   deviceId: string;
   name: string;
   desired: boolean;
+  energyTask?: BinaryEnergyTask;
   logContext: BinaryControlLogContext;
   /**
    * True when this decision comes from the smart-task lifecycle-end disable path
@@ -226,4 +228,3 @@ function hasPendingMatchingBinaryCommand(
   return pending !== undefined && pending.binarySwitchGeneration === decision.binarySwitchGeneration
     && pending.desired === decision.desired;
 }
-

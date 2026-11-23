@@ -1,0 +1,24 @@
+{
+  "title": {
+    "en": "Smart task device finished working"
+  },
+  "titleFormatted": {
+    "en": "[[device]] finished working for a smart task"
+  },
+  "hint": {
+    "en": "Fires once per energy smart task when an on/off device PELS started takes no power for 15 minutes while the task still allows it to run."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": { "en": "Device" },
+      "placeholder": { "en": "Select device" }
+    }
+  ],
+  "tokens": [
+    { "name": "device_name", "type": "string", "title": { "en": "Device" } },
+    { "name": "target_kwh", "type": "number", "title": { "en": "Energy target (kWh)" } },
+    { "name": "ready_by", "type": "string", "title": { "en": "Ready by" } }
+  ]
+}

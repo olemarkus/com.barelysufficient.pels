@@ -1,4 +1,5 @@
 import type { PendingObservationSource } from './controlCommandConfirmation';
+import type { BinaryEnergyTask } from '../../packages/planner-types/src/deferredDecoration';
 
 /** Binary command facts shared by execution, observation and planner read ports. */
 type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
@@ -6,6 +7,8 @@ type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
 export type PendingBinaryCommand = {
   dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
+  /** Energy obligation associated with this exact switch-on, if it confirms. */
+  energyTask?: BinaryEnergyTask;
   lastResortMaximumW?: number;
   binarySwitchGeneration?: number;
   startedMs: number;

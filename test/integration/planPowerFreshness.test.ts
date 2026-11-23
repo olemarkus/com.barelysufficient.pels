@@ -537,7 +537,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         deferredHoldCauseByDeviceId: new Map(),
         // A negative release rides the plan; the one positive intent needs a
         // measured cycle and this is not one.
-        deferredReleaseIntentByDeviceId: { release: 'binary_release', resume: 'binary_restore' },
+        deferredReleaseIntentByDeviceId: { release: { kind: 'binary_release' }, resume: { kind: 'binary_restore' } },
         admittedDeviceIds: new Set<string>(),
         drivingDeviceIds: new Set<string>(),
         lentAuthorityDeviceIds: new Set<string>(),

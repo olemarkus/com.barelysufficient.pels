@@ -51,6 +51,7 @@ import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 import { captureHourStartBooking } from './planHistoryHourStartBookings';
 import { mergeSavedRun, toPersistedMeteredDeliveryState } from './planHistoryMeteredRun';
 import { isBudgetOnlyMiss } from './budgetOnlyMiss';
+import type { TaskDeviceRunEvent, TaskDeviceRunTracker } from './taskDeviceRun';
 
 // The recorder's debug events, on the `deferred_objectives` topic. One
 // `deferred_objective_history_finalized` event per observation entry as it
@@ -162,7 +163,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), { ...state, deliveryEvidence });
   }
 
-  constructor(private readonly deps: PlanHistoryPersistDeps) {
+  constructor(private readonly deps: PlanHistoryPersistDeps, private readonly deviceRuns?: TaskDeviceRunTracker) {
     const loaded = deps.load();
     this.entries = loaded.snapshot.entries.slice();
     this.persistenceSafe = loaded.persistenceSafe;
@@ -170,6 +171,10 @@ export class DeferredObjectivePlanHistoryRecorder {
       this.restoreDeliveryState(state);
     }
     this.trimEntries();
+  }
+
+  onDeviceRun(listener: (event: TaskDeviceRunEvent) => void): void {
+    this.deviceRuns?.subscribe(listener);
   }
 
   // Live trajectory for an in-flight run, stitched into the active-plans UI
@@ -216,27 +221,28 @@ export class DeferredObjectivePlanHistoryRecorder {
     }
     for (const diag of diagnostics) this.recordDeliveryTick(diag, nowMs);
     this.finalizeStaleRecords(seenKeys, nowMs);
+    this.deviceRuns?.retainTasks(seenKeys);
   }
 
   private observeDeliveryEvidence(
     diag: DeferredObjectiveDiagnostic, key: InProgressKey, nowMs: number, previousAtMs: number,
   ): void {
     const record = this.inProgress.get(key);
-      if (record) {
-        const facts = resolveTaskDeliveryFacts(diag, this.deps.getDeliveryControl(diag.deviceId),
-          this.deps.isLiveMeasuredDraw(diag.deviceId), this.deps.getDeviceConstraint(diag.deviceId), nowMs);
-        const deliveryEvidence = observeTaskDelivery(record.deliveryEvidence, facts, nowMs, nowMs - previousAtMs);
-        // The latch keeps a task at risk while the tick's blocker names PELS's
-        // own hold, so its changes are logged beside the blocker's.
-        if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)
-          || record.deliveryEvidence.nonDelivery.kind !== deliveryEvidence.nonDelivery.kind) {
-          emitObjectiveDebug({ event: 'smart_task_delivery_blocker_changed', deviceId: diag.deviceId,
-            deadlineAtMs: diag.deadlineAtMs, before: activeDeliveryCause(record.deliveryEvidence),
-            after: activeDeliveryCause(deliveryEvidence), nonDelivery: deliveryEvidence.nonDelivery.kind, facts });
-        }
-        this.inProgress.set(key, { ...record, deliveryEvidence });
-        this.dirty = true;
-      }
+    if (!record) return;
+    const facts = resolveTaskDeliveryFacts(diag, this.deps.getDeliveryControl(diag.deviceId),
+      this.deps.isLiveMeasuredDraw(diag.deviceId), this.deps.getDeviceConstraint(diag.deviceId), nowMs);
+    const deliveryEvidence = observeTaskDelivery(record.deliveryEvidence, facts, nowMs, nowMs - previousAtMs);
+    // The latch keeps a task at risk while the tick's blocker names PELS's
+    // own hold, so its changes are logged beside the blocker's.
+    if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)
+      || record.deliveryEvidence.nonDelivery.kind !== deliveryEvidence.nonDelivery.kind) {
+      emitObjectiveDebug({ event: 'smart_task_delivery_blocker_changed', deviceId: diag.deviceId,
+        deadlineAtMs: diag.deadlineAtMs, before: activeDeliveryCause(record.deliveryEvidence),
+        after: activeDeliveryCause(deliveryEvidence), nonDelivery: deliveryEvidence.nonDelivery.kind, facts });
+    }
+    this.inProgress.set(key, { ...record, deliveryEvidence });
+    this.dirty = true;
+    this.deviceRuns?.observe(key, diag, facts, deliveryEvidence.nonDelivery, nowMs);
   }
 
   private emitCompletionChange(

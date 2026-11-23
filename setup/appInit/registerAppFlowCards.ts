@@ -96,6 +96,7 @@ export function registerAppFlowCards(
     deferredObjectiveStatusBus: ctx.deferredObjectiveStatusBus,
     deferredObjectivePlanRevisionBus: ctx.deferredObjectivePlanRevisionBus,
     deferredObjectiveEndedBus: ctx.deferredObjectiveEndedBus,
+    subscribeSmartTaskDeviceRun: (listener) => ctx.deferredObjectivePlanHistoryRecorder?.onDeviceRun(listener),
     deferredObjectiveHoursRemainingBus: ctx.deferredObjectiveHoursRemainingBus,
     deferredObjectiveHoursRemainingTracker: ctx.deferredObjectiveHoursRemainingTracker,
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),

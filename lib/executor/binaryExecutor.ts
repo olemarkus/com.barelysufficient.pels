@@ -53,7 +53,10 @@ export const applyBinaryRestore = async (
     )) return false;
   }
   return applyBinaryRestoreWithSnapshot(
-    ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration, intent.lastResortMaximumW,
+    ctx, {
+      deviceId: intent.deviceId, name: intent.name, desired: true, logContext: 'capacity',
+      binarySwitchGeneration: intent.binarySwitchGeneration, lastResortMaximumW: intent.lastResortMaximumW,
+    }, snapshot,
   );
 };
 
@@ -191,7 +194,10 @@ export const applyDeferredBinaryCommand = async (
   // only added a way for the two to disagree.
   if (isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity')) return false;
-  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration);
+  return applyBinaryRestoreWithSnapshot(ctx, {
+    deviceId: intent.deviceId, name: intent.name, desired: true, logContext: 'capacity',
+    binarySwitchGeneration: intent.binarySwitchGeneration, energyTask: intent.energyTask,
+  }, snapshot);
 };
 
 const turnOffDevice = async (

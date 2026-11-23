@@ -90,7 +90,7 @@ export class DeferredObjectiveDecorationController {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
       deferredHoldCauseByDeviceId: resolveDeferredHoldCauses(decisions),
-      deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
+      deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions, settings),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions, devices),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
       lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,

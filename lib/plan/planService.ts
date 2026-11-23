@@ -227,6 +227,10 @@ export class PlanService {
     return resolveTaskDeliveryControl(device, execution);
   }
 
+  getConfirmedTaskSwitchOn(deviceId: string) {
+    return this.deps.planEngine.state.actuation.getConfirmedTaskSwitchOn(deviceId);
+  }
+
   /** Read completion evidence against the observer's accepted device record without rebuilding. */
   getStallEvidence(deviceId: string): StallEvidence | undefined {
     const device = this.getIdleObservation(deviceId);

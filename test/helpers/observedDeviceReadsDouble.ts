@@ -52,6 +52,7 @@ export const observedDeviceReadsDouble = (
   getObservedStateOfCharge: vi.fn((deviceId: string) => readObservedStateOfCharge(getRecord(deviceId))),
   getObservedTemperature: vi.fn((deviceId: string) => readObservedTemperatureState(getRecord(deviceId))),
   getPowerBeforeSwitchOffKw: vi.fn(() => undefined),
+  hasSwitchedOffSince: vi.fn(() => false),
   getObservedEvChargingState: vi.fn((deviceId: string) => readObservedEvChargingState(getRecord(deviceId))),
   getThermalDirection: vi.fn((deviceId: string): ThermalDirection => {
     const record = getRecord(deviceId);
