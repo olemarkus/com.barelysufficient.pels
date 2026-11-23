@@ -324,8 +324,7 @@ export function assembleDeviceSnapshot(params: {
         thermostatMode,
         stateOfCharge,
         temperature,
-        nativeRelayMeter: deps.externalPower?.kind === 'external'
-            ? undefined : readNativeRelayMeter(effectiveDevice.capabilities, measuredPower),
+        nativeRelayMeter: readNativeRelayMeter(effectiveDevice.capabilities, measuredPower, deps.externalPower),
         measuredPowerKw: resolvedMeasuredPower.measuredPowerKw,
         measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
         measuredPowerReading: resolvedMeasuredPower.reading,
@@ -399,9 +398,11 @@ function resolveParsedDeviceSettings(
 
 /** Keep the device-clock sample apart from later receipt-clock updates to the accounting reading. */
 function readNativeRelayMeter(
-    capabilities: readonly string[], power: ReturnType<typeof resolveMeasuredPowerKw>,
+    capabilities: readonly string[],
+    power: ReturnType<typeof resolveMeasuredPowerKw>,
+    externalPower: DeviceTransportParseDeps['externalPower'],
 ): NativeRelayMeter | undefined {
-    if (!capabilities.includes('onoff')) return undefined;
+    if (externalPower?.kind === 'external' || !capabilities.includes('onoff')) return undefined;
     const watts = capabilities.includes('measure_power') && power.source === 'measure_power'
         && power.measuredPowerKw !== undefined && power.observedAtMs !== undefined
         ? { value: power.measuredPowerKw * 1000, atMs: power.observedAtMs, sourceDated: true } : undefined;
