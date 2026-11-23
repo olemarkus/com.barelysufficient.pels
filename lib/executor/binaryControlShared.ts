@@ -2,6 +2,7 @@ import {
   type BinaryControlOutcome,
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
+import type { DeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { BinaryControlDecision, BinaryControlDecisionSnapshot } from './binaryControlPreflight';
 import { getDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -68,7 +69,10 @@ export const runBinaryControl = async (
   let outcome: BinaryControlOutcome = { applied: false };
   try {
     const atMs = Date.now();
-    outcome = await decideAndDispatchBinaryControl(ctx, command, snapshot, forceAgainstReleasedOpposing);
+    const deviceLimitChange = resolveBinaryLimitChange(ctx, command);
+    outcome = await decideAndDispatchBinaryControl(
+      ctx, { ...command, deviceLimitChange }, snapshot, forceAgainstReleasedOpposing,
+    );
     if (outcome.applied || outcome.issued) {
       ctx.execution.controlContests.commandSent({
         homeId: ctx.homeId, deviceId, deviceName: command.name, setting: 'on_off', value: desired, atMs,
@@ -79,3 +83,16 @@ export const runBinaryControl = async (
     ctx.binaryCommandClaim.release(deviceId, ctx.owner, desired, outcome.applied);
   }
 };
+
+function resolveBinaryLimitChange(
+  ctx: ExecutorCommandContext,
+  command: BinaryControlDecision,
+): DeviceLimitChange | undefined {
+  if (ctx.owner !== 'ordinary' || command.lifecycleRelease || command.logContext === 'capacity_control_off') {
+    return undefined;
+  }
+  if (ctx.deviceLimit) {
+    return command.desired ? undefined : { kind: 'limited', ...ctx.deviceLimit, action: 'turned_off' };
+  }
+  return command.desired ? { kind: 'resumed' } : undefined;
+}

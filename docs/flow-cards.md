@@ -29,6 +29,8 @@ While **Power source** is **Power meter**, PELS reads the meter itself and ignor
 | **Price level changed to** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
+| **PELS limited a device** | Fires when PELS switches a device off or observes the temperature setback or lower step it requested. Choose the device or **Any device**. Tags include **Device name**, **Reason**, **Action**, **This hour’s usage (kWh)** and **Available power under home limits (kW)**. A negative value means the home is above its limit. |
+| **PELS resumed a device** | Fires when PELS resumes a device it limited during this app run. Choose the device or **Any device**. Tags include **Device name**, **Time limited (minutes)** and **This hour’s usage (kWh)**. |
 | **Stepped device target changed** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
 | **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it, and PELS limiting the device for the grid import limit, the hard cap, the daily budget or a higher-priority device does not change the status on its own. Once PELS has confirmed that a device stopped taking power, it stays **At risk** through such limiting and fires again only when the device draws power. |
 | **Smart task schedule changed** | Fires when the total scheduled duration changes. Moving scheduled periods without changing their total duration, or changing only the energy estimate, does not fire it. |
@@ -37,6 +39,13 @@ While **Power source** is **Power meter**, PELS reads the meter itself and ignor
 | **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
 | **No car matched to a charger after…** | Fires once when a connected charger with selected cars has waited the chosen number of minutes (1 to 60) without a car match. Exposes a `Charger name` tag. Automatic matching continues, and a match or unplug ends the wait. Use 1 minute to send a notification asking which car is connected. See [EV charger battery reporting](/ev-charger#step-4-configure-boost-mode-battery-reporting). |
 | **Daily budget adjusted for the weather forecast** | Fires once a day when PELS sets your daily budget from the weather forecast (requires the weather insight's automatic apply to be turned on). Exposes a `budget_kwh` token (the new daily budget) and a `forecast_temperature` token (the forecast °C that set it). Manual and Flow budget changes do not fire it. |
+
+The limit card's **Reason** tag is `capacity`, `daily_budget`, `solar_surplus`, `grid_import`,
+`main_fuse`, or `meter_unavailable`. Its **Action** tag is `turned_off`, `temperature_setback`, or
+`lower_step`. These two cards stay quiet in Simulation mode. Use them to send your own notifications
+or write to the Homey timeline from a Flow. Check **Available power is known** before using the
+available power number. When the meter is unavailable or no home limit applies, the card supplies
+zero and the **Available power is known** tag is false.
 
 Use either hard cap card for urgent notifications, not for normal daily pacing. Pick
 **Hard cap breach imminent: manual action needed** when you want to know the moment PELS runs out of load it can

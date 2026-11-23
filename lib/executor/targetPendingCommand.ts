@@ -36,9 +36,13 @@ export const syncPendingTargetCommandAfterActuation = async (
   await waitForImmediateObservedState();
   ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
   const latestObservedValueAfterActuation = readObservedTemperature(ctx, deviceId);
-  let pendingStillExists = ctx.targetCommands.pendingTargetCommands[deviceId]?.desired === desired;
+  const pending = ctx.targetCommands.pendingTargetCommands[deviceId];
+  let pendingStillExists = pending?.desired === desired;
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
     ctx.targetCommands.deletePendingTargetCommand(deviceId);
+    if (pending?.deviceLimitChange && ctx.owner === 'ordinary') {
+      ctx.recordDeviceLimitChange?.(deviceId, name, Date.now(), pending.deviceLimitChange);
+    }
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
     emitExecutorDebug({

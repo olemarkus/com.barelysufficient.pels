@@ -1,3 +1,4 @@
+import type { DeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { RelayShedRecovery } from './relayShedRecovery';
 import type { PlannedBinaryCommand } from '../planContract/executionPlan';
 import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
@@ -80,6 +81,7 @@ export type BinaryControlDecision = {
   binarySwitchGeneration?: number;
   capacityShed?: PlannedBinaryCommand;
   lastResortMaximumW?: number;
+  deviceLimitChange?: DeviceLimitChange;
 };
 
 /**

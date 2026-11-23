@@ -1,3 +1,4 @@
+import type { SteppedDeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import {
@@ -35,6 +36,7 @@ export type SteppedLoadDesiredRuntimeState = {
   previousStepId?: string;
   changedAtMs: number;
   lastIssuedAtMs?: number;
+  deviceLimitChange?: SteppedDeviceLimitChange;
   retryCount: number;
   /** Whether the device has reported anything back since PELS began asking for this step. */
   answer: SteppedLoadCommandAnswer;
@@ -210,6 +212,7 @@ export const markSteppedLoadDesiredStepIssued = (
     previousStepId,
     issuedAtMs = Date.now(),
     confirmationPolicy = 'required',
+    deviceLimitChange,
   } = command;
   if (confirmationPolicy === 'assume_applied') {
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(deviceId, desiredStepId);
@@ -229,6 +232,7 @@ export const markSteppedLoadDesiredStepIssued = (
     previousStepId,
     changedAtMs: issuedAtMs,
     lastIssuedAtMs: issuedAtMs,
+    ...(deviceLimitChange === undefined ? {} : { deviceLimitChange }),
     retryCount,
     answer: shouldIncrementRetryCount ? previousDesired.answer : NOT_YET_ANSWERED,
     nextRetryAtMs: undefined,

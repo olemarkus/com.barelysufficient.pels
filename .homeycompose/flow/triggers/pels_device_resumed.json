@@ -1,0 +1,46 @@
+{
+  "title": {
+    "en": "PELS resumed a device"
+  },
+  "titleFormatted": {
+    "en": "PELS resumed [[device]]"
+  },
+  "hint": {
+    "en": "Fires when PELS resumes a device it previously limited. The duration starts at the first limit."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select a device or Any device"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "device_name",
+      "type": "string",
+      "title": {
+        "en": "Device name"
+      }
+    },
+    {
+      "name": "limited_minutes",
+      "type": "number",
+      "title": {
+        "en": "Time limited (minutes)"
+      }
+    },
+    {
+      "name": "hourly_usage_kwh",
+      "type": "number",
+      "title": {
+        "en": "This hour’s usage (kWh)"
+      }
+    }
+  ]
+}

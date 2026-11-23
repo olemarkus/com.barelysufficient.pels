@@ -1,0 +1,67 @@
+{
+  "title": {
+    "en": "PELS limited a device"
+  },
+  "titleFormatted": {
+    "en": "PELS limited [[device]]"
+  },
+  "hint": {
+    "en": "Fires when PELS applies a limit by switching a device off, changing its target temperature, or lowering its step."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select a device or Any device"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "device_name",
+      "type": "string",
+      "title": {
+        "en": "Device name"
+      }
+    },
+    {
+      "name": "reason",
+      "type": "string",
+      "title": {
+        "en": "Reason"
+      }
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "title": {
+        "en": "Action"
+      }
+    },
+    {
+      "name": "available_power_known",
+      "type": "boolean",
+      "title": {
+        "en": "Available power is known"
+      }
+    },
+    {
+      "name": "available_power_kw",
+      "type": "number",
+      "title": {
+        "en": "Available power under home limits (kW)"
+      }
+    },
+    {
+      "name": "hourly_usage_kwh",
+      "type": "number",
+      "title": {
+        "en": "This hour’s usage (kWh)"
+      }
+    }
+  ]
+}

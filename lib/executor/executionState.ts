@@ -1,3 +1,4 @@
+import type { DeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import { ActuationRecord } from './actuationRecord';
 import type { PendingTargetCommandRead } from '../ports/pendingTargetCommand';
@@ -9,7 +10,11 @@ import type { ControlContestRecording } from '../ports/controlContest';
  */
 export type PendingTargetCommandState = {
   -readonly [Key in keyof PendingTargetCommandRead]: PendingTargetCommandRead[Key]
-} & { lastWaitingLogAtMs?: number };
+} & {
+  lastWaitingLogAtMs?: number;
+  /** If the device reports this exact command, its applied limit event. */
+  deviceLimitChange?: DeviceLimitChange;
+};
 
 /** One per home, shared by ordinary command materialization and its read projections. */
 export class ExecutionState {

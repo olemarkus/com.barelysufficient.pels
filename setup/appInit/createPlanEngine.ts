@@ -1,3 +1,5 @@
+import { createDeviceLimitFlowEmitter } from '../../flowCards/deviceLimitCards';
+import { getCurrentHourContext } from '../../lib/plan/planHourContext';
 import { ChargingPhasePauseRecorder, type ChargingPhasePauseTarget } from '../../lib/executor/chargingPhasePause';
 import { ExecutionState } from '../../lib/executor/executionState';
 import type { ControlContestRecording } from '../../lib/ports/controlContest';
@@ -167,6 +169,9 @@ export function createPlanEngineComposition(
   }, state);
   const executor = new PlanExecutor({
     chargingPhaseOwner: chargingPhases,
+    emitDeviceLimitEvent: createDeviceLimitFlowEmitter(
+      ctx.homey.flow, (atMs) => getCurrentHourContext(scope.getPowerTracker(), atMs).usedKWh,
+    ),
     getHomeDisplayName: scope.getHomeDisplayName,
     // The id is already a plain scope field (a home id cannot change without a
     // new scope), so log correlation needs no extra getter.

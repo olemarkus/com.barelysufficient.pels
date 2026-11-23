@@ -80,6 +80,13 @@ export type PlannedTargetPowerClaim = { deviceId: string; name: string };
  */
 export type PlannedBinaryDrive = { desiredOn: boolean };
 
+/** The planner's public attribution for a device limit. */
+export type DeviceLimitReason =
+  | 'capacity' | 'daily_budget' | 'solar_surplus' | 'grid_import' | 'main_fuse' | 'meter_unavailable';
+
+/** Device limit and available power from the decision that issued it. */
+export type DeviceLimitDecision = { reason: DeviceLimitReason; availablePowerKw?: number };
+
 /**
  * One device's commands for this cycle. Axes are attached only when this
  * decision drives them. A device whose commands could not be projected is a
@@ -89,6 +96,8 @@ export type PlannedDeviceCommands = {
   id: string;
   name: string;
   commandAuthority: boolean;
+  /** Public attribution for actuation that implements this limit. */
+  deviceLimit?: DeviceLimitDecision;
 } & (
   | { projection: 'decided' }
   | { projection: 'failed'; error: unknown }
@@ -133,7 +142,7 @@ export type DroppedSteppedShedIntent = {
   selectedStepId: string | null;
   desiredStepId: string | null;
 };
-/** The execution boundary excludes planner reasons, admission state, UI fields and raw inputs. */
+/** Execution gets command decisions and event attribution. Admission, UI reasons and raw inputs stay in planning. */
 export type ExecutionPlan = {
   /** Evidence stamp that still authorizes the shared fail-closed pauses. */
   meterSilenceStamp?: number;

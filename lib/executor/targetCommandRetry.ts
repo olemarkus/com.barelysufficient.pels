@@ -15,6 +15,7 @@
  */
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import type { PendingTargetCommandState, ExecutionState } from './executionState';
+import type { DeviceLimitChange } from '../ports/deviceLimitEvents';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 
 type PendingTargetStore = Pick<ExecutionState, 'pendingTargetCommands'>;
@@ -52,6 +53,7 @@ export function recordTargetCommandAttempt(
   nowMs: number,
   status: PendingTargetCommandState['status'],
   observedValue: unknown,
+  deviceLimitChange?: DeviceLimitChange,
 ): PendingTargetCommandState {
   const { pendingTargetCommands } = state;
   const previous = pendingTargetCommands[deviceId];
@@ -59,8 +61,10 @@ export function recordTargetCommandAttempt(
   const retryCount = isRetry ? previous.retryCount + 1 : 0;
   const waitingConfirmation = status === 'waiting_confirmation';
   const retainedObservedValue = isRetry ? previous.lastObservedValue : undefined;
+  const limitAttribution = deviceLimitChange ?? (isRetry ? previous.deviceLimitChange : undefined);
   const entry: PendingTargetCommandState = {
     desired,
+    ...(limitAttribution === undefined ? {} : { deviceLimitChange: limitAttribution }),
     startedMs: isRetry ? previous.startedMs : nowMs,
     lastAttemptMs: nowMs,
     retryCount,

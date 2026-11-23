@@ -1,3 +1,7 @@
+import { syncPendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
+import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
+import { steppedStoresForTest } from '../helpers/steppedStores';
+import { getTestExecutionState } from '../utils/planEngineStateFixture';
 import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor, getTestControlContests } from '../utils/planEngineStateFixture';
@@ -1326,6 +1330,45 @@ describe('PlanExecutor pending target commands', () => {
     vi.useRealTimers();
   });
 
+  it.each([false, true])('requires setpoint evidence and suppresses Simulation events (%s)', async (simulation) => {
+    const state = createPlanEngineState();
+    const emitDeviceLimitEvent = vi.fn();
+    let dryRun = false;
+    const target = { id: 'target_temperature', value: 21, unit: '°C' };
+    const { executor, deviceManager } = buildExecutor(state, [{
+      id: 'dev-1', name: 'Heater', canSetControl: true, available: true,
+      binaryCapabilityId: 'onoff', binaryControl: { on: true }, targets: [target],
+    }], { emitDeviceLimitEvent, getCapacityDryRun: () => dryRun });
+    const sync = () => syncPendingTargetCommands(
+      getTestExecutionState(state), [{ id: 'dev-1', name: 'Heater', targets: [target] }], 'realtime_capability',
+      vi.fn(), executor.recordDeviceLimitChange.bind(executor),
+    );
+    const plan = buildTargetPlan(21, 15);
+    plan.devices = [pd({
+      id: 'dev-1', name: 'Heater', controllable: true, available: true, deviceType: 'temperature',
+      currentTarget: 21, plannedTarget: 15, currentTemperature: 20, currentState: 'on',
+      plannedState: 'shed', shedAction: 'set_temperature', shedTemperature: 15,
+      reason: { code: PLAN_REASON_CODES.dailyBudget },
+    })];
+
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+    expect(deviceManager.setCapability).toHaveBeenCalledExactlyOnceWith('dev-1', 'target_temperature', 15);
+    sync();
+    expect(emitDeviceLimitEvent).not.toHaveBeenCalled();
+
+    dryRun = simulation;
+    target.value = 15;
+    sync();
+    sync();
+    if (simulation) {
+      expect(emitDeviceLimitEvent).not.toHaveBeenCalled();
+      return;
+    }
+    expect(emitDeviceLimitEvent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      deviceId: 'dev-1', kind: 'limited', reason: 'daily_budget', action: 'temperature_setback',
+    }));
+  });
+
   it('does not resend the same target command until the retry deadline', async () => {
     const state = createPlanEngineState();
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [
@@ -1695,6 +1738,7 @@ describe('PlanExecutor pending target commands', () => {
 
   it('logs shed-temperature target updates as shedding work instead of overshoot', async () => {
     const state = createPlanEngineState();
+    const emitDeviceLimitEvent = vi.fn();
     const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
@@ -1706,7 +1750,7 @@ describe('PlanExecutor pending target commands', () => {
         binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
-    ]);
+    ], { emitDeviceLimitEvent });
 
     await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
@@ -1726,6 +1770,7 @@ describe('PlanExecutor pending target commands', () => {
           plannedTarget: 15,
           controllable: true,
           shedAction: 'set_temperature',
+          reason: { code: PLAN_REASON_CODES.dailyBudget },
         }),
       ],
       chargingPhaseDecisions: [],
@@ -1733,6 +1778,7 @@ describe('PlanExecutor pending target commands', () => {
       storageReleases: [],
     }));
 
+    expect(emitDeviceLimitEvent).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
@@ -2021,6 +2067,51 @@ describe('PlanExecutor stepped loads', () => {
       storageReleases: [],
     };
   };
+
+  it.each([false, true])('requires a reported step and suppresses Simulation events (%s)', async (simulation) => {
+    const state = createPlanEngineState();
+    const { store } = steppedStoresForTest();
+    const emitDeviceLimitEvent = vi.fn();
+    let dryRun = false;
+    const { executor, desiredSteppedTrigger } = buildExecutor(state, steppedSnapshot({
+      reportedStepId: 'max', binaryControlObservation: onoffObservation(true),
+    }), {
+      emitDeviceLimitEvent, getCapacityDryRun: () => dryRun,
+      markSteppedLoadDesiredStepIssued: (command) => store.markDesiredStepIssued(command),
+    });
+    const plan = steppedPlan({
+      currentState: 'on', plannedState: 'shed', selectedStepId: 'max', reportedStepId: 'max',
+      desiredStepId: 'low', plannedShedStepId: 'low', shedAction: 'turn_off', reason: CAPACITY_REASON,
+    });
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+    const issuedAtMs = store.getDesired('dev-1')?.lastIssuedAtMs;
+    if (issuedAtMs === undefined) throw new Error('Expected a pending step command');
+    const observe = (stepId: string, observedAtMs: number) => syncSteppedCommands({
+      store, nowMs: issuedAtMs + 1,
+      devices: [{
+        id: 'dev-1', observedOn: true, lowestActiveStepId: 'low',
+        steppedCommandAcknowledgement: { state: 'observed', acknowledgedStepId: 'low', observedAtMs },
+        steppedCommandConfirmation: { state: 'observed', observedStepId: stepId, observedAtMs },
+      }],
+      onReportedStep: (deviceId, report) => executor.recordReportedStepLimit(store, deviceId, report),
+    });
+
+    observe('max', issuedAtMs + 1);
+    observe('low', issuedAtMs - 1);
+    expect(emitDeviceLimitEvent).not.toHaveBeenCalled();
+
+    dryRun = simulation;
+    observe('low', issuedAtMs + 1);
+    observe('low', issuedAtMs + 1);
+    if (simulation) {
+      expect(emitDeviceLimitEvent).not.toHaveBeenCalled();
+      return;
+    }
+    expect(emitDeviceLimitEvent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      deviceId: 'dev-1', kind: 'limited', reason: 'capacity', action: 'lower_step',
+    }));
+  });
 
   it('issues independent sheds while another device write waits, isolates failures, and awaits every device', async () => {
     const binaryShed = (id: string) => pd({
@@ -3855,6 +3946,7 @@ describe('PlanExecutor stepped loads', () => {
     // the whole actuation; reaching for the binary handle here would cut the
     // load the rung was chosen to keep running.
     const state = createPlanEngineState();
+    const emitDeviceLimitEvent = vi.fn();
     const snapshot = [
       {
         id: 'dev-1',
@@ -3866,6 +3958,7 @@ describe('PlanExecutor stepped loads', () => {
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot, {
+      emitDeviceLimitEvent,
       getSteppedLoadCommandSession: () => ({
         hasPriorStepCommand: false,
         stepCommandPending: false,
@@ -3883,8 +3976,10 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'max',
       desiredStepId: 'low',
       plannedShedStepId: 'low',
+      reason: CAPACITY_REASON,
     })));
 
+    expect(emitDeviceLimitEvent).not.toHaveBeenCalled();
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
       expect.objectContaining({ deviceId: 'dev-1' }),

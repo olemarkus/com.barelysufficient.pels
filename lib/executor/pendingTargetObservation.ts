@@ -1,3 +1,4 @@
+import type { DeviceLimitRecorder } from '../ports/deviceLimitEvents';
 import type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import { getDebugEmitter, type StructuredDebugEmitter } from '../logging/logger';
@@ -39,6 +40,7 @@ export function syncPendingTargetCommands(
   liveDevices: PendingTargetObservedDevice[],
   source: PendingTargetObservationSource,
   structuredInfo: StructuredDebugEmitter,
+  onDeviceLimitConfirmed?: DeviceLimitRecorder,
 ): boolean {
   const liveById = new Map<string, PendingTargetObservedDevice>();
   for (const device of liveDevices) liveById.set(device.id, device);
@@ -55,7 +57,7 @@ export function syncPendingTargetCommands(
     const observedValue = getObservedTargetValue(liveDevice);
 
     if (handleConfirmedPendingTargetObservation(
-      state, liveDevice, pending, observedValue, source,
+      state, liveDevice, pending, observedValue, source, onDeviceLimitConfirmed,
     )) {
       changed = true;
       continue;
@@ -122,9 +124,13 @@ function handleConfirmedPendingTargetObservation(
   pending: PendingTargetCommandState,
   observedValue: unknown,
   source: PendingTargetObservationSource,
+  onDeviceLimitConfirmed?: DeviceLimitRecorder,
 ): boolean {
   if (!Object.is(observedValue, pending.desired)) return false;
   delete state.pendingTargetCommands[liveDevice.id];
+  if (pending.deviceLimitChange) {
+    onDeviceLimitConfirmed?.(liveDevice.id, liveDevice.name, Date.now(), pending.deviceLimitChange);
+  }
   emitPlanDebug({
     event: 'pending_target_command_confirmed',
     deviceId: liveDevice.id,
