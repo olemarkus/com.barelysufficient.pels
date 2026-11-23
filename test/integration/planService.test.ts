@@ -1596,6 +1596,79 @@ describe('PlanService', () => {
     }));
   });
 
+  it.each([false, true])('publishes target status once after apply settles (apply fails: %s)', async (applyFails) => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    let observedTarget = 18;
+    let pending = false;
+    const syncPendingTargetCommands = vi.fn(() => {
+      pending = false;
+      return true;
+    });
+    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan) => plan);
+    let finishApply!: () => void;
+    let repliesProcessed!: () => void;
+    const applyHeldOpen = new Promise<void>((resolve) => { finishApply = resolve; });
+    const postWriteSyncsDone = new Promise<void>((resolve) => { repliesProcessed = resolve; });
+    const service = new PlanService({
+      ...planServiceDeps(),
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({
+          kind: 'observed',
+          value: { currentTarget: observedTarget, currentTemperature: 21 },
+        }),
+      },
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
+        ...createMockPlanEngine(),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(18, 'keep')),
+        hasPendingTargetCommands: () => pending,
+        syncPendingTargetCommands,
+        decoratePlanWithPendingTargetCommands,
+        applyPlanActions: vi.fn(async () => {
+          realtime.mockClear();
+          syncPendingTargetCommands.mockClear();
+          decoratePlanWithPendingTargetCommands.mockClear();
+          for (const target of [19, 20]) {
+            observedTarget = target;
+            pending = true;
+            service.syncLivePlanStateInline('realtime_capability');
+          }
+          repliesProcessed();
+          await applyHeldOpen;
+          if (applyFails) throw new Error('another device failed');
+          return actuation({ deviceWriteCount: 2 });
+        }),
+      }),
+      getPlanDevices: () => [liveHeaterInput({
+        on: true, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: observedTarget,
+      })],
+      getSettleDevices: () => [],
+    });
+
+    const rebuild = service.rebuildPlanFromCache('power_delta');
+    await postWriteSyncsDone;
+    const syncsDuringApply = syncPendingTargetCommands.mock.calls.length;
+    const publicationsDuringApply = realtime.mock.calls.length;
+    const decorationsDuringApply = decoratePlanWithPendingTargetCommands.mock.calls.length;
+    finishApply();
+    await rebuild;
+
+    expect(syncsDuringApply).toBe(2);
+    expect(publicationsDuringApply).toBe(0);
+    expect(decorationsDuringApply).toBe(0);
+    expect(decoratePlanWithPendingTargetCommands).toHaveBeenCalledTimes(1);
+    expect(realtime).toHaveBeenCalledExactlyOnceWith('plan_updated', expect.objectContaining({
+      devices: [expect.objectContaining({
+        id: 'dev-1', status: expect.objectContaining({ factText: expect.stringContaining('target 20 °C') }),
+      })],
+    }));
+
+    observedTarget = 21;
+    service.syncLivePlanStateInline('realtime_capability');
+    expect(realtime).toHaveBeenCalledTimes(2);
+  });
+
   it('clears a confirmed pending target command and reads the setpoint live', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
