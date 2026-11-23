@@ -225,6 +225,8 @@ export type PriceDataStore = {
   writeCombined(payload: CombinedPricesV2): void;
   /** Drop the stored combined prices, for a payload no reader can use. */
   clearCombined(): void;
+  /** Retire combined prices from a source or device that no longer applies. */
+  invalidateCombined(): void;
 };
 
 /**
@@ -279,5 +281,9 @@ export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheSt
     readCombinedRaw: () => readCombinedRow(settings, cache),
     writeCombined: (payload) => cache.write(COMBINED_PRICES, payload),
     clearCombined: () => cache.remove(COMBINED_PRICES),
+    invalidateCombined: () => {
+      cache.markLegacyImported(COMBINED_PRICES);
+      cache.remove(COMBINED_PRICES);
+    },
   };
 };

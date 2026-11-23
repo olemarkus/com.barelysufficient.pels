@@ -73,10 +73,9 @@ export const resolvePowerhourSeries = (
 /**
  * Which device prices this home.
  *
- * `selected` when the owner's choice is present, and when there is exactly one
- * device and therefore nothing to choose — a single-device home should not have
- * to answer a question with one possible answer before it gets prices. Two
- * devices and no choice is `device_missing` with an empty id: the source cannot
+ * A device with prices is selected by the owner or, without a saved choice,
+ * when it is the only device publishing usable prices. Multiple priced devices
+ * and no choice is `device_missing` with an empty id: the source cannot
  * guess which zone the owner meant, and guessing would price the home from
  * whichever one the app happened to list first.
  */
@@ -152,9 +151,11 @@ const resolveListedPowerhourDevice = (
     if (!read.hasUnidentifiedDevice && !read.unreadableDeviceIds.has(choice.deviceId)) {
       return { kind: 'device_missing', deviceId: choice.deviceId };
     }
-  } else if (resolution.kind === 'selected' || resolution.kind === 'device_missing') {
-    return resolution;
+    return { kind: 'device_unreadable' };
   }
+  // Without a saved choice, only usable prices participate in selection. A
+  // recovered device can make a later reply ambiguous.
+  if (resolution.kind === 'selected' || resolution.kind === 'device_missing') return resolution;
   return { kind: 'device_unreadable' };
 };
 
@@ -343,6 +344,10 @@ export type PowerhourCache = {
   device: PowerhourCacheDevice;
 };
 
+const isForeignDevice = (cached: PowerhourCacheDevice, deviceId: string): boolean => (
+  cached.kind === 'device' && cached.deviceId !== deviceId
+);
+
 /**
  * One read of one device, as the two day payloads PELS stores.
  *
@@ -363,7 +368,7 @@ export const buildPowerhourPayloads = (
   // Only a marker that NAMES another device is evidence the stored days belong
   // to one. Absence and an unreadable read are both "no verdict", and the
   // no-verdict answer is to keep what is there.
-  const keepStored = cache.device.kind !== 'device' || cache.device.deviceId === device.deviceId;
+  const keepStored = !isForeignDevice(cache.device, device.deviceId);
 
   const freshByDay = device.slots.reduce<Map<string, FlowPricePeriod[]>>((acc, slot) => {
     const dateKey = getDateKeyInTimeZone(new Date(Date.parse(slot.startsAt)), timeZone);
@@ -533,6 +538,8 @@ export type PowerhourStore = {
   /** `null` clears it: the unit is the device's, and an absent one is unknown. */
   writePowerhourCurrency(unit: string | null): void;
   writePowerhourCacheDevice(deviceId: string | null): void;
+  /** Remove the derived series before discarding its raw prices. */
+  invalidateCombined(): void;
 };
 
 /** Which of the two stored days a write is about. */
@@ -572,8 +579,11 @@ const mirrorWithoutDevice = (
   const dropped = outcome.staleCache
     ? (['today', 'tomorrow'] as const).filter((day) => cache[day].kind === 'stored')
     : [];
-  dropped.forEach((day) => store.writePowerhourDay(day, null));
-  if (outcome.staleCache) store.writePowerhourCacheDevice(null);
+  if (outcome.staleCache) {
+    store.invalidateCombined();
+    dropped.forEach((day) => store.writePowerhourDay(day, null));
+    store.writePowerhourCacheDevice(null);
+  }
   return {
     status,
     change: outcome.staleCache ? 'invalidated' : 'retained',
@@ -669,6 +679,8 @@ export const mirrorPowerhourPrices = async (
       record: { event: 'powerhour_prices_no_data', deviceId: device.deviceId },
     };
   }
+  const replacesDevice = isForeignDevice(cache.device, device.deviceId);
+  if (replacesDevice) store.invalidateCombined();
   // The stored currency names the device in force, including when that device
   // states none — leaving the previous device's label behind would price the new
   // device's numbers in the old one's unit. `null` is the modelled unknown, which
@@ -685,7 +697,7 @@ export const mirrorPowerhourPrices = async (
   if (!payloads.retainsForeignDay) store.writePowerhourCacheDevice(device.deviceId);
   return {
     status,
-    change: cleared > 0 ? 'invalidated' : 'updated',
+    change: replacesDevice ? 'invalidated' : 'updated',
     retry: stored > 0 ? 'none' : 'prices_unavailable',
     level: 'info',
     record: {
