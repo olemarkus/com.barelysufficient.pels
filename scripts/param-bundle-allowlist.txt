@@ -107,7 +107,7 @@ packages/settings-ui/src/ui/deviceDetail/priceOpt.ts 1
 packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts 3
 packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts 3
 packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts 1
-packages/settings-ui/src/ui/devices.ts 2
+packages/settings-ui/src/ui/devices.ts 1
 packages/settings-ui/src/ui/echartsRegistry.ts 1
 packages/settings-ui/src/ui/exportPriceSettings.ts 1
 packages/settings-ui/src/ui/homesManagementCopy.ts 1

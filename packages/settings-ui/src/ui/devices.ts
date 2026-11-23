@@ -384,11 +384,8 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
   const setup = resolveDevicePowerSetupPresentation(device);
   const titles: RowSwitchTitles = {
     managed: getManagedTitle(isLoadingComplete, manageability.supportsManage, manageability.nativeWiringRequired),
-    limit: resolveBatteryLimitTitle(device) ?? getCapacityTitle({
-      isLoadingComplete,
-      supportsPower: manageability.supportsPower,
-      isManaged: manageability.isManaged,
-    }, setup.lastResortHint),
+    limit: resolveBatteryLimitTitle(device)
+      ?? getCapacityTitle(isLoadingComplete, manageability, setup.lastResortHint),
     price: getPriceTitle(isLoadingComplete, manageability),
   };
 

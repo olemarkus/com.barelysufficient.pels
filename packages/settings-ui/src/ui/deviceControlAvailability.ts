@@ -68,15 +68,14 @@ export const getManagedDisabledReason = (
   return null;
 };
 
-export const getCapacityTitle = (params: {
-  isLoadingComplete: boolean;
-  supportsPower: boolean;
-  isManaged: boolean;
-}, lastResortHint?: string): string => {
-  const { isLoadingComplete, supportsPower, isManaged } = params;
+export const getCapacityTitle = (
+  isLoadingComplete: boolean,
+  manageability: DeviceControlAvailabilityState,
+  lastResortHint?: string,
+): string => {
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return lastResortHint ?? `Power-limit control (needs ${POWER_READING_REMEDY})`;
-  if (isManaged) return 'Power-limit control';
+  if (!manageability.supportsPower) return lastResortHint ?? `Power-limit control (needs ${POWER_READING_REMEDY})`;
+  if (manageability.isManaged) return 'Power-limit control';
   return 'Power-limit control (requires Managed by PELS)';
 };
 
