@@ -69,6 +69,7 @@ const paint = (): void => {
       void writeCommand({ type: 'set_device_schedules_enabled', deviceId, enabled });
     },
     onFilter: setScheduleFilter,
+    onViewPreparation: () => { closeDevice(); openPanel('deadlines'); },
   });
 };
 

@@ -2957,12 +2957,35 @@ in force now, Setup & recommendations shows a recommendation
 ## Mode preparation
 
 A mode schedule offers **Have devices ready by then** with the help text
-`Start heating eligible devices early toward their new mode temperatures.`
-Its schedule row adds `Prepare devices` to the mode action. While a device
-uses the early mode target, its reason can read `Getting ready for Home at
-08:00`. A power-limit reason takes precedence. The schedule's last result
-can read `Mode changed. 5 of 6 devices were ready.` A single device reads
-`The device was ready.` or `The device was below its target.`
+`Heaters with a higher temperature in the new mode start early, so they reach
+it by this time.` Its schedule row adds `Prepare devices` to the mode action and,
+while the schedule is on, a **View plan** button that opens Smart tasks. While a
+device uses the early mode target, its reason can read `Getting ready for Home at
+08:00`, on thermostat and stepped water heater cards alike. A power-limit or hold
+reason takes precedence. The schedule's last result can read `Mode changed. 5 of 6
+devices were ready.` A single device reads `The device was ready.` or `The device
+was below its target.`
+
+The Smart tasks panel is titled `Getting ready for Home`, with `Morning heat
+changes the mode from Night to Home at Mon 23 Nov 06:00.` and the supporting line
+`Start times are estimates. Power limits and the daily budget still apply.` Each
+heater shows a status line and `Night 17.0 °C → Home 21.0 °C`:
+
+- `Starts heating around 04:30` (a date is added when the start falls on an
+  earlier day than the mode change)
+- `Starts heating now`
+- `Using the Home temperature now`
+- `Its Smart task comes first`, with **View Smart task**
+- `Its temperature override comes first`, with **Open device**
+- `Waits until PELS can check its Smart tasks`
+
+With no participating heater the panel says `No heater needs to start early. A
+heater starts early when its Home temperature is higher than its Night
+temperature.` Waiting reasons: `Mode schedules are paused.`, `Turn on a mode
+schedule that has devices ready to see its plan.`, `No mode schedule that has
+devices ready runs in the current mode.` and `Plans once "Night mode" runs at
+22:00.` When the next prepared schedule's mode is already the current mode, the panel
+says `Home is already the mode. PELS plans again after the mode changes.`
 
 ## Schedule rows: the last occurrence
 

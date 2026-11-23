@@ -170,6 +170,13 @@ function resolveUnansweredStepLine(device: DeviceStatusInput, dryRun: boolean): 
   return UNANSWERED_STEP_LINES[device.unusedBuiltInControl];
 }
 
+// A power-limit or hold line describes the device first; preparation only explains an otherwise
+// unexplained mode-preparation target.
+function resolveModePreparationLine(device: DeviceStatusInput, dryRun: boolean, held: boolean): string | null {
+  if (!device.modePreparation || dryRun || held || device.execution.externalOffHeld) return null;
+  return `Getting ready for ${device.modePreparation.mode} at ${device.modePreparation.at}`;
+}
+
 function resolveReason(device: DeviceStatusInput, dryRun: boolean, powerPredatesSwitchOff: boolean): string | null {
   const kind = resolveBaseKind(device);
   const held = resolveIntentStateKind({ kind, reasonCode: device.reason.code,
@@ -179,7 +186,7 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean, powerPredates
   const resolved = { ...device, stateKind: kind };
   const stepped = device.steppedLoad;
   if (stepped) {
-    return resolveBinarySurplusReasonLine(device, kind)
+    const reason = resolveBinarySurplusReasonLine(device, kind)
       ?? resolveSteppedStatusLine(resolved, stepped.profile, 0, dryRun)
       // Settling at a reduced rung does not end the hold or change its cause.
       ?? (held ? resolveHeldCardReasonLine(
@@ -187,11 +194,10 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean, powerPredates
         device.starvation,
         resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
       ) : null);
+    return reason ?? resolveModePreparationLine(device, dryRun, held);
   }
   if (device.temperature) {
-    const reason = resolveTemperatureReasonLine(resolved, dryRun);
-    if (reason !== null || dryRun || held || device.execution.externalOffHeld || !device.modePreparation) return reason;
-    return `Getting ready for ${device.modePreparation.mode} at ${device.modePreparation.at}`;
+    return resolveTemperatureReasonLine(resolved, dryRun) ?? resolveModePreparationLine(device, dryRun, held);
   }
   const reported = powerPredatesSwitchOff ? null : resolveReportedLoadReason(device, held, dryRun);
   return reported ?? resolveBinaryReason(device, kind, held);

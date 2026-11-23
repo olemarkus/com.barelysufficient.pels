@@ -397,25 +397,26 @@ export class ScheduleService {
     const configured = [...this.schedules.values()].filter(isModeSchedule)
       .filter((schedule) => schedule.action.prepare);
     if (configured.length === 0) return { state: 'inactive' };
-    if (!this.controls.modeChangesEnabled) return { state: 'waiting', reason: 'Mode schedules are paused.' };
+    const waiting = (reason: string): ModePreparationPlan => ({ state: 'waiting', reason });
+    if (!this.controls.modeChangesEnabled) return waiting('Mode schedules are paused.');
     if (!configured.some((schedule) => schedule.enabled)) {
-      return { state: 'waiting', reason: 'Turn on a mode schedule with preparation to see its plan.' };
+      return waiting('Turn on a mode schedule that has devices ready to see its plan.');
     }
-    const unavailable: ModePreparationPlan = {
-      state: 'unavailable', reason: 'Mode preparation is temporarily unavailable.',
-    };
+    const unavailable = { state: 'unavailable', reason: 'Mode preparation is temporarily unavailable.' } as const;
     if (!this.running) return unavailable;
     try {
       const next = this.findNextModeAction(Infinity, (id) => this.port.receipts.read(id)?.localOccurrence ?? '');
       if (next === 'unavailable') return unavailable;
-      if (!next) return { state: 'waiting', reason: 'No scheduled preparation applies in the current mode.' };
-      if (!next.entry.action.prepare) {
-        return { state: 'waiting', reason: `Waiting for ${next.entry.name} to run before estimating preparation.` };
-      }
+      if (!next) return waiting('No mode schedule that has devices ready runs in the current mode.');
+      if (!next.entry.action.prepare) return waiting(`Plans once "${next.entry.name}" runs at ${next.entry.at}.`);
       const occurrence = this.preparationOccurrence(next.entry, next.atMs);
+      const currentMode = this.port.currentMode();
+      if (occurrence.mode === currentMode) {
+        return waiting(`${currentMode} is already the mode. PELS plans again after the mode changes.`);
+      }
       return {
         state: 'ready', scheduleId: occurrence.scheduleId, scheduleName: next.entry.name,
-        currentMode: this.port.currentMode(), destinationMode: occurrence.mode, atMs: occurrence.atMs,
+        currentMode, destinationMode: occurrence.mode, atMs: occurrence.atMs,
         devices: this.port.previewPreparation(occurrence),
       };
     } catch (error) {
