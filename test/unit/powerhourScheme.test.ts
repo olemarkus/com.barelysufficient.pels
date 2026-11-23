@@ -119,8 +119,15 @@ describe('whether Power by the Hour can price the home', () => {
     expect(resolvePowerhourPresence(resolved([a, b]), chosen('b'))).toBe('price_device');
   });
 
+  it('selects the only priced device when another listed device has no accepted prices', () => {
+    expect(resolvePowerhourPresence(resolved([a, { ...b, slots: [] }]), unchosen)).toBe('price_device');
+    expect(resolvePowerhourPresence({
+      kind: 'partial', devices: [a], unreadableDeviceIds: new Set(['b']), hasUnidentifiedDevice: false,
+    }, unchosen)).toBe('price_device');
+  });
+
   it('has none when the app answers it cannot', () => {
-    expect(resolvePowerhourPresence(resolved([]), unchosen)).toBe('none');
+    expect(resolvePowerhourPresence(resolved([]), unchosen, 'confirm_empty')).toBe('none');
     expect(resolvePowerhourPresence(resolved([a, b]), unchosen)).toBe('none');
     expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'app_unavailable' }, unchosen)).toBe('none');
     expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'not_permitted' }, unchosen)).toBe('none');
@@ -128,6 +135,8 @@ describe('whether Power by the Hour can price the home', () => {
 
   // An unanswered read must not move a home off a source PELS assumed.
   it('reads nothing from a read that went unanswered', () => {
+    expect(resolvePowerhourPresence(resolved([]), unchosen)).toBe('unread');
+    expect(resolvePowerhourPresence(resolved([{ ...a, slots: [] }, b]), chosen('a'))).toBe('unread');
     expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'read_failed' }, unchosen)).toBe('unread');
     expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'malformed' }, unchosen)).toBe('unread');
     expect(resolvePowerhourPresence(resolved([a]), { kind: 'unreadable' })).toBe('unread');

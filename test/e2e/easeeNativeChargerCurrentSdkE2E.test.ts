@@ -53,14 +53,18 @@ async function buildEaseeCharger(settings: Record<string, unknown> = {}): Promis
   return charger;
 }
 
-function reportHomePower(totalW: number, withLegacyEaseeFlow: boolean): void {
+function reportHomePower(
+  powerW: number | (() => number), withLegacyEaseeFlow: boolean, waitForFlows?: Promise<void>,
+): void {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
+      const totalW = typeof powerW === 'number' ? powerW : powerW();
       return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: totalW } }] };
     }
     if (path === 'manager/flow/flow/') return {};
     if (path === 'manager/flow/advancedflow/') {
+      await waitForFlows;
       return withLegacyEaseeFlow ? {
         // Production has these blocks in unrelated Flows. One such block used
         // to invalidate the whole inventory, hiding the charger's valid Flow.
@@ -332,6 +336,39 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     expect(Number.isInteger(firstWrite)).toBe(true);
     expect(firstWrite).toBeLessThan(RESET_CURRENT_A);
     expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
+  });
+
+  it('waits for the native route before sending a charger step at startup', async () => {
+    const charger = await buildEaseeCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime(false);
+    let releaseFlows: () => void = () => {};
+    const flowRead = new Promise<void>((resolve) => { releaseFlows = resolve; });
+    let totalW = RESET_POWER_W + 200;
+    reportHomePower(() => totalW, false, flowRead);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+
+    try {
+      await app.onInit();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+      expect(mockHomeyInstance.api.get).toHaveBeenCalledWith('manager/flow/advancedflow/');
+      expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
+      expect(putSpy.mock.calls.filter(([path]) => path === CHARGER_CURRENT_PATH)).toEqual([]);
+
+      releaseFlows();
+      totalW = RESET_POWER_W + 2_000;
+      await vi.advanceTimersByTimeAsync(15_000);
+      const writes = () => putSpy.mock.calls.filter(([path]) => path === CHARGER_CURRENT_PATH);
+      await drainUntil(() => writes().length > 0);
+      const first = writes()[0]?.[1] as { value: number };
+      expect(first.value).toBeGreaterThan(6);
+      expect(first.value).toBeLessThan(RESET_CURRENT_A);
+      expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
+    } finally {
+      releaseFlows();
+    }
   });
 
   it('leaves a Manual charger at its reported current when another device is limited', async () => {

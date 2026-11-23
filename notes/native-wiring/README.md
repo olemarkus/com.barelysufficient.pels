@@ -440,6 +440,9 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
      conflict-gated auto-decision (held by `BuiltInControlFlowConflicts`). Nothing is
      persisted, so there is no migration and no risk of corrupting user state,
      and an explicit opt-out is never auto-reverted.
+   - **Startup:** a candidate awaiting its native route holds level writes
+     until the snapshot contains that route. An explicit native opt-out or a
+     known conflict authorizes the existing Flow route during the wait.
    - **Gating:** `detectNativeWiringConflicts` (`lib/device/nativeWiringConflictProbe.ts`)
      auto-enables supported candidates with no conflicting Flow; an `unknown` read
      yields no decisions (fail-closed). It runs once after the snapshot

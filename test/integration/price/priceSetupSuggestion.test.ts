@@ -99,6 +99,17 @@ describe('price setup suggestion, by source in force', () => {
     await expect(coordinator.suggestPriceSetup()).resolves.toMatchObject({ powerhour: { kind: 'no_price_device' } });
   });
 
+  it('on Homey Energy, waits for a listed device to publish prices before suggesting a switch', async () => {
+    mockHomeyInstance.settings.set('price_scheme', 'homey');
+    setMockApiApp(POWERHOUR_APP_ID, {
+      installed: true,
+      get: async () => ({ prices: [{ ...POWERHOUR_DEVICE, slots: [] }] }),
+    });
+    const { coordinator } = createCoordinator();
+
+    await expect(coordinator.suggestPriceSetup()).resolves.toMatchObject({ powerhour: { kind: 'none' } });
+  });
+
   it('on Norway, never asks Power by the Hour', async () => {
     mockHomeyInstance.settings.set('price_scheme', 'norway');
     const { coordinator } = createCoordinator();

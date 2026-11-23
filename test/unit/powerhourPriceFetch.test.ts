@@ -181,14 +181,23 @@ describe('Power by the Hour payload resolution', () => {
     expect(read.kind === 'resolved' && read.devices[0]?.slots.map((s) => s.importPrice)).toEqual([0.11, 0.12]);
   });
 
-  it('drops a device with no usable slot, rather than offering a dead end', () => {
+  it('keeps the identity of a device with no usable slot', () => {
     const read = resolvePowerhourPayload({ prices: [device({ slots: [] })] });
-    expect(read).toEqual({ kind: 'resolved', devices: [] });
+    expect(read.kind === 'resolved' && read.devices.map(({ slots }) => slots)).toEqual([[]]);
   });
 
-  it('drops a device with no interval it can be priced at', () => {
-    const read = resolvePowerhourPayload({ prices: [device({ priceInterval: 0 })] });
-    expect(read).toEqual({ kind: 'resolved', devices: [] });
+  it('separates unreadable electricity devices from healthy ones', () => {
+    const read = resolvePowerhourPayload({ prices: [
+      device({ deviceId: 'unreadable', priceInterval: 0 }),
+      device({ deviceId: '' }),
+      device({ deviceId: 'healthy' }),
+    ] });
+    expect(read).toEqual({
+      kind: 'partial',
+      devices: [expect.objectContaining({ deviceId: 'healthy' })],
+      unreadableDeviceIds: new Set(['unreadable']),
+      hasUnidentifiedDevice: true,
+    });
   });
 
   it.each([

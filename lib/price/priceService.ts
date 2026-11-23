@@ -47,7 +47,8 @@ import {
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
 import {
-  mirrorPowerhourPrices, resolvePowerhourSeries, type PowerhourPresence, type PowerhourSourceUiStatus,
+  mirrorPowerhourPrices, resolvePowerhourSeries, type PowerhourAuthority, type PowerhourRetry,
+  type PowerhourPresence, type PowerhourRead, type PowerhourSourceUiStatus,
 } from './powerhourScheme';
 import type { ExportPriceConfig } from './exportPrice';
 import type { BudgetPriceInputs } from './budgetPrice';
@@ -144,14 +145,10 @@ export default class PriceService {
   }
 
   /** The source in force and why: chosen by the owner, or assumed from the hub's country. */
-  getResolvedPriceScheme(): ResolvedPriceScheme {
-    return this.priceSchemeResolver.resolve();
-  }
+  getResolvedPriceScheme(): ResolvedPriceScheme { return this.priceSchemeResolver.resolve(); }
 
   /** See `PriceSchemeResolver.readsPowerhour`. */
-  readsPowerhourForPriceSource(): boolean {
-    return this.priceSchemeResolver.readsPowerhour();
-  }
+  readsPowerhourForPriceSource(): boolean { return this.priceSchemeResolver.readsPowerhour(); }
 
   /** Fresh reads of what the assumed source depends on, and any switch of source PELS makes by itself. */
   refreshPriceSource(
@@ -207,19 +204,20 @@ export default class PriceService {
     }
     return false;
   }
-  async refreshSpotPrices(forceRefresh = false): Promise<void> {
+  async refreshSpotPrices(
+    forceRefresh = false, authority: PowerhourAuthority = () => 'initial', read?: PowerhourRead,
+  ): Promise<PowerhourRetry> {
     const scheme = this.getPriceScheme();
     if (scheme === 'flow') {
       emitPriceDebug({ event: 'spot_price_refresh_skipped', reason: 'flow_scheme_active' });
-      return;
+      return 'none';
     }
     if (scheme === 'homey') {
       await this.refreshHomeyEnergyPrices(forceRefresh);
-      return;
+      return 'none';
     }
     if (scheme === 'powerhour') {
-      await this.refreshPowerhourPrices();
-      return;
+      return this.refreshPowerhourPrices(authority, read);
     }
     const priceArea = this.norwaySchemeSettings.priceArea;
     const cachedArea = this.priceDataStore.readSpotPriceArea();
@@ -233,7 +231,7 @@ export default class PriceService {
       today,
       dates,
     })) {
-      return;
+      return 'none';
     }
 
     const todayPrices = await fetchSpotPricesForDate({
@@ -249,13 +247,14 @@ export default class PriceService {
     const allPrices = [...todayPrices, ...tomorrowPrices];
     if (allPrices.length === 0) {
       this.sinks.structuredLog.info({ event: 'spot_prices_no_data' });
-      return;
+      return 'none';
     }
-    if (this.norwaySchemeSettings.priceArea !== priceArea) return;
+    if (this.norwaySchemeSettings.priceArea !== priceArea) return 'none';
     this.priceDataStore.writeSpotPrices(allPrices);
     this.priceDataStore.writeSpotPriceArea(priceArea);
     this.sinks.structuredLog.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
     this.updateCombinedPrices();
+    return 'none';
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
     if (this.getPriceScheme() !== 'norway') {
@@ -286,7 +285,7 @@ export default class PriceService {
     if (dropClearedGridCompanyTariff(stored, this.priceDataStore)) this.updateCombinedPrices();
   }
 
-  updateCombinedPrices(): void {
+  updateCombinedPrices(previousPrices: 'retain' | 'invalidate' = 'retain'): void {
     const now = new Date();
     const timeZone = this.getTimeZone();
     const combined = this.getCombinedHourlyPrices();
@@ -310,7 +309,7 @@ export default class PriceService {
     // cache would leave every persisted consumer spending against prices built
     // from a formula that no longer applies.
     const homeyPrices = this.getPriceScheme() === 'homey' ? this.resolveHomeyPricePeriods() : null;
-    if (keepsPersistedPrices(homeyPrices, this.sinks, () => (
+    if (previousPrices === 'retain' && keepsPersistedPrices(homeyPrices, this.sinks, () => (
       combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)
     ))) {
       this.emitRealtime('prices_updated', existingPayload);
@@ -610,18 +609,7 @@ export default class PriceService {
     return readNorwaySchemeSettings({ getRaw: (key) => this.getSettingValue(key) });
   }
 
-  /**
-   * Why the settings UI may be showing no prices on this source, and which
-   * devices the owner can pick between.
-   *
-   * Held from the last refresh rather than read on demand: the settings UI asks
-   * for this on every poll of its prices payload, and an app-to-app round trip
-   * per poll would buy nothing — the answer only moves when the app's devices
-   * or the owner's choice move, and both of those already refresh
-   * (`PRICE_SCHEME` and `POWERHOUR_DEVICE_ID` settings handlers, the three-hourly
-   * cycle, and the owner's own "Refresh prices"). `unknown` until the first
-   * refresh, which is the honest answer while PELS has not asked the app yet.
-   */
+  /** Device selection and source health from the last refresh, shared by settings polls. */
   getPowerhourSourceUiStatus(): PowerhourSourceUiStatus {
     // Off the source the held verdict is about a home this one is not; the
     // union's own `unknown` is what the contract promises there.
@@ -629,21 +617,22 @@ export default class PriceService {
   }
 
   /** See `mirrorPowerhourPrices` for what one pass reads, writes and skips. */
-  private async refreshPowerhourPrices(): Promise<void> {
+  private async refreshPowerhourPrices(authority: PowerhourAuthority, read?: PowerhourRead): Promise<PowerhourRetry> {
     const mirror = await mirrorPowerhourPrices(
-      this.homey.api,
-      this.homey.settings,
-      this.priceDataStore,
-      this.getTimeZone(),
+      this.homey.api, this.homey.settings, this.priceDataStore, this.getTimeZone(),
       () => this.rotateFlowPriceSlots({
         now: new Date(), timeZone: this.getTimeZone(), label: 'Power by the Hour prices',
         todaySettingKey: POWERHOUR_PRICES_TODAY, tomorrowSettingKey: POWERHOUR_PRICES_TOMORROW,
-      }),
+      }), authority, read,
     );
+    if (!mirror) return 'none';
     this.powerhourSourceStatus = mirror.status;
     if (mirror.level === 'info') this.sinks.structuredLog.info(mirror.record);
     else emitPriceDebug(mirror.record);
-    if (mirror.changed) this.updateCombinedPrices();
+    if (mirror.change !== 'retained') {
+      this.updateCombinedPrices(mirror.change === 'invalidated' ? 'invalidate' : 'retain');
+    }
+    return mirror.retry;
   }
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {

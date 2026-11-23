@@ -37,7 +37,9 @@ import {
   type HubLocationRead,
 } from './norwayPriceSetupSuggestion';
 import { fetchPowerhourPrices } from './powerhourPriceFetch';
-import { readPowerhourPresence, type PowerhourPresence } from './powerhourScheme';
+import {
+  readPowerhourPresence, type PowerhourInventory, type PowerhourPresence, type PowerhourRetry,
+} from './powerhourScheme';
 import { readPriceSetup } from './priceSetupRead';
 import type { PriceSourceSwitch } from './priceSchemeResolution';
 import type { BudgetPriceInputs } from './budgetPrice';
@@ -78,6 +80,7 @@ const MIDNIGHT_ROTATION_OFFSET_MS = 30 * 1000;
 const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
 // While tomorrow's Homey prices are due but not stored, how often to ask again.
 const NEXT_DAY_RETRY_INTERVAL_MS = 30 * 60 * 1000;
+const POWERHOUR_RECOVERY_DELAY_MS = 5 * 60 * 1000;
 
 export type PriceCoordinatorDeps = {
   homey: { settings: SettingsPort; api: ApiPort };
@@ -126,6 +129,7 @@ export class PriceCoordinator {
   private priceService: PriceService;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
   private midnightRotationTimeout?: ReturnType<typeof setTimeout>;
+  private powerhourRecoveryTimeout?: ReturnType<typeof setTimeout>;
   private nextDayRetryInterval?: ReturnType<typeof setInterval>;
   // Guards midnight-rotation re-entry. A pending setTimeout may still fire
   // briefly after stop() before clearTimeout takes effect; without this flag
@@ -219,10 +223,11 @@ export class PriceCoordinator {
   // that failed says nothing about the app, so it suggests nothing.
   private async probePowerhourPriceDevice(): Promise<PriceSetupSuggestion['powerhour']> {
     const read = await fetchPowerhourPrices(this.deps.homey.api);
-    if (read.kind !== 'resolved') {
+    if (read.kind === 'unavailable') {
       return read.reason === 'app_unavailable' ? { kind: 'app_unavailable' } : NO_POWERHOUR;
     }
-    return read.devices.length > 0 ? { kind: 'has_price_device' } : { kind: 'no_price_device' };
+    if (read.kind === 'resolved' && read.devices.length === 0) return { kind: 'no_price_device' };
+    return read.devices.some((device) => device.slots.length > 0) ? { kind: 'has_price_device' } : NO_POWERHOUR;
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {
@@ -244,6 +249,8 @@ export class PriceCoordinator {
 
   stop(): void {
     this.stopped = true;
+    this.spotRefreshCount += 1;
+    this.clearPowerhourRecovery();
     if (this.priceRefreshInterval) {
       clearInterval(this.priceRefreshInterval);
       this.priceRefreshInterval = undefined;
@@ -330,8 +337,23 @@ export class PriceCoordinator {
   }
 
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
+    this.clearPowerhourRecovery();
+    await this.runSpotRefresh(forceRefresh, 'initial');
+  }
+
+  private clearPowerhourRecovery(): void {
+    clearTimeout(this.powerhourRecoveryTimeout);
+    this.powerhourRecoveryTimeout = undefined;
+  }
+
+  private async runSpotRefresh(
+    forceRefresh: boolean,
+    pass: 'initial' | 'recover' | 'confirm_empty',
+  ): Promise<void> {
+    const inventory: PowerhourInventory = pass === 'confirm_empty' ? pass : 'initial';
     const stopSpan = startRuntimeSpan('price_refresh_spot');
     try {
+      if (pass !== 'initial' && this.priceService.getPriceScheme() !== 'powerhour') return;
       // The hub's country and Power by the Hour first: on a home whose owner
       // never chose a source they decide which source this refresh fetches from.
       // Refreshes can overlap (the three-hourly cycle, the owner's Refresh
@@ -340,20 +362,39 @@ export class PriceCoordinator {
       this.spotRefreshCount += 1;
       const refresh = this.spotRefreshCount;
       // Not asked, Power by the Hour is `unread`, which moves no source.
-      const [market, powerhour] = await Promise.all([
+      const checksPowerhour = this.priceService.readsPowerhourForPriceSource();
+      const readsPowerhour = checksPowerhour || this.priceService.getPriceScheme() === 'powerhour';
+      const [market, read] = await Promise.all([
         this.deps.readHubMarket(),
-        this.priceService.readsPowerhourForPriceSource()
-          ? readPowerhourPresence(this.deps.homey.api, this.deps.homey.settings)
-          : 'unread' as const,
+        readsPowerhour ? fetchPowerhourPrices(this.deps.homey.api) : undefined,
       ]);
-      const sourceSwitched = refresh === this.spotRefreshCount && this.refreshPriceSource(market, powerhour);
-      await this.priceService.refreshSpotPrices(forceRefresh || sourceSwitched);
-      if (sourceSwitched) this.priceService.updateCombinedPrices();
+      if (refresh !== this.spotRefreshCount) return;
+      const powerhour = checksPowerhour && read
+        ? readPowerhourPresence(read, this.deps.homey.settings, inventory)
+        : 'unread';
+      const sourceSwitched = this.refreshPriceSource(market, powerhour);
+      const retry = await this.priceService.refreshSpotPrices(
+        forceRefresh || sourceSwitched,
+        () => refresh === this.spotRefreshCount ? inventory : 'overtaken',
+        read,
+      );
+      if (this.stopped) return;
+      if (sourceSwitched) this.priceService.updateCombinedPrices('invalidate');
+      if (pass === 'initial' && refresh === this.spotRefreshCount) this.schedulePowerhourRecovery(retry);
     } catch (error) {
       throw this.reportPriceFetchFailure('spot', error);
     } finally {
       stopSpan();
     }
+  }
+
+  private schedulePowerhourRecovery(retry: PowerhourRetry): void {
+    if (retry === 'none') return;
+    this.powerhourRecoveryTimeout = setTimeout(() => {
+      this.powerhourRecoveryTimeout = undefined;
+      if (this.stopped) return;
+      this.runSpotRefresh(false, retry === 'empty_inventory' ? 'confirm_empty' : 'recover').catch(() => {});
+    }, POWERHOUR_RECOVERY_DELAY_MS);
   }
 
   async refreshGridTariffData(forceRefresh = false): Promise<void> {

@@ -41,6 +41,23 @@ describe('BuiltInControlFlowConflicts', () => {
     return { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache };
   };
 
+  it('requires a native route or an explicit Flow choice while the first scan is unavailable', async () => {
+    const device = {
+      ...hoiaxCandidate('heater'), controlAdapter: {
+        kind: 'capability_adapter' as const, activationRequired: true, activationAvailable: true, activationEnabled: false,
+      },
+    };
+    const { app } = stubApp([device]);
+    setRestClient({ get: async () => { throw new Error('Flow inventory unavailable'); }, put: vi.fn() });
+    const owner = app.builtInControlFlowConflicts;
+    await owner.applyBackgroundScan();
+    expect(owner.awaitsNativeStepRoute(device)).toBe(true);
+
+    mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { [device.id]: false });
+    app.deviceControlSettings.reload();
+    expect(owner.awaitsNativeStepRoute(device)).toBe(false);
+  });
+
   it('auto-enables a conflict-free Hoiax device and rebuilds once', async () => {
     // Empty flow lists → no conflicts.
     setRestClient({ get: async () => ({}), put: vi.fn() });

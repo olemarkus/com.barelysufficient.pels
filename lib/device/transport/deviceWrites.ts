@@ -202,7 +202,9 @@ export class DeviceWriteService {
     if (!tracked) return false;
     const raw = this.chargingCurrentControl.sessions.withholdCapabilities(tracked);
     if (this.needsNativeWattReadBeforeStart(raw)) return true;
-    if (!this.nativeWiring.resolveNativeWiringEnabled(snapshot.id)) return false;
+    const expectsNativeStep = this.nativeWiring.resolveNativeWiringEnabled(raw.id)
+      || this.nativeWiring.awaitsNativeStepRoute(snapshot);
+    if (!expectsNativeStep) return false;
     return getDeviceAdapter(raw).nativeCurrentControls.some(control => {
       const current = raw.capabilitiesObj[control.capabilityId];
       if (!raw.capabilities.includes(control.capabilityId) || current?.setable === false) return false;
@@ -530,11 +532,15 @@ export class DeviceWriteService {
     const { deviceId, profile, desiredStepId } = request;
     const nativeRequested = await this.snapshotStore.nativeSteppedAdapters.setStep(
       deviceId, profile, desiredStepId,
-      (capabilityId, value) => this.setNativeStepCapability(deviceId, capabilityId, value),
+      (capabilityId, value) => {
+        // A device without a binary pause can stop through its watt target.
+        const carLink = this.observationProducers.evCarLink;
+        if (capabilityId === 'target_power' && value === 0) carLink.noteStopCommand(deviceId, Date.now());
+        return this.setCapability(deviceId, capabilityId, value);
+      },
     );
-    return nativeRequested
-      ? { requested: true, acknowledged: true, transport: 'native_capability' }
-      : { requested: false };
+    if (!nativeRequested) return { requested: false };
+    return { requested: true, acknowledged: true, transport: 'native_capability' };
   }
 
   /**
@@ -604,19 +610,12 @@ export class DeviceWriteService {
     if (failure) throw failure.error;
   }
 
-  private setNativeStepCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
-    // A device without a binary pause can stop through its watt target.
-    if (capabilityId === 'target_power' && value === 0) {
-      this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
-    }
-    return this.setCapability(deviceId, capabilityId, value);
-  }
-
   private async triggerSteppedFlow(
     params: SteppedLoadWrite,
     snapshot: TransportDeviceSnapshot | undefined,
   ): Promise<SteppedLoadStepRequestResult> {
     const { deviceId, desiredStepId, planningPowerW, planningCurrentA, previousStepId } = params;
+    if (snapshot && this.nativeWiring.awaitsNativeStepRoute(snapshot)) return { requested: false };
     const triggerCard = this.getFlowTriggerCard('desired_stepped_load_changed');
     if (!triggerCard?.trigger) return { requested: false };
 

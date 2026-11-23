@@ -82,6 +82,12 @@ export type PowerhourUnavailableReason =
 
 export type PowerhourRead =
   | { kind: 'resolved'; devices: PowerhourDevice[] }
+  | {
+    kind: 'partial';
+    devices: PowerhourDevice[];
+    unreadableDeviceIds: ReadonlySet<string>;
+    hasUnidentifiedDevice: boolean;
+  }
   | { kind: 'unavailable'; reason: PowerhourUnavailableReason };
 
 /**
@@ -174,16 +180,10 @@ const resolveSlot = (value: unknown): PowerhourSlot | null => {
 };
 
 /**
- * One device, or nothing. A device with no id, no usable interval or no usable
- * slot cannot price anything, and offering it to the owner as a choice would be
- * offering them a dead end.
+ * Resolve electricity devices independently of their readings. A listed
+ * device with no accepted slots can still be the owner's price device.
  */
-const resolveDevice = (value: unknown): PowerhourDevice | null => {
-  const record = asUnknownRecord(value);
-  if (!record) return null;
-  if (!pricesElectricity(record)) return null;
-  const deviceId = toNonEmptyString(record.deviceId);
-  if (!deviceId) return null;
+const resolveDevice = (record: Record<string, unknown>, deviceId: string): PowerhourDevice | null => {
   const priceIntervalMinutes = resolveIntervalMinutes(record.priceInterval);
   if (priceIntervalMinutes === null) return null;
   if (!Array.isArray(record.slots)) return null;
@@ -194,7 +194,6 @@ const resolveDevice = (value: unknown): PowerhourDevice | null => {
     // payload read boundary does.
     .filter((slot, index, all) => all.findIndex((other) => other.startsAt === slot.startsAt) === index)
     .sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt));
-  if (slots.length === 0) return null;
   return {
     deviceId,
     // The owner named the device; a nameless one still has to be pickable.
@@ -214,10 +213,24 @@ const resolveDevice = (value: unknown): PowerhourDevice | null => {
 export const resolvePowerhourPayload = (payload: unknown): PowerhourRead => {
   const record = asUnknownRecord(payload);
   if (!record || !Array.isArray(record.prices)) return { kind: 'unavailable', reason: 'malformed' };
-  const devices = record.prices
-    .map(resolveDevice)
-    .filter((device): device is PowerhourDevice => device !== null);
-  return { kind: 'resolved', devices };
+  const unreadableDeviceIds = new Set<string>();
+  let hasUnidentifiedDevice = false;
+  const devices = record.prices.flatMap((value: unknown) => {
+    const entry = asUnknownRecord(value);
+    if (!entry || !pricesElectricity(entry)) return [];
+    const deviceId = toNonEmptyString(entry.deviceId);
+    if (!deviceId) {
+      hasUnidentifiedDevice = true;
+      return [];
+    }
+    const device = resolveDevice(entry, deviceId);
+    if (device) return [device];
+    unreadableDeviceIds.add(deviceId);
+    return [];
+  });
+  return unreadableDeviceIds.size > 0 || hasUnidentifiedDevice
+    ? { kind: 'partial', devices, unreadableDeviceIds, hasUnidentifiedDevice }
+    : { kind: 'resolved', devices };
 };
 
 const readRoute = (apiApp: ApiAppPort, path: string) => apiApp.get(path).then(

@@ -83,6 +83,8 @@ export const resolvePowerhourSeries = (
 export type PowerhourDeviceResolution =
   | { kind: 'selected'; device: PowerhourDevice }
   | { kind: 'no_devices' }
+  | { kind: 'no_prices' }
+  | { kind: 'device_unreadable' }
   | { kind: 'device_missing'; deviceId: string }
   /** The owner's choice could not be read; this pass decides nothing. */
   | { kind: 'unreadable' };
@@ -125,13 +127,40 @@ export const resolvePowerhourDevice = (
   if (choice.kind === 'chosen') {
     const chosen = devices.find((device) => device.deviceId === choice.deviceId);
     return chosen
-      ? { kind: 'selected', device: chosen }
+      ? resolvePowerhourDevicePrices(chosen)
       : { kind: 'device_missing', deviceId: choice.deviceId };
   }
-  const [only] = devices;
-  if (devices.length === 1 && only) return { kind: 'selected', device: only };
+  const priced = devices.filter((device) => device.slots.length > 0);
+  const [only] = priced;
+  if (priced.length === 1 && only) return { kind: 'selected', device: only };
+  if (priced.length === 0) return { kind: 'no_prices' };
   return { kind: 'device_missing', deviceId: '' };
 };
+
+const resolvePowerhourDevicePrices = (device: PowerhourDevice): PowerhourDeviceResolution => (
+  device.slots.length === 0 ? { kind: 'no_prices' } : { kind: 'selected', device }
+);
+
+const resolveListedPowerhourDevice = (
+  read: Exclude<PowerhourRead, { kind: 'unavailable' }>,
+  choice: PowerhourDeviceChoice,
+): PowerhourDeviceResolution => {
+  const resolution = resolvePowerhourDevice(read.devices, choice);
+  if (read.kind === 'resolved' || choice.kind === 'unreadable') return resolution;
+  if (choice.kind === 'chosen') {
+    if (resolution.kind === 'selected' || resolution.kind === 'no_prices') return resolution;
+    if (!read.hasUnidentifiedDevice && !read.unreadableDeviceIds.has(choice.deviceId)) {
+      return { kind: 'device_missing', deviceId: choice.deviceId };
+    }
+  } else if (resolution.kind === 'selected' || resolution.kind === 'device_missing') {
+    return resolution;
+  }
+  return { kind: 'device_unreadable' };
+};
+
+/** How a refresh interprets an empty inventory after a recovery interval. */
+export type PowerhourInventory = 'initial' | 'confirm_empty';
+export type PowerhourAuthority = () => PowerhourInventory | 'overtaken';
 
 /**
  * Whether Power by the Hour can price this home without asking the owner
@@ -139,32 +168,34 @@ export const resolvePowerhourDevice = (
  *
  * `price_device` when one device would price it: the owner's choice, or the
  * only device there is. `none` when the app answered that it cannot: it is not
- * running, PELS may not ask it, it has no device, or it has several and no
- * choice says which zone is meant. `unread` when a read went unanswered, which
- * says neither, so the source in force stays.
+ * running, PELS may not ask it, its inventory is still empty on confirmation,
+ * or no device matches the choice. An inconclusive read keeps the source in force.
  */
 export type PowerhourPresence = 'price_device' | 'none' | 'unread';
 
 export const resolvePowerhourPresence = (
   read: PowerhourRead,
   choice: PowerhourDeviceChoice,
+  inventory: PowerhourInventory = 'initial',
 ): PowerhourPresence => {
   if (read.kind === 'unavailable') {
     return read.reason === 'read_failed' || read.reason === 'malformed' ? 'unread' : 'none';
   }
-  const resolution = resolvePowerhourDevice(read.devices, choice);
+  const resolution = resolveListedPowerhourDevice(read, choice);
   if (resolution.kind === 'selected') return 'price_device';
-  return resolution.kind === 'unreadable' ? 'unread' : 'none';
+  if (resolution.kind === 'no_prices' || resolution.kind === 'device_unreadable'
+    || resolution.kind === 'unreadable') return 'unread';
+  return resolution.kind === 'no_devices' && inventory === 'initial' ? 'unread' : 'none';
 };
 
-/** One fresh read of the app and the owner's device choice; a settings read that throws is `unread`. */
-export const readPowerhourPresence = async (
-  api: Pick<ApiPort, 'getApiApp'>,
+/** Apply the owner's choice to the same app response used to mirror prices. */
+export const readPowerhourPresence = (
+  read: PowerhourRead,
   settings: SettingsPort,
-): Promise<PowerhourPresence> => {
-  const read = await fetchPowerhourPrices(api);
+  inventory: PowerhourInventory,
+): PowerhourPresence => {
   try {
-    return resolvePowerhourPresence(read, readPowerhourDeviceChoice(settings));
+    return resolvePowerhourPresence(read, readPowerhourDeviceChoice(settings), inventory);
   } catch {
     return 'unread';
   }
@@ -396,10 +427,11 @@ export const resolvePowerhourSourceUiStatus = (
       ? { kind: 'not_permitted' }
       : { kind: 'app_unavailable' };
   }
-  const devices = toPowerhourDeviceOptions(read.devices);
-  const resolution = resolvePowerhourDevice(read.devices, choice);
+  const devices = toPowerhourDeviceOptions(read.devices.filter((device) => device.slots.length > 0));
+  const resolution = resolveListedPowerhourDevice(read, choice);
   if (resolution.kind === 'unreadable') return { kind: 'unknown' };
   if (resolution.kind === 'no_devices') return { kind: 'no_devices' };
+  if (resolution.kind === 'no_prices' || resolution.kind === 'device_unreadable') return { kind: 'unknown' };
   if (resolution.kind === 'device_missing') {
     return { kind: 'device_missing', deviceId: resolution.deviceId, devices };
   }
@@ -427,7 +459,7 @@ export type PowerhourRefreshOutcome =
   | { kind: 'unavailable'; reason: PowerhourUnavailableReason }
   | {
     kind: 'no_device';
-    reason: 'no_devices' | 'device_missing' | 'unreadable';
+    reason: 'no_devices' | 'no_prices' | 'device_unreadable' | 'device_missing' | 'unreadable';
     deviceCount: number;
     /** The stored days came from a device that is no longer in force. */
     staleCache: boolean;
@@ -444,30 +476,33 @@ export type PowerhourRefresh = {
   outcome: PowerhourRefreshOutcome;
 };
 
-const resolvePowerhourRefresh = async (
-  api: Pick<ApiPort, 'getApiApp'>,
+const resolvePowerhourRefresh = (
+  read: PowerhourRead,
   choice: PowerhourDeviceChoice,
   cache: PowerhourCache,
   timeZone: string,
   now: Date,
-): Promise<PowerhourRefresh> => {
-  const read = await fetchPowerhourPrices(api);
+  inventory: PowerhourInventory,
+): PowerhourRefresh => {
   const status = resolvePowerhourSourceUiStatus(read, choice);
   if (read.kind === 'unavailable') {
     return { status, outcome: { kind: 'unavailable', reason: read.reason } };
   }
-  const resolution = resolvePowerhourDevice(read.devices, choice);
+  const resolution = resolveListedPowerhourDevice(read, choice);
   if (resolution.kind !== 'selected') {
+    const staleCache = cache.device.kind === 'device' && (
+      resolution.kind === 'device_missing'
+      || (resolution.kind === 'no_devices' && inventory === 'confirm_empty')
+      || (choice.kind === 'chosen' && choice.deviceId !== cache.device.deviceId)
+    );
     return {
-      status,
+      status: !staleCache && cache.device.kind === 'device' && retryForMissingDevice(resolution.kind) !== 'none'
+        ? { kind: 'unknown' } : status,
       outcome: {
         kind: 'no_device',
         reason: resolution.kind,
         deviceCount: read.devices.length,
-        // The stored days belong to a device that is no longer the owner's —
-        // unless the choice itself is what could not be read, which settles
-        // nothing and must not take their prices away.
-        staleCache: resolution.kind !== 'unreadable' && cache.device.kind === 'device',
+        staleCache,
       },
     };
   }
@@ -503,11 +538,13 @@ export type PowerhourStore = {
 /** Which of the two stored days a write is about. */
 export type PowerhourDay = 'today' | 'tomorrow';
 
+export type PowerhourRetry = 'empty_inventory' | 'prices_unavailable' | 'none';
+
 /** What a mirror pass did, for its caller to report and act on. */
 export type PowerhourMirror = {
   status: PowerhourSourceUiStatus;
-  /** True when the stored series moved, so the combined prices need rebuilding. */
-  changed: boolean;
+  change: 'retained' | 'updated' | 'invalidated';
+  retry: PowerhourRetry;
   /**
    * Where the record belongs. A pass that changed the home's prices is an
    * event; a settled verdict repeating every three hours forever is not, and
@@ -516,6 +553,39 @@ export type PowerhourMirror = {
   level: 'info' | 'debug';
   /** One structured record of the pass, for the caller's own log sink. */
   record: Record<string, unknown>;
+};
+
+const retryForMissingDevice = (
+  reason: Extract<PowerhourRefreshOutcome, { kind: 'no_device' }>['reason'],
+): PowerhourRetry => {
+  if (reason === 'no_devices') return 'empty_inventory';
+  if (reason === 'no_prices' || reason === 'device_unreadable') return 'prices_unavailable';
+  return 'none';
+};
+
+const mirrorWithoutDevice = (
+  store: PowerhourStore,
+  cache: PowerhourCache,
+  status: PowerhourSourceUiStatus,
+  outcome: Extract<PowerhourRefreshOutcome, { kind: 'no_device' }>,
+): PowerhourMirror => {
+  const dropped = outcome.staleCache
+    ? (['today', 'tomorrow'] as const).filter((day) => cache[day].kind === 'stored')
+    : [];
+  dropped.forEach((day) => store.writePowerhourDay(day, null));
+  if (outcome.staleCache) store.writePowerhourCacheDevice(null);
+  return {
+    status,
+    change: outcome.staleCache ? 'invalidated' : 'retained',
+    retry: retryForMissingDevice(outcome.reason),
+    level: dropped.length > 0 ? 'info' : 'debug',
+    record: {
+      event: 'powerhour_prices_no_device',
+      reason: outcome.reason,
+      deviceCount: outcome.deviceCount,
+      clearedDayCount: dropped.length,
+    },
+  };
 };
 
 /**
@@ -528,9 +598,8 @@ export type PowerhourMirror = {
  * Skipping the read because today is "already stored" would leave the home on
  * whatever the first read of the day happened to say.
  *
- * Nothing that fails here writes: an unavailable app, a device the owner has
- * not chosen and a day with no slots are all no-ops that leave the last good
- * payload exactly where it is.
+ * An unavailable read leaves the last good prices in place. Clearing requires
+ * evidence that the cached device no longer prices the home.
  */
 export const mirrorPowerhourPrices = async (
   api: Pick<ApiPort, 'getApiApp'>,
@@ -547,7 +616,12 @@ export const mirrorPowerhourPrices = async (
    * still held the elapsed hours.
    */
   rotateSlots: () => void,
-): Promise<PowerhourMirror> => {
+  authority: PowerhourAuthority,
+  refreshRead?: PowerhourRead,
+): Promise<PowerhourMirror | undefined> => {
+  const read = refreshRead ?? await fetchPowerhourPrices(api);
+  const inventory = authority();
+  if (inventory === 'overtaken') return undefined;
   const choice = readPowerhourDeviceChoice(settings);
   const before = store.readPowerhourCache();
   // The two slots are ONE rotation state, so a slot PELS cannot read makes the
@@ -558,55 +632,26 @@ export const mirrorPowerhourPrices = async (
   // the elapsed hours. Deciding nothing is the only answer that keeps them.
   if (before.today.kind === 'unreadable' || before.tomorrow.kind === 'unreadable') {
     return {
-      status: resolvePowerhourSourceUiStatus(await fetchPowerhourPrices(api), choice),
-      changed: false,
+      status: resolvePowerhourSourceUiStatus(read, choice),
+      change: 'retained',
+      retry: 'none',
       level: 'debug',
       record: { event: 'powerhour_prices_cache_unreadable' },
     };
   }
   rotateSlots();
   const cache = store.readPowerhourCache();
-  const { status, outcome } = await resolvePowerhourRefresh(
-    api,
-    choice,
-    cache,
-    timeZone,
-    new Date(),
-  );
+  const { status, outcome } = resolvePowerhourRefresh(read, choice, cache, timeZone, new Date(), inventory);
   if (outcome.kind === 'unavailable') {
     return {
       status,
-      changed: false,
+      change: 'retained',
+      retry: outcome.reason === 'read_failed' || outcome.reason === 'malformed' ? 'prices_unavailable' : 'none',
       level: 'debug',
       record: { event: 'powerhour_prices_unavailable', reason: outcome.reason },
     };
   }
-  if (outcome.kind === 'no_device') {
-    // The owner has no device in force, and the stored days were built from one
-    // they had. Keeping them prices the home from a bidding zone it has stopped
-    // using while the settings page says it has no prices at all — the same
-    // reason the `clear` arm exists on a device SWITCH. A day PELS could not
-    // read is left alone, because clearing it is still a write.
-    const dropped = outcome.staleCache
-      ? ([
-        ['today', cache.today],
-        ['tomorrow', cache.tomorrow],
-      ] as const).filter(([, day]) => day.kind === 'stored')
-      : [];
-    dropped.forEach(([day]) => store.writePowerhourDay(day, null));
-    if (outcome.staleCache) store.writePowerhourCacheDevice(null);
-    return {
-      status,
-      changed: dropped.length > 0,
-      level: dropped.length > 0 ? 'info' : 'debug',
-      record: {
-        event: 'powerhour_prices_no_device',
-        reason: outcome.reason,
-        deviceCount: outcome.deviceCount,
-        clearedDayCount: dropped.length,
-      },
-    };
-  }
+  if (outcome.kind === 'no_device') return mirrorWithoutDevice(store, cache, status, outcome);
 
   const { device, payloads } = outcome;
   const writes: Array<[PowerhourDay, PowerhourDayWrite]> = [
@@ -618,7 +663,8 @@ export const mirrorPowerhourPrices = async (
   if (stored === 0 && cleared === 0) {
     return {
       status,
-      changed: false,
+      change: 'retained',
+      retry: 'prices_unavailable',
       level: 'debug',
       record: { event: 'powerhour_prices_no_data', deviceId: device.deviceId },
     };
@@ -639,7 +685,8 @@ export const mirrorPowerhourPrices = async (
   if (!payloads.retainsForeignDay) store.writePowerhourCacheDevice(device.deviceId);
   return {
     status,
-    changed: true,
+    change: cleared > 0 ? 'invalidated' : 'updated',
+    retry: stored > 0 ? 'none' : 'prices_unavailable',
     level: 'info',
     record: {
       event: 'powerhour_prices_stored',

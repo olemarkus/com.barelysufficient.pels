@@ -1,3 +1,5 @@
+import { PriceCoordinator } from '../../lib/price/priceCoordinator';
+import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
 import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
@@ -21,7 +23,7 @@ import {
   getDateKeyStartMs,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { hubMarketIn, noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type Homey from 'homey';
 import { testLogger } from '../utils/testLogger';
 
@@ -286,6 +288,149 @@ describe('Power by the Hour price service', () => {
 
     expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toEqual(before);
     expect(service.getPowerhourSourceUiStatus()).toEqual({ kind: 'app_unavailable' });
+  });
+
+  const buildCoordinator = () => new PriceCoordinator({
+    homey: mockHomeyInstance as never,
+    priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
+    priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),
+    getTimeZone: () => timeZone,
+    getPowerTracker: () => ({}),
+    homeyWebApiGet: noHomeyWebApi,
+    readHubMarket: hubMarketIn('NL'),
+    readHubLocation: async () => ({ kind: 'unavailable' }),
+    error: () => undefined,
+    structuredLog: testLogger,
+  });
+
+  it('keeps both days through an empty startup reply and merges the retry', async () => {
+    const today = dapPrices(todayKey, 14, () => 1);
+    const tomorrow = dapPrices(tomorrowKey, 0, () => 2);
+    const device = today.prices[0]!;
+    const nextDay = tomorrow.prices[0]!;
+    const get = vi.fn().mockResolvedValue({
+      prices: [{ ...device, slots: [...device.slots, ...nextDay.slots] }],
+    });
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+    mockHomeyInstance.settings.unset(PRICE_SCHEME);
+    const starting = buildCoordinator();
+    await starting.refreshSpotPrices();
+    starting.stop();
+    const cached = starting.getCombinedHourlyPrices();
+    expect(cached).toHaveLength(34);
+
+    get.mockReset().mockResolvedValue({ prices: [] });
+    const restarted = buildCoordinator();
+    restarted.startPriceRefresh();
+    await restarted.refreshSpotPrices();
+    expect(restarted.getCombinedHourlyPrices()).toEqual(cached);
+    expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBe('no2-device');
+
+    get.mockResolvedValueOnce(dapPrices(todayKey, 15, () => 3));
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    const recovered = restarted.getCombinedHourlyPrices();
+    expect(recovered.map((hour) => hour.totalPrice)).toEqual([
+      1, ...Array<number>(9).fill(3), ...Array<number>(24).fill(2),
+    ]);
+    expect(get).toHaveBeenCalledTimes(2);
+    restarted.stop();
+  });
+
+  it.each([
+    ['retry', false],
+    ['stop', true],
+  ])('handles a first startup reply with no cache and a subsequent %s', async (_case, stop) => {
+    const get = vi.fn().mockResolvedValue({ prices: [] });
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+    const coordinator = buildCoordinator();
+    coordinator.startPriceRefresh();
+    await coordinator.refreshSpotPrices();
+    expect(coordinator.getCombinedHourlyPrices()).toEqual([]);
+    if (stop) coordinator.stop();
+    get.mockResolvedValue(dapPrices(todayKey, 14, () => 1));
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(get).toHaveBeenCalledTimes(stop ? 1 : 2);
+    expect(coordinator.getCombinedHourlyPrices()).toHaveLength(stop ? 0 : 10);
+    coordinator.stop();
+  });
+
+  it.each([
+    ['empty', []],
+    ['unreadable', null],
+  ])('keeps a chosen device’s prices while it is listed with %s slots', async (_reading, slots) => {
+    mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, 'no2-device');
+    const payload = dapPrices(todayKey, 14, () => 1);
+    const [device] = payload.prices;
+    const get = vi.fn().mockResolvedValueOnce(payload).mockResolvedValue({
+      prices: [{ ...device, slots }, { ...device, deviceId: 'no1-device' }],
+    });
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+    const coordinator = buildCoordinator();
+    await coordinator.refreshSpotPrices();
+    const before = coordinator.getCombinedHourlyPrices();
+    expect(before).toHaveLength(10);
+    await coordinator.refreshSpotPrices();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(coordinator.getCombinedHourlyPrices()).toEqual(before);
+    expect(get).toHaveBeenCalledTimes(3);
+    coordinator.stop();
+  });
+
+  it('clears cached prices when the inventory is still empty on the recovery read', async () => {
+    const get = vi.fn().mockResolvedValueOnce(dapPrices(todayKey, 14, () => 1))
+      .mockResolvedValue({ prices: [] });
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+    const coordinator = buildCoordinator();
+    await coordinator.refreshSpotPrices();
+    await coordinator.refreshSpotPrices();
+    expect(coordinator.getCombinedHourlyPrices()).toHaveLength(10);
+    expect(coordinator.combinedPricesReader.readStore(new Date(), timeZone)?.days[todayKey]).toBeDefined();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(coordinator.getCombinedHourlyPrices()).toEqual([]);
+    expect(coordinator.combinedPricesReader.readStore(new Date(), timeZone)?.days).toEqual({});
+    expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBeNull();
+    expect(get).toHaveBeenCalledTimes(3);
+    coordinator.stop();
+  });
+
+  it('ignores an empty recovery reply overtaken by a successful refresh', async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce(dapPrices(todayKey, 14, () => 1))
+      .mockResolvedValueOnce({ prices: [] });
+    let answerRecovery = (_payload: { prices: unknown[] }): void => {};
+    const recovery = new Promise<{ prices: unknown[] }>((resolve) => { answerRecovery = resolve; });
+    get.mockReturnValueOnce(recovery).mockResolvedValue(dapPrices(todayKey, 15, () => 2));
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+    const coordinator = buildCoordinator();
+    try {
+      await coordinator.refreshSpotPrices();
+      await coordinator.refreshSpotPrices();
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(get).toHaveBeenCalledTimes(3);
+      await coordinator.refreshSpotPrices();
+      const refreshed = coordinator.getCombinedHourlyPrices();
+      expect(refreshed).toHaveLength(10);
+      expect(refreshed.at(-1)?.totalPrice).toBe(2);
+
+      answerRecovery({ prices: [] });
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(coordinator.getCombinedHourlyPrices()).toEqual(refreshed);
+      expect(get).toHaveBeenCalledTimes(4);
+    } finally {
+      coordinator.stop();
+    }
+  });
+
+  it('clears the previous device’s prices when a different device is chosen during an empty reply', async () => {
+    const get = vi.fn().mockResolvedValueOnce(dapPrices(todayKey, 14, () => 1))
+      .mockResolvedValue({ prices: [] });
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+    const service = buildService();
+    await service.refreshSpotPrices();
+    expect(service.getCombinedHourlyPrices()).toHaveLength(10);
+    mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, 'no1-device');
+    await service.refreshSpotPrices();
+    expect(service.getCombinedHourlyPrices()).toEqual([]);
   });
 
   // "No device in force" and "priced from a device the owner has stopped using"
@@ -656,7 +801,7 @@ describe('Power by the Hour price service', () => {
   // Cloud Homey and a missing app permission both look like.
   it('reports a refused handle without throwing', async () => {
     const service = buildService();
-    await expect(service.refreshSpotPrices(true)).resolves.toBeUndefined();
+    await expect(service.refreshSpotPrices(true)).resolves.toBe('none');
     expect(service.getPowerhourSourceUiStatus()).toEqual({ kind: 'not_permitted' });
   });
 
