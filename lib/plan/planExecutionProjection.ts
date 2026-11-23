@@ -168,9 +168,14 @@ const binarySwitchAuthority = (dev: PlanDevice): { binarySwitchGeneration?: numb
   dev.binarySwitchGeneration === undefined ? {} : { binarySwitchGeneration: dev.binarySwitchGeneration }
 );
 
+const binaryIntentSuppressed = (device: PlanDevice): boolean => (
+  (device.waitingForTaskPlan === true && device.plannedState !== 'shed')
+  || device.externalThermostatRole !== undefined
+);
+
 /** The binary intent projected from a finalized device decision. */
 export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
-  if (dev.waitingForTaskPlan && dev.plannedState !== 'shed') return undefined;
+  if (binaryIntentSuppressed(dev)) return undefined;
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
   if (dev.lastResort) return buildLastResortBinaryCommand(dev);
