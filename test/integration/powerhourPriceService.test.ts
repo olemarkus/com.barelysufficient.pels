@@ -7,6 +7,7 @@ import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import type { PriceCacheKey } from '../../lib/price/priceCacheStore';
 import { mockHomeyInstance, resetMockHomey, setMockApiApp } from '../mocks/homey';
 import {
+  COMBINED_PRICES,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
   EXPORT_PRICE_SOURCE,
@@ -16,6 +17,7 @@ import {
   POWERHOUR_PRICES_TODAY,
   POWERHOUR_PRICES_TOMORROW,
   PRICE_SCHEME,
+  PRICE_THRESHOLD_PERCENT,
 } from '../../lib/utils/settingsKeys';
 import { POWERHOUR_APP_ID } from '../../lib/price/powerhourPriceFetch';
 import {
@@ -432,6 +434,50 @@ describe('Power by the Hour price service', () => {
     await service.refreshSpotPrices();
     expect(service.getCombinedHourlyPrices()).toEqual([]);
   });
+
+  it.each(['empty', 'today', 'tomorrow'])(
+    'invalidates persisted prices after a device change with a %s reply even if the combined rebuild fails',
+    async (reply) => {
+      const get = vi.fn().mockResolvedValueOnce(dapPrices(todayKey, 14, () => 1))
+        .mockResolvedValue({ prices: [] });
+      setMockApiApp(POWERHOUR_APP_ID, { installed: true, get });
+      const service = buildService();
+      await service.refreshSpotPrices();
+      const oldCombined = priceCache.read(COMBINED_PRICES);
+      expect(oldCombined).toMatchObject({
+        days: { [todayKey]: { hours: expect.arrayContaining([expect.objectContaining({ total: 1 })]) } },
+      });
+
+      mockHomeyInstance.settings.set(COMBINED_PRICES, oldCombined);
+      mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, 'no1-device');
+      if (reply !== 'empty') {
+        const payload = reply === 'today' ? dapPrices(todayKey, 14, () => 2) : dapPrices(tomorrowKey, 0, () => 2);
+        get.mockResolvedValueOnce({ prices: payload.prices.map((device) => ({ ...device, deviceId: 'no1-device' })) });
+      }
+      const getSetting = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+      const settingsRead = vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+        if (key === PRICE_THRESHOLD_PERCENT) throw new Error('Price threshold unavailable');
+        return getSetting(key);
+      });
+      try {
+        await expect(service.refreshSpotPrices()).rejects.toThrow('Price threshold unavailable');
+      } finally {
+        settingsRead.mockRestore();
+      }
+      expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBe(reply === 'empty' ? null : 'no1-device');
+      expect(createPriceDataStore(mockHomeyInstance.settings, priceCache).readCombinedRaw()).toBeNull();
+
+      await service.refreshSpotPrices();
+      expect(priceCache.read(COMBINED_PRICES)).toBeNull();
+
+      const payload = dapPrices(todayKey, 14, () => 2);
+      get.mockResolvedValue({ prices: payload.prices.map((device) => ({ ...device, deviceId: 'no1-device' })) });
+      await service.refreshSpotPrices();
+      expect(priceCache.read(COMBINED_PRICES)).toMatchObject({
+        days: { [todayKey]: { hours: expect.arrayContaining([expect.objectContaining({ total: 2 })]) } },
+      });
+    },
+  );
 
   // "No device in force" and "priced from a device the owner has stopped using"
   // cannot both be true; the settings page says the first, so the cache goes.
