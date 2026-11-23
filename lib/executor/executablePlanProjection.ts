@@ -59,7 +59,12 @@ const buildObservedTargetState = (
   snapshot: Pick<ObservedDeviceState, 'targets'>,
 ): ExecutableObservedTargetState | null => {
   const primaryTarget = snapshot.targets?.[0];
-  return primaryTarget ? { observedValue: primaryTarget.value } : null;
+  if (!primaryTarget) return null;
+  const { value, temperatureBindingGeneration } = primaryTarget;
+  return {
+    observedValue: value,
+    ...(temperatureBindingGeneration === undefined ? {} : { temperatureBindingGeneration }),
+  };
 };
 
 const buildObservedSteppedLoadState = (

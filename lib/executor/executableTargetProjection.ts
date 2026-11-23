@@ -35,7 +35,10 @@ export function buildExecutableTargetCommand(
   observed: ExecutableObservedDeviceState | undefined,
 ): ExecutableTargetCommand | null {
   if (!intent || !observed?.target) return null;
+  const { temperatureBindingGeneration } = intent;
+  if (temperatureBindingGeneration !== observed.target.temperatureBindingGeneration) return null;
   return {
+    ...(temperatureBindingGeneration === undefined ? {} : { temperatureBindingGeneration }),
     deviceId: intent.deviceId,
     name: intent.name,
     desired: intent.desired,

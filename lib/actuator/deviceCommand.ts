@@ -40,6 +40,7 @@ export type DeviceCommand =
     /** Producer-resolved target family used by policy fences before transport routing. */
     target: 'temperature';
     value: number;
+    temperatureBindingGeneration?: number;
   }
   | {
     kind: 'step';
@@ -73,7 +74,9 @@ export type ActuatorTransport = {
     binarySwitchGeneration?: number,
     lastResortMaximumW?: number,
   ) => Promise<NativeRelayOffResult | void | false>;
-  requestTemperatureTarget: (deviceId: string, desired: number) => Promise<number>;
+  requestTemperatureTarget: (
+    deviceId: string, desired: number, temperatureBindingGeneration?: number,
+  ) => Promise<number | false>;
   /** Resolve the exact semantic setpoint before pending/retry preflight. */
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
   requestSteppedLoadStep: (request: SteppedLoadWrite) => Promise<SteppedLoadStepRequestResult>;

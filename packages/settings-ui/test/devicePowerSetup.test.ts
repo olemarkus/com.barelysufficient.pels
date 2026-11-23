@@ -1,9 +1,11 @@
 import type { MdFilledSelect } from '@material/web/select/filled-select.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DevicePowerSetupEntry } from '../../contracts/src/settingsUi/devices.ts';
-import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
-  acceptDevicePowerSetup, openDevicePowerSetup, readLastResortSetup, renderDevicePowerSetup,
+  DEVICE_BINARY_SWITCHES, DEVICE_EXTERNAL_THERMOSTATS, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES,
+} from '../../shared-domain/src/settings/settingsKeys.ts';
+import {
+  acceptDevicePowerSetup, isDeviceReservedBySetup, openDevicePowerSetup, readLastResortSetup, renderDevicePowerSetup,
 } from '../src/ui/devicePowerSetup.ts';
 
 const write = vi.hoisted(() => vi.fn());
@@ -43,6 +45,11 @@ const setup = () => {
       <div id="device-power-setup-binary-field"></div>
       <md-filled-select id="device-power-setup-binary" quick></md-filled-select>
       <div id="device-power-setup-binary-help"></div>
+      <div id="device-power-setup-thermostat-field"></div>
+      <md-filled-select id="device-power-setup-thermostat"></md-filled-select>
+      <div id="device-power-setup-thermostat-preview"></div>
+      <div id="device-power-setup-thermostat-status"></div>
+      <div id="device-power-setup-thermostat-confirm"></div>
       <div id="device-power-setup-last-resort"></div>
       <div id="device-power-setup-last-resort-help"></div>
       <div id="device-power-setup-last-resort-toggle"></div>
@@ -51,13 +58,15 @@ const setup = () => {
     </details>`;
   const control = query<MdFilledSelect>('binary');
   const source = query<MdFilledSelect>('source');
+  const thermostat = query<MdFilledSelect>('thermostat');
+  const confirmation = Object.assign(query('thermostat-confirm'), { returnValue: '', show: vi.fn() });
   const toggle = Object.assign(query('last-resort-toggle'), { selected: false, disabled: false });
   const maximum = query<HTMLInputElement>('maximum');
   const save = query<HTMLButtonElement>('save');
   const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   renderDevicePowerSetup(refresh, true);
   openDevicePowerSetup('heater');
-  return { control, source, toggle, maximum, save, refresh };
+  return { control, source, thermostat, confirmation, toggle, maximum, save, refresh };
 };
 
 const change = (control: HTMLElement, type = 'change') => control.dispatchEvent(new Event(type));
@@ -151,6 +160,78 @@ describe('Device setup', () => {
   it('gives the selected metering socket precedence over a stale last-resort maximum', () => {
     acceptDevicePowerSetup({ devices: [device({ lastResortMaximumW: 4500 })] });
     expect(readLastResortSetup('heater')).toBeUndefined();
+  });
+
+  it('previews without writing, confirms a last-resort link, and retries the remaining write', async () => {
+    const before = device({
+      sourceId: null,
+      lastResortMaximumW: 4500,
+      thermostats: [
+        { id: 'thermostat', name: 'Room thermostat', state: 'selectable', currentTemperature: 20, targetTemperature: 22 },
+        { id: 'managed', name: 'Managed thermostat', state: 'managed' },
+      ],
+    });
+    acceptDevicePowerSetup({ devices: [before] });
+    const { thermostat, confirmation, save, refresh } = setup();
+    expect(thermostat.textContent).toContain('Turn off Managed by PELS to use this thermostat');
+    thermostat.value = 'thermostat';
+    change(thermostat);
+    expect(query('thermostat-preview').textContent).toBe('Temperature 20 °C · Target 22 °C');
+    expect(write).not.toHaveBeenCalled();
+
+    save.click();
+    expect(confirmation.show).toHaveBeenCalledOnce();
+    expect(write).not.toHaveBeenCalled();
+    confirmation.dispatchEvent(new Event('close'));
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(write).not.toHaveBeenCalled();
+
+    const linked = { ...before, thermostatId: 'thermostat', thermostatWaitingForManualOn: true };
+    write.mockImplementation(({ key, mutate }) => Promise.resolve(
+      key === DEVICE_EXTERNAL_THERMOSTATS ? mutate({}) : null,
+    ));
+    refresh.mockImplementation(async () => {
+      acceptDevicePowerSetup({ devices: [linked] });
+      renderDevicePowerSetup(refresh, true);
+    });
+    save.click();
+    confirmation.returnValue = 'confirm';
+    confirmation.dispatchEvent(new Event('close'));
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(write.mock.calls.map(([request]) => request.key)).toEqual([DEVICE_EXTERNAL_THERMOSTATS, LAST_RESORT_DEVICES]);
+    expect(await write.mock.results[0]?.value).toEqual({
+      heater: { thermostatId: 'thermostat', waitForManualOn: true },
+    });
+    expect(thermostat.value).toBe('thermostat');
+
+    write.mockReset().mockResolvedValue({});
+    save.click();
+    confirmation.returnValue = 'confirm';
+    confirmation.dispatchEvent(new Event('close'));
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(write.mock.calls.map(([request]) => request.key)).toEqual([LAST_RESORT_DEVICES]);
+  });
+
+  it('allows removing an unavailable saved thermostat and preserves its manual restart hold', async () => {
+    acceptDevicePowerSetup({ devices: [
+      device({
+        sourceId: null, thermostatId: 'thermostat', thermostatWaitingForManualOn: true,
+        lastResortMaximumW: 4500, thermostats: [],
+      }),
+      device({ id: 'thermostat', name: 'Thermostat', thermostatUsedBy: 'heater' }),
+    ] });
+    const { thermostat, confirmation, save } = setup();
+    expect(isDeviceReservedBySetup('thermostat')).toBe(true);
+    expect(thermostat.textContent).toContain('Configured thermostat unavailable');
+    thermostat.value = '';
+    change(thermostat);
+    write.mockImplementation(({ mutate, fallbackValue }) => Promise.resolve(mutate(fallbackValue)));
+    save.click();
+    confirmation.returnValue = 'confirm';
+    confirmation.dispatchEvent(new Event('close'));
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(write.mock.calls.map(([request]) => request.key)).toEqual([LAST_RESORT_DEVICES, DEVICE_EXTERNAL_THERMOSTATS]);
+    expect(await write.mock.results[1]?.value).toEqual({ heater: { thermostatId: null, waitForManualOn: true } });
   });
 
   it('requires an available selected switch and offers removal if a saved switch goes away', () => {

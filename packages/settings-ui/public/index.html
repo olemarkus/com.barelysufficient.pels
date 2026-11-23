@@ -157,6 +157,27 @@
             aria-describedby="device-power-setup-binary-help"></md-filled-select>
           <small class="field__hint" id="device-power-setup-binary-help"></small>
         </label>
+        <div class="field" id="device-power-setup-thermostat-field" hidden>
+          <md-filled-select id="device-power-setup-thermostat" label="External thermostat"
+            aria-describedby="device-power-setup-thermostat-help device-power-setup-thermostat-preview"></md-filled-select>
+          <small class="field__hint" id="device-power-setup-thermostat-help">
+            Connect the thermostat to this device directly or through Homey Flows. In Homey, change the target on the
+            thermostat’s tile and check that it controls this device before turning on Power-limit control.
+          </small>
+          <small class="field__hint" id="device-power-setup-thermostat-preview"></small>
+          <small class="field__hint" id="device-power-setup-thermostat-status" aria-live="polite"></small>
+        </div>
+        <md-dialog id="device-power-setup-thermostat-confirm">
+          <div slot="headline">Remove last-resort control?</div>
+          <form slot="content" id="device-power-setup-thermostat-confirm-form" method="dialog">
+            <p class="muted">Saving this thermostat setup removes last-resort control.
+              An off device stays off. Turn it on in Homey when you are ready.</p>
+          </form>
+          <div slot="actions">
+            <md-text-button form="device-power-setup-thermostat-confirm-form" value="cancel">Cancel</md-text-button>
+            <md-text-button form="device-power-setup-thermostat-confirm-form" value="confirm">Save device setup</md-text-button>
+          </div>
+        </md-dialog>
         <div class="field" id="device-power-setup-last-resort" hidden>
           <label class="setting-row">
             <span>Turn off as a last resort</span>
@@ -1721,6 +1742,8 @@
                 <div id="device-detail-power-setup-summary" class="field__hint" hidden>
                   <div id="device-detail-metering-socket" hidden></div>
                   <div id="device-detail-on-off-control" hidden></div>
+                  <div id="device-detail-external-thermostat" hidden></div>
+                  <div id="device-detail-thermostat-manual-restart" hidden></div>
                   <div id="device-detail-last-resort-maximum" hidden></div>
                 </div>
                 <md-text-button type="button" id="device-detail-open-power-setup" hidden>Edit device setup</md-text-button>

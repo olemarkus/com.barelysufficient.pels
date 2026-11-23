@@ -16,7 +16,9 @@ import type {
   TargetPowerSteppedLoadConfig,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
-import type { DeviceControlPosture, TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
+import type {
+  DeviceControlPosture, PlanInputDeviceBase, TemperaturePlanInputKind,
+} from '../../packages/planner-types/src/planInputDevice';
 import type { BinaryCommandabilityProjection } from '../plan/admission/binaryCommandReachability';
 import type { SteppedClusterFields } from '../plan/planTypes';
 import {
@@ -33,6 +35,11 @@ import type {
   ToPlanDeviceInput,
   ToPlanDeviceOptions,
 } from './planInputDeviceTypes';
+
+export const hasPlanBinaryControl = (
+  device: Pick<ToPlanDeviceInput, 'binaryControl'>,
+  policy: Pick<PlanInputDeviceBase, 'externalThermostatRole'>,
+): boolean => policy.externalThermostatRole === undefined && device.binaryControl !== undefined;
 
 export const isPlainBinaryControlDevice = (
   targetPowerConfig: TargetPowerSteppedLoadConfig | undefined,

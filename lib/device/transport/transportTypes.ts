@@ -101,7 +101,7 @@ export type DeviceTransportOptions = {
       settings: Pick<
         DeviceControlSettings,
         'devicePowerSources' | 'managedDevices' | 'isMeteringSocketReserved' | 'isMainFusePhaseMeter'
-      >;
+      > & import('./externalThermostats').ThermostatSettings;
       resolveHome: import('./externalDevicePower').PowerSourceHome;
     };
     /**

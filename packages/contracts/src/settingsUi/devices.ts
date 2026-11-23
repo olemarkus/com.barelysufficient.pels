@@ -84,12 +84,25 @@ export type ChargerPhasePresetsRead =
   | { state: 'resolved'; presets: ChargerPhasePresets }
   | { state: 'unavailable' };
 
+export type ExternalThermostatOption = {
+  id: string;
+  name: string;
+  state: 'selectable' | 'managed' | 'assigned' | 'unavailable';
+  currentTemperature?: number;
+  targetTemperature?: number;
+};
+
 export type DevicePowerSetupEntry = {
   id: string;
   name: string;
   configured: boolean;
   sourceId: string | null;
   binarySwitchId?: string | null;
+  thermostatId?: string | null;
+  thermostats?: readonly ExternalThermostatOption[];
+  thermostatReady?: boolean;
+  thermostatUsedBy?: string | null;
+  thermostatWaitingForManualOn?: boolean;
   lastResortMaximumW?: number;
   lastResortAvailable?: boolean;
   defaultBinarySwitchAvailable?: boolean;

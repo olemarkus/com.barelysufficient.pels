@@ -85,6 +85,7 @@ export type ObjectiveDeviceInput = {
   // missing from planner input and nothing noticed.
   isEvCharger: boolean;
   deviceType: 'temperature' | 'onoff';
+  externalThermostatRole?: 'load' | 'source';
   steppedLoadProfile?: SteppedLoadProfile;
   /**
    * Producer-resolved "there is no creditable session to make progress in",
@@ -200,7 +201,7 @@ export const resolveObjectiveDeviceInputs = <T extends ObjectiveDeviceSource>(
   devices: readonly T[],
   getThermalDirection: (deviceId: string) => ThermalDirection,
 ): Array<T & Pick<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>> => (
-  selectObjectiveDevices(devices).map((device) => ({
+  selectObjectiveDevices(devices).filter((device) => device.externalThermostatRole === undefined).map((device) => ({
     ...device,
     thermalDirection: getThermalDirection(device.id),
   }))

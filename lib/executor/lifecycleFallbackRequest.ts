@@ -35,6 +35,7 @@ export const buildLifecycleFallbackRequest = (
     { ...device, ...observedState },
     posture.kind === 'step' ? posture.profile : undefined,
   );
+  if (observed.target?.temperatureBindingGeneration !== undefined) return { state: 'no_writable_axis' };
   if (posture.kind === 'binary_off') return { state: 'resolved', request: { kind: 'binary_off', observed } };
   if (posture.kind === 'target') {
     return { state: 'resolved', request: { kind: 'target_fallback', observed, desired: posture.temperature } };

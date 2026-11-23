@@ -1,11 +1,15 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { DEVICE_BINARY_SWITCHES, LAST_RESORT_DEVICES, MANAGED_DEVICES } from '../utils/settingsKeys';
-import { readSettingsKeyList } from '../utils/settingsKeyList';
+import {
+  DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES, MANAGED_DEVICES,
+} from '../utils/settingsKeys';
+import { isAbsentSetting, readSettingsKeyList } from '../utils/settingsKeyList';
 import { readDeviceBinarySwitches, type DeviceBinarySwitches }
   from '../../packages/shared-domain/src/settings/deviceBinarySwitches';
 
-export { readDevicePowerSources, type DevicePowerSources }
+import { readDevicePowerSources, type DevicePowerSources }
   from '../../packages/shared-domain/src/settings/devicePowerSources';
+export type { DevicePowerSources };
+export { DeviceExternalThermostatSettings } from './externalThermostatSettings';
 
 import { readLastResortDevices, type LastResortDevices }
   from '../../packages/shared-domain/src/settings/lastResortDevices';
@@ -14,6 +18,18 @@ export type { LastResortDevices }
   from '../../packages/shared-domain/src/settings/lastResortDevices';
 
 type SetupSettingsPort = Pick<SettingsPort, 'get' | 'getKeys'>;
+export function readDevicePowerSourcesSetting(
+  settings: SetupSettingsPort, current: DevicePowerSources,
+): DevicePowerSources {
+  try {
+    const raw = settings.get(DEVICE_POWER_SOURCES);
+    const sources = readDevicePowerSources(raw);
+    if (sources) return sources;
+    if (isAbsentSetting(settings, DEVICE_POWER_SOURCES, raw)) return {};
+  } catch { /* Keep the accepted assignments on an unreadable setting. */ }
+  return current;
+}
+
 const selectionFor = (switches: DeviceBinarySwitches, deviceId: string): string | undefined => (
   Object.hasOwn(switches, deviceId) ? switches[deviceId] : undefined
 );

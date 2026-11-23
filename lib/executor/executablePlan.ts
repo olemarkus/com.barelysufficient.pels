@@ -139,6 +139,7 @@ export type ExecutableObservedDeviceState = {
 /** The device's primary (temperature) setpoint as observed. */
 export type ExecutableObservedTargetState = {
   observedValue: unknown;
+  temperatureBindingGeneration?: number;
 };
 
 export type ExecutableObservedSteppedLoadState = {
@@ -191,6 +192,7 @@ export type ExecutableTargetCommand = {
   deviceId: string;
   name: string;
   desired: number;
+  temperatureBindingGeneration?: number;
   observedValue: unknown;
 };
 

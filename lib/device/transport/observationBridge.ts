@@ -31,6 +31,8 @@ export class ObservationBridge {
       return;
     }
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(event.deviceId);
+    const temperatureGeneration = snapshot?.temperature?.target.temperatureBindingGeneration;
+    this.temperatureAdjustments.updateBinding(event.deviceId, temperatureGeneration);
     this.dispatcher.observedStateChanged(
       snapshot ? { ...event, observed: projectObservedState(snapshot) } : event,
     );
@@ -38,6 +40,7 @@ export class ObservationBridge {
 
   /** Admission withdrew the device; no fabricated observation replaces it. */
   dispatchStateRemoved(deviceId: string): void {
+    this.temperatureAdjustments.updateBinding(deviceId, undefined);
     this.temperatureAdjustments.forgetTimedOutCommand(deviceId);
     this.dispatchStateChanged({
       source: 'device_update', deviceId, removed: true, ...this.nextCursor(deviceId),
@@ -59,6 +62,7 @@ export class ObservationBridge {
     const observedAtMs = Date.now();
     const event: ObservedStateRefreshEvent = {
       entries: snapshot.map((device) => {
+        this.temperatureAdjustments.updateBinding(device.id, device.targets[0]?.temperatureBindingGeneration);
         const cursor = this.nextCursor(device.id, observedAtMs);
         return {
           observationSeq: cursor.observationSeq,
@@ -70,8 +74,8 @@ export class ObservationBridge {
     this.dispatcher.observedStateRefresh(event);
   }
 
-  dispatchControlStateChanged(event: ObservedControlStateChangedEvent): void {
-    const adjustment = this.temperatureAdjustments.observeControlChange(
+  dispatchControlStateChanged(event: ObservedControlStateChangedEvent, attributeTemperature = true): void {
+    const adjustment = attributeTemperature && this.temperatureAdjustments.observeControlChange(
       this.snapshotStore.getSnapshotByDeviceId(event.deviceId),
       event,
     );
@@ -88,10 +92,10 @@ export class ObservationBridge {
     this.dispatcher.setGenerationW(watts, observedAtMs);
   }
 
-  emitControlStateChanged(event: ObservedControlStateChangedEvent): void {
+  emitControlStateChanged(event: ObservedControlStateChangedEvent, attributeTemperature = true): void {
     const cursor = event.observationSeq === undefined || event.observedAtMs === undefined
       ? this.nextCursor(event.deviceId)
       : {};
-    this.dispatchControlStateChanged({ ...event, ...cursor });
+    this.dispatchControlStateChanged({ ...event, ...cursor }, attributeTemperature);
   }
 }

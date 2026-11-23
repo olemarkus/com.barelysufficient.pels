@@ -39,6 +39,15 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     expect(transport.requestTemperatureTarget).toHaveBeenCalledWith('th1', 5);
   });
 
+  it('preserves temperature binding authority and treats a transport refusal as unsent', async () => {
+    const requestTemperatureTarget = vi.fn(async () => false as const);
+    const actuator = createDeviceActuator(buildTransport({ requestTemperatureTarget }));
+    await expect(actuator.apply({
+      kind: 'target', deviceId: 'heater', target: 'temperature', value: 18, temperatureBindingGeneration: 2,
+    })).resolves.toEqual({ requested: false });
+    expect(requestTemperatureTarget).toHaveBeenCalledWith('heater', 18, 2);
+  });
+
   it('propagates a semantic target write failure', async () => {
     const transport = buildTransport({
       requestTemperatureTarget: vi.fn(async () => { throw new Error('write failed'); }),

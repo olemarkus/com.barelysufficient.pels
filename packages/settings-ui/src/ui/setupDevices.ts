@@ -1,5 +1,5 @@
 import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
-import { readLastResortSetup } from './devicePowerSetup.ts';
+import { devicePowerSetupHint, isDeviceReservedBySetup, readLastResortSetup } from './devicePowerSetup.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { DeviceDetailFocus } from './cardActivation.ts';
 import { readHomeMembership, refreshHomeScopeAndNotify } from './homeScope.ts';
@@ -110,6 +110,7 @@ const setupDeviceHint = (
   device: SettingsUiDeviceListItem,
   manageability: ReturnType<typeof resolveDeviceManageability>,
 ): string | null => {
+  if (isDeviceReservedBySetup(device.id)) return devicePowerSetupHint(device.id);
   if (manageability.nativeWiringRequired) return 'Enable device control in Setup.';
   // A battery is neither paused nor set to a temperature: say what its device page's Managed says.
   if (isHomeBatteryClassKey(device.deviceClass)) {
