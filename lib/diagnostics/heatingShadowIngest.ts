@@ -21,8 +21,7 @@ export function observeHeatingShadowDevices(
 ): HeatingShadowDevice[] {
   return devices.flatMap((device): HeatingShadowDevice[] => {
     if (!device.managed || device.available === false || !isTemperatureControlDevice(device)
-      || !hasObservedTemperature(device) || device.temperature.target.temperatureBindingGeneration !== undefined
-      || !hasObservedMeasuredPower(device)
+      || !hasObservedTemperature(device) || !hasObservedMeasuredPower(device)
       || !device.measuredPowerIsDirectMeasurement || getThermalDirection(device.id) !== 'heating') return [];
     return [{ id: device.id,
       signal: { temperatureCapability: 'measure_temperature', temperatureRole: 'unclassified',

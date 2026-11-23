@@ -17,7 +17,7 @@ const findSetupEntry = (id: string): DevicePowerSetupEntry | undefined => (
 );
 
 const companionTarget = (entry: DevicePowerSetupEntry | undefined) => (
-  entry?.usedBy ?? entry?.thermostatUsedBy
+  entry?.usedBy
 );
 
 export const devicePowerSetupHint = (deviceId: string): string | null => {
@@ -25,11 +25,6 @@ export const devicePowerSetupHint = (deviceId: string): string | null => {
   if (entry?.usedBy) {
     const targetName = entries.find((candidate) => candidate.id === entry.usedBy)?.name;
     return targetName ? `Used to measure ${formatDisplayDeviceName(targetName)}.` : 'Used as a power source.';
-  }
-  if (entry?.thermostatUsedBy) {
-    const target = findSetupEntry(entry.thermostatUsedBy);
-    return target ? `Used as the thermostat for ${formatDisplayDeviceName(target.name)}.`
-      : 'Used as an external thermostat.';
   }
   if (entry?.sourceId && !entry.sourceReady) {
     return entry.sources.some(({ id }) => id === entry.sourceId)
@@ -43,9 +38,6 @@ export const devicePowerSetupHint = (deviceId: string): string | null => {
 export const devicePowerSetupWarning = (deviceId: string): string | null => {
   const entry = findSetupEntry(deviceId);
   if (!entry) return null;
-  if (entry.thermostatId && (!thermostatChoice(entry, entry.thermostatId) || !entry.thermostatReady)) {
-    return 'External thermostat unavailable. Check it in Homey or change it under External sensors.';
-  }
   if (entry.binarySwitchId && !entry.binarySwitches?.some(({ id }) => id === entry.binarySwitchId)) {
     return 'Selected on/off control unavailable. Check the device in Homey or change it under External sensors.';
   }
@@ -78,8 +70,7 @@ export const isLastResortOffered = (deviceId: string): boolean => (
 
 export function readLastResortSetup(deviceId: string) {
   const entry = findSetupEntry(deviceId);
-  if (entry?.lastResortMaximumW === undefined || entry.sourceId || entry.thermostatId
-    || entry.thermostatWaitingForManualOn) return undefined;
+  if (entry?.lastResortMaximumW === undefined || entry.sourceId) return undefined;
   if (canEnableLastResort(entry, entry.binarySwitchId ?? '')) {
     return {
       hint: 'Last resort. PELS can turn it off after limiting other devices.',
@@ -99,8 +90,7 @@ export const readDevicePowerSetupDetail = (deviceId: string) => {
 };
 
 export const isLastResortConfigured = (deviceId: string): boolean => (
-  entries.some((entry) => entry.id === deviceId && entry.lastResortMaximumW !== undefined && !entry.sourceId
-    && !entry.thermostatId && !entry.thermostatWaitingForManualOn)
+  entries.some((entry) => entry.id === deviceId && entry.lastResortMaximumW !== undefined && !entry.sourceId)
 );
 
 export const isDeviceReservedBySetup = (deviceId: string): boolean => (
@@ -150,13 +140,12 @@ const unavailableReason = (state: DevicePowerSetupEntry['sources'][number]['stat
 const acceptedDraft = (entry: DevicePowerSetupEntry | undefined): SetupDraft => ({
   source: entry?.sourceId ?? '',
   switchId: entry?.binarySwitchId ?? '',
-  thermostat: entry?.thermostatId ?? '',
   lastResort: entry?.lastResortMaximumW !== undefined,
   maximum: entry?.lastResortMaximumW?.toString() ?? '',
 });
 
 const sameSetupDraft = (left: SetupDraft, right: SetupDraft): boolean => (
-  left.source === right.source && left.switchId === right.switchId && left.thermostat === right.thermostat
+  left.source === right.source && left.switchId === right.switchId
   && left.lastResort === right.lastResort && left.maximum === right.maximum
 );
 
@@ -201,62 +190,9 @@ function switchOptions(entry: DevicePowerSetupEntry | undefined, selected: strin
   return [{ value: '', label: defaultLabel }, ...options];
 }
 
-function thermostatChoice(entry: DevicePowerSetupEntry | undefined, id: string) {
-  return entry?.thermostats?.find((option) => option.id === id);
-}
-
-type ThermostatOptionState = NonNullable<DevicePowerSetupEntry['thermostats']>[number]['state'];
-
-const thermostatUnavailableReason = (state: ThermostatOptionState): string => {
-  switch (state) {
-    case 'managed': return 'Turn off Managed by PELS to use this thermostat';
-    case 'assigned': return 'Already controls another device';
-    case 'unavailable': return 'Temperature control unavailable';
-    default: return '';
-  }
-};
-
-function thermostatOptions(entry: DevicePowerSetupEntry | undefined, selected: string): SetupOption[] {
-  const options: SetupOption[] = (entry?.thermostats ?? []).map((option) => {
-    const reason = thermostatUnavailableReason(option.state);
-    const name = formatDisplayDeviceName(option.name);
-    return { value: option.id, label: reason ? `${name} (${reason})` : name, disabled: Boolean(reason) };
-  });
-  if (selected && !options.some(({ value }) => value === selected)) {
-    options.push({ value: selected, label: 'Configured thermostat unavailable', disabled: true });
-  }
-  return [{ value: '', label: 'No external thermostat' }, ...options];
-}
-
-const thermostatDegrees = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
-const THERMOSTAT_MANUAL_RESTART_HINT = 'Turn the device on in Homey when you are ready.';
-
-function thermostatPreview(entry: DevicePowerSetupEntry | undefined, id: string): string {
-  if (!id) return '';
-  const choice = thermostatChoice(entry, id);
-  if (!choice) return 'The configured thermostat is unavailable.';
-  if (choice.state !== 'selectable') return thermostatUnavailableReason(choice.state);
-  const { currentTemperature, targetTemperature } = choice;
-  return [
-    currentTemperature === undefined ? '' : `Temperature ${thermostatDegrees.format(currentTemperature)} °C`,
-    targetTemperature === undefined ? '' : `Target ${thermostatDegrees.format(targetTemperature)} °C`,
-  ].filter(Boolean).join(' · ');
-}
-
-type SetupDialog = HTMLElement & { returnValue: string; show: () => void };
-
 const setupControl = <T extends HTMLElement = HTMLElement>(root: HTMLElement, name: string): T | null => (
   root.querySelector<T>(`[data-setup="${name}"]`)
 );
-
-function readThermostatFields(root: HTMLElement) {
-  const section = setupControl(root, 'thermostat-field');
-  const select = setupControl<SetupSelect>(root, 'thermostat');
-  const preview = setupControl(root, 'thermostat-preview');
-  const status = setupControl(root, 'thermostat-status');
-  const confirm = setupControl<SetupDialog>(root, 'thermostat-confirm');
-  return section && select && preview && status && confirm ? { section, select, preview, status, confirm } : undefined;
-}
 
 function readSetupFields(root: HTMLElement) {
   const targetField = setupControl(root, 'target-field');
@@ -274,11 +210,10 @@ function readSetupFields(root: HTMLElement) {
   const lastResortHelp = setupControl(root, 'last-resort-help');
   const maximum = setupControl<HTMLElement & { value: string; disabled: boolean }>(root, 'maximum');
   const save = setupControl<HTMLElement & { disabled: boolean }>(root, 'save');
-  const thermostat = readThermostatFields(root);
   if (!targetField || !details || !target || !source || !help || !control || !switchField || !switchHelp
-    || !lastResort || !lastResortToggle || !lastResortHelp || !maximum || !save || !thermostat) return undefined;
+    || !lastResort || !lastResortToggle || !lastResortHelp || !maximum || !save) return undefined;
   return { targetField, details, target, source, help, control, switchField, switchHelp, lastResort, lastResortToggle,
-    lastResortHelp, maximum, save, thermostat };
+    lastResortHelp, maximum, save };
 }
 
 type SetupFields = NonNullable<ReturnType<typeof readSetupFields>>;
@@ -298,8 +233,7 @@ function syncLastResort(fields: SetupFields, entry: DevicePowerSetupEntry | unde
   const usableSwitch = hasUsableSwitch(entry, draft.switchId);
   const canEnable = canEnableLastResort(entry, draft.switchId);
   const maximumIsValid = isLastResortMaximumW(Number(draft.maximum));
-  const displayed = offered && !draft.source && !draft.thermostat && !entry?.thermostatId
-    && !entry?.thermostatWaitingForManualOn;
+  const displayed = offered && !draft.source;
   lastResort.hidden = !displayed;
   lastResortToggle.disabled = !canEnable && !draft.lastResort;
   (maximum.closest<HTMLElement>('.md-field-row') ?? maximum).hidden = !draft.lastResort;
@@ -323,40 +257,7 @@ function hasUnavailableEdit(entry: DevicePowerSetupEntry, draft: SetupDraft): bo
     && !entry.sources.some(({ id, state }) => id === draft.source && state === 'selectable'));
   const switchUnavailable = Boolean(draft.switchId && draft.switchId !== entry.binarySwitchId
     && !hasUsableSwitch(entry, draft.switchId));
-  const thermostatUnavailable = Boolean(draft.thermostat && draft.thermostat !== entry.thermostatId
-    && thermostatChoice(entry, draft.thermostat)?.state !== 'selectable');
-  return sourceUnavailable || switchUnavailable || thermostatUnavailable;
-}
-
-function confirmsLastResortHandoff(entry: DevicePowerSetupEntry, draft: SetupDraft): boolean {
-  return entry.lastResortMaximumW !== undefined
-    && Boolean(draft.thermostat || entry.thermostatId || entry.thermostatWaitingForManualOn);
-}
-
-function confirmLastResortHandoff(element: SetupDialog): Promise<boolean> {
-  const dialog = element;
-  return new Promise((resolve) => {
-    dialog.returnValue = '';
-    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
-    dialog.show();
-  });
-}
-
-function syncThermostatFields(
-  fields: SetupFields['thermostat'], entry: DevicePowerSetupEntry | undefined, draft: SetupDraft, disabled: boolean,
-): void {
-  const { section, select, preview, status } = fields;
-  const waiting = entry?.thermostatWaitingForManualOn === true;
-  // New thermostat links are not offered for now; a saved one stays visible so it can be removed.
-  section.hidden = !entry?.thermostatId && !waiting;
-  select.disabled = disabled;
-  updateOptions(select, thermostatOptions(entry, draft.thermostat), draft.thermostat);
-  preview.textContent = thermostatPreview(entry, draft.thermostat);
-  if (entry && confirmsLastResortHandoff(entry, draft)) {
-    status.textContent = 'Saving this setup removes last-resort control after you confirm.';
-  } else {
-    status.textContent = waiting ? THERMOSTAT_MANUAL_RESTART_HINT : '';
-  }
+  return sourceUnavailable || switchUnavailable;
 }
 
 export const allowLastResortPriorityMove = (dragged: HTMLElement, related: HTMLElement): boolean => (
@@ -381,11 +282,10 @@ class DevicePowerSetupForm {
     private readonly fields: SetupFields,
     private readonly mode: SetupFormMode,
   ) {
-    const { target, source, control, lastResortToggle, maximum, save, thermostat } = fields;
+    const { target, source, control, lastResortToggle, maximum, save } = fields;
     target.onchange = () => this.select(readSelectValue(target));
     source.onchange = () => this.edit();
     control.onchange = () => this.edit();
-    thermostat.select.onchange = () => this.edit();
     lastResortToggle.onchange = () => this.edit();
     maximum.oninput = () => this.edit();
     save.onclick = () => this.save();
@@ -396,15 +296,13 @@ class DevicePowerSetupForm {
     const current = this.draft ?? acceptedDraft(entry);
     const invalidLastResort = syncLastResort(this.fields, entry, current);
     const reserved = Boolean(companionTarget(entry));
-    syncThermostatFields(this.fields.thermostat, entry, current, this.saving || !entry || reserved);
     if (this.saving) {
       this.fields.lastResortToggle.disabled = true;
       this.fields.maximum.disabled = true;
     }
-    // Adding a device saves even its default choices, and an unfinished thermostat
-    // handoff can be saved again; otherwise Save needs a change.
+    // Adding a device saves even its default choices; otherwise Save needs a change.
     const unchanged = (this.mode === 'device' || entry?.configured === true)
-      && sameSetupDraft(current, acceptedDraft(entry)) && !(entry && confirmsLastResortHandoff(entry, current));
+      && sameSetupDraft(current, acceptedDraft(entry));
     this.fields.save.disabled = this.saving || !entry || reserved || unchanged
       || invalidLastResort || hasUnavailableEdit(entry, current);
   }
@@ -483,7 +381,6 @@ class DevicePowerSetupForm {
     this.draft = {
       source: readSelectValue(this.fields.source),
       switchId: readSelectValue(this.fields.control),
-      thermostat: readSelectValue(this.fields.thermostat.select),
       lastResort: this.fields.lastResortToggle.selected,
       maximum: this.fields.maximum.value,
     };
@@ -498,9 +395,7 @@ class DevicePowerSetupForm {
     this.saving = true;
     this.render();
     try {
-      const handoff = confirmsLastResortHandoff(entry, current);
-      if (handoff && !await confirmLastResortHandoff(this.fields.thermostat.confirm)) return;
-      const maximum = !current.source && !handoff && current.lastResort ? Number(current.maximum) : undefined;
+      const maximum = !current.source && current.lastResort ? Number(current.maximum) : undefined;
       const submitted = { ...current, lastResort: maximum !== undefined, maximum: maximum?.toString() ?? '' };
       const saved = await persistDeviceSetup(entries, entry, submitted);
       if (saved) {

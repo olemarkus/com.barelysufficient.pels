@@ -107,7 +107,7 @@ describe('devices render — redesign shell', () => {
     expect(relay()?.textContent).toContain('Last resort.');
   });
 
-  it('points an unmetered relay to last-resort control and names a missing socket or thermostat', async () => {
+  it('points an unmetered relay to last-resort control and names a missing socket', async () => {
     const { renderDevices } = await importDevicesInRedesign();
     const { state } = await import('../src/ui/state.ts');
     const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
@@ -117,14 +117,12 @@ describe('devices render — redesign shell', () => {
     acceptDevicePowerSetup({ devices: [
       { ...base, id: 'relay', name: 'Relay', lastResortAvailable: true, defaultBinarySwitchAvailable: true },
       { ...base, id: 'heater', name: 'Heater', sourceId: 'gone', sourceReady: false },
-      { ...base, id: 'load', name: 'Load', thermostatId: 'gone', thermostats: [] },
     ] });
     const switchDevice = { deviceType: 'onoff' as const, deviceClass: 'socket', powerCapable: false,
       binaryControllable: true, capabilities: ['onoff'] };
     state.latestDevices = [
       buildDevice({ ...switchDevice, id: 'relay', name: 'Relay' }),
       buildDevice({ ...switchDevice, id: 'heater', name: 'Heater' }),
-      buildDevice({ ...switchDevice, id: 'load', name: 'Load' }),
     ];
     renderDevices(state.latestDevices);
 
@@ -132,8 +130,6 @@ describe('devices render — redesign shell', () => {
       ?.getAttribute('aria-label')).toContain('or turn on last-resort control under External sensors');
     expect(document.querySelector('[data-device-id="heater"]')?.textContent)
       .toContain('Metering socket unavailable. Choose another power source under External sensors.');
-    expect(document.querySelector('[data-device-id="load"]')?.textContent)
-      .toContain('External thermostat unavailable. Check it in Homey or change it under External sensors.');
   });
 
   it('renders one surface card per device class with managed count chip', async () => {

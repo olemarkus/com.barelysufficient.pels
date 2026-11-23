@@ -90,7 +90,7 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
       generation,
       lastResortMaximumW,
     ),
-    requestTemperatureTarget: (...args) => transport.requestTemperatureTarget(...args),
+    requestTemperatureTarget: (deviceId, desired) => transport.requestTemperatureTarget(deviceId, desired),
     resolveTemperatureTarget: (deviceId, desired) => transport.resolveTemperatureTarget(deviceId, desired),
     requestSteppedLoadStep: transport.requestSteppedLoadStep.bind(transport),
     requestTargetPowerControlClaim: (request) => transport.requestTargetPowerControlClaim(request),

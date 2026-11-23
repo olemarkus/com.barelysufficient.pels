@@ -10,13 +10,11 @@ import { NativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { PolledMeterReads } from './polledMeterReads';
 import { ExternalDevicePower } from './externalDevicePower';
-import { ExternalThermostats } from './externalThermostats';
 import type { DeviceTransportOptions } from './transportTypes';
 import { BinarySwitchBindings, type BinarySwitchSettings } from './binarySwitchBinding';
 
 export class TransportSnapshotStore {
   readonly externalPower: ExternalDevicePower | undefined;
-  readonly externalThermostats: ExternalThermostats | undefined;
   readonly binarySwitches: BinarySwitchBindings;
 
   constructor(externalPower?: DeviceTransportOptions['externalPower'], settings?: DeviceTransportOptions['settings']) {
@@ -31,9 +29,6 @@ export class TransportSnapshotStore {
         isManaged: settings.isManaged?.bind(settings),
       } : undefined;
     this.binarySwitches = new BinarySwitchBindings(bindings);
-    this.externalThermostats = externalPower && new ExternalThermostats(
-      externalPower.settings, this, externalPower.resolveHome,
-    );
     this.externalPower = externalPower && new ExternalDevicePower(
       externalPower.settings, this, externalPower.resolveHome,
     );
@@ -71,7 +66,6 @@ export class TransportSnapshotStore {
 
   replaceSnapshotEntry(deviceId: string, snapshot: TransportDeviceSnapshot): void {
     this.stampBinaryBinding(snapshot);
-    this.externalThermostats?.commitSnapshot(snapshot);
     const index = this.snapshot.findIndex((entry) => entry.id === deviceId);
     if (index === -1) this.snapshot.push(snapshot);
     else this.snapshot[index] = snapshot;
@@ -80,7 +74,6 @@ export class TransportSnapshotStore {
 
   removeSnapshotEntry(deviceId: string): void {
     this.binarySwitches.commit(deviceId, undefined);
-    this.externalThermostats?.removeBinding(deviceId);
     const index = this.snapshot.findIndex((entry) => entry.id === deviceId);
     if (index !== -1) this.snapshot.splice(index, 1);
     this.snapshotByDeviceId.delete(deviceId);
@@ -89,14 +82,9 @@ export class TransportSnapshotStore {
   replaceSnapshot(snapshot: TransportDeviceSnapshot[]): void {
     const present = new Set(snapshot.map(({ id }) => id));
     for (const id of this.snapshotByDeviceId.keys()) {
-      if (present.has(id)) continue;
-      this.binarySwitches.commit(id, undefined);
-      this.externalThermostats?.removeBinding(id);
+      if (!present.has(id)) this.binarySwitches.commit(id, undefined);
     }
-    for (const device of snapshot) {
-      this.stampBinaryBinding(device);
-      this.externalThermostats?.commitSnapshot(device);
-    }
+    for (const device of snapshot) this.stampBinaryBinding(device);
     this.snapshot = snapshot;
     this.snapshotByDeviceId = new Map(snapshot.map((device) => [device.id, device]));
   }

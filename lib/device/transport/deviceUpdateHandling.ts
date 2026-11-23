@@ -8,6 +8,7 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import { resolveDeviceViews } from './deviceReadContract';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
@@ -67,8 +68,8 @@ export function fireSnapshotMutatedForRefresh(
 function syncRealtimeDeviceUpdateSnapshot(
     snapshotStore: TransportSnapshotStore,
     deviceId: string,
-    currentSnapshot: TransportDeviceSnapshot | null | undefined,
-): TransportDeviceSnapshot | null {
+    currentSnapshot: TargetDeviceSnapshot | null | undefined,
+): TargetDeviceSnapshot | null {
     if (currentSnapshot === undefined) return null;
     if (currentSnapshot) {
         snapshotStore.replaceSnapshotEntry(deviceId, currentSnapshot);
@@ -137,9 +138,7 @@ function requestRemovalOfDroppedViews(
 }
 
 /** One view's whole-device update; temperature recovery also re-admits an accepted read through it. */
-export function handleRealtimeViewUpdate(
-    ingest: RealtimeIngestService, effectiveDevice: HomeyDeviceLike, temperatureEcho = false,
-): void {
+export function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiveDevice: HomeyDeviceLike): void {
     const deviceId = getDeviceId(effectiveDevice);
     ingest.observeChargingDevice(effectiveDevice);
     if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, effectiveDevice)) {
@@ -193,9 +192,7 @@ export function handleRealtimeViewUpdate(
         createObservationCursor: (nextDeviceId) => ingest.observationBridge.nextCursor(nextDeviceId),
         // Call-local queues defer events until the snapshot commit.
         /* eslint-disable functional/immutable-data */
-        emitObservedControlStateChanged: (event) => deferredControlEvents.push(
-            temperatureEcho ? { ...event, pelsEcho: true } : event,
-        ),
+        emitObservedControlStateChanged: (event) => deferredControlEvents.push(event),
         emitObservedState: (event: ObservedStateChangedEvent) => deferredObservedStateEvents.push(event),
         /* eslint-enable functional/immutable-data */
     });
@@ -203,7 +200,6 @@ export function handleRealtimeViewUpdate(
         ? syncRealtimeDeviceUpdateSnapshot(ingest.reader.snapshotStore, deviceId, result.currentSnapshot)
         : null;
     if (deviceId) {
-        ingest.reader.externalThermostats?.confirmManualStart(deviceId);
         ingest.publishDeviceConfiguration(deviceId);
         ingest.binaryEvidence.applyFromDeviceUpdate({
             deviceId,
@@ -232,10 +228,7 @@ export function handleRealtimeViewUpdate(
     // `latestSnapshotById`, so each enriched observed value projects the
     // post-update state rather than the previous one.
     flushDeferredObservedState(ingest, deviceId, deferredObservedStateEvents, previousSnapshot, currentSnapshot);
-    const attributeTemperature = sameTemperatureBinding(previousSnapshot, currentSnapshot);
-    for (const event of deferredControlEvents) {
-        ingest.observationBridge.emitControlStateChanged(event, attributeTemperature);
-    }
+    for (const event of deferredControlEvents) ingest.observationBridge.emitControlStateChanged(event);
     // Car-link devices reach us only here and on the device fetch: the live
     // feed pushes `device.update` for EVERY device, while parse drops unsupported
     // classes. Passed every update, not just cars — a charger's own update is what
@@ -248,18 +241,10 @@ export function handleRealtimeViewUpdate(
     ingest.observationProducers.evCarLink.noteDeviceUpdate(effectiveDevice, Date.now());
 }
 
-function sameTemperatureBinding(
-    previous: TransportDeviceSnapshot | undefined, current: TransportDeviceSnapshot | null,
-): boolean {
-    return previous?.temperature?.target.temperatureBindingGeneration
-        === current?.temperature?.target.temperatureBindingGeneration;
-}
-
 /** The facets a whole-device update can change with no capability event of their own. */
 type ObservedFlushFacets = Pick<TransportDeviceSnapshot,
     'available' | 'binaryCapabilityId' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'
-    | 'externalPowerSocketId' | 'measuredPowerKw' | 'measuredPowerObservedAtMs' | 'binarySwitchGeneration'
-    | 'temperature' | 'externalThermostatDonorId' | 'externalThermostatMeasuredAtMs'>;
+    | 'externalPowerSocketId' | 'measuredPowerKw' | 'measuredPowerObservedAtMs' | 'binarySwitchGeneration'>;
 
 // Dispatch the reconcile's deferred observed-state events — and when it emitted
 // none, still dispatch for an availability flip or a reported-step change. Availability is not a
@@ -303,8 +288,7 @@ function observedFlushFacetsUnchanged(
     current: ObservedFlushFacets,
 ): boolean {
     if (!previous) return false;
-    return externalPowerUnchanged(previous, current) && externalTemperatureUnchanged(previous, current)
-        && previous.available === current.available
+    return externalPowerUnchanged(previous, current) && previous.available === current.available
         && previous.binaryCapabilityId === current.binaryCapabilityId
         && previous.binarySwitchGeneration === current.binarySwitchGeneration
         && previous.reportedStepId === current.reportedStepId
@@ -318,14 +302,4 @@ function externalPowerUnchanged(previous: ObservedFlushFacets, current: Observed
         && (current.externalPowerSocketId === undefined
             || (previous.measuredPowerKw === current.measuredPowerKw
                 && previous.measuredPowerObservedAtMs === current.measuredPowerObservedAtMs));
-}
-
-function externalTemperatureUnchanged(previous: ObservedFlushFacets, current: ObservedFlushFacets): boolean {
-    return previous.externalThermostatDonorId === current.externalThermostatDonorId
-        && (current.externalThermostatDonorId === undefined
-            || (previous.externalThermostatMeasuredAtMs === current.externalThermostatMeasuredAtMs
-                && previous.temperature?.target.temperatureBindingObservedAtMs
-                    === current.temperature?.target.temperatureBindingObservedAtMs
-                && previous.temperature?.target.temperatureBindingGeneration
-                    === current.temperature?.target.temperatureBindingGeneration));
 }

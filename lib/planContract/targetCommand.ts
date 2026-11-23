@@ -3,7 +3,6 @@ export type PlannedTargetCommand = {
   deviceId: string;
   name: string;
   desired: number;
-  temperatureBindingGeneration?: number;
   purpose: 'target_update' | 'shed_temperature';
   /** Planner-resolved (`finalizePlanDevices`): applying this write counts as
    * a restore, so the executor stamps the restore clocks when it lands. The

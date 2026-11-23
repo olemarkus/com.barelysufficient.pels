@@ -11,16 +11,12 @@ export function buildPlannedTargetCommand(
 ): PlannedTargetCommand | undefined {
   if (!isTemperaturePlanDevice(device)) return undefined;
   if (device.waitingForTaskPlan && device.plannedShedTargetKind !== 'target_value') return undefined;
-  if (device.externalThermostatRole && device.temperatureBindingGeneration === undefined) return undefined;
   if (device.reason?.code === PLAN_REASON_CODES.swapPending && device.reason.targetName === null) return undefined;
   if (device.reason && isRestoreAdmissionHoldReason(device.reason)) return undefined;
   return {
     deviceId: device.id,
     name: device.name,
     desired: device.plannedTarget,
-    ...(device.temperatureBindingGeneration === undefined ? {} : {
-      temperatureBindingGeneration: device.temperatureBindingGeneration,
-    }),
     purpose: device.plannedShedTargetKind === 'target_value' ? 'shed_temperature' : 'target_update',
     recordRestoreOnTargetApply,
     restoreFromTarget: device.currentTarget,

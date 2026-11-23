@@ -25,12 +25,6 @@ export const readSettingsKeyList = (settings: { getKeys(): unknown }): SettingsK
   return { status: 'resolved', keys: raw };
 };
 
-export function isAbsentSetting(settings: { getKeys(): unknown }, key: string, raw: unknown): boolean {
-  if (raw !== null && raw !== undefined) return false;
-  const keys = readSettingsKeyList(settings);
-  return keys.status === 'resolved' && !keys.keys.includes(key);
-}
-
 /** Whether this boot is the first of a new install. */
 export type InstallAtBoot = 'new' | 'existing';
 

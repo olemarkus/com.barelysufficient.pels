@@ -1,7 +1,7 @@
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ExecutableTargetCommand } from './executablePlan';
 import type { ExecutorCommandContext, PendingTargetCommandStore } from './executorCommandContext';
-import { confirmsPendingTargetObservation, formatObservedTarget } from './pendingTargetObservation';
+import { formatObservedTarget } from './pendingTargetObservation';
 
 const logger = getLogger('executor/target');
 /**
@@ -23,8 +23,8 @@ const waitForImmediateObservedState = async (): Promise<void> => {
 };
 
 /** The observer's latest reading of the device's primary setpoint. */
-export const readObservedTemperatureTarget = (ctx: ExecutorCommandContext, deviceId: string) => (
-  ctx.getObservedState(deviceId)?.targets[0]
+export const readObservedTemperature = (ctx: ExecutorCommandContext, deviceId: string): unknown => (
+  ctx.getObservedState(deviceId)?.targets[0]?.value
 );
 
 /** `command` carries the value actually requested. */
@@ -35,11 +35,9 @@ export const syncPendingTargetCommandAfterActuation = async (
   const { deviceId, name, desired } = command;
   await waitForImmediateObservedState();
   ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
-  const observedTarget = readObservedTemperatureTarget(ctx, deviceId);
-  const pending = ctx.targetCommands.pendingTargetCommands[deviceId];
-  let pendingStillExists = pending?.desired === desired
-    && pending.temperatureBindingGeneration === command.temperatureBindingGeneration;
-  if (pending && pendingStillExists && confirmsPendingTargetObservation(pending, observedTarget)) {
+  const latestObservedValueAfterActuation = readObservedTemperature(ctx, deviceId);
+  let pendingStillExists = ctx.targetCommands.pendingTargetCommands[deviceId]?.desired === desired;
+  if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
     ctx.targetCommands.deletePendingTargetCommand(deviceId);
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
@@ -49,7 +47,7 @@ export const syncPendingTargetCommandAfterActuation = async (
     });
   }
   return {
-    latestObservedValueAfterActuation: observedTarget?.value,
+    latestObservedValueAfterActuation,
     pendingStillExists,
   };
 };

@@ -5,7 +5,6 @@ import type { EvCarLinkProducer } from '../evCarLinkProducer';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceWriteService } from './deviceWrites';
-import { TEMPERATURE_WRITE_NOT_APPLIED } from './capabilityWriteResolution';
 import { resolveNativeRelayBinding, writeNativeRelayOff } from './nativeRelay';
 import { hasAcceptedBinarySwitch } from './binarySwitchBinding';
 import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
@@ -20,25 +19,6 @@ export function resolveTemperatureTarget(
         ?.targets.find((entry) => entry.id.startsWith('target_temperature'));
     if (!target) throw new Error(`No temperature target binding for device ${deviceId}`);
     return normalizeTargetCapabilityValue({ target, value: desired });
-}
-
-export async function requestTemperatureTarget(
-    store: TransportSnapshotStore,
-    writes: DeviceWriteService,
-    deviceId: string,
-    desired: number,
-    generation?: number,
-): Promise<number | false> {
-    const snapshot = store.getSnapshotByDeviceId(deviceId);
-    const target = snapshot?.targets.find((entry) => entry.id.startsWith('target_temperature'));
-    if (!target) {
-        if (generation !== undefined || store.externalThermostats?.donorFor(deviceId)) return false;
-        throw new Error(`No temperature target binding for device ${deviceId}`);
-    }
-    const requested = await writes.setCapability(deviceId, target.id, desired, generation);
-    if (requested === TEMPERATURE_WRITE_NOT_APPLIED) return false;
-    if (typeof requested !== 'number') throw new Error(`Invalid temperature request for device ${deviceId}`);
-    return requested;
 }
 
 export function readNativeRelayBinding(
@@ -59,15 +39,6 @@ function allowsCurrentLastResortSwitch(
         && (observation.observedValue === false || !hasObservedMeasuredPower(snapshot));
 }
 
-function allowsBinaryCommand(
-    store: TransportSnapshotStore, deviceId: string, desired: boolean,
-    generation: number | undefined, lastResortMaximumW: number | undefined,
-): boolean {
-    return store.externalThermostats?.allowsBinaryWrite(deviceId, desired) !== false
-        && store.binarySwitches.allows(deviceId, generation)
-        && store.binarySwitches.allowsLastResortWrite(deviceId, lastResortMaximumW);
-}
-
 /** Resolve the switch from the current binding at dispatch, including its accepted Flow routing. */
 // eslint-disable-next-line max-params -- Preserve optional authority values on the existing transport seam.
 export async function requestBinaryControl(
@@ -80,7 +51,8 @@ export async function requestBinaryControl(
     binarySwitchGeneration?: number,
     lastResortMaximumW?: number,
 ): Promise<NativeRelayOffResult | void | false> {
-    if (!allowsBinaryCommand(store, deviceId, desired, binarySwitchGeneration, lastResortMaximumW)) return false;
+    if (!store.binarySwitches.allows(deviceId, binarySwitchGeneration)
+        || !store.binarySwitches.allowsLastResortWrite(deviceId, lastResortMaximumW)) return false;
     const raw = store.getTrackedRawDevice(deviceId);
     store.externalPower?.assertAllowsWrite(deviceId);
     const snapshot = store.getSnapshotByDeviceId(deviceId);

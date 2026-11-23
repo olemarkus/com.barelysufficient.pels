@@ -420,4 +420,4 @@ PELS resumes only a switch-off it can still identify as its own. If the device s
 
 If the relay starts reporting its own power, PELS still turns back on a relay it switched off, then stops last-resort control for it. Turn off **Turn off as a last resort** to let PELS limit it like any other metered device.
 
-When you remove a device from Homey, PELS clears its device setup. A metering socket or thermostat it used becomes free for another device.
+When you remove a device from Homey, PELS clears its device setup. A metering socket it used becomes free for another device.

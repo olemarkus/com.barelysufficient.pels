@@ -70,13 +70,7 @@ export const resolveSmartTaskDeviceExclusion = (
 export const hasMainHomeSmartTaskAuthority = (
   ctx: AppContext,
   deviceId: string,
-): boolean => resolveSmartTaskHomeScope(ctx, deviceId) === 'main'
-  && !usesExternalThermostat(ctx, deviceId);
-
-function usesExternalThermostat(ctx: AppContext, deviceId: string): boolean {
-  return Boolean(ctx.deviceControlSettings.externalThermostats?.[deviceId])
-    || ctx.deviceControlSettings.requiresExternalThermostatManualStart?.(deviceId) === true;
-}
+): boolean => resolveSmartTaskHomeScope(ctx, deviceId) === 'main';
 
 export const resolveSmartTaskHomeScope = (ctx: AppContext, deviceId: string): SmartTaskHomeScope => {
   const membership = ctx.homeMembership;
@@ -89,12 +83,7 @@ export const readCreateSmartTaskCandidateDevices = (
 ): CreateSmartTaskCandidateDevicesRead => {
   const membership = ctx.homeMembership;
   return membership
-    ? readCreateSmartTaskCandidates(
-      membership,
-      ctx.getPlanInputSnapshot().filter(({ id }) => !usesExternalThermostat(ctx, id)),
-      readModeTargetC,
-      ctx.homey.settings,
-    )
+    ? readCreateSmartTaskCandidates(membership, ctx.getPlanInputSnapshot(), readModeTargetC, ctx.homey.settings)
     : { state: 'unavailable' };
 };
 
