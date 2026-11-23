@@ -448,3 +448,20 @@ describe('device setup for devices Homey no longer lists', () => {
     expect(writes).toEqual([]);
   });
 });
+
+describe('last-resort binding revision', () => {
+  it('keeps the binding when only the maximum changes and advances it when control is added or removed', () => {
+    const { port, values } = settingsDouble({ [MANAGED_DEVICES]: { relay: true }, [LAST_RESORT_DEVICES]: { relay: 4000 } });
+    const settings = loaded(port);
+    const initial = settings.getBinarySwitchRevision('relay');
+
+    values[LAST_RESORT_DEVICES] = { relay: 3000 };
+    settings.reload();
+    expect(settings.getBinarySwitchRevision('relay')).toBe(initial);
+    expect(settings.lastResortDevices).toEqual({ relay: 3000 });
+
+    values[LAST_RESORT_DEVICES] = {};
+    settings.reload();
+    expect(settings.getBinarySwitchRevision('relay')).toBeGreaterThan(initial);
+  });
+});

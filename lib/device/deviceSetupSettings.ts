@@ -61,8 +61,10 @@ export class DeviceBinarySwitchSettings {
       ...Object.keys(this.accepted), ...Object.keys(next), ...Object.keys(this.lastResort), ...Object.keys(lastResort),
     ]);
     for (const deviceId of knownIds) {
+      // A new maximum keeps the binding: transport refuses a command carrying the
+      // old one, and PELS's own OFF survives the edit so the relay can resume.
       if (selectionFor(next, deviceId) === this.selection(deviceId)
-        && lastResort[deviceId] === this.lastResort[deviceId]
+        && (lastResort[deviceId] === undefined) === (this.lastResort[deviceId] === undefined)
         && (lastResort[deviceId] === undefined || managed[deviceId] === this.managed[deviceId])) continue;
       this.nextRevision += 1;
       this.revisions.set(deviceId, this.nextRevision);

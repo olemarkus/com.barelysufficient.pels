@@ -136,7 +136,7 @@ the device's default binary control. Device transport validates the exact
 capability against the accepted read and relates plan intents and write
 confirmations to the current binding generation.
 
-`last_resort_devices` is the device-control owner's map of device IDs to positive maximum watts. The Settings UI writes it from device setup. It grants a managed unmetered relay last-resort control and supplies the restore reservation, never measured equipment draw. The accepted setting participates in the switch binding revision so stale commands and OFF ownership cannot survive a setting change.
+`last_resort_devices` is the device-control owner's map of device IDs to positive maximum watts. The Settings UI writes it from device setup. It grants a managed unmetered relay last-resort control and supplies the restore reservation, never measured equipment draw. Adding or removing the setting advances the switch binding revision, so stale commands and OFF ownership cannot survive it. A new maximum keeps the binding and PELS's own OFF; transport refuses a command that carries the old maximum.
 
 The four device setup maps (`device_power_sources`, `last_resort_devices`,
 `device_binary_switches`, `device_external_thermostats`) are also pruned by
