@@ -164,7 +164,7 @@ connection, PELS resumes the association automatically; no physical replug is ne
 
 Notes:
 
-- Power-limit control needs a power reading for the device: its own power meter, or the live value Homey Energy shows for it. Until the first reading arrives, PELS does not limit the device. When a temperature device's app reports no power but a smart plug or sub-meter measures it, see [Limit a Temperature Device Through a Virtual Thermostat](/how-to-virtual-thermostat-power). For a device with custom on/off or pause/resume commands and a separate meter, see [Combine Custom Device Control With an External Power Meter](/how-to-virtual-dishwasher-power).
+- Power-limit control needs a power reading for the device: its own power meter, or the live value Homey Energy shows for it. Until the first reading arrives, PELS does not limit the device. When a metering socket measures the device, choose it under **External sensors** (see [Measure a device with a metering socket](#metering-socket)). When a temperature device's app reports no power and a sub-meter that is not a socket measures it, see [Limit a Temperature Device Through a Virtual Thermostat](/how-to-virtual-thermostat-power). For a device with custom on/off or pause/resume commands and a separate meter, see [Combine Custom Device Control With an External Power Meter](/how-to-virtual-dishwasher-power).
 - For a device PELS can switch on and off, the line under **Power-limit control** says who starts it with your settings. With **Power-limit control** on, PELS limits the device when it must and also turns it on whenever power allows, even after it was turned off elsewhere; turn on **Leave off until turned on again** to keep it off after it is turned off elsewhere. With **Power-limit control** off, PELS does not start the device, and leaves it running when it is started elsewhere. While a smart task is in progress the task decides, and the line begins *When no smart task is running*.
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
 - A NIBE heat pump paired with the NIBE myUplink app (**Nibe heatpumps**) is a temperature device in PELS once the app shows a room temperature: from the BT50 room sensor on F-series pumps, or the controlling myUplink zone on S-series pumps. PELS sets the room setpoint the app shows as **Target temperature**. An F-series pump follows that setpoint through its room sensor.
@@ -265,6 +265,41 @@ Configure the power use in **Homey's device settings**, outside PELS:
 PELS uses the power value Homey supplies for the device. The setup warning
 clears when Homey has its power information. A device with its own power meter
 uses that reading instead.
+
+Two other ways work inside PELS: let a metering socket measure the device
+([Measure a device with a metering socket](#metering-socket)), or, for a relay
+whose draw nothing can measure, let PELS turn it off only as a last resort
+([Last-resort control for an unmetered relay](#last-resort)).
+
+### Measure a device with a metering socket {#metering-socket}
+
+When a device has no power reading of its own, a metering socket it is plugged into can measure it for PELS. Open the device in **Devices**, expand **External sensors**, and choose the socket under **Power source**. Press **Save**, then turn on **Managed by PELS**.
+
+**Power source** reads **None** for a device without a reading and **This device** when the device reports power itself, with its current reading below the field. Choosing a socket for a device that has its own reading replaces that reading.
+
+The socket must report power, be in the same home as the device, and not be managed by PELS. Each socket can measure one device. While it measures a device, PELS never switches the socket, and the socket's card says which device it measures. PELS limits the device through the device's own switch or temperature.
+
+If the socket stops reporting, PELS stops limiting the device until the socket reports again. When you remove a device from Homey, PELS clears its setup, and its socket becomes free for another device.
+
+### Choose which switch PELS uses {#on-off-control}
+
+Some devices have more than one on/off switch, such as a spa with a main switch and a separate heating switch. For such a device, **Setup** shows **On/off control** after **Control model**. Choose the switch and press **Save**. PELS then limits the device with that switch and leaves the others alone. **Default** uses the device's standard switch.
+
+### Add a device that is not in the list {#add-a-device}
+
+**Devices** lists heaters, thermostats, heat pumps, air conditioners, air treatment units, sockets and EV chargers on its own. Another device with an on/off switch or a temperature control, such as a spa, is added from **Add a device** at the top of **Devices**: choose the device, its **On/off control** and, if needed, a **Power source**, then press **Save**. The device then appears in the list, and you manage it like any other device. The card shows only when such a device exists.
+
+### Last-resort control for an unmetered relay {#last-resort}
+
+If a relay has no device power reading, open it in **Devices** and open **Power limiting**. Enable **Turn off as a last resort**, enter the maximum watts the connected load can draw, press **Save** and enable **Managed by PELS**.
+
+PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
+
+PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after a restart, turn the relay back on to resume control.
+
+If the relay starts reporting its own power, PELS still turns back on a relay it switched off, then stops last-resort control for it. Turn off **Turn off as a last resort** to let PELS limit it like any other metered device.
+
+When you remove a device from Homey, PELS clears its setup.
 
 ### Missing a device?
 
@@ -410,14 +445,3 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 
 Follow [Getting Started](/getting-started) to confirm your meter, choose one device, review the settings for your home, then preview and start managing. Setup offers the controls your device supports. You can add more devices, change priorities or enable a [daily budget](/daily-budget) later.
 
-### Last-resort control for an unmetered relay
-
-If a relay has no device power reading, open it in **Devices** and open **Power limiting**. Enable **Turn off as a last resort**, enter the maximum watts the connected load can draw, press **Save** and enable **Managed by PELS**.
-
-PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
-
-PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after a restart, turn the relay back on to resume control.
-
-If the relay starts reporting its own power, PELS still turns back on a relay it switched off, then stops last-resort control for it. Turn off **Turn off as a last resort** to let PELS limit it like any other metered device.
-
-When you remove a device from Homey, PELS clears its device setup. A metering socket it used becomes free for another device.
