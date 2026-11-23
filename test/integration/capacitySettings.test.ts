@@ -1,3 +1,4 @@
+import { ExternalLoadReservations } from '../../lib/power/externalLoadReservations';
 import {
   mockHomeyInstance,
   resetMockHomey,
@@ -6,7 +7,6 @@ import {
   MockDevice,
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { ExternalLoadReservations } from '../../lib/power/externalLoadReservations';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
