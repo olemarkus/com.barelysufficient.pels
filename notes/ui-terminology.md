@@ -1041,22 +1041,28 @@ correct it, not as a settled fact. Reading `expectedPowerSource` to say where th
 number came from is its one sanctioned use — no surface may branch on it to
 decide behaviour.
 
-### Device-page "External sensors" and the "Add a device" card
+### Device setup on the device page and the "Add a device" card
 
-A device's page has its own collapsed **External sensors** section near the
-bottom, above Activity log and Diagnostics, because few devices need it: **Power source**
-(`This device` when the device has its own reading, with that reading in the
-help line, `None` when it has none, or a metering socket), **On/off control** (`Default` or the
-device's other switch) and **Turn off as a last resort** with its **Maximum power**. Every
-select names its default choice; none renders empty. Save stays off until
-something changes.
+Each device setup choice sits in the device-page section it belongs to, with its
+own **Save**, which stays off until something changes:
 
-For an on/off device without power information, the Managed hint adds what
-External sensors offers it, such as `Or choose a metering socket or last-resort
-control under External sensors.` Other hints point there with "under External sensors", for example `Metering socket
-unavailable. Choose another power source under External sensors.` A device that
-is not in the device list yet is set up from the **Add a device** card at the top
-of Devices, which lists only those devices and hides when there are none.
+- **External sensors**, a collapsed section above Activity log because few
+  devices need it: **Power source**, which reads `This device` when the device
+  has its own reading (shown in the help line), `None` when it has none, or a
+  metering socket.
+- **Setup**, after Control model: **On/off control** (`Default` or the device's
+  other switch), only for a device that has another switch.
+- **Power limiting**, after Power-limit control: **Turn off as a last resort**
+  with its **Maximum power**, only for an on/off device without a power reading.
+
+Every select names its default choice; none renders empty. Hints name the
+section, for example `Metering socket unavailable. Choose another power source
+under External sensors.` or `Review last-resort control under Power limiting.`
+For an on/off device without power information, the Managed hint adds what it
+can use, such as `Or choose a metering socket under External sensors, or turn on
+last-resort control under Power limiting.` A device that is not in the device
+list yet is set up from the **Add a device** card at the top of Devices, which
+shows every choice, lists only those devices and hides when there are none.
 
 ### "Check the power for <Device>" — the power-figure recommendation
 

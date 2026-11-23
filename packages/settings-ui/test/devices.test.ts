@@ -127,7 +127,7 @@ describe('devices render — redesign shell', () => {
     renderDevices(state.latestDevices);
 
     expect(document.querySelector('[data-device-id="relay"] .pels-device-card__power-warning')
-      ?.getAttribute('aria-label')).toContain('or turn on last-resort control under External sensors');
+      ?.getAttribute('aria-label')).toContain('or turn on last-resort control under Power limiting');
     expect(document.querySelector('[data-device-id="heater"]')?.textContent)
       .toContain('Metering socket unavailable. Choose another power source under External sensors.');
   });

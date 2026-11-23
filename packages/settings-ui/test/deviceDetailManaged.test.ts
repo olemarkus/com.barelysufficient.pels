@@ -46,6 +46,8 @@ const buildDom = () => {
         <small id="device-detail-managed-hint"></small>
         <a id="device-detail-homey-energy-setup" hidden></a>
         <div id="device-detail-power-setup" hidden><div data-setup-host></div></div>
+        <div id="device-detail-binary-switch" hidden></div>
+        <div id="device-detail-last-resort" hidden></div>
         <md-switch id="device-detail-controllable"></md-switch>
         <md-switch id="device-detail-price-opt"></md-switch>
         <md-switch id="device-detail-budget-exempt"></md-switch>
@@ -197,9 +199,9 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('active');
     await flushPromises();
     const hint = document.getElementById('device-detail-managed-hint');
-    const form = document.getElementById('device-detail-power-setup');
-    const maximum = document.getElementById('device-detail-power-setup-maximum') as HTMLInputElement | null;
-    const toggle = document.getElementById('device-detail-power-setup-last-resort-toggle') as
+    const form = document.getElementById('device-detail-last-resort');
+    const maximum = document.getElementById('device-detail-last-resort-maximum') as HTMLInputElement | null;
+    const toggle = document.getElementById('device-detail-last-resort-last-resort-toggle') as
       (HTMLElement & { selected: boolean }) | null;
     const energyLink = document.getElementById('device-detail-homey-energy-setup');
     expect(hint?.textContent).toBe('Turn on Managed by PELS to use last-resort control.');
@@ -216,11 +218,11 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('dormant');
     await flushPromises();
     expect(hint?.textContent).toBe(
-      'Selected on/off control unavailable. Check the device in Homey or change it under External sensors.',
+      'Selected on/off control unavailable. Check the device in Homey or change it under Setup.',
     );
     expect(energyLink?.hidden).toBe(true);
     expect(form?.hidden).toBe(false);
-    expect(document.getElementById('device-detail-power-setup-binary')?.textContent)
+    expect(document.getElementById('device-detail-binary-switch-binary')?.textContent)
       .toContain('Selected switch unavailable');
   });
 

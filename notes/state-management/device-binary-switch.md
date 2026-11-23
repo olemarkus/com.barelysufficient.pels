@@ -1,6 +1,6 @@
 # Selecting a device's on/off control
 
-On a device's page, open **External sensors**, or use **Add a device**
+On a device's page, open **Setup** (next to Control model), or use **Add a device**
 in Devices for a device that is not in the list yet. **On/off control** appears when a generic device exposes an
 alternate readable, writable Homey on/off switch. A spa can use its heating
 switch for power limiting while retaining its Homey temperature controls.

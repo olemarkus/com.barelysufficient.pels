@@ -30,28 +30,36 @@ const device = (overrides: Partial<DevicePowerSetupEntry> = {}): DevicePowerSetu
   ...overrides,
 });
 
-// The device page's form; its controls carry this id prefix.
-const PREFIX = 'device-detail-power-setup';
+// The Add a device card holds every part behind one Save; its controls carry this id prefix.
+const PREFIX = 'device-power-setup';
 // A Material select cannot show an option with an empty value, so defaults use this one.
 const DEFAULT = 'pels-default';
 
-const query = <T extends HTMLElement>(suffix: string): T => {
-  const element = document.querySelector<T>(`#${PREFIX}-${suffix}`);
-  if (!element) throw new Error(`Missing device setup control ${suffix}`);
+const query = <T extends HTMLElement>(suffix: string, prefix = PREFIX): T => {
+  const element = document.querySelector<T>(`#${prefix}-${suffix}`);
+  if (!element) throw new Error(`Missing device setup control ${prefix}-${suffix}`);
   return element;
 };
 
-const rerender = (refresh: () => Promise<void>, listed: readonly string[] = ['heater']) => (
+const rerender = (refresh: () => Promise<void>, listed: readonly string[] = []) => (
   renderDevicePowerSetup(refresh, true, new Set(listed))
 );
+
+const selectTarget = (id: string) => {
+  const target = query<MdFilledSelect>('target');
+  target.value = id || DEFAULT;
+  target.dispatchEvent(new Event('change'));
+};
 
 const setup = () => {
   document.body.innerHTML = `
     <details id="device-power-setup" hidden><div data-setup-host></div></details>
-    <div id="${PREFIX}" hidden><div data-setup-host></div></div>`;
+    <section id="device-detail-power-setup" hidden><div data-setup-host></div></section>
+    <div id="device-detail-binary-switch" hidden></div>
+    <div id="device-detail-last-resort" hidden></div>`;
   const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   rerender(refresh);
-  renderDeviceDetailPowerSetup('heater');
+  selectTarget('heater');
   const control = query<MdFilledSelect>('binary');
   // jsdom has no Element.animate; a quick select opens its menu without animating.
   control.quick = true;
@@ -156,6 +164,7 @@ describe('Device setup', () => {
   it('offers only devices outside the device list for adding and hides the card without any', () => {
     acceptDevicePowerSetup({ devices: [device(), device({ id: 'spa', name: 'Spa', configured: false, sourceId: null })] });
     const { refresh } = setup();
+    rerender(refresh, ['heater']);
     const card = document.querySelector<HTMLElement>('#device-power-setup');
     const target = document.querySelector<MdFilledSelect>('#device-power-setup-target');
     expect(card?.hidden).toBe(false);
@@ -166,13 +175,30 @@ describe('Device setup', () => {
     expect(card?.hidden).toBe(true);
   });
 
+  it('shows each device-page part in its own section only where it applies', () => {
+    acceptDevicePowerSetup({ devices: [device({ sourceId: null })] });
+    setup();
+    const shown = () => ['device-detail-power-setup', 'device-detail-binary-switch', 'device-detail-last-resort']
+      .map((id) => !document.getElementById(id)?.hidden);
+    renderDeviceDetailPowerSetup('heater');
+    expect(shown()).toEqual([true, true, true]);
+    expect(document.querySelector('#device-detail-binary-switch-binary')).not.toBeNull();
+    expect(document.querySelector('#device-detail-binary-switch-source')).toBeNull();
+    expect(document.querySelector('#device-detail-last-resort-last-resort-toggle')).not.toBeNull();
+
+    // A metering socket rules out last resort; a device with one switch has nothing to choose.
+    acceptDevicePowerSetup({ devices: [device({ binarySwitchId: null, binarySwitches: [] })] });
+    renderDeviceDetailPowerSetup('heater');
+    expect(shown()).toEqual([true, false, false]);
+  });
+
   it('hides the device page form for a socket that measures another device', () => {
     acceptDevicePowerSetup({ devices: [device(), device({ id: 'socket', name: 'Socket', usedBy: 'heater' })] });
     setup();
     renderDeviceDetailPowerSetup('socket');
-    expect(document.getElementById(PREFIX)?.hidden).toBe(true);
+    expect(document.getElementById('device-detail-power-setup')?.hidden).toBe(true);
     renderDeviceDetailPowerSetup('heater');
-    expect(document.getElementById(PREFIX)?.hidden).toBe(false);
+    expect(document.getElementById('device-detail-power-setup')?.hidden).toBe(false);
   });
 
   it('gives the selected metering socket precedence over a stale last-resort maximum', () => {
@@ -195,8 +221,8 @@ describe('Device setup', () => {
     change(control);
     expect(toggle.disabled).toBe(false);
 
-    // Leave the device page to discard the edit before reading accepted settings again.
-    renderDeviceDetailPowerSetup(undefined);
+    // Pick no device to discard the edit before reading accepted settings again.
+    selectTarget('');
     acceptDevicePowerSetup({ devices: [device({
       sourceId: null,
       defaultBinarySwitchAvailable: false,
@@ -204,8 +230,8 @@ describe('Device setup', () => {
       lastResortAvailable: false,
       lastResortMaximumW: 6000,
     })] });
-    renderDeviceDetailPowerSetup('heater');
     rerender(refresh);
+    selectTarget('heater');
     expect(toggle.selected).toBe(true);
     expect(toggle.disabled).toBe(false);
     expect(save.disabled).toBe(true);
