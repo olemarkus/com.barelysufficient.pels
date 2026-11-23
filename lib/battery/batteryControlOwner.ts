@@ -339,9 +339,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     return [...claims.records].flatMap(([deviceId, record]) => (record.kind !== 'claim_capability' ? [deviceId] : []));
   }
 
-  isManaged(deviceId: string): boolean {
-    return this.managed.isManaged(deviceId);
-  }
+  isManaged(deviceId: string): boolean { return this.managed.isManaged(deviceId); }
 
   /** Store the owner's Managed choice for this battery, then apply it as any settings change is applied. */
   setControlEnabled(deviceId: string, enabled: boolean): void {
@@ -680,8 +678,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (claims.status !== 'loaded') return false;
     const record = claims.records.get(deviceId);
     if (record === undefined) return false;
-    if (record.kind === 'legacy_app_actions'
-      && !this.legacyRecovery.admitAutoRelease(deviceId, this.pending, reason)) {
+    if (record.kind === 'legacy_app_actions' && !this.legacyRecovery.admitAutoRelease(deviceId, this.pending, reason)) {
       return false;
     }
     const battery = this.devices.readBatteryControl(deviceId);
