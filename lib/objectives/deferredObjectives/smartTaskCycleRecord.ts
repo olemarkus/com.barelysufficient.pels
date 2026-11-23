@@ -8,6 +8,7 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
  * for diagnostics reports. The decision explains a device the plan alone cannot:
  * `planned` lets the task start it, `idle` holds it (with why), `inactive` means
  * the task could not plan, with `reasonCode` naming the missing precondition.
+ * A `waiting` task has queued a replacement and supplies no new commands.
  *
  * A flat copy of the few fields a report states, never the diagnostic itself:
  * the controller keeps one per live task, replaced every cycle.
@@ -47,7 +48,7 @@ const decisionFields = (decision: DeferredAdmissionDecision): Pick<SmartTaskCycl
   if (decision.kind === 'idle') {
     return { decision: 'idle', budgetExempt: decision.budgetExempt, holdCause: decision.holdCause };
   }
-  return { decision: 'inactive', budgetExempt: decision.budgetExempt };
+  return { decision: decision.kind, budgetExempt: decision.budgetExempt };
 };
 
 const permissionsInForce = (

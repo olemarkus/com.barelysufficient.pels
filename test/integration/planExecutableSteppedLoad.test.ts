@@ -99,6 +99,20 @@ describe('planExecutableSteppedLoad', () => {
     expect(resolveCommandPreviousStepId(action!)).toBe('low');
   });
 
+  it('can lower an observed step while a Smart Task waits to replan', () => {
+    const action = buildAction(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+      waitingForTaskPlan: true,
+    }));
+
+    expect(action?.intent).toMatchObject({ desired: { stepId: 'low' }, stepDirection: 'down_only' });
+    expect(action?.intent).not.toHaveProperty('desiredOn');
+  });
+
   it('keeps fallback-only step evidence out of executor materialization', () => {
     const action = buildAction(steppedPlanDevice({
       currentState: 'off',

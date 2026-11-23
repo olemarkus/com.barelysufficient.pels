@@ -10,6 +10,7 @@ export function buildPlannedTargetCommand(
   recordRestoreOnTargetApply: boolean,
 ): PlannedTargetCommand | undefined {
   if (!isTemperaturePlanDevice(device)) return undefined;
+  if (device.waitingForTaskPlan && device.plannedShedTargetKind !== 'target_value') return undefined;
   if (device.reason?.code === PLAN_REASON_CODES.swapPending && device.reason.targetName === null) return undefined;
   if (device.reason && isRestoreAdmissionHoldReason(device.reason)) return undefined;
   return {

@@ -25,8 +25,11 @@ import {
 } from './diagnosticsBridge';
 import { buildSmartTaskCycleRecord, type SmartTaskCycleRecord } from './smartTaskCycleRecord';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { getDebugEmitter } from '../../logging/logger';
 import { buildObjectiveSignatureForEntry } from './activePlanSignature';
 import type { ChargingPhaseEnvelope } from '../../../packages/planner-types/src/chargingPhases';
+
+const emitTaskDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
 type BudgetExemptClaim = {
   taskSignature: string;
@@ -78,7 +81,7 @@ export class DeferredObjectiveDecorationController {
     // every cycle; only the write rides the clock. See the carve-out note.
     const decisions = this.withoutSuspendedDevices(applyDeferredObjectiveAdmission(evaluations, devices));
     const admission = applyDeferredAdmissionToInput(devices, decisions);
-    this.latestCycles = recordCycles(reports, decisions, nowTs);
+    this.latestCycles = recordCycles(reports, decisions, nowTs, this.latestCycles);
     this.budgetExemptClaims = recordBudgetExemptClaims(reports, decisions, settings, nowTs);
     return {
       chargingPhaseRequirements: resolveChargingPhaseRequirements(
@@ -211,11 +214,17 @@ const recordCycles = (
   reports: readonly TaskEvaluationReport[],
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
   nowTs: number,
+  previousCycles: ReadonlyMap<string, SmartTaskCycleRecord>,
 ): ReadonlyMap<string, SmartTaskCycleRecord> => {
   const records = new Map<string, SmartTaskCycleRecord>();
   for (const { diagnostic } of reports) {
     const decision = decisions.get(diagnostic.deviceId);
-    if (decision) records.set(diagnostic.deviceId, buildSmartTaskCycleRecord(diagnostic, decision, nowTs));
+    if (!decision) continue;
+    const { deviceId } = diagnostic;
+    if (decision.kind === 'waiting' && previousCycles.get(deviceId)?.decision !== 'waiting') {
+      emitTaskDebug({ event: 'smart_task_waiting_for_replan', deviceId, reasonCode: diagnostic.reasonCode });
+    }
+    records.set(deviceId, buildSmartTaskCycleRecord(diagnostic, decision, nowTs));
   }
   return records;
 };

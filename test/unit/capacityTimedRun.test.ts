@@ -217,6 +217,8 @@ describe('resolveCapacityTimedRun', () => {
     const ev = buildPlanInputDevice({ id: 'mid', priority: 2, isEvCharger: true, binaryControl: { on: false }, expectedPowerKw: 1.4 });
     expect(resolveCapacityTimedRun(frame({ devices: [ev] }))).toEqual({ kind: 'none' });
     expect(resolveCapacityTimedRun(frame({ forceShedIds: new Set(['mid']) }))).toEqual({ kind: 'none' });
+    const replanning = { ...heater('mid', 2, 0.8, false), waitingForTaskPlan: true as const };
+    expect(resolveCapacityTimedRun(frame({ devices: [replanning] }))).toEqual({ kind: 'none' });
     expect(resolveCapacityTimedRun(frame({ heldOffIds: new Set() }))).toEqual({ kind: 'none' });
   });
 });

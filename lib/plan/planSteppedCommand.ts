@@ -1,4 +1,5 @@
 import type { DevicePlan, SteppedPlanDevice } from './planTypes';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isPlanDeviceObservedOff, isPlanDeviceObservedOn, isSteppedLoadDevice,
@@ -41,7 +42,7 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
   };
   const unknownLimitPreparation = resolveUnknownLimitPreparation(dev);
   const plannedStepId = unknownLimitPreparation?.commandStepId ?? resolveSteppedKeepDesiredStepId(dev);
-  const held = isHeldByPlanReason(dev);
+  const held = blocksSteppedIncrease(dev);
   // The step-only lifecycle release needs the ladder even when the ordinary
   // plan leaves the rung alone. Its dispatcher resolves the release step.
   if (held && !unknownLimitPreparation
@@ -234,7 +235,13 @@ const resolveDesiredOn = (
  */
 const isHeldByPlanReason = (dev: PlanDevice): boolean => (
   Boolean(dev.reason && isRestoreAdmissionHoldReason(dev.reason))
-  || Boolean(dev.reason && dev.plannedState === 'keep' && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
+  || Boolean(dev.reason && dev.plannedState === 'keep'
+    && dev.reason.code !== PLAN_REASON_CODES.deferredObjectiveWaitingForPlan
+    && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
+);
+
+const blocksSteppedIncrease = (dev: PlanDevice): boolean => (
+  isHeldByPlanReason(dev) || (dev.waitingForTaskPlan === true && dev.plannedState === 'keep')
 );
 
 /**

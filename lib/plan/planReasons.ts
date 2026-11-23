@@ -368,6 +368,9 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   // drain hold is the one fold that reaches it, so its card names the ending
   // hour like an off device's would.
   if (dev.plannedState !== 'shed') {
+    if (dev.plannedState === 'keep' && dev.waitingForTaskPlan && dev.reason.code === PLAN_REASON_CODES.keep) {
+      return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveWaitingForPlan } };
+    }
     const drainHold = resolveDrainHoldReattribution(ctx, dev, dev.reason.code);
     return drainHold ? { ...dev, reason: drainHold } : dev;
   }
@@ -563,8 +566,8 @@ function resolvePostureHoldReasonAdoption(
   // The ruling is the owner's: "if the copy is 'waiting for soc' and the device
   // turns off, the case is still that it waits for soc" (2026-09-09). Without
   // this the posture adoption ran first and discarded the task reason outright,
-  // because a deferring task does not lift the hold (only a `planned` decision
-  // stamps `startPolicyHoldLifted`, and a deferring task is not one).
+  // because a deferring task does not lift the hold. Planned decisions and
+  // queued replans on an already-running device can lift that hold.
   // A task cannot lift an incompatible car range, even while it is driving.
   if (reason.code === PLAN_REASON_CODES.carCurrentRangeUnavailable) return reason;
   if (ctx.deferredHoldCauseByDeviceId?.has(dev.id)) return null;
@@ -574,7 +577,6 @@ function resolvePostureHoldReasonAdoption(
 const DEFERRED_HOLD_REASON_CODE = {
   cheaper_hours: PLAN_REASON_CODES.deferredObjectiveAvoid,
   task_done: PLAN_REASON_CODES.deferredObjectiveSatisfied,
-  waiting_for_plan: PLAN_REASON_CODES.deferredObjectiveWaitingForPlan,
 } as const satisfies Record<DeferredHoldCause, string>;
 
 // The power holds the smart-task framing replaces: capacity, the grid import

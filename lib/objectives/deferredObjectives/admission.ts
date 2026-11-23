@@ -4,11 +4,13 @@ import type {
 } from '../../../packages/planner-types/src/deferredDecoration';
 import { isTaskSatisfied } from './taskCompletion';
 import type { TaskEvaluation } from './taskEvaluation';
+import type { DeferredObjectiveHorizonPlan } from './types';
 
 export type { DeferredReleaseIntent };
 
 export type DeferredAdmissionDecision =
   | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: never }
+  | { kind: 'waiting'; budgetExempt: false; releaseIntent?: never }
   | {
       kind: 'planned';
       budgetExempt: boolean;
@@ -24,7 +26,6 @@ export type DeferredAdmissionDecision =
       kind: 'idle';
       budgetExempt: boolean;
       holdCause: DeferredHoldCause;
-      keepRunningWhileWaiting?: true;
       deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_release' | 'shed_release';
     };
@@ -67,43 +68,22 @@ const resolveReleaseIntent = (
   return device?.control.commandAuthority === false ? 'shed_release' : undefined;
 };
 
-// A first plan leaves ordinary control intact. An incompatible saved plan,
-// or a held price wait, keeps the device in its configured release posture.
-const resolvePlanningWait = (
-  evaluation: TaskEvaluation,
-  device: PlanInputDevice | undefined,
-): DeferredAdmissionDecision => {
-  if (evaluation.planning.kind === 'awaiting_plan' && evaluation.planning.device === 'unchanged') {
-    return { kind: 'inactive', budgetExempt: false };
-  }
-  const keepRunningWhileWaiting = evaluation.planning.kind === 'awaiting_plan'
-    && evaluation.planning.device === 'keep_running'
-    && device?.control.commandAuthority && !isTaskSatisfied(evaluation.completion);
-  const releaseIntent = resolveReleaseIntent(usesBinaryReleaseControl(device), device);
-  return {
-    kind: 'idle',
-    budgetExempt: false,
-    holdCause: evaluation.planning.kind === 'awaiting_plan' ? 'waiting_for_plan' : 'cheaper_hours',
-    ...resolveTaskTargetFloor(evaluation),
-    ...(releaseIntent ? { releaseIntent } : {}),
-    ...(keepRunningWhileWaiting ? { keepRunningWhileWaiting: true as const } : {}),
-  };
-};
-
-const isPlanningWait = (
-  planning: TaskEvaluation['planning'],
-): planning is Extract<TaskEvaluation['planning'], { kind: 'awaiting_plan' }>
-  | { kind: 'awaiting_prices'; device: 'held' } => (
-  planning.kind === 'awaiting_plan' || (planning.kind === 'awaiting_prices' && planning.device === 'held')
-);
-
 const resolveDecision = (
   evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
   if (evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
-  if (isPlanningWait(evaluation.planning)) {
-    return resolvePlanningWait(evaluation, device);
+  if (evaluation.planning.kind === 'awaiting_plan') {
+    return evaluation.planning.device === 'replanning'
+      ? { kind: 'waiting', budgetExempt: false } : { kind: 'inactive', budgetExempt: false };
+  }
+  if (evaluation.planning.kind === 'awaiting_prices' && evaluation.planning.device === 'held') {
+    const releaseIntent = resolveReleaseIntent(usesBinaryReleaseControl(device), device);
+    return {
+      kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours',
+      ...resolveTaskTargetFloor(evaluation),
+      ...(releaseIntent ? { releaseIntent } : {}),
+    };
   }
   if (evaluation.planning.kind === 'learning' || evaluation.planning.kind === 'awaiting_prices') {
     // Runs toward the task's target like an hour booked at 0 kWh: no plan backs a
@@ -119,7 +99,14 @@ const resolveDecision = (
       ...(usesBinaryReleaseControl(device) ? { releaseIntent: 'binary_restore' as const } : {}),
     };
   }
-  const horizonPlan = evaluation.planning.plan;
+  return resolveAllocatedDecision(evaluation, evaluation.planning.plan, device);
+};
+
+const resolveAllocatedDecision = (
+  evaluation: TaskEvaluation,
+  horizonPlan: DeferredObjectiveHorizonPlan,
+  device: PlanInputDevice | undefined,
+): DeferredAdmissionDecision => {
   const releasesViaBinary = usesBinaryReleaseControl(device);
   const floor = resolveTaskTargetFloor(evaluation);
   // The producer resolved the claim this hour carries (`resolveCurrentHourClaim`);
@@ -275,7 +262,7 @@ const resolveDeferredHold = (
 ): PlanInputDevice['deferredHold'] => {
   if (decision.kind !== 'idle') return undefined;
   if (followsSurplusWhileWaiting(device)) return undefined;
-  if (device.control.commandAuthority) return decision.keepRunningWhileWaiting ? 'off_unless_running' : 'off';
+  if (device.control.commandAuthority) return 'off';
   return contributesCommandAuthority(decision, device) ? 'configured' : undefined;
 };
 
@@ -296,6 +283,10 @@ const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } =
   engageBoost ? { forceBoostActive: true } : {}
 );
 
+const overrideCommandAuthority = (device: PlanInputDevice, override: boolean): Partial<PlanInputDevice> => (
+  override ? { control: { ...device.control, commandAuthority: true } } : {}
+);
+
 // The per-device decoration spread. Hoisted out of the map callback so that callback's
 // cyclomatic complexity stays within budget; each flag is only ever added when set.
 // `deadlineFloorTargetC` is `undefined` when this device has no deadline floor this cycle.
@@ -307,7 +298,7 @@ const buildAdmissionDecoration = (
 ): Partial<PlanInputDevice> => ({
   // OR'd onto the device's current posture, never assigned: the owner's two
   // settings are untouched and only the derived per-cycle authority moves.
-  ...(override ? { control: { ...device.control, commandAuthority: true } } : {}),
+  ...overrideCommandAuthority(device, override),
   ...(claims.budgetExempt ? { budgetExempt: true } : {}),
   ...resolveBoostFields(claims.engageBoost),
   ...(claims.reservesStartupPower ? { reservesStartupPower: true } : {}),
@@ -380,6 +371,16 @@ const claimsAnything = (claims: DeferredHourClaims): boolean => (
   || claims.liftsChargeTargetHold
 );
 
+// Keep limiting authority while withdrawing task requests. An already-running
+// device keeps its start-policy lift; the wait itself grants no start.
+const decoratePlanningWait = (device: PlanInputDevice, override: boolean): PlanInputDevice => ({
+  ...device,
+  ...overrideCommandAuthority(device, override),
+  waitingForTaskPlan: true,
+  ...(device.startPolicyInForce === 'pels_only' && device.currentState === 'on'
+    ? { startPolicyHoldLifted: true as const } : {}),
+});
+
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
 // they only see a managed device and (for idle hours) a seeded shed-set entry. The task's
@@ -402,10 +403,11 @@ export const applyDeferredAdmissionToInput = (
     const liftsHold = liftsExternalOffHold(decision, heldOrFree);
     if (liftsHold) externalOffHoldLiftedDeviceIds.add(heldOrFree.id);
     const device = liftsHold ? withoutExternalOffHold(heldOrFree) : heldOrFree;
-    const deadlineFloorTargetC = decision.kind === 'inactive' ? undefined : decision.deadlineFloorTargetC;
-    const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     const override = contributesCommandAuthority(decision, device);
     if (override) lentAuthorityDeviceIds.add(device.id);
+    if (decision.kind === 'waiting') return decoratePlanningWait(device, override);
+    const deadlineFloorTargetC = decision.kind === 'inactive' ? undefined : decision.deadlineFloorTargetC;
+    const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     const deferredHold = resolveDeferredHold(decision, device);
     if (deferredHold) forceShedSet.add(device.id);
     const claims = resolveHourClaims(decision, device);

@@ -19,11 +19,9 @@ milestone; an hourly source still produces hourly intervals. Existing internal n
 The lifecycle clock gives one queued task a fresh allocation turn per tick. The ordinary hourly
 `:58` settle opens a queue generation that drains after `:00` if needed; bootstrap and explicit
 changes also enqueue work. Meter cycles serve compatible commitments with `start <= now < end`;
-a new task leaves normal control intact, while an invalidated saved plan normally holds until
-replanned. From `:58` until `:02`, a temperature task with standing control can leave a drawing
-on/off heater running at its accepted task setpoint if its saved booking still claims that interval.
-The handoff grants no new reservation, task permission or command. Live limits and higher-priority
-startup claims still preempt it.
+a new task leaves normal control intact. While a saved plan awaits replacement, the live planner
+leaves the device at its observed state unless a live limit or independent stop requires a cut.
+The queued task supplies no reservation, permission, start, increase, or target update.
 The queue preserves compatible revisions that already settled the current generation on restart.
 The next normal meter-driven rebuild follows a quarter boundary without a separate control timer
 or quarter-hour settle. Live releases still do not rewrite commitments. Duration-proportional

@@ -12,7 +12,7 @@ const device = partialDouble<PlanInputDevice>({
   control: partialDouble<PlanInputDevice['control']>({ commandAuthority: true }),
 });
 
-const waiting = (posture: 'held' | 'unchanged'): TaskEvaluation => ({
+const waiting = (posture: 'replanning' | 'unchanged'): TaskEvaluation => ({
   ...inactiveTaskEvaluation('heater', 60_000, 55),
   planning: { kind: 'awaiting_plan', device: posture },
   targetControl: { kind: 'temperature', value: 55 },
@@ -30,14 +30,13 @@ describe('admission while a smart task waits for its planning turn', () => {
     expect(admitted.lentAuthorityDeviceIds.size).toBe(0);
   });
 
-  it('holds an incompatible saved plan without rescue permissions', () => {
-    const decisions = applyDeferredObjectiveAdmission([waiting('held')], [device]);
-    expect(decisions.get(device.id)).toEqual({
-      kind: 'idle', budgetExempt: false, holdCause: 'waiting_for_plan',
-      deadlineFloorTargetC: 55, releaseIntent: 'binary_release',
-    });
-    expect(buildDeferredReleaseIntents(decisions)).toEqual({ heater: 'binary_release' });
-    expect(applyDeferredAdmissionToInput([device], decisions).forceShedSet.has(device.id)).toBe(true);
+  it('leaves an incompatible plan waiting without a release, floor, or rescue permissions', () => {
+    const decisions = applyDeferredObjectiveAdmission([waiting('replanning')], [device]);
+    expect(decisions.get(device.id)).toEqual({ kind: 'waiting', budgetExempt: false });
+    expect(buildDeferredReleaseIntents(decisions)).toEqual({});
+    const admitted = applyDeferredAdmissionToInput([device], decisions);
+    expect(admitted.forceShedSet.size).toBe(0);
+    expect(admitted.devices[0]).toEqual({ ...device, waitingForTaskPlan: true });
   });
 
   it('retains the price-wait hold when prices have not reached the deadline', () => {

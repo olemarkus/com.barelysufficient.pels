@@ -193,14 +193,14 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     ));
     const app = createApp();
     const writes = vi.spyOn(mockHomeyInstance.api, 'put');
-    const handoffTimes: number[] = [];
+    const waitingTimes: number[] = [];
     const originalLog = app.log.bind(app);
     app.log = (...args: unknown[]) => {
       for (const arg of args) {
         if (typeof arg !== 'string' || !arg.startsWith('{')) continue;
-        const entry = JSON.parse(arg) as { event?: string; deviceId?: string };
-        if (entry.event === 'deferred_task_running_during_handoff' && entry.deviceId === 'second') {
-          handoffTimes.push(Date.now());
+        const entry = JSON.parse(arg) as { reasonCode?: string; deviceId?: string };
+        if (entry.reasonCode === 'objective_waiting_for_plan' && entry.deviceId === 'second') {
+          waitingTimes.push(Date.now());
         }
       }
       return originalLog(...args);
@@ -213,6 +213,7 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     expect(before.every((value) => value !== undefined)).toBe(true);
     await expect(heaters[1]!.getCapabilityValue('onoff')).resolves.toBe(true);
     writes.mockClear();
+    waitingTimes.length = 0;
 
     await heaters[0]!.setCapabilityValue('measure_temperature', 19);
     await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
@@ -225,7 +226,7 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     const lowerCapability = (capability: string) => `manager/devices/device/second/capability/${capability}`;
     expect(writtenPaths).not.toContain(lowerCapability('onoff'));
     expect(writtenPaths).not.toContain(lowerCapability('target_temperature'));
-    expect(handoffTimes.length).toBeGreaterThan(0);
+    expect(waitingTimes.length).toBeGreaterThan(0);
     await expect(heaters[1]!.getCapabilityValue('onoff')).resolves.toBe(true);
   });
 
