@@ -12,7 +12,7 @@ import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
 import {
   logPendingTargetRetry,
-  readObservedTemperatureTarget,
+  readObservedTemperature,
   syncPendingTargetCommandAfterActuation,
 } from './targetPendingCommand';
 
@@ -121,16 +121,12 @@ export const dispatchTargetCommand = async (
   skipContext: TargetSkipContext,
   forceAgainstReleasedOpposing = false,
 ): Promise<TargetCommandDispatchResult> => {
-  const { deviceId, temperatureBindingGeneration } = command;
-  const observedTarget = readObservedTemperatureTarget(ctx, deviceId);
-  if (observedTarget?.temperatureBindingGeneration !== temperatureBindingGeneration) {
-    return { applied: false, reason: 'skipped' };
-  }
+  const { deviceId } = command;
   const resolved: ExecutableTargetCommand = {
     ...command,
     desired: ctx.actuator.resolveTemperatureTarget(deviceId, command.desired),
   };
-  const latestObservedValue = observedTarget?.value;
+  const latestObservedValue = readObservedTemperature(ctx, deviceId);
   const preflightResult = handleTargetCommandPreflight(
     ctx, resolved, latestObservedValue, skipContext, forceAgainstReleasedOpposing,
   );
@@ -192,8 +188,7 @@ const handleTargetCommandPreflight = (
   const lifecycleOwnedPending = ctx.owner === 'ordinary'
     ? ctx.lifecycleFallback.getOwnedTargetPending(deviceId)
     : undefined;
-  if (lifecycleOwnedPending?.desired === desired
-    && lifecycleOwnedPending.temperatureBindingGeneration === command.temperatureBindingGeneration) {
+  if (lifecycleOwnedPending?.desired === desired) {
     emitExecutorDebug({
       event: 'target_command_skipped',
       reasonCode: 'lifecycle_owned',
@@ -210,9 +205,7 @@ const handleTargetCommandPreflight = (
   // Retry suppression is now unconditional. The reconcile lane used to bypass it
   // (a re-assert had no pending-command bookkeeping of its own), which is half of
   // how a re-assert could outrun the planner in inc_26449fb9.
-  const decision = getPendingTargetCommandDecision(
-    ctx.targetCommands, deviceId, desired, nowMs, command.temperatureBindingGeneration,
-  );
+  const decision = getPendingTargetCommandDecision(ctx.targetCommands, deviceId, desired, nowMs);
   if (decision.type !== 'skip') {
     return { type: 'proceed', decisionType: decision.type };
   }
@@ -251,7 +244,7 @@ const executeTargetCommandDispatch = async (
   skipContext: TargetSkipContext,
   decisionType: 'send' | 'retry',
 ): Promise<TargetCommandDispatchResult> => {
-  const { deviceId, name, desired, observedValue, temperatureBindingGeneration } = command;
+  const { deviceId, name, desired, observedValue } = command;
   const nowMs = Date.now();
   const targetCommandId = randomUUID();
   try {
@@ -260,7 +253,6 @@ const executeTargetCommandDispatch = async (
       deviceId,
       target: 'temperature',
       value: desired,
-      ...(temperatureBindingGeneration === undefined ? {} : { temperatureBindingGeneration }),
     }));
     if (!outcome.requested) return { applied: false, reason: 'not_requested' };
     if (outcome.kind !== 'target') {
@@ -272,7 +264,6 @@ const executeTargetCommandDispatch = async (
     const requestedValue = outcome.requestedTargetValue;
     const pending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
-      temperatureBindingGeneration,
     );
     ctx.execution.controlContests.commandSent({
       homeId: ctx.homeId,
@@ -304,7 +295,6 @@ const executeTargetCommandDispatch = async (
   } catch (error) {
     const failedPending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, desired, nowMs, 'temporary_unavailable', latestObservedValue ?? observedValue,
-      temperatureBindingGeneration,
     );
     const details = {
       targetCommandId, deviceId, deviceName: name, target: 'temperature', desired, skipContext,

@@ -145,8 +145,7 @@ export class ExternalDevicePower {
     if (source.id === target.id || !hasGenericSetupControls(target) || !supportsSocketPower(source)) return false;
     if (getDeviceAdapter(target).sourceDeviceId(target) !== target.id
       || getDeviceAdapter(source).sourceDeviceId(source) !== source.id) return false;
-    if (this.settings.managedDevices[source.id] === true
-      || this.inventory.externalThermostats?.loadFor(source.id) !== undefined) return false;
+    if (this.settings.managedDevices[source.id] === true) return false;
     const home = resolveHome(target.id, resolveZoneId(target) ?? null);
     return home !== undefined && resolveHome(source.id, resolveZoneId(source) ?? null) === home;
   }
@@ -183,9 +182,7 @@ export class ExternalDevicePower {
     const resolveHome: PowerSourceHome = (id) => homes.get(id);
     const configuredSwitch = (id: string) => this.inventory.binarySwitches.settings?.getBinarySwitchSelection(id);
     const eligible = inventory.filter((device) => hasGenericSetupControls(device)
-      || configuredSwitch(device.id) || this.settings.lastResortDevices?.[device.id] !== undefined
-      || this.inventory.externalThermostats?.donorFor(device.id) !== undefined
-      || this.inventory.externalThermostats?.loadFor(device.id) !== undefined);
+      || configuredSwitch(device.id) || this.settings.lastResortDevices?.[device.id] !== undefined);
     const devices: DevicePowerSetupEntry[] = eligible.map((device) => ({
       id: device.id, name: device.name, configured: this.setupSelected(device.id),
       sourceId: this.sourceForDevice(device.id) ?? null,
@@ -202,14 +199,12 @@ export class ExternalDevicePower {
         return [{ id: socket.id, name: socket.name, state: this.sourceState(device, socket, resolveHome) }];
       }),
       sourceReady: this.isSourceReady(device),
-      ...this.inventory.externalThermostats?.setup(device, inventory),
     }));
     return { devices };
   }
 
   private canSetUpLastResort(device: HomeyDeviceLike): boolean {
     return supportsBinarySwitchSetup(device) && !device.capabilities.includes('target_temperature')
-      && this.inventory.externalThermostats?.donorFor(device.id) === undefined
       && !this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
       && (availableBinarySwitches(device).length > 0 || hasAcceptedBinarySwitch(device, 'onoff'))
       && !hasUsableDevicePower(device, this.inventory.getSnapshotByDeviceId(device.id));

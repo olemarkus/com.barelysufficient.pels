@@ -66,7 +66,6 @@ import type { ConfiguredPowerSourceRead } from '../../lib/ports/configuredPowerS
 import { SampledMeterIdentity } from '../../lib/power/sampledMeterIdentity';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 import type { AppContext } from '../../lib/app/appContext';
-import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import { getSettingsUiHomesPayload, saveSettingsUiHomesConfig } from '../../setup/settingsUiHomesApi';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
@@ -88,11 +87,6 @@ import { testLogger } from '../utils/testLogger';
 
 const homeyApp = mockHomeyInstance as unknown as Homey.App;
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
-
-const smartTaskHomeContext = (homeMembership: HomeMembershipService): AppContext => ({
-  homeMembership,
-  deviceControlSettings: new DeviceControlSettings(homeyLike.settings),
-} as unknown as AppContext);
 
 const subscribeToObservedStateRefresh = (emitter: ObservedStateEmitter) => (
   listener: () => void,
@@ -2895,7 +2889,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       getMainMeterSelection: () => selection,
     });
     service.recompute();
-    const ctx = smartTaskHomeContext(service);
+    const ctx = { homeMembership: service } as unknown as AppContext;
 
     expect(service.isMainHomeActuationFenced()).toBe(true);
     expect(isSmartTaskDeviceInMainHome(ctx, 'd-main')).toBe(true);
@@ -3056,7 +3050,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       onZoneTreeCommitReady: onOwnershipReady,
     });
-    const ctx = smartTaskHomeContext(service);
+    const ctx = { homeMembership: service } as unknown as AppContext;
 
     service.recompute();
     expect(service.getHomeIdForDevice('d-pinned')).toBe('main');
@@ -3096,7 +3090,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     expect(activeService.isOwnershipReady()).toBe(false);
     expect(activeService.isMainHomeActuationFenced()).toBe(true);
     expect(hasMainHomeSmartTaskAuthority(
-      smartTaskHomeContext(activeService),
+      { homeMembership: activeService } as unknown as AppContext,
       'd-sub',
     )).toBe(false);
 
@@ -3119,11 +3113,11 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     expect(singleHomeService.isOwnershipReady()).toBe(true);
     expect(singleHomeService.isMainHomeActuationFenced()).toBe(false);
     expect(isSmartTaskDeviceInMainHome(
-      smartTaskHomeContext(singleHomeService),
+      { homeMembership: singleHomeService } as unknown as AppContext,
       'd-main',
     )).toBe(true);
     expect(hasMainHomeSmartTaskAuthority(
-      smartTaskHomeContext(singleHomeService),
+      { homeMembership: singleHomeService } as unknown as AppContext,
       'd-main',
     )).toBe(true);
   });

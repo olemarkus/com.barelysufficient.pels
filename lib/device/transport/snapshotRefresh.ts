@@ -222,7 +222,7 @@ function commitRefreshedSnapshot(
         ...new Set(snapshot.map((d) => refresh.reader.snapshotStore.sourceDeviceId(d.id))),
         ...refresh.reader.chargingCurrentControl.sessions.observedIds(),
         ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
-        ...refresh.reader.companionDeviceIds(snapshot.map(({ id }) => id)),
+        ...(refresh.reader.externalPower?.sourcesForTargets(snapshot.map(({ id }) => id)) ?? []),
     ]);
     fireSnapshotMutatedForRefresh(refresh, snapshot, previousSnapshot);
 }
@@ -306,7 +306,6 @@ function adoptCommittedDeviceList(
     if (isFullRead) {
         refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList, fetchedList);
     }
-    for (const { id } of committedSnapshot) refresh.reader.externalThermostats?.confirmManualStart(id);
 }
 
 // Snapshot pipeline contract: callers must pass an already-effective device
@@ -473,7 +472,7 @@ export class SnapshotRefreshService {
     const store = this.reader.snapshotStore;
     const ids = new Set([
       ...[...viewIds].map((id) => store.sourceDeviceId(id)),
-      ...this.reader.companionDeviceIds(viewIds),
+      ...(this.reader.externalPower?.sourcesForTargets(viewIds) ?? []),
       ...this.observationProducers.evCarLink.getObservedCarDeviceIds(),
       ...this.temperatureRecovery.getPendingDeviceIds().map((id) => store.sourceDeviceId(id)),
     ]);
@@ -496,9 +495,9 @@ export class SnapshotRefreshService {
   }
 
   requestExternalPowerRefresh(): void {
-    const supportsCompanions = this.reader.snapshotStore.getSnapshot()
-      .some((device) => device.externalPowerSocketId !== undefined);
-    if (supportsCompanions || this.reader.externalThermostats?.hasAssignments()) this.requestInventoryRefresh();
+    if (this.reader.snapshotStore.getSnapshot().some((device) => device.externalPowerSocketId !== undefined)) {
+      this.requestInventoryRefresh();
+    }
   }
 
   /** A full inventory read, detached: a failure is logged, never thrown at the caller. */
@@ -669,7 +668,7 @@ export class SnapshotRefreshService {
         (deviceIds) => this.deviceSdk.updateTrackedDevices([...new Set([
             ...deviceIds.map((id) => this.reader.snapshotStore.sourceDeviceId(id)),
             ...this.reader.chargingCurrentControl.sessions.observedIds(),
-            ...this.reader.companionDeviceIds(deviceIds),
+            ...(this.reader.externalPower?.sourcesForTargets(deviceIds) ?? []),
             ...this.reader.selectedSwitchDeviceIds(),
         ])]),
         acceptedRawDevices,

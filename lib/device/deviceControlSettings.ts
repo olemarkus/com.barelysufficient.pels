@@ -1,6 +1,5 @@
 import {
-  DeviceBinarySwitchSettings, DeviceExternalThermostatSettings, pruneDeviceSetupForMissingDevices,
-  readDevicePowerSourcesSetting,
+  DeviceBinarySwitchSettings, pruneDeviceSetupForMissingDevices, readDevicePowerSources,
   type DevicePowerSources, type LastResortDevices,
 } from './deviceSetupSettings';
 import type { SettingsPort } from '../ports/homeyRuntime';
@@ -42,7 +41,7 @@ import {
 } from './evChargingCurrentLimitSettings';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isDevicePowerControlModes } from '../../packages/shared-domain/src/settings/devicePowerControlModes';
-import { isAbsentSetting } from '../utils/settingsKeyList';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import {
   normalizeCompleteTargetPowerReachabilityByDevice,
   normalizeDeviceTargetPowerConfigs,
@@ -64,6 +63,7 @@ import {
   BUDGET_EXEMPT_DEVICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_POWER_SOURCES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_PHASE_CONNECTIONS,
   DEVICE_START_POLICIES,
@@ -188,7 +188,6 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
   | 'getEvBoostConfig'
   | 'getEvChargeTargetConfig'
   | 'deviceStartPolicies' | 'lastResortDevices' | 'devicePowerSources'
-  | 'externalThermostats' | 'requiresExternalThermostatManualStart'
   | 'controllableDevices'
   | 'isBudgetExempt'
   | 'getDevicePhaseConnection'
@@ -236,17 +235,13 @@ export class DeviceControlSettings {
   };
 
   private readonly binarySwitchSettings: DeviceBinarySwitchSettings;
-  readonly externalThermostatSettings: DeviceExternalThermostatSettings;
 
-  constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'> & Partial<Pick<SettingsPort, 'set'>>) {
+  constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'>) {
     this.binarySwitchSettings = new DeviceBinarySwitchSettings(settings);
-    this.externalThermostatSettings = new DeviceExternalThermostatSettings(settings);
   }
 
   /** Release the setup choices of devices Homey no longer lists. */
-  pruneSetupForMissingDevices(homeyDeviceIds: ReadonlySet<string>): void {
-    pruneDeviceSetupForMissingDevices(this.settings, homeyDeviceIds);
-  }
+  pruneSetupForMissingDevices(ids: ReadonlySet<string>): void { pruneDeviceSetupForMissingDevices(this.settings, ids); }
 
   getBinarySwitchSelection(deviceId: string): string | undefined {
     return this.binarySwitchSettings.selection(deviceId);
@@ -258,11 +253,6 @@ export class DeviceControlSettings {
   get controllableDevices(): BooleanMap { return this.maps.controllable; }
   get devicePowerSources(): DevicePowerSources { return this.maps.powerSources; }
   get lastResortDevices(): LastResortDevices { return this.maps.lastResortDevices; }
-  get externalThermostats(): Readonly<Record<string, string>> { return this.externalThermostatSettings.bindings; }
-  requiresExternalThermostatManualStart(id: string): boolean {
-    return this.externalThermostatSettings.needsManualStart(id)
-      || (this.externalThermostats[id] !== undefined && this.maps.lastResortDevices[id] !== undefined);
-  }
   isMainFusePhaseMeter(deviceId: string): boolean {
     return this.settings.get(MAIN_FUSE_PHASE_METER_DEVICE_ID) === deviceId;
   }
@@ -272,7 +262,7 @@ export class DeviceControlSettings {
 
   /** Reserve the socket as soon as its assignment has been persisted. */
   isMeteringSocketReserved(deviceId: string): boolean {
-    return Object.values(readDevicePowerSourcesSetting(this.settings, this.maps.powerSources)).includes(deviceId);
+    return Object.values(this.readPowerSources()).includes(deviceId);
   }
   get managedDevices(): BooleanMap { return this.maps.managed; }
   /** Per-device start authority; absence reads as `'unrestricted'`. */
@@ -286,8 +276,7 @@ export class DeviceControlSettings {
 
   /** The owner's Managed choice for an ordinary device; batteries and solar answer in `resolveDeviceManagedState`. */
   isManaged(deviceId: string): boolean {
-    return this.maps.managed[deviceId] === true && !this.isPowerSourceDevice(deviceId)
-      && !this.externalThermostatSettings.isDonor(deviceId);
+    return this.maps.managed[deviceId] === true && !this.isPowerSourceDevice(deviceId);
   }
   /** The owner's Power-limit control choice (`resolveCapacityControlEnabled` decides). */
   isControllable(deviceId: string): boolean { return this.maps.controllable[deviceId] === true; }
@@ -399,10 +388,7 @@ export class DeviceControlSettings {
 
   /** Re-read only the validated live temperature-command authorization map. */
   reloadTemperatureControlPolicy(): void {
-    const temperatureControl = readTemperatureControlDisabledDevicesSetting({
-      settings: this.settings, current: this.maps.temperatureControl,
-    });
-    this.maps = { ...this.maps, temperatureControl };
+    this.maps = { ...this.maps, temperatureControl: this.readTemperatureControlPolicy() };
   }
 
   /**
@@ -448,7 +434,7 @@ export class DeviceControlSettings {
     // not an owner who cleared every limit.
     const shedBehaviors = settings.get(OVERSHOOT_BEHAVIORS);
     const managed = acceptManagedDevices(settings.get(MANAGED_DEVICES), current.managed);
-    const powerSources = readDevicePowerSourcesSetting(settings, current.powerSources);
+    const powerSources = this.readPowerSources();
     const managedFilterActive = Object.entries(managed).some(([id, value]) =>
       value === true && !Object.values(powerSources).includes(id));
     this.maps = {
@@ -465,9 +451,7 @@ export class DeviceControlSettings {
       // All-or-nothing, and a rejected read keeps the last good map: a transient
       // SDK miss must never look like an owner who just cleared every policy.
       startPolicies: keep(settings.get(DEVICE_START_POLICIES), isDeviceStartPolicyMap, current.startPolicies),
-      temperatureControl: readTemperatureControlDisabledDevicesSetting({
-        settings, current: current.temperatureControl,
-      }),
+      temperatureControl: this.readTemperatureControlPolicy(),
       temperatureBoost: normalizeOrKeep(
         settings.get(TEMPERATURE_BOOST_SETTINGS), normalizeTemperatureBoostSettings, current.temperatureBoost,
       ),
@@ -496,7 +480,23 @@ export class DeviceControlSettings {
       shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
     this.binarySwitchSettings.reload(this.maps.lastResortDevices, this.maps.managed);
-    this.externalThermostatSettings.reload();
+  }
+
+  private readPowerSources(): DevicePowerSources {
+    try {
+      const value = this.settings.get(DEVICE_POWER_SOURCES);
+      const sources = readDevicePowerSources(value);
+      if (sources) return sources;
+      if (this.isAbsentSetting(DEVICE_POWER_SOURCES, value)) return {};
+    } catch { /* Keep the accepted assignments on an unreadable setting. */ }
+    return this.maps.powerSources;
+  }
+
+  private readTemperatureControlPolicy(): TemperatureControlPolicy {
+    return readTemperatureControlDisabledDevicesSetting({
+      settings: this.settings,
+      current: this.maps.temperatureControl,
+    });
   }
 
   private readPowerControlModes(): PowerControlModePolicy {
@@ -504,7 +504,7 @@ export class DeviceControlSettings {
     try {
       const raw = this.settings.get(DEVICE_POWER_CONTROL_MODES);
       if (isDevicePowerControlModes(raw)) return { modes: raw, state: 'resolved' };
-      if (isAbsentSetting(this.settings, DEVICE_POWER_CONTROL_MODES, raw)) return { modes: {}, state: 'resolved' };
+      if (this.isAbsentSetting(DEVICE_POWER_CONTROL_MODES, raw)) return { modes: {}, state: 'resolved' };
     } catch {
       // A failed read keeps the accepted choice, including an unresolved boot.
     }
@@ -515,9 +515,15 @@ export class DeviceControlSettings {
     try {
       const raw = this.settings.get(NATIVE_EV_WIRING_DEVICES);
       if (isBooleanMap(raw)) return { devices: raw, state: 'resolved' };
-      if (isAbsentSetting(this.settings, NATIVE_EV_WIRING_DEVICES, raw)) return { devices: {}, state: 'resolved' };
+      if (this.isAbsentSetting(NATIVE_EV_WIRING_DEVICES, raw)) return { devices: {}, state: 'resolved' };
     } catch { /* An unread choice cannot authorize replacing the owner's manual model. */ }
     return this.maps.nativeEvWiring;
+  }
+
+  private isAbsentSetting(key: string, raw: unknown): boolean {
+    if (raw !== null && raw !== undefined) return false;
+    const keys = readSettingsKeyList(this.settings);
+    return keys.status === 'resolved' && !keys.keys.includes(key);
   }
 
   private readControlProfiles(): DeviceControlProfilesRead {
@@ -526,7 +532,7 @@ export class DeviceControlSettings {
       const raw = this.settings.get(DEVICE_CONTROL_PROFILES);
       const profiles = isDeviceControlProfiles(raw) ? normalizeDeviceControlProfiles(raw) : undefined;
       if (profiles) return { profiles, state: 'resolved' };
-      if (isAbsentSetting(this.settings, DEVICE_CONTROL_PROFILES, raw)) return { profiles: {}, state: 'resolved' };
+      if (this.isAbsentSetting(DEVICE_CONTROL_PROFILES, raw)) return { profiles: {}, state: 'resolved' };
     } catch { /* Keep the accepted legacy configuration while the read is unavailable. */ }
     return current;
   }
@@ -537,7 +543,7 @@ export class DeviceControlSettings {
       const raw = this.settings.get(DEVICE_TARGET_POWER_CONFIGS);
       const configSetting = parseRecordSetting(raw);
       if (!configSetting) {
-        return isAbsentSetting(this.settings, DEVICE_TARGET_POWER_CONFIGS, raw)
+        return this.isAbsentSetting(DEVICE_TARGET_POWER_CONFIGS, raw)
           ? { configs: {}, authoredDeviceIds: new Set(), state: 'resolved' } : current;
       }
       const configs = normalizeDeviceTargetPowerConfigs(configSetting);

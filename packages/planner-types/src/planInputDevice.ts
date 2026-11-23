@@ -305,9 +305,6 @@ export type PlanInputDeviceBase = {
   id: string;
   name: string;
   targets: TargetCapabilitySnapshot[];
-  /** A configured thermostat association reserves control even when its binding is unavailable. */
-  externalThermostatRole?: 'load' | 'source';
-  temperatureBindingGeneration?: number;
   /** Producer-resolved from the temperature cluster (`resolveTemperatureInputFields`). */
   deviceType: 'temperature' | 'onoff';
   /**

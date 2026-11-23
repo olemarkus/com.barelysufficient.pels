@@ -6,7 +6,6 @@ export type PendingTargetCommandStatus = 'waiting_confirmation' | 'temporary_una
 /** Execution's pending target facts, exposed read-only to planning and presentation. */
 export type PendingTargetCommandRead = {
   readonly desired: number;
-  readonly temperatureBindingGeneration?: number;
   readonly startedMs: number;
   readonly lastAttemptMs: number;
   readonly retryCount: number;
@@ -19,10 +18,5 @@ export type PendingTargetCommandRead = {
 
 /** A current decision's desired target, used to retire superseded ordinary retries. */
 export type WantedTargetCommand =
-  | {
-    readonly kind: 'target';
-    readonly desired: number;
-    readonly name: string;
-    readonly temperatureBindingGeneration?: number;
-  }
+  | { readonly kind: 'target'; readonly desired: number; readonly name: string }
   | { readonly kind: 'none'; readonly name: string };

@@ -61,15 +61,6 @@ export class DeviceSnapshotReader {
 
   get externalPower() { return this.snapshotStore.externalPower; }
 
-  get externalThermostats() { return this.snapshotStore.externalThermostats; }
-
-  companionDeviceIds(viewIds: Iterable<string>): string[] {
-    return [
-      ...(this.externalPower?.sourcesForTargets(viewIds) ?? []),
-      ...(this.externalThermostats?.associatedDeviceIds() ?? []),
-    ];
-  }
-
   /**
    * The device as the battery control owner reads it (`toBatteryControlRead`);
    * a battery driven through its app's actions as their host reads it now.
@@ -95,8 +86,7 @@ export class DeviceSnapshotReader {
       now,
       livePowerWByDeviceId,
       this.snapshotStore.getSnapshotIndex().get(getDeviceId(device)),
-      { ...this.parseDependencies(), externalPower: this.externalPower?.read(device),
-        externalThermostat: this.externalThermostats?.read(device) },
+      { ...this.parseDependencies(), externalPower: this.externalPower?.read(device) },
       'runtime',
     );
     return parsed && this.snapshotStore.nativeSteppedAdapters.projectObservation(
@@ -137,8 +127,7 @@ export class DeviceSnapshotReader {
       const device = this.chargingCurrentControl.sessions.withholdCapabilities(read);
       const snapshot = parseDevice(
         device, now, livePowerWByDeviceId, previous.get(getDeviceId(device)),
-        { ...deps, externalPower: this.externalPower?.read(device, lookup),
-          externalThermostat: this.externalThermostats?.read(device, lookup) }, purpose,
+        { ...deps, externalPower: this.externalPower?.read(device, lookup) }, purpose,
       );
       return snapshot ? [this.snapshotStore.nativeSteppedAdapters.projectObservation(
         this.chargingCurrentControl.projectControl(snapshot), device,
@@ -175,9 +164,7 @@ export class DeviceSnapshotReader {
 
   mergeRefreshedBindingReads(device: HomeyDeviceLike, startedAtMs: number): HomeyDeviceLike {
     const source = this.externalPower?.mergeSocketRefreshRead(device, startedAtMs) ?? device;
-    return this.snapshotStore.keepNewerSwitchRead(
-      this.externalThermostats?.mergeRefreshRead(source, startedAtMs) ?? source, startedAtMs,
-    );
+    return this.snapshotStore.keepNewerSwitchRead(source, startedAtMs);
   }
 
   selectedSwitchDeviceIds(): string[] {
@@ -188,8 +175,7 @@ export class DeviceSnapshotReader {
 
   applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
     const effective = applyDeviceDriverOverride(device, this.sources.settings);
-    const selected = ((this.externalPower?.setupSelected(device.id) === true)
-      || this.externalThermostats?.donorFor(device.id) !== undefined) && hasGenericSetupControls(effective);
+    const selected = this.externalPower?.setupSelected(device.id) === true && hasGenericSetupControls(effective);
     const binarySwitch = this.snapshotStore.binarySwitches.selection(effective);
     return selected || effective.genericSetupEnabled || binarySwitch || effective.selectedBinarySwitch
       ? {
@@ -230,8 +216,7 @@ export class DeviceSnapshotReader {
   private withUnreadSockets(devices: HomeyDeviceLike[]): HomeyDeviceLike[] {
     const seen = new Set(devices.map(({ id }) => id));
     const unread = [...this.snapshotStore.getTrackedRawDevicesById().values()]
-      .filter(({ id }) => !seen.has(id) && (this.externalPower?.targetForSocket(id) !== undefined
-        || this.externalThermostats?.loadFor(id) !== undefined));
+      .filter(({ id }) => !seen.has(id) && this.externalPower?.targetForSocket(id) !== undefined);
     return [...devices, ...unread];
   }
 
@@ -243,8 +228,7 @@ export class DeviceSnapshotReader {
   }
 
   private isTracked(deviceId: string, isHomeBattery: boolean): boolean {
-    return Boolean(this.externalPower?.targetForSocket(deviceId) ?? this.externalThermostats?.loadFor(deviceId))
-      || isRuntimeTrackedDevice(
+    return Boolean(this.externalPower?.targetForSocket(deviceId)) || isRuntimeTrackedDevice(
       resolveManagedFilterDecision(this.sources.management, deviceId),
       isHomeBattery,
     );

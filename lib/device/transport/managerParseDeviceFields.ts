@@ -233,42 +233,6 @@ function resolveSelectedBinaryCapability(
     return field?.setable === true && typeof field.value === 'boolean' ? id : undefined;
 }
 
-function resolveSnapshotBinaryCapability(
-    device: HomeyDeviceLike, deviceClassKey: string, overlay: DeviceCapabilityProfile['overlay'],
-): string | undefined {
-    return device.selectedBinarySwitch !== undefined
-        ? resolveSelectedBinaryCapability(device, overlay)
-        : getControlCapabilityId({ deviceClassKey, capabilities: overlay.capabilities });
-}
-
-function readTemperatureFacet(
-    external: DeviceTransportParseDeps['externalThermostat'],
-    currentTemperature: number | undefined,
-    targets: TransportDeviceSnapshot['targets'],
-    overlay: DeviceCapabilityProfile['overlay'],
-) {
-    if (external === undefined) return {
-        controlModel: overlay.controlModel,
-        temperature: resolveTemperatureObservation(currentTemperature, targets),
-        thermostatMode: readReportedThermostatMode(overlay),
-    };
-    return {
-        controlModel: 'temperature_target' as const,
-        temperature: external.temperature,
-        thermostatMode: external.thermostatMode,
-        externalThermostatDonorId: external.donorId,
-        externalThermostatMeasuredAtMs: external.measuredAtMs,
-    };
-}
-
-function combineTemperatureFreshness(
-    ownFreshDataMs: number | undefined, facet: ReturnType<typeof readTemperatureFacet>,
-): number | undefined {
-    const targetAtMs = facet.temperature?.target.temperatureBindingObservedAtMs;
-    return targetAtMs === undefined ? ownFreshDataMs
-        : Math.max(ownFreshDataMs ?? 0, targetAtMs, facet.externalThermostatMeasuredAtMs ?? 0);
-}
-
 export function assembleDeviceSnapshot(params: {
     identity: ParsedDeviceIdentity;
     deps: DeviceTransportParseDeps;
@@ -288,7 +252,12 @@ export function assembleDeviceSnapshot(params: {
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
     // a second call could not disagree — but one call is one fewer thing to keep
     // in step.
-    const binaryCapabilityId = resolveSnapshotBinaryCapability(effectiveDevice, deviceClassKey, overlay);
+    const binaryCapabilityId = effectiveDevice.selectedBinarySwitch !== undefined
+        ? resolveSelectedBinaryCapability(effectiveDevice, overlay)
+        : getControlCapabilityId({
+        deviceClassKey,
+        capabilities: overlay.capabilities,
+    });
     const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState(
         identity, deps, overlay, binaryCapabilityId, livePowerWByDeviceId, now,
     );
@@ -301,10 +270,8 @@ export function assembleDeviceSnapshot(params: {
     const candidateTargets = buildTargets({
         targetCaps: capsStatus.targetCaps, capabilityObj: overlay.capabilityObj, deviceId, deviceLabel,
     });
-    const temperatureFacet = readTemperatureFacet(
-        deps.externalThermostat, currentTemperature, candidateTargets, overlay,
-    );
-    const { temperature } = temperatureFacet;
+    const temperature = resolveTemperatureObservation(currentTemperature, candidateTargets);
+    const thermostatMode = readReportedThermostatMode(overlay);
     const control = resolveDeviceSnapshotControl({
         identity, deps, overlay, capsStatus, binaryCapabilityId,
         measuredPower: resolvedMeasuredPower,
@@ -314,10 +281,7 @@ export function assembleDeviceSnapshot(params: {
     // A rejected member gates its temperature facet, not valid sibling controls.
     if (capsStatus.targetCaps.length > 0 && !temperature
         && !control.binaryCapabilityId && !overlay.steppedLoadProfile && !overlay.pendingSteppedLoad) return null;
-    const ownFreshDataMs = resolveLastFreshDataMs(
-        overlay, control, deps.externalThermostat === undefined && temperature !== undefined, measuredPower,
-    );
-    const lastFreshDataMs = combineTemperatureFreshness(ownFreshDataMs, temperatureFacet);
+    const lastFreshDataMs = resolveLastFreshDataMs(overlay, control, temperature !== undefined, measuredPower);
     const evChargingObservedAtMs = toCapabilityTimestampMs(overlay.capabilityObj.evcharger_charging?.lastUpdated);
     const evChargingStateObservedAtMs = toCapabilityTimestampMs(
         overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
@@ -335,6 +299,7 @@ export function assembleDeviceSnapshot(params: {
         deviceClass: deviceClassKey,
         deviceType: resolveTargetDeviceType(temperature),
         ...resolveParsedDeviceSettings(effectiveDevice, deviceId, deps),
+        controlModel: overlay.controlModel,
         binaryControllable: control.binaryControl !== undefined,
         isEvCharger: deviceClassKey === 'evcharger',
         ...resolveParsedChargerPhaseCurrents(deviceClassKey, effectiveDevice, previousSnapshot),
@@ -356,8 +321,9 @@ export function assembleDeviceSnapshot(params: {
         evChargingObservedAtMs,
         evChargingState: control.evChargingState,
         evChargingStateObservedAtMs,
+        thermostatMode,
         stateOfCharge,
-        ...temperatureFacet,
+        temperature,
         nativeRelayMeter: readNativeRelayMeter(effectiveDevice.capabilities, measuredPower, deps.externalPower),
         measuredPowerKw: resolvedMeasuredPower.measuredPowerKw,
         measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,

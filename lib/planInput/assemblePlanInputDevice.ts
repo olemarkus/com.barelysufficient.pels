@@ -1,6 +1,6 @@
 import { resolvePlanPowerAxis } from '../observer/observedPower';
 import { resolveCurrentOn } from '../observer/observedState';
-import { hasPlanBinaryControl, resolveTemperatureInputFields } from './planInputDeviceHelpers';
+import { resolveTemperatureInputFields } from './planInputDeviceHelpers';
 import type {
   ResolvedPlanInputFacts,
   ToPlanDeviceInput,
@@ -84,7 +84,7 @@ export const assemblePlanInputDevice = (
   ...withoutNonPlanInputFields(device),
   ...facts,
   targetPowerConfig: withoutTargetPowerReachability(device.targetPowerConfig),
-  ...(hasPlanBinaryControl(device, facts) ? { currentOn: resolveCurrentOn(device) } : {}),
+  ...(device.binaryControl !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
   ...(facts.lastResort ? {} : resolvePlanPowerAxis(rawDevice)),
   ...resolveTemperatureInputFields(device),
 });

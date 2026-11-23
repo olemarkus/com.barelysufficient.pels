@@ -1,9 +1,7 @@
 import type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import { getDebugEmitter, type StructuredDebugEmitter } from '../logging/logger';
-import type {
-  PendingTargetCommandRead, PendingTargetObservationSource, WantedTargetCommand,
-} from '../ports/pendingTargetCommand';
+import type { PendingTargetObservationSource, WantedTargetCommand } from '../ports/pendingTargetCommand';
 import type { PendingTargetCommandState, ExecutionState } from './executionState';
 
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../ports/controlCommandConfirmation';
@@ -21,8 +19,7 @@ export function prunePendingTargetCommands(
   let changed = false;
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
     const wanted = wantedTargets.get(deviceId);
-    if (wanted?.kind === 'target' && wanted.desired === pending.desired
-      && wanted.temperatureBindingGeneration === pending.temperatureBindingGeneration) continue;
+    if (wanted?.kind === 'target' && wanted.desired === pending.desired) continue;
     delete state.pendingTargetCommands[deviceId];
     changed = true;
     emitPlanDebug({
@@ -55,13 +52,15 @@ export function syncPendingTargetCommands(
       }
       continue;
     }
-    const target = getPrimaryTargetCapability(liveDevice.targets);
-    if (settlePendingTargetObservation(state, liveDevice, pending, target, source)) {
+    const observedValue = getObservedTargetValue(liveDevice);
+
+    if (handleConfirmedPendingTargetObservation(
+      state, liveDevice, pending, observedValue, source,
+    )) {
       changed = true;
       continue;
     }
 
-    const observedValue = target?.value;
     if (handleTemporaryUnavailablePendingTargetObservation(
       liveDevice, pending, observedValue, source,
     )) {
@@ -86,15 +85,8 @@ export function syncPendingTargetCommands(
   return changed;
 }
 
-export function confirmsPendingTargetObservation(
-  pending: PendingTargetCommandRead,
-  target: TargetCapabilitySnapshot | null | undefined,
-): boolean {
-  if (!target || !Object.is(target.value, pending.desired)
-    || target.temperatureBindingGeneration !== pending.temperatureBindingGeneration) return false;
-  return pending.temperatureBindingGeneration === undefined
-    || (target.temperatureBindingObservedAtMs !== undefined
-      && target.temperatureBindingObservedAtMs >= pending.startedMs);
+function getObservedTargetValue(liveDevice: PendingTargetObservedDevice): unknown {
+  return getPrimaryTargetCapability(liveDevice.targets)?.value;
 }
 
 /* eslint-disable functional/immutable-data, no-param-reassign -- Updates the pending command in place. */
@@ -124,23 +116,15 @@ export function formatObservedTarget(value: unknown): string {
 }
 
 /* eslint-disable functional/immutable-data, no-param-reassign -- Updates the pending command in place. */
-function settlePendingTargetObservation(
+function handleConfirmedPendingTargetObservation(
   state: ConfirmingTargetStore,
   liveDevice: PendingTargetObservedDevice,
   pending: PendingTargetCommandState,
-  target: TargetCapabilitySnapshot | null | undefined,
+  observedValue: unknown,
   source: PendingTargetObservationSource,
 ): boolean {
-  const bindingChanged = target?.temperatureBindingGeneration !== pending.temperatureBindingGeneration;
-  if (!bindingChanged && !confirmsPendingTargetObservation(pending, target)) return false;
+  if (!Object.is(observedValue, pending.desired)) return false;
   delete state.pendingTargetCommands[liveDevice.id];
-  if (bindingChanged) {
-    emitPlanDebug({
-      event: 'pending_target_command_cleared', reason: 'binding_changed',
-      deviceId: liveDevice.id, deviceName: liveDevice.name, desired: pending.desired, source,
-    });
-    return true;
-  }
   emitPlanDebug({
     event: 'pending_target_command_confirmed',
     deviceId: liveDevice.id,

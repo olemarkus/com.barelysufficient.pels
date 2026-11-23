@@ -27,12 +27,11 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
   const target = planDevice.targetCommand;
   const binary = buildPlannedBinaryCommand(planDevice);
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
-  const steppedLoad = planDevice.externalThermostatRole ? undefined : buildPlannedSteppedCommand(planDevice);
+  const steppedLoad = buildPlannedSteppedCommand(planDevice);
   // The claim follows from PELS's authority over the device this cycle, a
   // smart task's included, and not from this cycle's step: a device the plan
   // leaves alone or holds off is claimed too. A device PELS only watches is not.
-  const targetPowerClaim: PlannedTargetPowerClaim | undefined = !planDevice.externalThermostatRole
-    && planDevice.targetPowerClaimNeeded === true
+  const targetPowerClaim: PlannedTargetPowerClaim | undefined = planDevice.targetPowerClaimNeeded === true
     && planDevice.control.commandAuthority ? { deviceId: planDevice.id, name: planDevice.name } : undefined;
   // Attach a command only for an axis the plan drives; absence IS the answer, so
   // no consumer re-derives it. See `PlannedDeviceCommands` and `PlannedCommandAxes`.
@@ -164,18 +163,13 @@ function buildLastResortBinaryCommand(dev: PlanDevice): PlannedBinaryCommand | u
   };
 }
 
+/** The binary intent projected from a finalized device decision. */
 const binarySwitchAuthority = (dev: PlanDevice): { binarySwitchGeneration?: number } => (
   dev.binarySwitchGeneration === undefined ? {} : { binarySwitchGeneration: dev.binarySwitchGeneration }
 );
 
-const binaryIntentSuppressed = (device: PlanDevice): boolean => (
-  (device.waitingForTaskPlan === true && device.plannedState !== 'shed')
-  || device.externalThermostatRole !== undefined
-);
-
-/** The binary intent projected from a finalized device decision. */
 export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
-  if (binaryIntentSuppressed(dev)) return undefined;
+  if (dev.waitingForTaskPlan && dev.plannedState !== 'shed') return undefined;
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
   if (dev.lastResort) return buildLastResortBinaryCommand(dev);
@@ -216,7 +210,7 @@ const buildPlannedReleaseCommand = (
   planMeta?: PlanMeta,
 ): PlannedReleaseCommand | undefined => {
   const release = dev.deferredReleaseIntent;
-  if (!release || dev.lastResort || dev.externalThermostatRole) return undefined;
+  if (!release || dev.lastResort) return undefined;
   const { kind } = release;
   // The release intent is producer-resolved in deferred-objective admission. This per-cycle
   // projection only reconciles a binary_restore (resume) against the current cycle's planner
@@ -269,7 +263,6 @@ export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
 }
 
 function qualifyStableOperations(device: PlanDevice, commands: PlannedDeviceCommands): StableExecutionOperation[] {
-  if (device.externalThermostatRole) return [];
   const step = hasPlannedStep(commands) && isSteppedLoadDevice(device)
     && (device.plannedState === 'keep' || isRunningLimitPreparation(device, commands.steppedLoad))
     ? commands.steppedLoad

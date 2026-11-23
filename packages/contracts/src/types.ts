@@ -7,9 +7,6 @@ export type TargetCapabilitySnapshot = {
   step?: number;
   excludeMin?: number;
   excludeMax?: number;
-  /** Authority and observation stamp of an externally routed temperature setpoint. */
-  temperatureBindingGeneration?: number;
-  temperatureBindingObservedAtMs?: number;
 };
 
 export type DeviceControlModel = 'temperature_target' | 'binary_power' | 'stepped_load';

@@ -26,7 +26,6 @@ import {
   resolveConfirmedNotDrawing,
 } from './calibrationViews';
 import {
-  hasPlanBinaryControl,
   resolveEffectiveShedBehavior,
   resolveEffectiveTemperatureBoost,
   resolvePlanBoostFields,
@@ -158,41 +157,19 @@ function resolveLastResortControl(managed: boolean, source: PlanInputProjectionS
   };
 }
 
-type PlanControlPolicy = Pick<ResolvedPlanInputFacts,
-  'control' | 'startPolicyInForce' | 'budgetExempt' | 'lastResort'
-  | 'externalThermostatRole' | 'temperatureBindingGeneration'>;
-
 function resolvePlanControlPolicy(
   source: PlanInputProjectionSource, device: ToPlanDeviceInput, capacityControlEnabled: boolean,
-  startPolicy: DeviceStartPolicy,
-): PlanControlPolicy {
-  const settings = source.deviceControl;
+  lastResort: boolean, startPolicy: DeviceStartPolicy,
+) {
   const managed = source.resolveManagedState(device.id);
-  const budgetExempt = settings.isBudgetExempt(device.id);
-  const associations = settings.externalThermostats;
-  if (Object.values(associations).includes(device.id)) {
-    return { externalThermostatRole: 'source', control: { managed, commandAuthority: false },
-      startPolicyInForce: 'unrestricted', budgetExempt };
-  }
-  const waitForManualOn = settings.requiresExternalThermostatManualStart(device.id);
-  if (Object.hasOwn(associations, device.id) || waitForManualOn) {
-    const temperatureBindingGeneration = managed && !waitForManualOn && hasObservedMeasuredPower(device)
-      ? device.temperature?.target.temperatureBindingGeneration : undefined;
-    return {
-      externalThermostatRole: 'load', temperatureBindingGeneration,
-      control: { managed, commandAuthority: capacityControlEnabled && temperatureBindingGeneration !== undefined },
-      startPolicyInForce: 'unrestricted', budgetExempt,
-    };
-  }
-  const lastResort = resolveLastResortSetup(source, device);
-  if (lastResort) {
-    return { lastResort, control: resolveLastResortControl(managed, source, device),
-      startPolicyInForce: 'unrestricted', budgetExempt: false };
-  }
-  return {
+  return lastResort ? {
+    control: resolveLastResortControl(managed, source, device),
+    startPolicyInForce: 'unrestricted' as const,
+    budgetExempt: false,
+  } : {
     control: resolveDeviceControlPosture(device, managed, capacityControlEnabled, startPolicy),
     startPolicyInForce: resolveStartPolicyInForce(startPolicy, capacityControlEnabled),
-    budgetExempt,
+    budgetExempt: source.deviceControl.isBudgetExempt(device.id),
   };
 }
 
@@ -233,12 +210,20 @@ export const resolvePlanInputDeviceFacts = (
   const evBoost = source.deviceControl.getEvBoostConfig(device.id);
   const startPolicy = resolveDeviceStartPolicy(source.deviceControl.deviceStartPolicies, device.id);
   const capacityControlEnabled = source.isCapacityControlEnabled(device.id);
-  const policy = resolvePlanControlPolicy(source, device, capacityControlEnabled, startPolicy);
+  const lastResort = resolveLastResortSetup(source, device);
+  const { control, startPolicyInForce, budgetExempt } = resolvePlanControlPolicy(
+    source, device, capacityControlEnabled, lastResort !== undefined, startPolicy,
+  );
   const externalOffHoldActive = source.isExternalOffHoldActive(device.id, device);
   const hasStandingDemand = !isEvDevice(device);
-  const { surplusOnly, surplusTracking } = policy.lastResort || policy.externalThermostatRole
-    ? { surplusOnly: false, surplusTracking: false }
-    : resolveSurplusPostureForDevice(source, device, options, policy.control, hasStandingDemand);
+  const { surplusOnly, surplusTracking } = lastResort ? { surplusOnly: false, surplusTracking: false }
+    : resolveSurplusPostureForDevice(
+    source,
+    device,
+    options,
+    control,
+    hasStandingDemand,
+  );
   const boostInput: BoostResolveInput = {
     commandableNow: physicallyCommandable,
     targets: device.targets,
@@ -252,7 +237,7 @@ export const resolvePlanInputDeviceFacts = (
   };
   const residualKw = buildResidualKwForPlanDevice({
     device,
-    hasBinaryControl: hasPlanBinaryControl(device, policy),
+    hasBinaryControl: device.binaryControl !== undefined,
     shedBehavior,
   });
 
@@ -260,23 +245,24 @@ export const resolvePlanInputDeviceFacts = (
     ...steppedCluster,
     ...resolvePresenceFlags(resolveSteppedLadderMissing(device, steppedCluster), surplusOnly, externalOffHoldActive),
     currentState: observedCurrentState,
-    ...policy,
+    ...(lastResort ? { lastResort } : {}),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     confirmedNotDrawing,
     commandableNow: commandability.commandableNow,
     ...(commandabilityReason ? { commandabilityReason } : {}),
     ...objective,
     waitingForCarAssociation: source.isWaitingForCarAssociation(device.id),
-    ...resolveTargetPowerClaim(source, device, policy.control.managed),
+    ...resolveTargetPowerClaim(source, device, control.managed),
     ...resolvePlanBoostFields(boostInput),
     canSetControlResolved,
     startPolicy,
-    chargeTargetHold: projectChargeTargetHold(
-      source.deviceControl.getEvChargeTargetConfig(device.id), device, policy.control,
-    ),
+    control,
+    startPolicyInForce,
+    chargeTargetHold: projectChargeTargetHold(source.deviceControl.getEvChargeTargetConfig(device.id), device, control),
     surplusTracking,
     hasStandingDemand,
     residualKw,
+    budgetExempt,
     phaseFootprint: resolvePhaseFootprint({
       ownerConnection: source.deviceControl.getDevicePhaseConnection(device.id),
       isEvCharger: device.isEvCharger,

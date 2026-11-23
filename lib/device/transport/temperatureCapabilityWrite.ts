@@ -12,23 +12,21 @@ export async function sendWithTemperatureWriteEvidence(
   deviceId: string,
   requested: CapabilityWrite,
   write: OwnCapabilityWrite,
-  send: () => Promise<boolean>,
-  stillCurrent: () => boolean = () => true,
-): Promise<boolean> {
+  send: () => Promise<void>,
+): Promise<void> {
   if (requested.capabilityId !== 'target_temperature' || typeof requested.value !== 'number') {
-    return send();
+    await send();
+    return;
   }
 
   const { transactionId } = write;
-  const target = snapshots.getSnapshotByDeviceId(deviceId)?.temperature?.target;
-  temperature.updateBinding(deviceId, target?.temperatureBindingGeneration);
-  const previousTarget = target?.value;
+  const previousTarget = snapshots.getSnapshotByDeviceId(deviceId)?.temperature?.target.value;
   const command = temperature.recordCommand(deviceId, requested.value, Date.now());
   try {
-    return await runWithContext({ transactionId }, send);
+    await runWithContext({ transactionId }, send);
   } catch (error) {
     const { targetCommandId } = getCurrentContext();
-    if (stillCurrent() && isHomeyRequestTimeout(error) && typeof targetCommandId === 'string'
+    if (isHomeyRequestTimeout(error) && typeof targetCommandId === 'string'
       && snapshots.getSnapshotByDeviceId(deviceId) !== undefined) {
       temperature.recordTimeout(
         deviceId, command, targetCommandId, transactionId, Date.now(), previousTarget !== command.value,

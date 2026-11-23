@@ -46,7 +46,6 @@ export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
 export const DEVICE_POWER_SOURCES = 'device_power_sources';
 export const LAST_RESORT_DEVICES = 'last_resort_devices';
 export const DEVICE_BINARY_SWITCHES = 'device_binary_switches';
-export const DEVICE_EXTERNAL_THERMOSTATS = 'device_external_thermostats';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';

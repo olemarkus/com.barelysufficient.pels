@@ -1,10 +1,8 @@
-import { getPendingTargetCommandDecision, recordTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
+import { recordTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
 import { resolveWantedPendingTargetCommands } from '../../lib/plan/planTargetControl';
-import { buildPlannedTargetCommand } from '../../lib/plan/planTargetCommand';
-import { buildExecutableDeviceIntent } from '../../lib/plan/planExecutionProjection';
 import { getTestExecutionState, type PlanEngineState } from '../utils/planEngineStateFixture';
 
 const prunePendingTargetCommandsForPlan = (state: PlanEngineState, plan: DevicePlan): boolean => (
@@ -68,53 +66,7 @@ const buildPlanDevice = (
   priceTargetShift: { kind: 'none' },
 })) as DevicePlan['devices'][number];
 
-describe('external thermostat execution intent', () => {
-  it('uses only the accepted setpoint axis and leaves a dormant binding alone', () => {
-    const load = {
-      ...buildPlanDevice('heater', 'Heater', 18, 21),
-      currentOn: false,
-      externalThermostatRole: 'load' as const,
-      temperatureBindingGeneration: 2,
-      deferredReleaseIntent: { kind: 'binary_restore' as const },
-    };
-    const targetCommand = buildPlannedTargetCommand(load, false);
-    const intent = buildExecutableDeviceIntent({ ...load, targetCommand });
-    expect(intent).toHaveProperty('target.temperatureBindingGeneration', 2);
-    expect(intent).not.toHaveProperty('binary');
-    expect(intent).not.toHaveProperty('release');
-
-    const dormant = { ...load, temperatureBindingGeneration: undefined };
-    expect(buildPlannedTargetCommand(dormant, false)).toBeUndefined();
-    expect(buildExecutableDeviceIntent(dormant)).not.toHaveProperty('binary');
-  });
-});
-
 describe('syncPendingTargetCommands', () => {
-  it('requires current, post-command evidence from the same thermostat binding', () => {
-    const state = createPlanEngineState();
-    const execution = getTestExecutionState(state);
-    const live = (generation: number, observedAtMs: number) => ({
-      id: 'heater', name: 'Heater', targets: [{
-        id: 'target_temperature', value: 18, unit: '°C',
-        temperatureBindingGeneration: generation, temperatureBindingObservedAtMs: observedAtMs,
-      }],
-    });
-    const sync = (generation: number, observedAtMs: number) => syncPendingTargetCommands(
-      execution, [live(generation, observedAtMs)], 'realtime_capability', vi.fn(),
-    );
-    recordTargetCommandAttempt(execution, 'heater', 18, 1000, 'waiting_confirmation', 21, 1);
-    expect(getPendingTargetCommandDecision(execution, 'heater', 18, 1001, 2)).toEqual({ type: 'send' });
-    sync(1, 999);
-    expect(state.pendingTargetCommands.heater).toBeDefined();
-
-    sync(2, 1001);
-    expect(state.pendingTargetCommands.heater).toBeUndefined();
-
-    recordTargetCommandAttempt(execution, 'heater', 18, 2000, 'waiting_confirmation', 21, 2);
-    sync(2, 2001);
-    expect(state.pendingTargetCommands.heater).toBeUndefined();
-  });
-
   it('logs a user-visible waiting message on the first unresolved observation', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
