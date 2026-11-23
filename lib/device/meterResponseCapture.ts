@@ -10,7 +10,7 @@
  * have made the move, and dropped at the first doubt:
  *
  * - Lone command: no other write to any device in {@link PRIOR_QUIET_MS} before
- *   the command (readings from the meter for that long, so a write sent before
+ *   the command (whole-home readings for that long, so a write sent before
  *   a restart cannot hide), none in flight, and none until the sample is taken.
  * - Known size and direction: an on/off device (no chargers, batteries, solar
  *   or stepped devices) with a known figure: its own direct reading before a
@@ -19,12 +19,13 @@
  *   {@link NOISE_FLOOR_KW}, then hold the new level.
  * - Steady before: the home reading held within a quarter of the figure for
  *   {@link STEADY_MS} before the command.
- * - Fast meter: a reading read from a meter (never a Flow-reported one) whose
- *   value changes at least every {@link MAX_SAMPLE_INTERVAL_MS}; no gap that
- *   long while a sample is open.
+ * - Fast readings: whole-home power changes at least every
+ *   {@link MAX_SAMPLE_INTERVAL_MS}, with no longer gap while a sample is open.
  * - Nothing else moved: no other device's own direct reading, and no
  *   production reading, moved by {@link OTHER_MOVE_KW} from the steady period
- *   to the sample.
+ *   to the sample. Production may be the latest still-fresh observation
+ *   from a separate poll. The settle window keeps checking for later
+ *   updates, and losing the production signal invalidates the window.
  * - Own reading agrees: a device with its own direct reading must report a new
  *   value after the command, show the change, and cross half of it within
  *   {@link OWN_TIMING_TOLERANCE_MS} of the home.
@@ -35,8 +36,12 @@
  * value changes, so a steady draw reads old. Whether the device reported after
  * the command is what tells a reading that moved from one that went quiet.
  *
- * The time runs from dispatch, the one anchor every command has, to the first
- * meter reading past half of the settled change, so it is never more precise
+ * A confirmed meter replacement discards the open window. Without that evidence,
+ * a coincident level change can still look like a response, so individual
+ * timings need corroboration.
+ *
+ * Timing runs from dispatch to the first whole-home reading past half of the
+ * settled change. It is never more precise
  * than one meter interval, which is recorded with it. When Homey accepted the
  * write, that delay is recorded beside it. A command whose change never shows
  * within {@link WINDOW_MS} is a "no change" only when the device's own direct
@@ -45,7 +50,7 @@
  */
 import type { ActuatorOutcome, DeviceCommand } from '../actuator/deviceCommand';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
-import type { MeterPowerSample } from '../ports/homeMeterReadings';
+import type { WholeHomePowerObservation } from '../ports/homeMeterReadings';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 
 export type MeterResponseDirection = 'on' | 'off';
@@ -58,7 +63,7 @@ export const STEADY_MS = 60 * 1000;
 export const WINDOW_MS = 10 * 60 * 1000;
 /** How long the home must hold its new level after it moved, before the sample is taken. */
 export const SETTLE_MS = 60 * 1000;
-/** The slowest meter whose readings are timed: Homey Energy is read every 10 s. */
+/** The largest gap the capture can time a response across. */
 export const MAX_SAMPLE_INTERVAL_MS = 15 * 1000;
 /** The smallest move of the home that counts as the device's. */
 export const NOISE_FLOOR_KW = 0.3;
@@ -232,8 +237,8 @@ const ownMovesAfter = (
  */
 export class MeterResponseCapture {
   private readings: Reading[] = [];
-  private meterDeviceId: string | null = null;
-  /** The first reading from this meter: a write sent before it, or before a restart, is unseen. */
+  private streamGeneration: number | null = null;
+  /** The first reading in this window. Writes sent before it are unseen. */
   private watchingSinceMs: number | null = null;
   private devicesById = new Map<string, DeviceSurfaces>();
   private lastDispatchAtMs: number | null = null;
@@ -289,15 +294,15 @@ export class MeterResponseCapture {
   }
 
   /**
-   * One whole-home reading from a meter. The home's devices are read only when
+   * One whole-home observation. The home's devices are read only when
    * they can matter: while a command is watched, or within a steady period of
    * the moment a command could be watched; a home PELS writes to often reads
    * none.
    */
-  recordSample(sample: MeterPowerSample, atMs: number, readDevices: () => readonly DeviceSurfaces[]): void {
-    if (sample.meterDeviceId !== this.meterDeviceId) {
+  recordSample(sample: WholeHomePowerObservation, atMs: number, readDevices: () => readonly DeviceSurfaces[]): void {
+    if (sample.streamGeneration !== this.streamGeneration) {
       this.readings = [];
-      this.meterDeviceId = sample.meterDeviceId;
+      this.streamGeneration = sample.streamGeneration;
       this.watchingSinceMs = atMs;
       if (this.watch) this.drop(this.watch, 'meter_changed');
     }

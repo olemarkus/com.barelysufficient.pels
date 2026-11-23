@@ -21,7 +21,8 @@ import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import { configuredPowerLimits, type HeldPowerLimitSettings } from '../lib/power/heldCapacityLimit';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
-import type { MeterImportCounter, MeterPowerSample } from '../lib/ports/homeMeterReadings';
+import type { MeterImportCounter, WholeHomePowerObservation } from '../lib/ports/homeMeterReadings';
+import { WholeHomePowerObservationStream } from '../lib/power/wholeHomePowerObservationStream';
 import type { ThermalDirection } from '../packages/contracts/src/types';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
@@ -98,15 +99,12 @@ export type PowerSamplePipelineDeps = {
    */
   recordHeatingObservations?: (devices: readonly DeviceSurfaces[], nowMs: number) => void;
   /**
-   * Main meter tap for the home meter's response timing capture
-   * (`lib/device/meterResponseTimings.ts`): each reading read from a meter,
-   * before the rebuild the reading may trigger, with a read of this home's
-   * devices as `getDeviceSurfaces` resolves them, which the capture calls only
-   * when it needs them. Flow-reported readings never reach it. Capture only;
-   * meter areas omit it.
+   * Main's accepted whole-home observations for response timing, after the
+   * tracker is updated and before the rebuild. The power owner resolves
+   * continuity. The recorder reads devices only as needed.
    */
   recordMeterResponseSample?: (
-    sample: MeterPowerSample, nowMs: number, readDevices: () => readonly DeviceSurfaces[],
+    sample: WholeHomePowerObservation, nowMs: number, readDevices: () => readonly DeviceSurfaces[],
   ) => void;
   /**
    * Publish the identity of the meter an INGESTED whole-home sample came from
@@ -218,6 +216,8 @@ const buildPowerSampleRequest = (
  * member (implemented by `AppRuntimeApi.recordPowerSample`) also routes here.
  */
 export class PowerSamplePipeline {
+  private readonly responseObservationStream = new WholeHomePowerObservationStream();
+
   // The sample path's producer boundary: rate learning reads the device's DRAW,
   // and the raw `measuredPowerKw` does not travel past the producer. Resolving here means `lib/objectives` never
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
@@ -286,20 +286,14 @@ export class PowerSamplePipeline {
     }
   }
 
-  /**
-   * Only a reading read from a meter is timed; its own production, never a
-   * held one. Contained like the identity publication: the capture only
-   * watches, so it must never hold up the reading's ingest.
-   */
   private recordMeterResponseSample(request: PowerSampleRequest): void {
     const record = this.deps.recordMeterResponseSample;
-    if (!record || request.meterDeviceId === undefined) return;
+    if (!record) return;
     try {
-      record({
-        powerW: request.currentPowerW,
-        meterDeviceId: request.meterDeviceId,
-        ...(request.coTemporalGenerationW === undefined ? {} : { generationW: request.coTemporalGenerationW }),
-      }, request.nowMs, () => this.deps.getDeviceSurfaces());
+      const observation = this.responseObservationStream.observe(
+        request.currentPowerW, request.generationW, request.meterDeviceId,
+      );
+      record(observation, request.nowMs, () => this.deps.getDeviceSurfaces());
     } catch {
       incPerfCounter('power_sample_meter_response_failed_total');
     }
@@ -329,7 +323,6 @@ export class PowerSamplePipeline {
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
-    this.recordMeterResponseSample(request);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {
@@ -366,6 +359,7 @@ export class PowerSamplePipeline {
           // identity - Main commanding from an area's watts. Publication is
           // contained, so a membership failure can never break the rebuild.
           this.publishResolvedHomeMeter(request);
+          this.recordMeterResponseSample(request);
           // A fresh sample proves the meter live, so the rebuild it triggers
           // plans without the startup restore hold. Cleared here, before that
           // rebuild, so whether the sample's own plan is held never depends on

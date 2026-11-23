@@ -28,17 +28,18 @@ import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import type { GenerationSegment } from '../../lib/power/trackerTypes';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import { configuredHardCap } from '../helpers/configuredHardCap';
-import type { MeterPowerSample } from '../../lib/ports/homeMeterReadings';
+import type { WholeHomePowerObservation } from '../../lib/ports/homeMeterReadings';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
 
-type MeterResponseTap = (sample: MeterPowerSample, nowMs: number, readDevices: () => readonly DeviceSurfaces[]) => void;
+type MeterResponseTap = (sample: WholeHomePowerObservation, nowMs: number, readDevices: () => readonly DeviceSurfaces[]) => void;
 
 type Taps = {
   curtailment: ReturnType<typeof vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>>;
   pvForecast: ReturnType<typeof vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>>;
   heating: ReturnType<typeof vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>>;
   meterResponse: ReturnType<typeof vi.fn<MeterResponseTap>>;
+  meterAuthority: ReturnType<typeof vi.fn<(deviceId: string, atMs: number) => void>>;
 };
 
 const buildPipeline = (
@@ -51,6 +52,7 @@ const buildPipeline = (
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
     heating: vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>(),
     meterResponse: vi.fn<MeterResponseTap>(),
+    meterAuthority: vi.fn<(deviceId: string, atMs: number) => void>(),
   };
   // The scheduler stub executes every accepted intent at once by calling back
   // into the throttle, so the ingest path settles like production.
@@ -71,8 +73,7 @@ const buildPipeline = (
   );
   const pipeline = new PowerSamplePipeline({
     ingestQueue: createSampleIngestQueue(),
-    // A no-op: only the meter response tap's case carries a meter identity.
-    noteResolvedHomeMeter: () => {},
+    noteResolvedHomeMeter: taps.meterAuthority,
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getHeldPowerLimits: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
@@ -210,22 +211,33 @@ describe('PowerSamplePipeline heating observations tap', () => {
 });
 
 describe('PowerSamplePipeline meter response tap', () => {
-  it('hands each reading read from a meter, with its own production, and never a Flow-reported one', async () => {
-    const { pipeline, taps } = buildPipeline(500);
+  it('observes every reading and breaks continuity only when a different meter is identified', async () => {
+    const { pipeline, taps, getTracker } = buildPipeline(500);
+    const acceptedAt: Array<number | undefined> = [];
+    taps.meterResponse.mockImplementation(() => { acceptedAt.push(getTracker().lastTimestamp); });
     await pipeline.recordPowerSample(1_500, T0);
     await pipeline.recordPowerSample(1_600, T0 + 10_000, { meterDeviceId: 'meter-1' });
     await pipeline.recordPowerSample(1_700, T0 + 20_000, { meterDeviceId: 'meter-1', generationW: 900 });
+    await pipeline.recordPowerSample(1_800, T0 + 30_000);
+    await pipeline.recordPowerSample(1_900, T0 + 40_000, { meterDeviceId: 'meter-2' });
 
     expect(taps.meterResponse.mock.calls).toEqual([
-      [{ powerW: 1_600, meterDeviceId: 'meter-1' }, T0 + 10_000, expect.any(Function)],
-      [{ powerW: 1_700, meterDeviceId: 'meter-1', generationW: 900 }, T0 + 20_000, expect.any(Function)],
+      [{ powerW: 1_500, streamGeneration: 0, generationW: 500 }, T0, expect.any(Function)],
+      [{ powerW: 1_600, streamGeneration: 0, generationW: 500 }, T0 + 10_000, expect.any(Function)],
+      [{ powerW: 1_700, streamGeneration: 0, generationW: 900 }, T0 + 20_000, expect.any(Function)],
+      [{ powerW: 1_800, streamGeneration: 0, generationW: 500 }, T0 + 30_000, expect.any(Function)],
+      [{ powerW: 1_900, streamGeneration: 1, generationW: 500 }, T0 + 40_000, expect.any(Function)],
+    ]);
+    expect(acceptedAt).toEqual([T0, T0 + 10_000, T0 + 20_000, T0 + 30_000, T0 + 40_000]);
+    expect(taps.meterAuthority.mock.calls).toEqual([
+      ['meter-1', T0 + 10_000], ['meter-1', T0 + 20_000], ['meter-2', T0 + 40_000],
     ]);
   });
 
   it('keeps ingesting when the capture throws', async () => {
     const { pipeline, taps, getTracker } = buildPipeline(undefined);
     taps.meterResponse.mockImplementation(() => { throw new Error('capture failed'); });
-    await pipeline.recordPowerSample(1_600, T0, { meterDeviceId: 'meter-1' });
+    await pipeline.recordPowerSample(1_600, T0);
     expect(getTracker().lastTimestamp).toBe(T0);
   });
 });

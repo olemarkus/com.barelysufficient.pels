@@ -4,12 +4,13 @@ import { createWitnessedActuator } from '../../lib/actuator/commandWitness';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { createMeterResponseTimings } from '../../lib/device/meterResponseTimings';
 import { PRIOR_QUIET_MS } from '../../lib/device/meterResponseCapture';
+import { WholeHomePowerObservationStream } from '../../lib/power/wholeHomePowerObservationStream';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 
 const T0 = Date.UTC(2026, 10, 19, 12, 0, 0);
 const STEP_MS = 5_000;
-const METER = 'meter-1';
+const STREAM = 0;
 
 /** The heater with its own direct reading, dated when the value last changed, as Homey dates it. */
 const heater = (measuredPowerKw: number, measuredPowerObservedAtMs: number): DeviceSurfaces => ({
@@ -42,11 +43,14 @@ afterEach(() => {
  * `meterResponseCapture.test.ts`.
  */
 describe('meter response timings', () => {
-  it('times a lone shed and a lone restore and keeps them for the next run', async () => {
+  it.each(['identified', 'unidentified', 'switching'] as const)('times a shed and a restore on a %s stream', async (stream) => {
     const db = openUserdataDatabase(IN_MEMORY_DATABASE);
     onTestFinished(() => db.close());
     const timings = createMeterResponseTimings(() => db);
     const actuator = createWitnessedActuator(acceptingActuator(), timings);
+    const observations = new WholeHomePowerObservationStream();
+    const meterDeviceId = stream === 'unidentified' ? undefined : 'meter-1';
+    let observedMeter = meterDeviceId;
     let houseKw = 5;
     let heaterKw = 2;
     let heaterChangedAtMs = T0;
@@ -57,7 +61,9 @@ describe('meter response timings', () => {
         vi.advanceTimersByTime(STEP_MS);
         ripple = -ripple;
         timings.recordWholeHomeSample(
-          { powerW: (houseKw + ripple) * 1000, meterDeviceId: METER }, Date.now(), () => [heater(heaterKw, heaterChangedAtMs)],
+          observations.observe((houseKw + ripple) * 1000, undefined, observedMeter),
+          Date.now(),
+          () => [heater(heaterKw, heaterChangedAtMs)],
         );
       }
     };
@@ -65,6 +71,7 @@ describe('meter response timings', () => {
     readFor(PRIOR_QUIET_MS + 60_000);
     vi.advanceTimersByTime(1_000);
     await actuator.apply({ kind: 'binary', deviceId: 'heater', desired: false });
+    if (stream === 'switching') observedMeter = undefined;
     readFor(15_000);
     houseKw = 3;
     heaterKw = 0;
@@ -72,6 +79,7 @@ describe('meter response timings', () => {
     readFor(PRIOR_QUIET_MS + 60_000);
     vi.advanceTimersByTime(1_000);
     await actuator.apply({ kind: 'binary', deviceId: 'heater', desired: true });
+    observedMeter = meterDeviceId;
     readFor(25_000);
     houseKw = 5;
     heaterKw = 2;
@@ -102,7 +110,7 @@ describe('meter response timings', () => {
     const failingDevices = (): DeviceSurfaces[] => { throw new Error('device read failed'); };
     // Read for longer than the quiet period, so the capture asks for the devices.
     for (let atMs = T0; atMs <= T0 + PRIOR_QUIET_MS + 30_000; atMs += STEP_MS) {
-      expect(() => timings.recordWholeHomeSample({ powerW: 3_000, meterDeviceId: METER }, atMs, failingDevices))
+      expect(() => timings.recordWholeHomeSample({ powerW: 3_000, streamGeneration: STREAM }, atMs, failingDevices))
         .not.toThrow();
     }
     expect(capture.findEvents('meter_response_capture_failed')).toHaveLength(1);
