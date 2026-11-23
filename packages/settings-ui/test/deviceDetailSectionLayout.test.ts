@@ -149,11 +149,11 @@ describe('applyDeviceDetailSectionLayout', () => {
       'device-detail-surplus-opt-row',
       'device-detail-dump-load-row',
     ]);
-    // Activity log, then the rarely needed External sensors, then advanced diagnostics.
+    // The rarely needed External sensors, then the activity log, then advanced diagnostics.
     const order = sectionOrder();
+    expect(order.indexOf('device-detail-power-setup') + 1).toBe(order.indexOf('device-detail-activity-log-section'));
     expect(order.indexOf('device-detail-activity-log-section'))
-      .toBeLessThan(order.indexOf('device-detail-power-setup'));
-    expect(order.indexOf('device-detail-power-setup') + 1).toBe(order.indexOf('device-detail-diagnostics-section'));
+      .toBeLessThan(order.indexOf('device-detail-diagnostics-section'));
   });
 
   it('leaves a rendered EV page untouched on a refresh', async () => {
@@ -229,11 +229,12 @@ describe('applyDeviceDetailSectionLayout', () => {
     expect(childIds('device-detail-setup-section')).toEqual(SETUP_ROW_ORDER);
   });
 
-  it('puts the activity log right after Setup', async () => {
+  it('puts External sensors and then the activity log right after Setup', async () => {
     const { module } = await loadLayout();
     module.applyDeviceDetailSectionLayout(buildDevice());
     const order = sectionOrder();
-    expect(order.indexOf('device-detail-activity-log-section')).toBe(order.indexOf('device-detail-setup-section') + 1);
+    expect(order.indexOf('device-detail-power-setup')).toBe(order.indexOf('device-detail-setup-section') + 1);
+    expect(order.indexOf('device-detail-activity-log-section')).toBe(order.indexOf('device-detail-setup-section') + 2);
   });
 
   it('re-applies when the resolved kind changes and skips when it does not', async () => {
