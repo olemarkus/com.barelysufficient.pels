@@ -347,7 +347,8 @@ function syncThermostatFields(
 ): void {
   const { section, select, preview, status } = fields;
   const waiting = entry?.thermostatWaitingForManualOn === true;
-  section.hidden = !draft.thermostat && !entry?.thermostats?.length && !entry?.thermostatId && !waiting;
+  // New thermostat links are not offered for now; a saved one stays visible so it can be removed.
+  section.hidden = !entry?.thermostatId && !waiting;
   select.disabled = disabled;
   updateOptions(select, thermostatOptions(entry, draft.thermostat), draft.thermostat);
   preview.textContent = thermostatPreview(entry, draft.thermostat);
