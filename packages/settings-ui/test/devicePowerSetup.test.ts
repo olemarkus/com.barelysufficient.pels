@@ -168,6 +168,16 @@ describe('Device setup', () => {
     expect(card?.hidden).toBe(true);
   });
 
+  it('offers no new thermostat link but keeps a saved one visible for removal', () => {
+    const thermostats = [{ id: 'thermostat', name: 'Room thermostat', state: 'selectable' as const }];
+    acceptDevicePowerSetup({ devices: [device({ thermostats })] });
+    const { refresh } = setup();
+    expect(query('thermostat-field').hidden).toBe(true);
+    acceptDevicePowerSetup({ devices: [device({ thermostats, thermostatId: 'thermostat', thermostatReady: true })] });
+    rerender(refresh);
+    expect(query('thermostat-field').hidden).toBe(false);
+  });
+
   it('hides the device page form for a socket that measures another device', () => {
     acceptDevicePowerSetup({ devices: [device(), device({ id: 'socket', name: 'Socket', usedBy: 'heater' })] });
     setup();

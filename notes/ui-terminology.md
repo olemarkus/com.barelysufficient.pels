@@ -1047,8 +1047,9 @@ A device's page has its own collapsed **External sensors** section near the
 bottom, above Activity log and Diagnostics, because few devices need it: **Power source**
 (`This device` when the device has its own reading, with that reading in the
 help line, `None` when it has none, or a metering socket), **On/off control** (`Default` or the
-device's other switch), **External thermostat** (`No external thermostat` or a
-thermostat) and **Turn off as a last resort** with its **Maximum power**. Every
+device's other switch) and **Turn off as a last resort** with its **Maximum power**.
+New external thermostat links are not offered; a saved one still shows
+**External thermostat** so it can be removed. Every
 select names its default choice; none renders empty. Save stays off until
 something changes.
 
