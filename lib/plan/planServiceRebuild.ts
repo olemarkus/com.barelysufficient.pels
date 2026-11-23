@@ -17,7 +17,7 @@ import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
 import { getDebugEmitter, isDebugTopicEnabled, withRebuildContext } from '../logging/logger';
-import { buildPlanDetailSignature, buildPublishedPlanCapacityStateSummary } from './planLogging';
+import { buildPublishedPlanCapacityStateSummary } from './planLogging';
 import type { PublishedPlan } from './publishedPlan';
 import { buildExecutionPlan } from './planExecutionProjection';
 import { hasShedding } from './planServiceInternals';
@@ -56,8 +56,7 @@ export type PlanRebuildHost = {
   updatePlanSnapshot: (plan: DevicePlan, changes: PlanChangeSet) => void;
   updatePelsStatus: (plan: DevicePlan, changes?: StatusPlanChanges) => number;
   stampPlanGeneratedAt: (plan: DevicePlan, nowMs?: number) => DevicePlan;
-  preservePlanGeneratedAt: (plan: DevicePlan, basePlan: DevicePlan) => DevicePlan;
-  emitPlanUpdated: (plan: DevicePlan) => void;
+  applyPlanActions: PlanServiceDeps['planEngine']['applyPlanActions'];
 };
 
 export async function performPlanRebuild(
@@ -313,13 +312,12 @@ async function maybeApplyPlanChanges(
 
   const applyStart = Date.now();
   try {
-    const actuation = await host.deps.planEngine.applyPlanActions(plan);
+    const actuation = await host.applyPlanActions(plan);
     const appliedActions = actuation.deviceWriteCount > 0 || actuation.commandRequestCount > 0;
     Object.assign(outcome, actuation, { appliedActions });
     if (appliedActions) {
       host.deps.schedulePostActuationRefresh();
     }
-    refreshLatestPlanSnapshotPendingState(host);
   } catch (error) {
     host.deps.structuredLog.error({
       event: 'plan_actions_apply_failed',
@@ -329,15 +327,3 @@ async function maybeApplyPlanChanges(
   Object.assign(outcome, { applyMs: Date.now() - applyStart });
 }
 /* eslint-enable functional/immutable-data */
-
-function refreshLatestPlanSnapshotPendingState(host: PlanRebuildHost): void {
-  const current = host.getLatestPlanSnapshot();
-  if (!current) return;
-  const nextPlan = host.deps.planEngine.decoratePlanWithPendingTargetCommands(current);
-  if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) return;
-  const refreshedPlan = host.preservePlanGeneratedAt(nextPlan, current);
-  const nowMs = Date.now();
-  host.publishPlan(refreshedPlan, nowMs);
-  host.emitPlanUpdated(refreshedPlan);
-}
-

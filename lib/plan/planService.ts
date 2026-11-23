@@ -30,6 +30,7 @@ import type {
   StatusPlanChanges,
 } from './planTypes';
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
+import type { ExecutionPlan } from '../planContract/executionPlan';
 import type {
   HeadroomCardDeviceLike,
   HeadroomCardQuery,
@@ -169,6 +170,8 @@ export class PlanService {
   private changeTracker: PlanChangeTracker;
   private readonly rebuildHost: PlanRebuildHost;
   private readonly queuedLiveSyncs = new Map<PendingTargetObservationSource, Promise<boolean>>();
+  // Undefined outside apply. The plan queue serializes applies for this home.
+  private deferredStatusRefresh: boolean | undefined;
 
   constructor(private deps: PlanServiceDeps) {
     this.idleClassifier = createIdleClassifier(deps.structuredLog);
@@ -192,8 +195,7 @@ export class PlanService {
       updatePlanSnapshot: (plan, changes) => this.updatePlanSnapshot(plan, changes),
       updatePelsStatus: (plan, changes) => this.updatePelsStatus(plan, changes),
       stampPlanGeneratedAt: (plan, nowMs) => this.stampPlanGeneratedAt(plan, nowMs),
-      preservePlanGeneratedAt: (plan, basePlan) => this.preservePlanGeneratedAt(plan, basePlan),
-      emitPlanUpdated: (plan) => this.emitPlanUpdated(plan),
+      applyPlanActions: (plan) => this.applyPlanActions(plan),
     };
   }
 
@@ -386,10 +388,6 @@ export class PlanService {
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands();
     const syncBinaryObservation = this.deps.planEngine.hasPendingBinaryCommands()
       || this.deps.planEngine.hasLastResortOffOwnership?.() === true;
-    if (!hasPendingTargetCommands && !syncBinaryObservation) {
-      return this.refreshDeviceStatus() || steppedChanged;
-    }
-
     const pendingTargetChanged = hasPendingTargetCommands
       ? this.deps.planEngine.syncPendingTargetCommands(this.deps.getPlanDevices(), source)
       : false;
@@ -397,23 +395,49 @@ export class PlanService {
       ? this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), source)
       : false;
     const pendingChanged = pendingTargetChanged || pendingBinaryChanged || steppedChanged;
+    if (this.deferredStatusRefresh !== undefined) {
+      this.deferredStatusRefresh = true;
+      return pendingChanged;
+    }
+    if (!hasPendingTargetCommands && !syncBinaryObservation) {
+      return this.refreshDeviceStatus() || steppedChanged;
+    }
     const current = this.getLatestPlanSnapshot();
     if (current === null) {
       return pendingChanged;
     }
 
-    if (!pendingChanged) {
-      return this.refreshDeviceStatus();
-    }
+    return (pendingChanged && this.publishPendingTargetChanges(current)) || this.refreshDeviceStatus(current);
+  }
 
+  private publishPendingTargetChanges(current: DevicePlan): boolean {
     const nextPlan = this.decoratePlanWithPendingTargetCommands(current);
-    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) {
-      return this.refreshDeviceStatus();
-    }
+    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) return false;
     const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, current);
     this.latestPublishedPlan = { plan: refreshedPlan, publishedAtMs: Date.now() };
     this.emitPlanUpdated(refreshedPlan);
     return true;
+  }
+
+  private async applyPlanActions(plan: ExecutionPlan) {
+    this.deferredStatusRefresh = false;
+    try {
+      return await this.deps.planEngine.applyPlanActions(plan);
+    } finally {
+      const refreshStatus = this.deferredStatusRefresh;
+      this.deferredStatusRefresh = undefined;
+      this.flushPostActuationStatus(refreshStatus);
+    }
+  }
+
+  private flushPostActuationStatus(refreshStatus: boolean): void {
+    const current = this.getLatestPlanSnapshot();
+    if (!current) return;
+    try {
+      if (!this.publishPendingTargetChanges(current) && refreshStatus) this.refreshDeviceStatus(current);
+    } catch (error) {
+      this.deps.structuredLog.error({ event: 'plan_post_actuation_status_failed', error: normalizeError(error) });
+    }
   }
 
   evaluateHeadroomForDevice(query: HeadroomCardQuery): HeadroomForDeviceDecision {
