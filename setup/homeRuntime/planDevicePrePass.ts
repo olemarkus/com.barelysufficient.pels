@@ -81,6 +81,7 @@ const runSnapshotPrePass = (
   // control for a while keeps what was learned about it.
   ctx.deviceReads.pruneToHomeyDevices((homeyDeviceIds) => {
     pruneMissingLearnedPowerPeaks(ctx, homeyDeviceIds);
+    ctx.deviceControlSettings.pruneSetupForMissingDevices(homeyDeviceIds);
     options.pruneCommandability(homeyDeviceIds);
   });
   return snapshot;

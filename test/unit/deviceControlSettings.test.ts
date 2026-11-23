@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import {
+  DEVICE_BINARY_SWITCHES,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_EXTERNAL_THERMOSTATS,
+  DEVICE_POWER_SOURCES,
   EV_CAR_ASSOCIATIONS,
+  LAST_RESORT_DEVICES,
   EV_CHARGING_SESSION_SMOOTHING,
   MANAGED_DEVICES,
   TEMPERATURE_BOOST_SETTINGS,
@@ -411,5 +415,36 @@ describe('DeviceControlSettings reload generations', () => {
     expect(settings.getTemperatureBoostConfig('heater')).toMatchObject({ boostBelowC: 18 });
     expect(settings.getEvCarAssociationCarIds('charger')).toEqual(['car-1']);
     expect(settings.getEvCarAssumedCarId('charger')).toBe('car-1');
+  });
+});
+
+describe('device setup for devices Homey no longer lists', () => {
+  it('releases the socket and thermostat of a deleted device and keeps choices of listed devices', () => {
+    const { port, values } = settingsDouble({
+      [MANAGED_DEVICES]: { socket: true, kept: true },
+      [DEVICE_POWER_SOURCES]: { gone: 'socket', kept: 'missing-socket' },
+      [LAST_RESORT_DEVICES]: { gone: 4000, kept: 2000 },
+      [DEVICE_BINARY_SWITCHES]: { gone: 'onoff.heating' },
+      [DEVICE_EXTERNAL_THERMOSTATS]: { gone: { thermostatId: 'thermostat' } },
+    });
+    const writes: string[] = [];
+    const writable = { ...port, set: (key: string, value: unknown) => { writes.push(key); values[key] = value; } };
+    const settings = loaded(writable);
+    expect(settings.isManaged('socket')).toBe(false);
+    expect(settings.externalThermostatSettings.isDonor('thermostat')).toBe(true);
+
+    settings.pruneSetupForMissingDevices(new Set(['socket', 'kept', 'thermostat']));
+    settings.reload();
+
+    expect(values[DEVICE_POWER_SOURCES]).toEqual({ kept: 'missing-socket' });
+    expect(values[LAST_RESORT_DEVICES]).toEqual({ kept: 2000 });
+    expect(values[DEVICE_BINARY_SWITCHES]).toEqual({});
+    expect(values[DEVICE_EXTERNAL_THERMOSTATS]).toEqual({});
+    expect(settings.isManaged('socket')).toBe(true);
+    expect(settings.externalThermostatSettings.isDonor('thermostat')).toBe(false);
+
+    writes.length = 0;
+    settings.pruneSetupForMissingDevices(new Set(['socket', 'kept', 'thermostat']));
+    expect(writes).toEqual([]);
   });
 });

@@ -1,7 +1,8 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
-  DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES, MANAGED_DEVICES,
+  DEVICE_BINARY_SWITCHES, DEVICE_EXTERNAL_THERMOSTATS, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES, MANAGED_DEVICES,
 } from '../utils/settingsKeys';
+import { readExternalThermostats } from '../../packages/shared-domain/src/settings/externalThermostats';
 import { isAbsentSetting, readSettingsKeyList } from '../utils/settingsKeyList';
 import { readDeviceBinarySwitches, type DeviceBinarySwitches }
   from '../../packages/shared-domain/src/settings/deviceBinarySwitches';
@@ -112,5 +113,34 @@ export class DeviceBinarySwitchSettings {
     } catch {
       return undefined;
     }
+  }
+}
+
+type SetupMapReader = (value: unknown) => Readonly<Record<string, unknown>> | undefined;
+
+const DEVICE_SETUP_MAPS: readonly (readonly [string, SetupMapReader])[] = [
+  [DEVICE_POWER_SOURCES, readDevicePowerSources],
+  [LAST_RESORT_DEVICES, readLastResortDevices],
+  [DEVICE_BINARY_SWITCHES, readDeviceBinarySwitches],
+  [DEVICE_EXTERNAL_THERMOSTATS, readExternalThermostats],
+];
+
+/**
+ * Drop the setup entries of devices missing from Homey's full device list, so
+ * a deleted or re-paired device no longer reserves its socket or thermostat.
+ * An entry whose socket or thermostat is missing stays: its device still
+ * shows the saved choice as unavailable. Unreadable maps are left untouched.
+ */
+export function pruneDeviceSetupForMissingDevices(
+  settings: Pick<SettingsPort, 'get'> & Partial<Pick<SettingsPort, 'set'>>, homeyDeviceIds: ReadonlySet<string>,
+): void {
+  if (!settings.set) return;
+  for (const [key, read] of DEVICE_SETUP_MAPS) {
+    try {
+      const current = read(settings.get(key));
+      if (!current) continue;
+      const kept = Object.entries(current).filter(([deviceId]) => homeyDeviceIds.has(deviceId));
+      if (kept.length < Object.keys(current).length) settings.set?.(key, Object.fromEntries(kept));
+    } catch { /* A failed read or write leaves the saved setup for the next prune. */ }
   }
 }
