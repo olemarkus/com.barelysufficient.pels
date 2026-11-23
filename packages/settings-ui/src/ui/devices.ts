@@ -7,7 +7,7 @@ import { renderSetupGoals } from './setupGoalsRender.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
-import { DEVICE_POWER_SUPPORT_HINT, POWER_READING_REMEDY } from './deviceControlAvailability.ts';
+import { DEVICE_POWER_SUPPORT_HINT } from './deviceControlAvailability.ts';
 import { deviceCardList, emptyState, refreshButton } from './dom.ts';
 import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
 import {
@@ -35,6 +35,7 @@ import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
 import { prefersTouch, setTooltip } from './tooltips.ts';
 import {
+  getCapacityTitle,
   getRowDisabledReasons,
   type DeviceControlAvailabilityState,
   type RowSwitchTitles,
@@ -49,6 +50,7 @@ import {
   resolveBatteryLimitTitle,
   resolveBatteryRowReasons,
   resolveDeviceManageability,
+  resolveDevicePowerSetupPresentation,
   resolveGroupManagedState,
   type DeviceGroup,
 } from './deviceListPresentation.ts';
@@ -69,7 +71,6 @@ import {
   CONTROLLABLE_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
-import { needsHomeyEnergySetup } from '../../../shared-domain/src/homeyEnergySetup.ts';
 
 export const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
@@ -149,18 +150,6 @@ const getManagedTitle = (
     return 'Managed by PELS (open the device page and enable built-in device control first)';
   }
   return 'Managed by PELS';
-};
-
-const getCapacityTitle = (params: {
-  isLoadingComplete: boolean;
-  supportsPower: boolean;
-  isManaged: boolean;
-}): string => {
-  const { isLoadingComplete, supportsPower, isManaged } = params;
-  if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return `Power-limit control (needs ${POWER_READING_REMEDY})`;
-  if (isManaged) return 'Power-limit control';
-  return 'Power-limit control (requires Managed by PELS)';
 };
 
 const getPriceTitle = (isLoadingComplete: boolean, manageability: DeviceControlAvailabilityState): string => {
@@ -291,13 +280,13 @@ const buildRedesignSwitchCell = (
   return cell;
 };
 
-const buildRedesignNameCell = (device: SettingsUiDeviceListItem): HTMLElement => {
+const buildRedesignNameCell = (device: SettingsUiDeviceListItem, offersHomeyEnergy: boolean): HTMLElement => {
   const nameWrap = document.createElement('div');
   nameWrap.className = 'pels-device-card__name device-row__name entity-name';
   const nameText = document.createElement('span');
   nameText.className = 'device-row__title';
   nameText.textContent = formatDisplayDeviceName(device.name);
-  if (needsHomeyEnergySetup(device)) {
+  if (offersHomeyEnergy) {
     const titleLine = document.createElement('div');
     titleLine.className = 'pels-device-card__title-line';
     titleLine.append(nameText, createPowerSetupWarning(formatDisplayDeviceName(device.name)));
@@ -392,22 +381,22 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
   }
   row.dataset.deviceId = device.id;
 
+  const setup = resolveDevicePowerSetupPresentation(device);
   const titles: RowSwitchTitles = {
     managed: getManagedTitle(isLoadingComplete, manageability.supportsManage, manageability.nativeWiringRequired),
     limit: resolveBatteryLimitTitle(device) ?? getCapacityTitle({
       isLoadingComplete,
       supportsPower: manageability.supportsPower,
       isManaged: manageability.isManaged,
-    }),
+    }, setup.lastResortHint),
     price: getPriceTitle(isLoadingComplete, manageability),
   };
 
-  const nameCell = buildRedesignNameCell(device);
+  const nameCell = buildRedesignNameCell(device, setup.offersHomeyEnergy);
   const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
-  const setupHint = devicePowerSetupHint(device.id);
   const visibleReasons = { ...reasons,
-    managed: setupHint ?? reasons.managed,
-    limit: needsHomeyEnergySetup(device) ? null : reasons.limit,
+    managed: setup.managedHint ?? reasons.managed,
+    limit: setup.showLimitReason ? reasons.limit : null,
   };
   appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)
     ? resolveBatteryRowReasons(device, manageability.isManaged, visibleReasons)

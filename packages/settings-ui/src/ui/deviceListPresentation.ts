@@ -1,5 +1,7 @@
-import { devicePowerSetupHint, isSocketReservedForPower } from './devicePowerSetup.ts';
-import { HOMEY_ENERGY_SETUP_REASON, HOMEY_ENERGY_SETUP_DOCS_URL } from '../../../shared-domain/src/homeyEnergySetup.ts';
+import { devicePowerSetupHint, isSocketReservedForPower, readLastResortSetup } from './devicePowerSetup.ts';
+import {
+  HOMEY_ENERGY_SETUP_REASON, HOMEY_ENERGY_SETUP_DOCS_URL, needsHomeyEnergySetup,
+} from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { setTooltip } from './tooltips.ts';
 import {
   supportsPowerDevice,
@@ -79,6 +81,17 @@ export const appendDeviceStateChips = (container: HTMLElement, device: SettingsU
     if (chip) container.appendChild(chip);
   });
 };
+
+export function resolveDevicePowerSetupPresentation(device: SettingsUiDeviceListItem) {
+  const lastResort = readLastResortSetup(device.id);
+  const needsHomeyEnergy = needsHomeyEnergySetup(device);
+  return {
+    offersHomeyEnergy: needsHomeyEnergy && !lastResort,
+    showLimitReason: !needsHomeyEnergy && !lastResort,
+    managedHint: devicePowerSetupHint(device.id) ?? lastResort?.hint,
+    lastResortHint: lastResort?.hint,
+  };
+}
 
 export const createPowerSetupWarning = (deviceName: string): HTMLElement => {
   const button = document.createElement('md-icon-button');
