@@ -72,6 +72,13 @@ function hasUsableDevicePower(
   return reading !== undefined && normalizeMeasuredPowerKw(reading.watts / 1000) !== null;
 }
 
+/** The device's own reading, before any socket replaces it. */
+function ownPowerReading(device: HomeyDeviceLike): Pick<DevicePowerSetupEntry, 'ownPowerW'> {
+  const reading = readMeasurePowerCapability(device.capabilities, device.capabilitiesObj);
+  if (reading === undefined || normalizeMeasuredPowerKw(reading.watts / 1000) === null) return {};
+  return { ownPowerW: Math.round(reading.watts) };
+}
+
 const METER_SOCKET_CAPABILITIES = ['measure_power', 'onoff'] as const;
 
 /** Owns the association between an admitted device and its metering-only socket. */
@@ -189,6 +196,7 @@ export class ExternalDevicePower {
       binarySwitches: this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
         ? [] : availableBinarySwitches(device),
       usedBy: this.targetForSocket(device.id) ?? null,
+      ...ownPowerReading(device),
       sources: sockets.flatMap((socket) => {
         if (socket.id === device.id) return [];
         return [{ id: socket.id, name: socket.name, state: this.sourceState(device, socket, resolveHome) }];

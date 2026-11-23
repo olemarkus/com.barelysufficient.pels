@@ -46,6 +46,7 @@ const SECTION_IDS = {
   car: 'device-detail-car-section',
   setup: 'device-detail-setup-section',
   activityLog: 'device-detail-activity-log-section',
+  externalSensors: 'device-detail-power-setup',
   diagnostics: 'device-detail-diagnostics-section',
   // Report a problem: last for every kind, so it is in no kind's own list.
   report: 'device-detail-report-section',
@@ -56,18 +57,19 @@ type SectionKey = keyof typeof SECTION_IDS;
 const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 
 // The activity log reads before advanced diagnostics for every kind: recent
-// state changes are an owner read, the 21-day counters a support read. Only
+// state changes are an owner read, the 21-day counters a support read.
+// External sensors sits just above diagnostics: few devices need it. Only
 // the meaningful head is stated per kind; the tail (sections that kind's own
 // gates hide) is derived, so an omitted key can never strand a section at the
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
   battery: ['batteryPlan', 'battery', 'activityLog', 'diagnostics'],
-  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'activityLog', 'diagnostics'],
+  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'activityLog', 'externalSensors', 'diagnostics'],
   temperature: [
-    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics',
+    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'externalSensors', 'diagnostics',
   ],
-  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
-  binary: ['shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
+  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'activityLog', 'externalSensors', 'diagnostics'],
+  binary: ['shedding', 'surplus', 'setup', 'activityLog', 'externalSensors', 'diagnostics'],
 };
 
 const sectionOrderFor = (kind: DeviceDetailKind): readonly SectionKey[] => [
@@ -113,10 +115,8 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
     return;
   }
   placeBefore(row, document.getElementById('device-detail-budget-exempt-row'));
-  // Managed's hint points to these, so they follow it.
-  const energyLink = document.getElementById('device-detail-homey-energy-setup');
-  placeAfter(energyLink, row);
-  placeAfter(document.getElementById('device-detail-power-setup'), energyLink ?? row);
+  // Managed's hint points to Homey Energy, so its link follows it.
+  placeAfter(document.getElementById('device-detail-homey-energy-setup'), row);
 };
 
 // Power-limit control and the two rows that refine it ("Only PELS starts this

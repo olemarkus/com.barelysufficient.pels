@@ -108,6 +108,8 @@ export type DevicePowerSetupEntry = {
   defaultBinarySwitchAvailable?: boolean;
   binarySwitches?: readonly { id: string; name: string }[];
   usedBy: string | null;
+  /** The device's own power reading in watts; absent when it reports none. */
+  ownPowerW?: number;
   sourceReady: boolean;
   sources: { id: string; name: string; state: 'selectable' | 'managed' | 'assigned' | 'unavailable' }[];
 };

@@ -99,7 +99,7 @@ export function resolveDevicePowerSetupPresentation(device: SettingsUiDeviceList
 
 export const createPowerSetupWarning = (deviceId: string, deviceName: string): HTMLElement => {
   const reason = isLastResortOffered(deviceId)
-    ? `${HOMEY_ENERGY_SETUP_REASON}, or turn on last-resort control under Power and control`
+    ? `${HOMEY_ENERGY_SETUP_REASON}, or turn on last-resort control under External sensors`
     : HOMEY_ENERGY_SETUP_REASON;
   const button = document.createElement('md-icon-button');
   button.className = 'pels-device-card__power-warning';

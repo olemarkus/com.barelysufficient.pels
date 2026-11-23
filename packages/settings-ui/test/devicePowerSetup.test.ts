@@ -53,6 +53,8 @@ const setup = () => {
   rerender(refresh);
   renderDeviceDetailPowerSetup('heater');
   const control = query<MdFilledSelect>('binary');
+  // jsdom has no Element.animate; a quick select opens its menu without animating.
+  control.quick = true;
   const source = query<MdFilledSelect>('source');
   const thermostat = query<MdFilledSelect>('thermostat');
   const confirmation = Object.assign(query('thermostat-confirm'), { returnValue: '', show: vi.fn() });
@@ -135,15 +137,21 @@ describe('Device setup', () => {
     expect(source.value).toBe('socket');
   });
 
-  it('shows default choices by name and keeps Save off until something changes', () => {
-    acceptDevicePowerSetup({ devices: [device({ sourceId: null, binarySwitchId: null })] });
-    const { source, control, save } = setup();
+  it('names the own reading of the device, or None, and keeps Save off until something changes', () => {
+    acceptDevicePowerSetup({ devices: [device({ sourceId: null, binarySwitchId: null, ownPowerW: 850 })] });
+    const { source, control, save, refresh } = setup();
     expect(source.value).toBe(DEFAULT);
     expect(source.querySelector(`[value="${DEFAULT}"]`)?.textContent).toContain('This device');
+    expect(query('help').textContent).toBe(`Uses this device's own reading, now ${(850).toLocaleString()} W.`);
+    acceptDevicePowerSetup({ devices: [device({ sourceId: null, binarySwitchId: null })] });
+    rerender(refresh);
+    expect(source.querySelector(`[value="${DEFAULT}"]`)?.textContent).toContain('None');
+    expect(query('help').textContent).toBe('This device has no power reading. Choose a metering socket to measure it.');
     expect(control.value).toBe(DEFAULT);
     expect(save.disabled).toBe(true);
     source.value = 'socket';
     change(source);
+    expect(query('help').textContent).toBe("PELS reads this device's power from Metering socket.");
     expect(save.disabled).toBe(false);
   });
 

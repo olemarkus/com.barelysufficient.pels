@@ -70,6 +70,15 @@ describe('external device power', () => {
     }));
   });
 
+  it('reports the own reading of a device for setup, and none for a device without one', () => {
+    const { inventory, external } = setup();
+    const source = socket(1234.4);
+    inventory.replaceLatestRawDevices([target, source], [target]);
+    const entries = external.readSetup().devices;
+    expect(entries.find(({ id }) => id === 'socket')?.ownPowerW).toBe(1234);
+    expect(entries.find(({ id }) => id === 'heater')).not.toHaveProperty('ownPowerW');
+  });
+
   it('withdraws the power capability if the socket turns off, is moved or is removed', () => {
     const { inventory, external } = setup();
     for (const source of [socket(500, false), { ...socket(500), zone: 'garage' }, undefined]) {

@@ -1,7 +1,8 @@
 # External device power
 
-On a device's page, open **Setup → Power and control** and select either
-**This device** or an unmanaged metering socket. A device that is not in the
+On a device's page, open **External sensors** and select either
+**This device** (its own reading; **None** when it has none) or an unmanaged
+metering socket. A device that is not in the
 device list yet is set up from **Add a device** in Devices.
 PELS can admit an explicitly added device through its validated generic
 temperature and on/off controls. Its Homey device class and specialised

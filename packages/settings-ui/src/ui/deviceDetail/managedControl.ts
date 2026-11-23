@@ -63,7 +63,7 @@ function renderManagedPowerSetup(
   renderHomeyEnergySetupLink(offersHomeyEnergy && !setup?.socketPending);
 }
 
-/** A device waiting for a power reading also learns what Power and control offers it. */
+/** A device waiting for a power reading also learns what External sensors offers it. */
 function withPowerSetupAlternative(
   device: SettingsUiDeviceView | null, hint: string, offersHomeyEnergy: boolean,
 ): string {

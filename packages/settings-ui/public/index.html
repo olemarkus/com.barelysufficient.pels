@@ -1644,7 +1644,7 @@
           <details class="settings-collapse detail-collapse" id="device-detail-setup-disclosure">
             <summary>
               <h3 class="section-title">Setup</h3>
-              <span class="section-hint">Management, power and control, and wiring</span>
+              <span class="section-hint">Management, control model, and wiring</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -1699,10 +1699,6 @@
                     <small class="field__hint" id="device-detail-managed-hint">Include this device in modes and optimization plans.</small>
                   </span>
                 </label>
-                <div id="device-detail-power-setup" class="device-setup-form" hidden>
-                  <h4 class="device-setup-form__title">Power and control</h4>
-                  <div data-setup-host></div>
-                </div>
                 <a class="plan-card__quiet-link" id="device-detail-homey-energy-setup" hidden>Set up power use in Homey</a>
 
 
@@ -1777,6 +1773,17 @@
                 </div>
               </div>
             </div>
+          </details>
+        </section>
+
+        <section class="detail-section" id="device-detail-power-setup" hidden>
+          <details class="settings-collapse detail-collapse" id="device-detail-power-setup-disclosure">
+            <summary>
+              <h3 class="section-title">External sensors</h3>
+              <span class="section-hint">Metering socket, thermostat, switch and last resort</span>
+              <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
+            </summary>
+            <div class="collapse-content device-setup-form" data-setup-host></div>
           </details>
         </section>
 
