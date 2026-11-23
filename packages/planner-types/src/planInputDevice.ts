@@ -662,6 +662,8 @@ export type PlanInputDeviceBase = {
    * missed release event can never make the planner ignore a running device.
    */
   externalOffHoldActive?: true;
+  /** A timed open-window pause authorized by the owner. */
+  heatingPauseActive?: true;
   /** The owner's daily-budget exemption, resolved for every device. */
   budgetExempt: boolean;
   /** Producer-resolved device reachability; absence is not a planner state. */

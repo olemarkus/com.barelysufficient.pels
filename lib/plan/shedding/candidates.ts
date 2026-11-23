@@ -190,7 +190,7 @@ function walkDevice(
  * A load's candidate, or null with the reason recorded. Out of scope, and not
  * recorded: a device PELS may not command, and a device without a power
  * reading — the plan still sets its temperature, but nothing measures what
- * limiting it would release.
+ * limiting it would release. An open-window pause supplies its own off intent.
  */
 function addLoadCandidate(
   device: PlanInputDevice,
@@ -198,7 +198,7 @@ function addLoadCandidate(
   recorder: ShedCandidateSkipRecorder,
   nowTs: number,
 ): LoadShedCandidate | null {
-  if (device.control.commandAuthority === false || !isMeteredPlanDevice(device)) return null;
+  if (!device.control.commandAuthority || !isMeteredPlanDevice(device) || device.heatingPauseActive) return null;
   if (!isEligibleForShedding(device)) {
     recorder.record(device, 'binary_confirmed_off');
     return null;

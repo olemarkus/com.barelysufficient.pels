@@ -65,7 +65,7 @@ export function buildInitialPlanDevices(
   const effectiveShedSet = buildEffectiveShedPosture(
     context.devices,
     shedSet,
-    (dev) => isPhantomSetStepShed(dev, context.devices, state, deps)
+    (dev) => dev.heatingPauseActive === true || isPhantomSetStepShed(dev, context.devices, state, deps)
       || isSurplusOnlyHoldShed(dev, state, shedReasons)
       || isStartPolicyHoldShed(dev, shedReasons)
       || isChargeTargetHoldShed(dev, shedReasons)

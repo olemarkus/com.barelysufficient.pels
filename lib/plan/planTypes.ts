@@ -554,6 +554,7 @@ export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
  */
 type CarriedInputKey =
   | 'id' | 'name' | 'deviceType' | 'isEvCharger' | 'isBatteryOrSolar' | 'currentState'
+  | 'heatingPauseActive'
   | 'reportedStepId' | 'previousStepId' | 'lastStepCommandIssuedAt' | 'stepCommandRetryCount'
   | 'nextStepCommandRetryAtMs' | 'stepCommandPending' | 'stepCommandStatus' | 'controlAdapter'
   | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'

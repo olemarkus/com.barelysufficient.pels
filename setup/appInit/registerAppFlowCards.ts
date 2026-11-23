@@ -54,6 +54,8 @@ export function registerAppFlowCards(
     getHeadroom: () => resolveObservedHeadroom(ctx.powerTracker, ctx.computePhysicalPowerLimit()),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
+    heatingPauses: ctx.deviceControlSettings.heatingPauses,
+    getHeatingPauseZoneName: (id) => ctx.deviceManager?.getZoneTree()?.[id]?.name,
     onSteppedLoadFlowCardUpdate: () => ctx.builtInControlFlowConflicts.runSteppedLoadCardUpdateScan(),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
     confirmCarAssociation: (chargerId, carId) => requireDeviceManager(ctx).confirmCarAssociation(chargerId, carId),

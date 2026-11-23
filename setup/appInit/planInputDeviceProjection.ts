@@ -11,6 +11,9 @@ import { resolveExternalOffHoldActive } from '../../lib/planInput/externalOffHol
 export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProjectionSource {
   return {
     getNow: () => ctx.getNow(),
+    isHeatingPaused: (deviceId) => ctx.deviceControlSettings.heatingPauses.isPaused(
+      deviceId, ctx.deviceReads.descriptor(deviceId)?.zoneId, ctx.getNow().getTime(),
+    ),
     isWaitingForCarAssociation: (deviceId) => requireDeviceManager(ctx).isWaitingForCarAssociation(deviceId),
     getTargetPowerControlClaim: (deviceId) => requireDeviceManager(ctx).getTargetPowerControlClaim(deviceId),
     readChargingInstallationLevelW: (deviceId) => (

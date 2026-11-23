@@ -51,6 +51,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
+  | { code: typeof PLAN_REASON_CODES.heatingPause }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
@@ -86,6 +87,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.restoreThrottled,
   PLAN_REASON_CODES.waitingForOtherDevices,
   PLAN_REASON_CODES.externalOffHold,
+  PLAN_REASON_CODES.heatingPause,
   PLAN_REASON_CODES.neutralStartupHold,
   PLAN_REASON_CODES.startupStabilization,
   PLAN_REASON_CODES.capacityControlOff,
@@ -113,6 +115,7 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.restoreThrottled]: 'restore throttled',
   [PLAN_REASON_CODES.waitingForOtherDevices]: 'waiting for other devices to recover',
   [PLAN_REASON_CODES.externalOffHold]: 'staying off until turned on again',
+  [PLAN_REASON_CODES.heatingPause]: 'paused for open window',
   [PLAN_REASON_CODES.neutralStartupHold]: 'left off',
   [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
   [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',
@@ -469,6 +472,7 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.restoreThrottled]: RESTORE_THROTTLED_REASON_LABEL,
   [PLAN_REASON_CODES.waitingForOtherDevices]: 'Waiting to resume — other devices are ahead',
   [PLAN_REASON_CODES.externalOffHold]: PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
+  [PLAN_REASON_CODES.heatingPause]: 'Paused for open window',
   [PLAN_REASON_CODES.neutralStartupHold]: 'Left off after startup',
   [PLAN_REASON_CODES.startupStabilization]: 'Waiting after startup',
   [PLAN_REASON_CODES.capacityControlOff]: 'Power-limit control off',

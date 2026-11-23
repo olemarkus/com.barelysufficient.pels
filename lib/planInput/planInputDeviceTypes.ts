@@ -45,6 +45,7 @@ export type PlanInputProjectionSource = {
   isCapacityControlEnabled: (deviceId: string) => boolean;
   readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead;
   resolveManagedState: (deviceId: string) => boolean;
+  isHeatingPaused: (deviceId: string) => boolean;
   isExternalOffHoldActive: (deviceId: string, device: ObservedCurrentStateInput) => boolean;
   /** What PELS has settled for this device's phases (`lib/phaseFootprint/`), when it has. */
   getLearnedPhaseFootprint: (deviceId: string) => PhaseFootprint | undefined;
@@ -75,7 +76,7 @@ export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'currentState' | 'confirmedNotDrawing' | 'commandableNow' | 'commandabilityReason'
   | 'objectiveKind' | 'objectiveSessionInactive' | 'waitingForCarAssociation' | 'boostSupported' | 'boostRequested'
   | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
-  | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
+  | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'heatingPauseActive' | 'steppedLadderMissing'
   | 'carCurrentRangeUnavailable' | 'targetPowerClaimNeeded' | 'phaseFootprint'
   | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt' | 'lastResort'>
   & SteppedClusterFields

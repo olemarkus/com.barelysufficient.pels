@@ -9,6 +9,7 @@ import {
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import { resolveHeldCardReasonLine } from './planCardReasonLine';
+import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
@@ -178,7 +179,11 @@ export const resolveTemperatureReasonLine = (
   device: TemperatureDevice,
   dryRun = false,
 ): string | null => {
-  const reasonCode = (device.reason as { code?: string } | undefined)?.code;
+  const reasonCode = device.reason?.code;
+  if (device.reason?.code === PLAN_REASON_CODES.heatingPause) {
+    if (dryRun) return device.currentState === 'off' ? null : 'Would pause heating for an open window (simulation)';
+    return device.currentState === 'off' ? formatDeviceReasonUserFacing(device.reason) : 'Pausing for open window';
+  }
   const displayKind = resolveDisplayStateKind({
     kind: resolveRawPlanStateKind(device),
     reasonCode,

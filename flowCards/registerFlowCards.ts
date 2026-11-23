@@ -39,6 +39,8 @@ import {
 import { registerEvSocCard, registerHeadroomForDeviceCard } from './headroomAndEvSocCards';
 import { registerSteppedLoadCards } from './steppedLoadFlowCards';
 import { registerTemperatureSettingsCards } from './temperatureSettingsCards';
+import { registerHeatingPauseCards } from './heatingPauseCards';
+import type { HeatingPauses } from '../lib/device/temperatureControlSettings';
 import type { DeviceModeTargetEdit, ModeTargetSelection } from '../lib/home/modeDeviceTargetWrite';
 import type { SmartTaskInProgressRead } from '../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import type {
@@ -94,6 +96,8 @@ export type FlowCardDeps = SmartTaskCommandPort & {
    * "which devices can take this setting" cannot reach an observation.
    */
   getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
+  heatingPauses: HeatingPauses;
+  getHeatingPauseZoneName: (id: string) => string | undefined;
   onSteppedLoadFlowCardUpdate: () => void;
   /**
    * The runtime-held Power-limit control map (`controllable_devices`), the one
@@ -181,6 +185,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerDeviceCapacityControlCards(deps);
     registerBudgetExemptionCards(deps);
     registerTemperatureSettingsCards(deps);
+    registerHeatingPauseCards(deps);
     registerManagedDeviceCondition(deps);
     registerCapacityControlCondition(deps);
     registerBudgetExemptionCondition(deps);

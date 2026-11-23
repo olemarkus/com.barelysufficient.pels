@@ -109,7 +109,7 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
   // different answers for a managed device with power limiting off.
   const { control } = dev;
   const { shedSet, shedStepTargets, shedReasons } = inputs.sheddingPlan;
-  const shouldShed = shedSet.has(dev.id);
+  const shouldShed = shedSet.has(dev.id) || (dev.heatingPauseActive === true && dev.currentState !== 'off');
   // ONE effective shed behaviour for this DEVICE-BUILD stage, resolved before
   // either reader. (Other stages — the normalized-floor pass, restore candidate
   // pricing — still answer from the configured floor; none is reachable for a
@@ -139,7 +139,7 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
     // task authorised could be planned `shed` while still carrying
     // `capacity_control_off`, which `validatePlanReasonPair` rejects outright.
     baseReason: control.commandAuthority
-      ? shedReasons.get(dev.id)
+      ? (dev.heatingPauseActive ? { code: PLAN_REASON_CODES.heatingPause } : shedReasons.get(dev.id))
         ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
       : { code: PLAN_REASON_CODES.capacityControlOff },
     shedAction,
@@ -339,6 +339,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   // says "absent" by omission the way the spread literals did.
   if (dev.surplusOnly === true) loose.surplusOnly = true;
   if (dev.externalOffHoldActive === true) loose.externalOffHoldActive = true;
+  if (dev.heatingPauseActive === true) loose.heatingPauseActive = true;
   if (dev.targetPowerClaimNeeded === true) loose.targetPowerClaimNeeded = true;
   if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
 
@@ -389,7 +390,8 @@ function resolveHoldDecisions(
   const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
-  const holdOnly = (shedSet.has(dev.id)
+  const holdOnly = (dev.heatingPauseActive === true && decision.plannedState === 'shed')
+    || (shedSet.has(dev.id)
     && (isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHoldShed(dev, shedReasons)
       || isCarCurrentRangeHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons) || surplusHoldShed))
@@ -460,7 +462,7 @@ function resolveEffectiveShedBehavior(
   configured: ShedBehavior,
   shedReasons: Map<string, DeviceReason>,
 ): ShedBehavior {
-  if (dev.lastResort) return TURN_OFF_SHED_BEHAVIOR;
+  if (dev.lastResort || dev.heatingPauseActive) return TURN_OFF_SHED_BEHAVIOR;
   // A smart task's deferred-hour hold is shed to OFF for the same reason: the task
   // wants the device off, and the floor still draws (`isDeferredHoldShed`).
   //

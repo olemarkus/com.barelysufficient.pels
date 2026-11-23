@@ -48,6 +48,7 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
 ] as const;
 
 const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
+  { code: PLAN_REASON_CODES.heatingPause },
   { code: PLAN_REASON_CODES.gridImport },
   { code: PLAN_REASON_CODES.phaseLimit },
   { code: PLAN_REASON_CODES.capacity },
@@ -93,6 +94,7 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
  * See the cross-field invariant in `validatePlanReasonPair`.
  */
 const REASON_REQUIRED_FLAGS = [
+  { code: PLAN_REASON_CODES.heatingPause, flags: ['heatingPauseActive'] },
   {
     code: PLAN_REASON_CODES.awaitingSolarSurplus,
     // Either surplus posture that can hold a device OFF earns the reason: the
@@ -139,6 +141,7 @@ const REASON_REQUIRED_FLAGS = [
 const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.inactive },
   { code: PLAN_REASON_CODES.externalOffHold },
+  { code: PLAN_REASON_CODES.heatingPause },
   // The start-policy hold is legal in BOTH states, and the pair is the whole
   // lifecycle: `shed` while the device is still running (which is what actuates
   // the turn-off), `inactive` once it is off (which is what makes the card read
