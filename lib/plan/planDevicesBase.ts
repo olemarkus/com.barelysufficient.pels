@@ -248,6 +248,17 @@ function buildLastResortFields(inputs: BasePlanDeviceInputs): Pick<
   };
 }
 
+function buildExternalThermostatFields(dev: PlanInputDevice): Pick<
+  DevicePlanDevice, 'externalThermostatRole' | 'temperatureBindingGeneration'
+> {
+  const { externalThermostatRole, temperatureBindingGeneration } = dev;
+  if (externalThermostatRole === undefined) return {};
+  return {
+    externalThermostatRole,
+    ...(temperatureBindingGeneration === undefined ? {} : { temperatureBindingGeneration }),
+  };
+}
+
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const { dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift } = inputs;
@@ -288,8 +299,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     controlAdapter: dev.controlAdapter,
     ...(dev.binarySwitchGeneration !== undefined ? { binarySwitchGeneration: dev.binarySwitchGeneration } : {}),
     ...buildLastResortFields(inputs),
-    externalThermostatRole: dev.externalThermostatRole,
-    temperatureBindingGeneration: dev.temperatureBindingGeneration,
+    ...buildExternalThermostatFields(dev),
     // `commandableNow` MUST be carried. Dropping it is what forced consumers
     // back onto raw-field re-derivation against fields the plan device does not
     // have, so every plan-device `isCommandableNow` answered from absence and
