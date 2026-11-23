@@ -92,6 +92,7 @@ export type DevicePowerSetupEntry = {
   binarySwitchId?: string | null;
   lastResortMaximumW?: number;
   lastResortAvailable?: boolean;
+  defaultBinarySwitchAvailable?: boolean;
   binarySwitches?: readonly { id: string; name: string }[];
   usedBy: string | null;
   sourceReady: boolean;

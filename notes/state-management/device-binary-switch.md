@@ -1,6 +1,6 @@
 # Selecting a device's on/off control
 
-In Devices, open **Add device or change its power source** and select a device
+In Devices, open **Device setup** and select a device
 to configure. **On/off control** appears when a generic device exposes an
 alternate readable, writable Homey on/off switch. A spa can use its heating
 switch for power limiting while retaining its Homey temperature controls.

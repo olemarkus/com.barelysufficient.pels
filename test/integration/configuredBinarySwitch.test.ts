@@ -4,12 +4,13 @@ import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
-import { DEVICE_BINARY_SWITCHES } from '../../lib/utils/settingsKeys';
+import { DEVICE_BINARY_SWITCHES, LAST_RESORT_DEVICES, MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { celsius, homeyDevice, setable } from '../helpers/homeyDevicePayload';
 import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 const ID = 'spa';
 const HEATING = 'onoff.heating';
@@ -28,6 +29,7 @@ const spa = (nowMs = BASE, heating = true) => homeyDevice({ id: ID, name: 'Spa',
 }, new Date(nowMs).toISOString());
 
 let settings: DeviceControlSettings;
+let lastResortDevices: Record<string, number>;
 let transport: DeviceTransport;
 const noFlow = vi.fn().mockRejectedValue(new Error('Unexpected Flow-backed switch'));
 
@@ -40,7 +42,9 @@ beforeEach(async () => {
   resetMockHomey();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(BASE);
+  mockHomeyInstance.settings.set(MANAGED_DEVICES, { [ID]: true });
   settings = new DeviceControlSettings(mockHomeyInstance.settings);
+  lastResortDevices = {};
   transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, {
     log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test/configured-binary-switch'),
   }, {
@@ -48,6 +52,8 @@ beforeEach(async () => {
       getBinarySwitchSelection: (id) => settings.getBinarySwitchSelection(id),
       getBinarySwitchRevision: (id) => settings.getBinarySwitchRevision(id),
       isBinarySwitchWriteCurrent: (id) => settings.isBinarySwitchWriteCurrent(id),
+      lastResortDevices,
+      isManaged: (id) => settings.isManaged(id),
     },
   });
   await initWithLiveFeed(transport);
@@ -78,6 +84,33 @@ describe('configured binary switch', () => {
     expect(put).not.toHaveBeenCalled();
     await transport.requestBinaryControl(ID, false, noFlow, generation);
     expect(put).toHaveBeenCalledExactlyOnceWith('manager/devices/device/spa/capability/onoff.heating', pelsCapabilityWrite(false));
+  });
+
+  it('fences last-resort writes using accepted power, including zero', async () => {
+    lastResortDevices[ID] = 4000;
+    mockHomeyInstance.settings.set(LAST_RESORT_DEVICES, lastResortDevices);
+    settings.reload();
+    const relay = (on: boolean, power: number) => homeyDevice(
+      { id: ID, name: 'Relay', class: 'socket', energyObj: { W: 2000, approximation: { usageOn: 2000 } } },
+      { onoff: setable(on), measure_power: power },
+      new Date().toISOString(),
+    );
+    await seedTransportDevices(transport, [relay(true, 30_000)]);
+    const snapshot = transport.getSnapshotByDeviceId(ID);
+    expect(snapshot).toBeDefined();
+    expect(snapshot && hasObservedMeasuredPower(snapshot)).toBe(false);
+    const generation = snapshot?.binarySwitchGeneration;
+    expect(generation).toBeGreaterThan(0);
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: (path) => mockHomeyInstance.api.get(path), put });
+    await transport.requestBinaryControl(ID, false, noFlow, generation, 4000);
+    expect(put).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(BASE + 1000);
+    await seedTransportDevices(transport, [relay(false, 0)]);
+    expect(transport.getSnapshotByDeviceId(ID)).toHaveProperty('measuredPowerKw', 0);
+    await expect(transport.requestBinaryControl(ID, true, noFlow, generation, 4000)).resolves.toBe(false);
+    expect(put).toHaveBeenCalledTimes(1);
   });
 
   it('never falls back to the main switch and confirms a dated selected echo', async () => {

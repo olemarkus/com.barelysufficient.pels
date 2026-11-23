@@ -64,7 +64,7 @@ export function resolveDeviceCapabilities(params: {
 
 export function getExactPowerCapabilityValue(
   capabilities: readonly string[],
-  capabilityObj: DeviceCapabilityMap,
+  capabilityObj: Partial<DeviceCapabilityMap>,
   capabilityId: PowerCapabilityId,
 ): unknown {
   if (capabilities.includes(capabilityId)) {

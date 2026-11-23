@@ -1,13 +1,16 @@
 import type { DevicePowerSetupEntry, DevicePowerSetupRead } from '../../../packages/contracts/src/settingsUi/devices';
 import type { HomeyDeviceLike } from '../../utils/types';
-import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
+import { hasObservedMeasuredPower, normalizeMeasuredPowerKw }
+  from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type { DeviceControlSettings } from '../deviceControlSettings';
+import { readMeasurePowerCapability } from '../measuredPowerReader';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isHomeBatteryDevice, isSolarPanelDevice } from '../managerEnergy';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { resolveZoneId } from './managerHelpers';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
-import { availableBinarySwitches } from './binarySwitchBinding';
+import { availableBinarySwitches, hasAcceptedBinarySwitch, supportsBinarySwitchSetup } from './binarySwitchBinding';
 
 type PowerSourceRead = { kind: 'device' }
   | { kind: 'external'; socketId: string; capability?: HomeyDeviceLike['capabilitiesObj']['measure_power'] };
@@ -58,6 +61,15 @@ export function withExternalPowerCapability(
     capabilities: power.capability ? [...capabilities, 'measure_power'] : capabilities,
     capabilitiesObj: power.capability ? { ...capabilitiesObj, measure_power: power.capability } : capabilitiesObj,
   };
+}
+
+/** Setup can inspect accepted inventory even for a device outside the runtime roster. */
+function hasUsableDevicePower(
+  device: HomeyDeviceLike, snapshot: TransportDeviceSnapshot | undefined,
+): boolean {
+  if (snapshot) return hasObservedMeasuredPower(snapshot);
+  const reading = readMeasurePowerCapability(device.capabilities, device.capabilitiesObj);
+  return reading !== undefined && normalizeMeasuredPowerKw(reading.watts / 1000) !== null;
 }
 
 const METER_SOCKET_CAPABILITIES = ['measure_power', 'onoff'] as const;
@@ -162,12 +174,14 @@ export class ExternalDevicePower {
     ]));
     const resolveHome: PowerSourceHome = (id) => homes.get(id);
     const configuredSwitch = (id: string) => this.inventory.binarySwitches.settings?.getBinarySwitchSelection(id);
-    const eligible = inventory.filter((device) => hasGenericSetupControls(device) || configuredSwitch(device.id));
+    const eligible = inventory.filter((device) => hasGenericSetupControls(device)
+      || configuredSwitch(device.id) || this.settings.lastResortDevices?.[device.id] !== undefined);
     const devices: DevicePowerSetupEntry[] = eligible.map((device) => ({
       id: device.id, name: device.name, configured: this.setupSelected(device.id),
       sourceId: this.sourceForDevice(device.id) ?? null,
       lastResortMaximumW: this.settings.lastResortDevices?.[device.id],
       lastResortAvailable: this.canSetUpLastResort(device),
+      defaultBinarySwitchAvailable: hasAcceptedBinarySwitch(device, 'onoff'),
       binarySwitchId: configuredSwitch(device.id) ?? null,
       binarySwitches: this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
         ? [] : availableBinarySwitches(device),
@@ -182,12 +196,10 @@ export class ExternalDevicePower {
   }
 
   private canSetUpLastResort(device: HomeyDeviceLike): boolean {
-    const standardSwitch = device.capabilitiesObj.onoff;
-    const readableSwitch = standardSwitch?.setable === true && standardSwitch.getable !== false;
-    return !device.capabilities.includes('target_temperature')
+    return supportsBinarySwitchSetup(device) && !device.capabilities.includes('target_temperature')
       && !this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
-      && (availableBinarySwitches(device).length > 0 || readableSwitch)
-      && this.inventory.getSnapshotByDeviceId(device.id)?.measuredPowerKw === undefined;
+      && (availableBinarySwitches(device).length > 0 || hasAcceptedBinarySwitch(device, 'onoff'))
+      && !hasUsableDevicePower(device, this.inventory.getSnapshotByDeviceId(device.id));
   }
 
   private sourceState(

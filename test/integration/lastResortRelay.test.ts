@@ -11,6 +11,10 @@ import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { applyRestorePlanForSpec, buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
+import { toPlanDevice } from '../../setup/appInit';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { partialDouble } from '../helpers/partialDouble';
@@ -36,6 +40,36 @@ const runningRelay = (id: string, priority: number) => buildPlanInputDevice({
 });
 
 describe('last-resort relay control', () => {
+  it('skips a configured relay whose accepted on/off capability is read-only', () => {
+    const ctx = createAppContextMock({
+      deviceControlSettings: deviceControlSettingsFixture({ lastResortDevices: { healthy: 4000, blocked: 4000 } }),
+      resolveManagedState: () => true,
+    });
+    const now = Date.now();
+    const input = (id: string, priority: number, canSetControl: boolean) => ({
+      ...toPlanDevice(ctx, withDeviceConfiguration({
+        id, name: id, deviceClass: 'socket', available: true, canSetControl, targets: [],
+        binaryCapabilityId: 'onoff', binaryControl: { on: true },
+        binaryControlObservation: {
+          valid: true as const, capabilityId: 'onoff', observedCapabilityIds: ['onoff'],
+          observedValue: true, observedAtMs: now, source: 'snapshot_refresh' as const,
+        },
+      })), priority,
+    });
+
+    const blocked = input('blocked', 2, false);
+    const healthy = input('healthy', 1, true);
+    expect(blocked.lastResort).toMatchObject({ maximumW: 4000 });
+    expect(blocked.control.commandAuthority).toBe(false);
+    expect(healthy.control.commandAuthority).toBe(true);
+    const devices = [healthy, blocked];
+    const pending = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
+    expect(selectLastResortCut(
+      buildPlanContextFixture({ devices, nowTs: now }), buildMeasuredPower({ sampledAtMs: now, headroomKw: -2 }),
+      createPlanEngineState(now), buildOrdinaryAnswer(), phaseAnswer, pending,
+    )).toMatchObject({ deviceId: 'healthy' });
+  });
+
   it('waits for ordinary limiting and alternates cuts only after a fresh meter verdict', () => {
     const pending = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
     const now = Date.now();

@@ -22,13 +22,21 @@ function declaresReadableSwitch(device: HomeyDeviceLike, id: string): boolean {
   return device.capabilities.includes(id) && entry?.setable === true && entry.getable !== false;
 }
 
+export function hasAcceptedBinarySwitch(device: HomeyDeviceLike, id: string, expected?: boolean): boolean {
+  const entry = device.capabilitiesObj[id];
+  const readable = id === 'onoff'
+    ? device.capabilities.includes(id) && entry?.getable !== false && entry?.setable !== false
+    : declaresReadableSwitch(device, id);
+  return readable && typeof entry?.value === 'boolean' && toCapabilityTimestampMs(entry.lastUpdated) !== undefined
+    && (expected === undefined || entry.value === expected);
+}
+
 export function availableBinarySwitches(device: HomeyDeviceLike): { id: string; name: string }[] {
   if (!supportsBinarySwitchSetup(device)) return [];
   return device.capabilities.flatMap((id) => {
     const entry = device.capabilitiesObj[id];
-    if (id === 'onoff' || !declaresReadableSwitch(device, id) || typeof entry?.value !== 'boolean'
-        || toCapabilityTimestampMs(entry.lastUpdated) === undefined) return [];
-    const title = typeof entry.title === 'string' && entry.title.trim() ? entry.title.trim() : undefined;
+    if (id === 'onoff' || !hasAcceptedBinarySwitch(device, id)) return [];
+    const title = typeof entry?.title === 'string' && entry.title.trim() ? entry.title.trim() : undefined;
     const suffix = id.slice('onoff.'.length);
     const name = title ?? suffix.charAt(0).toUpperCase() + suffix.slice(1);
     return [{ id, name }];

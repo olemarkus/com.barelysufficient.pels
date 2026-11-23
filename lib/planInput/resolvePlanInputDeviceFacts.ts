@@ -146,7 +146,8 @@ function resolveLastResortSetup(source: PlanInputProjectionSource, device: ToPla
 function resolveLastResortControl(managed: boolean, source: PlanInputProjectionSource, device: ToPlanDeviceInput) {
   return {
     managed,
-    commandAuthority: managed && device.binaryControl !== undefined && !hasObservedMeasuredPower(device)
+    commandAuthority: managed && device.canSetControl === true && device.binaryControlObservation !== undefined
+      && device.binaryControl?.on === device.binaryControlObservation.observedValue && !hasObservedMeasuredPower(device)
       && !source.deviceControl.devicePowerSources?.[device.id],
   };
 }

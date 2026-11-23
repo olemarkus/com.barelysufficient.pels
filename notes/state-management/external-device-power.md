@@ -1,6 +1,6 @@
 # External device power
 
-In Devices, open **Add device or change its power source**, choose a Homey
+In Devices, open **Device setup**, choose a Homey
 device, and select either **This device** or an unmanaged metering socket.
 PELS can admit an explicitly added device through its validated generic
 temperature and on/off controls. Its Homey device class and specialised

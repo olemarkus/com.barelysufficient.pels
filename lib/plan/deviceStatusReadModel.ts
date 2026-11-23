@@ -312,7 +312,11 @@ function resolveNotControlledReason(
  * owner has already turned on.
  */
 function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] {
-  if (device.lastResort) return { text: 'Turn on the device manually to resume control' };
+  if (device.lastResort) {
+    return { text: device.currentState === 'off' && device.controllable && device.execution.available
+      ? 'Turn on the device manually to resume control'
+      : 'Check the last-resort settings in Devices' };
+  }
   if (device.powerSetupRequired) {
     const lastResortOffered = device.binaryControllable && !device.isEvCharger && !device.temperature
       && !device.steppedLoad;
