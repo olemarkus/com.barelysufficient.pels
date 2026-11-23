@@ -58,18 +58,18 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 
 // The activity log reads before advanced diagnostics for every kind: recent
 // state changes are an owner read, the 21-day counters a support read.
-// External sensors sits just above diagnostics: few devices need it. Only
+// External sensors sits just above them: few devices need it. Only
 // the meaningful head is stated per kind; the tail (sections that kind's own
 // gates hide) is derived, so an omitted key can never strand a section at the
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
   battery: ['batteryPlan', 'battery', 'activityLog', 'diagnostics'],
-  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'activityLog', 'externalSensors', 'diagnostics'],
+  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'externalSensors', 'activityLog', 'diagnostics'],
   temperature: [
-    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'externalSensors', 'diagnostics',
+    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'externalSensors', 'activityLog', 'diagnostics',
   ],
-  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'activityLog', 'externalSensors', 'diagnostics'],
-  binary: ['shedding', 'surplus', 'setup', 'activityLog', 'externalSensors', 'diagnostics'],
+  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'externalSensors', 'activityLog', 'diagnostics'],
+  binary: ['shedding', 'surplus', 'setup', 'externalSensors', 'activityLog', 'diagnostics'],
 };
 
 const sectionOrderFor = (kind: DeviceDetailKind): readonly SectionKey[] => [

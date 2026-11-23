@@ -1044,7 +1044,7 @@ decide behaviour.
 ### Device-page "External sensors" and the "Add a device" card
 
 A device's page has its own collapsed **External sensors** section near the
-bottom, above Diagnostics, because few devices need it: **Power source**
+bottom, above Activity log and Diagnostics, because few devices need it: **Power source**
 (`This device` when the device has its own reading, with that reading in the
 help line, `None` when it has none, or a metering socket), **On/off control** (`Default` or the
 device's other switch), **External thermostat** (`No external thermostat` or a
