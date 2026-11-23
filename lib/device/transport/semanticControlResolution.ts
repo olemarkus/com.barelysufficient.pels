@@ -33,7 +33,7 @@ export async function requestBinaryControl(
     desired: boolean,
     triggerFlow: (id: string, capabilityId: string, desired: boolean) => Promise<void>,
 ): Promise<NativeRelayOffResult | void> {
-    store.externalPower?.assertAllowsWrite(deviceId, store.getTrackedRawDevice(deviceId), desired);
+    store.externalPower?.assertAllowsWrite(deviceId);
     const snapshot = store.getSnapshotByDeviceId(deviceId);
     const capabilityId = snapshot?.binaryCapabilityId;
     if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);

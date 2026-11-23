@@ -1,3 +1,4 @@
+import { withExternalPowerCapability } from './externalDevicePower';
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import type { DeviceControlSettings } from '../deviceControlSettings';
 import type { ChargingCurrentParseRead } from '../chargingCurrentControl';
@@ -127,7 +128,7 @@ export function parseDevice(
     deps: DeviceTransportParseDeps,
     purpose: ParseDevicePurpose,
 ): TransportDeviceSnapshot | null {
-    const identity = resolveParseDeviceIdentity({ device });
+    const identity = resolveParseDeviceIdentity({ device: withExternalPowerCapability(device, deps.externalPower) });
     if (!identity) return null;
     const managedDecision = resolveManagedFilterDecision(deps.management, identity.deviceId);
     if (shouldDropEarly(purpose, managedDecision, isHomeBatteryDevice(device))) return null;

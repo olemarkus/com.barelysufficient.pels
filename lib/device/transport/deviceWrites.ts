@@ -170,9 +170,9 @@ export class DeviceWriteService {
     return snapshot !== undefined && this.chargingCurrentControl.sessions.controls(snapshot);
   }
 
-  private assertControlAllowed(deviceId: string, requiresLivePower = true): HomeyDeviceLike | undefined {
+  private assertControlAllowed(deviceId: string): HomeyDeviceLike | undefined {
     const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
-    this.snapshotStore.externalPower?.assertAllowsWrite(deviceId, raw, requiresLivePower);
+    this.snapshotStore.externalPower?.assertAllowsWrite(deviceId);
     if (!raw && this.requiresAdapterControl(deviceId)) {
       throw new Error('Device control metadata is unavailable.');
     }
@@ -239,7 +239,7 @@ export class DeviceWriteService {
   async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-    this.assertControlAllowed(deviceId, value !== false || snapshotBefore?.binaryCapabilityId !== capabilityId);
+    this.assertControlAllowed(deviceId);
     const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);

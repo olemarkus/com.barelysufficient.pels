@@ -145,16 +145,18 @@ describe('DeviceTransport', () => {
                 settings: {
                     devicePowerSources: { appliance: 'socket' },
                     managedDevices: { appliance: true },
-                    isPowerSourceWriteCurrent: () => true,
+                    isMeteringSocketReserved: () => false,
                     isMainFusePhaseMeter: () => false,
                 },
                 resolveHome: () => 'main',
             },
         });
         const rawDevices = {
-            appliance: homeyDevice({ id: 'appliance', name: 'Appliance', class: 'other' }, {
+            appliance: homeyDevice({ id: 'appliance', name: 'Appliance', class: 'other', energyObj: { W: 900 } }, {
                 onoff: setable(true),
                 measure_power: 5,
+                measure_temperature: 19,
+                target_temperature: setable(21),
             }, stampedNow(BASELINE_OFFSET_MS)),
             socket: homeyDevice({ id: 'socket', name: 'Metering socket', class: 'socket' }, {
                 onoff: setable(true),
@@ -165,8 +167,16 @@ describe('DeviceTransport', () => {
         mockApiGet.mockResolvedValue(rawDevices);
         await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
         const appliance = () => deviceManager.getSnapshotByDeviceId('appliance');
-        expect(appliance()).toMatchObject({ measuredPowerKw: 1.8, externalPowerSocketId: 'socket' });
+        expect(appliance()).toMatchObject({
+            measuredPowerKw: 1.8,
+            measuredPowerSource: 'measure_power',
+            externalPowerSocketId: 'socket',
+        });
         expect(deviceManager.getSnapshot().map(({ id }) => id)).toEqual(['appliance']);
+
+        const originalPowerTimestamp = appliance()?.measuredPowerObservedAtMs;
+        await emitCapability('socket', 'measure_power', -100);
+        expect(appliance()).toMatchObject({ measuredPowerKw: 1.8, measuredPowerObservedAtMs: originalPowerTimestamp });
 
         await emitCapability('socket', 'measure_power', 0);
         expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
@@ -176,6 +186,12 @@ describe('DeviceTransport', () => {
         expect(appliance()?.measuredPowerKw).toBeUndefined();
         await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
         expect(appliance()?.measuredPowerKw).toBeUndefined();
+        expect(appliance()?.capabilities).not.toContain('measure_power');
+        await deviceManager.setCapability('appliance', 'target_temperature', 16);
+        expect(mockApiPut).toHaveBeenCalledWith(
+            'manager/devices/device/appliance/capability/target_temperature',
+            expect.objectContaining({ value: 16 }),
+        );
         await expect(deviceManager.requestBinaryControl('socket', false, async () => {})).rejects.toThrow(
             'Device control is unavailable for the configured power source',
         );
