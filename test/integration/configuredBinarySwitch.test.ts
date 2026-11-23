@@ -86,7 +86,7 @@ describe('configured binary switch', () => {
     expect(put).toHaveBeenCalledExactlyOnceWith('manager/devices/device/spa/capability/onoff.heating', pelsCapabilityWrite(false));
   });
 
-  it('fences last-resort writes using accepted power, including zero', async () => {
+  it('restores its own OFF after a reading appears, then fences a running metered relay', async () => {
     lastResortDevices[ID] = 4000;
     mockHomeyInstance.settings.set(LAST_RESORT_DEVICES, lastResortDevices);
     settings.reload();
@@ -109,8 +109,17 @@ describe('configured binary switch', () => {
     vi.setSystemTime(BASE + 1000);
     await seedTransportDevices(transport, [relay(false, 0)]);
     expect(transport.getSnapshotByDeviceId(ID)).toHaveProperty('measuredPowerKw', 0);
-    await expect(transport.requestBinaryControl(ID, true, noFlow, generation, 4000)).resolves.toBe(false);
-    expect(put).toHaveBeenCalledTimes(1);
+    setRestClient({ get: (path) => mockHomeyInstance.api.get(path), put });
+    await transport.requestBinaryControl(ID, true, noFlow, generation, 4000);
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenLastCalledWith(`manager/devices/device/${ID}/capability/onoff`, pelsCapabilityWrite(true));
+
+    vi.setSystemTime(BASE + 2000);
+    await seedTransportDevices(transport, [relay(true, 1500)]);
+    setRestClient({ get: (path) => mockHomeyInstance.api.get(path), put });
+    expect(transport.getSnapshotByDeviceId(ID)).toHaveProperty('measuredPowerKw', 1.5);
+    await expect(transport.requestBinaryControl(ID, false, noFlow, generation, 4000)).resolves.toBe(false);
+    expect(put).toHaveBeenCalledTimes(2);
   });
 
   it('never falls back to the main switch and confirms a dated selected echo', async () => {

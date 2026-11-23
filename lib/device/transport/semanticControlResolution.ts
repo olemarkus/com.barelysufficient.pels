@@ -55,7 +55,8 @@ function allowsCurrentLastResortSwitch(
         && observation !== undefined && observation.capabilityId === snapshot.binaryCapabilityId
         && snapshot.binaryControl?.on === observation.observedValue
         && hasAcceptedBinarySwitch(raw, observation.capabilityId, observation.observedValue)
-        && !store.externalPower?.sourceForDevice(snapshot.id) && !hasObservedMeasuredPower(snapshot);
+        && !store.externalPower?.sourceForDevice(snapshot.id)
+        && (observation.observedValue === false || !hasObservedMeasuredPower(snapshot));
 }
 
 function allowsBinaryCommand(
