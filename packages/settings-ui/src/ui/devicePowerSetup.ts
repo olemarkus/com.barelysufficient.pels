@@ -1,10 +1,20 @@
 import type { DevicePowerSetupEntry, DevicePowerSetupRead } from '../../../contracts/src/settingsUi/devices.ts';
+import type { MdDialog } from '@material/web/dialog/dialog.js';
+import { describeSetupReadbackError, readGuidedControls, renderGuidedReview, renderManagedSockets, type GuidedControls }
+  from './guidedDeviceSetupPresentation.ts';
+import {
+  canReviewWiring, CHOOSE_SWITCH, hasSwitchChoice, hasUsableSwitch,
+  sourceHelp, sourceOptions, switchOptions, type SetupOption,
+} from './devicePowerSetupChoices.ts';
+import { trackSetupSave } from './setupJourneyState.ts';
 import { isLastResortMaximumW } from '../../../shared-domain/src/settings/lastResortDevices.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { createSelectOption } from './materialSelectOption.ts';
 import type { MaterialSelectOptionElement } from './components.ts';
 import { persistDeviceSetup, type SetupDraft } from './devicePowerSetupWrites.ts';
-import { buildDevicePowerSetupForm, type SetupPart } from './devicePowerSetupMarkup.ts';
+import {
+  buildDevicePowerSetupForm, readSetupFields, setupControl, type SetupFields, type SetupPart, type SetupSelect,
+} from './devicePowerSetupMarkup.ts';
 
 let entries: readonly DevicePowerSetupEntry[] = [];
 
@@ -15,6 +25,8 @@ export const acceptDevicePowerSetup = (read: DevicePowerSetupRead | undefined): 
 const findSetupEntry = (id: string): DevicePowerSetupEntry | undefined => (
   entries.find((entry) => entry.id === id)
 );
+
+export const readDeviceSetupEntries = (): readonly DevicePowerSetupEntry[] => entries;
 
 const companionTarget = (entry: DevicePowerSetupEntry | undefined) => (
   entry?.usedBy
@@ -99,17 +111,12 @@ export const isDeviceReservedBySetup = (deviceId: string): boolean => (
   Boolean(companionTarget(findSetupEntry(deviceId)))
 );
 
-type SetupSelect = HTMLElement & {
-  value: string;
-  disabled: boolean;
-};
-
-type SetupOption = { value: string; label: string; disabled?: boolean };
 const renderedOptions = new WeakMap<SetupSelect, string>();
 
 // A Material select shows no text for an option whose value is empty, so the
 // default choices ("This device", "Default") carry a placeholder value instead.
 const DEFAULT_OPTION_VALUE = 'pels-default';
+const WAIT_FOR_READING = 'Meter saved. Make sure it’s on in Homey. Wait for its first power reading, then check again.';
 const toOptionValue = (value: string): string => value || DEFAULT_OPTION_VALUE;
 const readSelectValue = (field: SetupSelect): string => (
   field.value === DEFAULT_OPTION_VALUE ? '' : field.value
@@ -130,15 +137,6 @@ function updateOptions(field: SetupSelect, options: readonly SetupOption[], valu
   if (select.value !== toOptionValue(value)) select.value = toOptionValue(value);
 }
 
-const unavailableReason = (state: DevicePowerSetupEntry['sources'][number]['state']): string => {
-  switch (state) {
-    case 'managed': return 'Turn off Managed by PELS to use this socket';
-    case 'assigned': return 'Already measures another device';
-    case 'unavailable': return 'Unavailable as a power source';
-    default: return '';
-  }
-};
-
 const acceptedDraft = (entry: DevicePowerSetupEntry | undefined): SetupDraft => ({
   source: entry?.sourceId ?? '',
   switchId: entry?.binarySwitchId ?? '',
@@ -150,89 +148,6 @@ const sameSetupDraft = (left: SetupDraft, right: SetupDraft): boolean => (
   left.source === right.source && left.switchId === right.switchId
   && left.lastResort === right.lastResort && left.maximum === right.maximum
 );
-
-function sourceOptions(entry: DevicePowerSetupEntry | undefined, selected: string): SetupOption[] {
-  const options = (entry?.sources ?? []).map((socket) => {
-    const reason = unavailableReason(socket.state);
-    const name = formatDisplayDeviceName(socket.name);
-    return { value: socket.id, label: reason ? `${name} (${reason})` : name, disabled: reason !== '' };
-  });
-  if (selected && !options.some(({ value }) => value === selected)) {
-    options.push({ value: selected, label: 'Metering socket unavailable', disabled: true });
-  }
-  // "This device" only when it has a reading of its own to use.
-  const ownLabel = entry?.ownPowerW === undefined ? 'None' : 'This device';
-  return [{ value: '', label: ownLabel }, ...options];
-}
-
-function sourceHelp(entry: DevicePowerSetupEntry | undefined, selected: string): string {
-  if (!entry) return '';
-  const socket = entry.sources.find(({ id }) => id === selected);
-  if (selected && selected === entry.sourceId && !entry.sourceReady) {
-    return socket ? `Waiting for a power reading from ${formatDisplayDeviceName(socket.name)}.`
-      : 'The configured metering socket is unavailable. Choose another power source.';
-  }
-  if (socket?.state && socket.state !== 'selectable') return unavailableReason(socket.state);
-  const own = entry.ownPowerW;
-  if (socket) {
-    const name = formatDisplayDeviceName(socket.name);
-    return own === undefined ? `PELS reads this device's power from ${name}.`
-      : `PELS uses ${name} instead of this device's own reading.`;
-  }
-  return own === undefined ? 'This device has no power reading. Choose a metering socket to measure it.'
-    : `Uses this device's own reading, now ${own.toLocaleString()} W.`;
-}
-
-function switchOptions(entry: DevicePowerSetupEntry | undefined, selected: string): SetupOption[] {
-  const options: SetupOption[] = (entry?.binarySwitches ?? []).map(({ id, name }) => ({ value: id, label: name }));
-  if (selected && !options.some(({ value }) => value === selected)) {
-    options.push({ value: selected, label: 'Selected switch unavailable', disabled: true });
-  }
-  const defaultLabel = entry?.defaultBinarySwitchAvailable === false ? 'No on/off control' : 'Default';
-  return [{ value: '', label: defaultLabel }, ...options];
-}
-
-const setupControl = <T extends HTMLElement = HTMLElement>(root: HTMLElement, name: string): T | null => (
-  root.querySelector<T>(`[data-setup="${name}"]`)
-);
-
-type Toggle = HTMLElement & { selected: boolean; disabled: boolean };
-type NumberField = HTMLElement & { value: string; disabled: boolean };
-
-/** One form's controls; a device page's form carries only its own part. */
-function readSetupFields(root: HTMLElement) {
-  const details = setupControl(root, 'details');
-  const save = setupControl<HTMLElement & { disabled: boolean }>(root, 'save');
-  if (!details || !save) return undefined;
-  const target = setupControl<SetupSelect>(root, 'target');
-  const targetField = setupControl(root, 'target-field');
-  const source = setupControl<SetupSelect>(root, 'source');
-  const help = setupControl(root, 'help');
-  const control = setupControl<SetupSelect>(root, 'binary');
-  const switchField = setupControl(root, 'binary-field');
-  const switchHelp = setupControl(root, 'binary-help');
-  const lastResort = setupControl(root, 'last-resort');
-  const lastResortToggle = setupControl<Toggle>(root, 'last-resort-toggle');
-  const lastResortHelp = setupControl(root, 'last-resort-help');
-  const maximum = setupControl<NumberField>(root, 'maximum');
-  return {
-    details,
-    save,
-    target: target && targetField ? { select: target, field: targetField } : undefined,
-    source: source && help ? { select: source, help } : undefined,
-    binary: control && switchField && switchHelp
-      ? { select: control, field: switchField, help: switchHelp } : undefined,
-    lastResort: lastResort && lastResortToggle && lastResortHelp && maximum
-      ? { section: lastResort, toggle: lastResortToggle, help: lastResortHelp, maximum } : undefined,
-  };
-}
-
-type SetupFields = NonNullable<ReturnType<typeof readSetupFields>>;
-
-function hasUsableSwitch(entry: DevicePowerSetupEntry | undefined, switchId: string): boolean {
-  if (switchId) return entry?.binarySwitches?.some(({ id }) => id === switchId) ?? false;
-  return entry?.defaultBinarySwitchAvailable === true;
-}
 
 function canEnableLastResort(entry: DevicePowerSetupEntry | undefined, switchId: string): boolean {
   return entry?.lastResortAvailable === true && hasUsableSwitch(entry, switchId);
@@ -293,47 +208,85 @@ function renderSourcePart(
 
 function renderSwitchPart(
   part: NonNullable<SetupFields['binary']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
-  disabled: boolean,
+  disabled: boolean, guided: boolean,
 ): void {
   const { select, field, help } = part;
-  updateOptions(select, switchOptions(entry, draft.switchId), draft.switchId);
+  updateOptions(select, switchOptions(entry, draft.switchId, guided), draft.switchId);
   select.disabled = disabled;
-  field.hidden = !draft.switchId && !entry?.binarySwitches?.length;
-  help.textContent = draft.switchId && !hasUsableSwitch(entry, draft.switchId)
-    ? 'PELS cannot use this switch right now.' : 'Choose which switch PELS uses for power limiting.';
+  field.hidden = !entry || !hasSwitchChoice(entry);
+  const switching = draft.switchId && draft.switchId !== CHOOSE_SWITCH;
+  const prompt = guided ? 'Choose what PELS can switch off when power needs to be reduced.'
+    : 'Choose which switch PELS uses for power limiting.';
+  help.textContent = switching && !hasUsableSwitch(entry, draft.switchId)
+    ? 'PELS cannot use this switch right now.' : prompt;
 }
 
-/**
- * `add` lists the devices that are not in the device list yet, behind a device
- * picker, with every part; `device` edits one part of the device whose page is open.
- */
-type SetupFormMode = 'add' | 'device';
-
-const hasSwitchChoice = (entry: DevicePowerSetupEntry): boolean => (
-  Boolean(entry.binarySwitches?.length || entry.binarySwitchId)
-);
+export type GuidedDeviceSetupActions = {
+  refresh: () => Promise<boolean>;
+  manage: (id: string, enabled: boolean) => Promise<boolean>;
+  simulation: () => boolean;
+};
 
 class DevicePowerSetupForm {
   private selectedId = '';
   private draft: SetupDraft | undefined;
   private awaitingReadback = false;
   private saving = false;
-  private candidates: readonly DevicePowerSetupEntry[] = [];
+  private reviewing = false;
+  private status = '';
 
   constructor(
     private readonly container: HTMLElement,
     private readonly fields: SetupFields,
-    private readonly mode: SetupFormMode,
+    private readonly guided?: GuidedControls,
   ) {
-    const { target, source, binary, lastResort, save } = fields;
-    if (target) target.select.onchange = () => this.select(readSelectValue(target.select));
+    const { source, binary, lastResort, save } = fields;
     if (source) source.select.onchange = () => this.edit();
     if (binary) binary.select.onchange = () => this.edit();
     if (lastResort) {
       lastResort.toggle.onchange = () => this.edit();
       lastResort.maximum.oninput = () => this.edit();
     }
-    save.onclick = () => this.save();
+    save.onclick = () => {
+      if (this.guided && !this.reviewing) {
+        this.reviewing = true;
+        this.status = '';
+        this.render();
+      } else {
+        const operation = () => this.save();
+        if (this.guided) void trackSetupSave(`wiring:${this.selectedId}`, operation);
+        else void operation();
+      }
+    };
+    if (guided) {
+      const { dismiss, dialog } = guided;
+      dismiss.onclick = () => {
+        if (this.reviewing) {
+          this.reviewing = false;
+          this.status = '';
+          this.render();
+        } else {
+          void dialog.close();
+        }
+      };
+      dialog.addEventListener('cancel', (event) => {
+        if (this.saving) event.preventDefault();
+      });
+    }
+  }
+
+  open(id: string): void {
+    const entry = findSetupEntry(id);
+    if (!this.guided || !entry || this.saving) return;
+    this.selectedId = id;
+    this.clearDraft();
+    this.status = '';
+    this.reviewing = false;
+    if (hasSwitchChoice(entry) && (!entry.configured || !hasUsableSwitch(entry, entry.binarySwitchId ?? ''))) {
+      this.draft = { ...acceptedDraft(entry), switchId: CHOOSE_SWITCH };
+    }
+    this.render();
+    void this.guided.dialog.show();
   }
 
   private updateSave(): void {
@@ -346,11 +299,10 @@ class DevicePowerSetupForm {
       lastResort.toggle.disabled = true;
       lastResort.maximum.disabled = true;
     }
-    // Adding a device saves even its default choices; otherwise Save needs a change.
-    const unchanged = (this.mode === 'device' || entry?.configured === true)
-      && sameSetupDraft(current, acceptedDraft(entry));
+    const unchanged = !this.guided && sameSetupDraft(current, acceptedDraft(entry));
+    const wiringMissing = this.guided && entry && !canReviewWiring(entry, current);
     this.fields.save.disabled = this.saving || !entry || reserved || unchanged
-      || invalidLastResort || hasUnavailableEdit(entry, current);
+      || Boolean(wiringMissing) || invalidLastResort || hasUnavailableEdit(entry, current);
   }
 
   private readCurrentDraft(entry: DevicePowerSetupEntry | undefined): SetupDraft {
@@ -361,23 +313,16 @@ class DevicePowerSetupForm {
     return this.draft ?? accepted;
   }
 
-  /** The device page shows its own device; the add card offers devices outside the list. */
-  show(deviceId: string | undefined, listedIds: ReadonlySet<string> = new Set()): void {
-    if (this.mode === 'device') {
-      if (deviceId !== this.selectedId && !this.saving) {
-        this.clearDraft();
-        this.selectedId = deviceId ?? '';
-      }
-    } else {
-      this.candidates = entries.filter((entry) => !listedIds.has(entry.id) && !companionTarget(entry));
-      if (!this.saving && !this.candidates.some(({ id }) => id === this.selectedId)) this.select('');
+  show(deviceId: string | undefined): void {
+    if (deviceId !== this.selectedId && !this.saving) {
+      this.clearDraft();
+      this.selectedId = deviceId ?? '';
     }
     this.render();
   }
 
   /** A device page's part shows only where it applies to that device. */
   private isShown(): boolean {
-    if (this.mode === 'add') return this.candidates.length > 0;
     const entry = findSetupEntry(this.selectedId);
     if (!entry || companionTarget(entry)) return false;
     if (this.fields.source) return true;
@@ -386,33 +331,65 @@ class DevicePowerSetupForm {
   }
 
   render(): void {
-    this.container.hidden = !this.isShown();
-    if (this.container.hidden) return;
+    if (!this.guided) {
+      this.container.hidden = !this.isShown();
+      if (this.container.hidden) return;
+    }
     const entry = findSetupEntry(this.selectedId);
     const current = this.readCurrentDraft(entry);
     const disabled = this.saving || !entry || Boolean(companionTarget(entry));
-    const { target, source, binary, lastResort, details } = this.fields;
-    if (target) {
-      updateOptions(target.select, [{ value: '', label: 'Select a device' }, ...this.candidates.map((candidate) => ({
-        value: candidate.id, label: formatDisplayDeviceName(candidate.name),
-      }))], entry?.id ?? '');
-      target.select.disabled = this.saving;
-    }
-    details.hidden = !entry;
-    if (source) renderSourcePart(source, entry, current, disabled);
-    if (binary) renderSwitchPart(binary, entry, current, disabled);
+    const { source, binary, lastResort, details } = this.fields;
+    details.hidden = !entry || this.reviewing;
+    if (source) this.renderSource(source, entry, current, disabled);
+    if (binary) renderSwitchPart(binary, entry, current, disabled, Boolean(this.guided));
     if (lastResort) {
       if (lastResort.toggle.selected !== current.lastResort) lastResort.toggle.selected = current.lastResort;
       if (lastResort.maximum.value !== current.maximum) lastResort.maximum.value = current.maximum;
     }
+    if (this.guided) {
+      const simulation = guidedActions?.simulation() === true;
+      renderGuidedReview(this.guided, entry, current, this.reviewing, simulation, this.status);
+      this.guided.dismiss.disabled = this.saving;
+      this.fields.save.textContent = this.primaryActionLabel();
+    }
     this.updateSave();
   }
 
-  private select(id: string): void {
-    if (this.saving) return;
-    if (id !== this.selectedId) this.clearDraft();
-    this.selectedId = id;
+  private renderSource(
+    part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
+    disabled: boolean,
+  ): void {
+    renderSourcePart(part, entry, draft, disabled);
+    if (!this.guided) return;
+    const { field } = part;
+    field.hidden = entry?.ownPowerW !== undefined && !draft.source;
+    renderManagedSockets(part.managedSockets, entry, this.saving, (id) => { void this.releaseSocket(id); });
+  }
+
+  private primaryActionLabel(): string {
+    if (!this.reviewing) return 'Review setup';
+    return this.status === WAIT_FOR_READING ? 'Check meter' : 'Add to PELS';
+  }
+
+  private async releaseSocket(id: string): Promise<void> {
+    const entry = findSetupEntry(this.selectedId);
+    if (this.saving || !entry || !guidedActions || !entry.sources.some(
+      (source) => source.id === id && source.state === 'managed',
+    )) return;
+    this.saving = true;
+    this.status = '';
     this.render();
+    try {
+      if (await guidedActions.manage(id, false) && await guidedActions.refresh()
+        && findSetupEntry(entry.id)?.sources.some((source) => source.id === id && source.state === 'selectable')) {
+        this.draft = { ...(this.draft ?? acceptedDraft(entry)), source: id };
+      } else {
+        this.status = 'Could not confirm the socket is ready to use as a meter. Try again or choose another socket.';
+      }
+    } finally {
+      this.saving = false;
+      this.render();
+    }
   }
 
   private clearDraft(): void {
@@ -433,8 +410,8 @@ class DevicePowerSetupForm {
       lastResort: lastResort ? lastResort.toggle.selected : draft.lastResort,
       maximum: lastResort ? lastResort.maximum.value : draft.maximum,
     };
-    if (source) source.help.textContent = sourceHelp(entry, this.draft.source);
-    this.updateSave();
+    this.status = '';
+    this.render();
   }
 
   private async save(): Promise<void> {
@@ -451,27 +428,50 @@ class DevicePowerSetupForm {
         this.draft = submitted;
         this.awaitingReadback = true;
       }
-      await refreshDeviceSetup();
+      if (this.guided) await this.finishGuided(entry, submitted, saved);
+      else await refreshDeviceSetup();
     } finally {
       this.saving = false;
       this.render();
     }
   }
+
+  private async finishGuided(entry: DevicePowerSetupEntry, submitted: SetupDraft, saved: boolean): Promise<void> {
+    if (!guidedActions || !this.guided) return;
+    const refreshed = await guidedActions.refresh();
+    const accepted = findSetupEntry(entry.id);
+    const readback = refreshed && accepted?.homeId === entry.homeId ? accepted : undefined;
+    if (!saved || !readback?.configured || !sameSetupDraft(submitted, acceptedDraft(readback))) {
+      this.status = describeSetupReadbackError(submitted, readback && acceptedDraft(readback));
+      return;
+    }
+    if (readback.sourceId && !readback.sourceReady) {
+      this.status = WAIT_FOR_READING;
+      return;
+    }
+    if (!await guidedActions.manage(entry.id, true)) {
+      this.status = 'Setup saved. PELS could not start managing this device yet. Try Add to PELS again.';
+      return;
+    }
+    await this.guided.dialog.close();
+  }
 }
 
 let refreshDeviceSetup: () => Promise<void> = async () => {};
+let guidedActions: GuidedDeviceSetupActions | undefined;
 const setupForms = new WeakMap<HTMLElement, DevicePowerSetupForm>();
 
 function formFor(
-  container: HTMLElement, mode: SetupFormMode, parts: readonly SetupPart[],
+  container: HTMLElement, parts: readonly SetupPart[], guided?: GuidedControls,
 ): DevicePowerSetupForm | undefined {
   const existing = setupForms.get(container);
   if (existing) return existing;
   const host = container.querySelector<HTMLElement>('[data-setup-host]') ?? container;
-  if (!setupControl(host, 'save')) buildDevicePowerSetupForm(host, container.id, parts);
-  const fields = readSetupFields(host);
+  if (!setupControl(host, 'details')) buildDevicePowerSetupForm(host, container.id, parts, !guided);
+  const fields = readSetupFields(container);
   if (!fields) return undefined;
-  const form = new DevicePowerSetupForm(container, fields, mode);
+  if (guided) fields.save.id = `${container.id}-save`;
+  const form = new DevicePowerSetupForm(container, fields, guided);
   setupForms.set(container, form);
   return form;
 }
@@ -488,28 +488,24 @@ const devicePageContainers = (): HTMLElement[] => DEVICE_PAGE_PARTS.flatMap(([id
   return container ? [container] : [];
 });
 
-/**
- * Render the "Add a device" card for setup devices missing from the device list,
- * and refresh the open device page's forms. Returns whether the card is shown.
- */
-export function renderDevicePowerSetup(
-  refresh: () => Promise<void>, visible: boolean, listedIds: ReadonlySet<string>,
-): boolean {
-  refreshDeviceSetup = refresh;
+export function renderDevicePowerSetup(actions: GuidedDeviceSetupActions): void {
+  guidedActions = actions;
+  refreshDeviceSetup = async () => { await actions.refresh(); };
   devicePageContainers().forEach((container) => setupForms.get(container)?.render());
-  const root = document.querySelector<HTMLDetailsElement>('#device-power-setup');
-  if (!root) return false;
-  const form = formFor(root, 'add', ['target', 'source', 'switch', 'lastResort']);
-  if (!form) return false;
-  form.show(undefined, listedIds);
-  if (!visible) root.hidden = true;
-  return !root.hidden;
+  const dialog = document.querySelector<MdDialog>('#device-power-setup');
+  if (dialog?.open) setupForms.get(dialog)?.render();
+}
+
+export function openGuidedDeviceSetup(id: string): void {
+  const dialog = document.querySelector<MdDialog>('#device-power-setup');
+  const guided = dialog && readGuidedControls(dialog);
+  if (guided) formFor(guided.dialog, ['source', 'switch', 'lastResort'], guided)?.open(id);
 }
 
 /** Show the setup parts for the device whose page is open, or hide them. */
 export function renderDeviceDetailPowerSetup(deviceId: string | undefined): void {
   for (const [id, part] of DEVICE_PAGE_PARTS) {
     const container = document.getElementById(id);
-    if (container) formFor(container, 'device', [part])?.show(deviceId);
+    if (container) formFor(container, [part])?.show(deviceId);
   }
 }

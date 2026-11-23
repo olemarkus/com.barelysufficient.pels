@@ -9,8 +9,8 @@ const load = async () => {
   const { state } = await import('../src/ui/state.ts');
   state.devicesLoaded = true;
   state.initialLoadComplete = true;
-  const { readSetupDeviceChoices } = await import('../src/ui/setupDevices.ts');
-  return { state, readSetupDeviceChoices };
+  const { readGuidedDeviceChoices, readSetupDeviceChoices } = await import('../src/ui/setupDevices.ts');
+  return { state, readGuidedDeviceChoices, readSetupDeviceChoices };
 };
 
 const device = (id: string, name: string, extra: Partial<SettingsUiDeviceListItem> = {}): SettingsUiDeviceListItem => ({
@@ -37,7 +37,7 @@ describe('Setup device choices', () => {
     const { readSetupDeviceChoices } = await load();
     const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
     const configuration = {
-      name: 'Relay', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      name: 'Relay', homeId: 'main', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
       lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
     };
     acceptDevicePowerSetup({ devices: [
@@ -79,4 +79,30 @@ describe('Setup device choices', () => {
     if (choices.state !== 'ready') throw new Error('Choices unavailable');
     expect(choices.devices.map(({ detail }) => detail)).toEqual(['Heater · Living room · 0 kW', 'Heater']);
   });
+});
+
+it('shows each appliance that needs setup and keeps ready devices and other homes in their own paths', async () => {
+  const { readGuidedDeviceChoices } = await load();
+  const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
+  const entry = { name: 'Setup device', homeId: 'main', configured: false, sourceId: null, sourceReady: false,
+    usedBy: null, sources: [] };
+  acceptDevicePowerSetup({ devices: [
+    { ...entry, id: 'hidden', binarySwitches: [{ id: 'onoff.heater', name: 'Heater' }] },
+    { ...entry, id: 'light', name: 'Hall light' },
+    { ...entry, id: 'listed', sourceId: 'meter' },
+    { ...entry, id: 'relay', lastResortAvailable: true },
+    { ...entry, id: 'ready' },
+    { ...entry, id: 'other-home', homeId: 'garage' },
+    { ...entry, id: 'meter', usedBy: 'listed' },
+    { ...entry, id: 'household-meter', homeId: null },
+  ] });
+  const roster = [
+    device('listed', 'Listed'), device('ready', 'Ready'),
+    device('relay', 'Unmetered relay', { powerCapable: false, capabilities: ['onoff'] }),
+  ];
+  const main = readGuidedDeviceChoices(roster, true);
+  expect(main.filter(({ suggested }) => suggested).map(({ id }) => id)).toEqual(['hidden', 'listed', 'relay']);
+  expect(main.find(({ id }) => id === 'light')?.suggested).toBe(false);
+  expect(readGuidedDeviceChoices(roster, false).map(({ id }) => id))
+    .toEqual(['light', 'hidden', 'listed', 'other-home', 'relay']);
 });

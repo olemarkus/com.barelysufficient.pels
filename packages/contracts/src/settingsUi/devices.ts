@@ -87,6 +87,8 @@ export type ChargerPhasePresetsRead =
 export type DevicePowerSetupEntry = {
   id: string;
   name: string;
+  /** Null for devices held out of setup, including the household meter. */
+  homeId: string | null;
   configured: boolean;
   sourceId: string | null;
   binarySwitchId?: string | null;
@@ -98,7 +100,12 @@ export type DevicePowerSetupEntry = {
   /** The device's own power reading in watts; absent when it reports none. */
   ownPowerW?: number;
   sourceReady: boolean;
-  sources: { id: string; name: string; state: 'selectable' | 'managed' | 'assigned' | 'unavailable' }[];
+  sources: {
+    id: string;
+    name: string;
+    state: 'selectable' | 'managed' | 'assigned' | 'unavailable';
+    measuredPowerW?: number;
+  }[];
 };
 
 export type DevicePowerSetupRead = { devices: DevicePowerSetupEntry[] };

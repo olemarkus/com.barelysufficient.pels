@@ -99,4 +99,35 @@ describe('external device power', () => {
     expect(external.read(target)).toEqual({ kind: 'external', socketId: 'socket', capability: undefined });
     expect(external.allowsWrite('socket')).toBe(false);
   });
+
+  it('offers release only for compatible same-home sockets and previews their accepted watts', () => {
+    const { inventory, settings } = setup();
+    const homeMeter = { ...socket(400), id: 'household' };
+    const phaseMeter = { ...socket(500), id: 'phase' };
+    const garage = { ...socket(600), id: 'garage-meter', zone: 'garage' };
+    const heldOut = { ...target, id: 'held' };
+    const ordinary = socket(0);
+    settings.isMainFusePhaseMeter = (id?: string) => id === 'phase';
+    settings.managedDevices = { household: true, phase: true, 'garage-meter': true };
+    const external = new ExternalDevicePower(settings, inventory, (id, zone) => (
+      id === 'held' || id === 'household' ? undefined : zone ?? undefined
+    ));
+    const devices = [target, homeMeter, phaseMeter, garage, ordinary, heldOut];
+    inventory.replaceLatestRawDevices(devices, [target]);
+    const { devices: entries } = external.readSetup();
+    expect(Object.fromEntries(entries.map(({ id, homeId }) => [id, homeId]))).toMatchObject({
+      heater: 'main', household: null, phase: null, 'garage-meter': 'garage', held: null,
+    });
+    expect(entries.find(({ id }) => id === 'heater')?.sources).toMatchObject([
+      { id: 'household', state: 'unavailable' },
+      { id: 'phase', state: 'unavailable' },
+      { id: 'garage-meter', state: 'unavailable' },
+      { id: 'socket', state: 'selectable', measuredPowerW: 0 },
+    ]);
+    settings.managedDevices.socket = true;
+    const managed = external.readSetup().devices.find(({ id }) => id === 'heater')?.sources
+      .find(({ id }) => id === 'socket');
+    expect(managed).toMatchObject({ state: 'managed' });
+    expect(managed).not.toHaveProperty('measuredPowerW');
+  });
 });

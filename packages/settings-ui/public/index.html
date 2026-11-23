@@ -142,20 +142,25 @@
           </li>
         </ul>
       </details>
-      <details id="device-power-setup" class="pels-surface-card settings-collapse device-setup-card" hidden>
-        <summary>
-          <h3 class="section-title">Add a device</h3>
-          <span class="section-hint">For a device that needs a metering socket or switch first</span>
-          <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
-        </summary>
-        <div class="collapse-content device-setup-form" data-setup-host></div>
-      </details>
       <div id="device-card-list"></div>
       <p id="empty-state" class="muted" hidden>
         No compatible devices found.
-        <span id="empty-state-device-setup">Use <strong>Add a device</strong> above to add a device with a switch or metering socket.</span>
         Choose <strong>Request support</strong> below to ask about another device.
       </p>
+      <md-dialog id="device-power-setup">
+        <div slot="headline"></div>
+        <div slot="content" class="device-setup-form">
+          <div data-setup-host></div>
+          <p data-setup-review hidden></p>
+          <p data-setup-simulation class="field__hint" hidden>Simulation mode is on. Use Start managing when you’re ready for PELS to control devices.</p>
+          <p data-setup-status class="field__hint" role="status" hidden></p>
+        </div>
+        <div slot="actions">
+          <md-text-button type="button" data-setup-dismiss>Cancel</md-text-button>
+          <md-filled-button type="button" data-setup="save">Review setup</md-filled-button>
+        </div>
+      </md-dialog>
+      <div id="device-setup-candidates" hidden></div>
       <section class="pels-surface-card missing-device-card" id="missing-device-card" aria-labelledby="missing-device-title">
         <span class="missing-device-card__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" focusable="false"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H5V5h14v14zm-8-2h2v-4h4v-2h-4V7h-2v4H7v2h4v4z" fill="currentColor"/></svg>

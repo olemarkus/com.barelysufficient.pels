@@ -134,7 +134,7 @@ describe('device detail power when running', () => {
     const { renderExpectedPowerField } = await import('../src/ui/deviceDetail/expectedPower.ts');
     const relay = buildDevice();
     const configuration = {
-      id: relay.id, name: relay.name, configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      id: relay.id, name: relay.name, homeId: 'main', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
       lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
     };
     acceptDevicePowerSetup({ devices: [configuration] });

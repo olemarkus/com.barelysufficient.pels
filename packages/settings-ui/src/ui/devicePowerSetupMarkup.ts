@@ -1,20 +1,17 @@
 // Device setup forms. A device's page shows each part in the section it
 // belongs to (power source in External sensors, the on/off switch in Setup,
-// last resort in Power limiting); the device list's "Add a device" card shows
-// every part behind a device picker. Controls are found by `data-setup`; ids
+// last resort in Power limiting); guided setup combines the parts for the
+// chosen device. Controls are found by `data-setup`; ids
 // are prefixed per form so labels and hints stay linked.
 
-export type SetupPart = 'target' | 'source' | 'switch' | 'lastResort';
+export type SetupPart = 'source' | 'switch' | 'lastResort';
 
 const PART_MARKUP: Record<SetupPart, string> = {
-  target: `
-  <div class="md-field-row" data-setup="target-field">
-    <md-filled-select data-setup="target" label="Device"></md-filled-select>
-  </div>`,
   source: `
-  <div class="md-field-row">
+  <div class="md-field-row" data-setup="source-field">
     <md-filled-select data-setup="source" label="Power source" data-describedby="help"></md-filled-select>
     <small class="field__hint" data-setup="help"></small>
+    <div data-setup="managed-sockets"></div>
   </div>`,
   switch: `
   <div class="md-field-row" data-setup="binary-field" hidden>
@@ -43,10 +40,12 @@ const SAVE_MARKUP = `
   </div>`;
 
 /** Fill `host` with a setup form for `parts`, its ids starting with `prefix`. */
-export function buildDevicePowerSetupForm(host: HTMLElement, prefix: string, parts: readonly SetupPart[]): void {
-  const target = parts.includes('target') ? PART_MARKUP.target : '';
-  const details = parts.filter((part) => part !== 'target').map((part) => PART_MARKUP[part]).join('');
-  const markup = `${target}<div class="device-setup-form__fields" data-setup="details">${details}${SAVE_MARKUP}</div>`;
+export function buildDevicePowerSetupForm(
+  host: HTMLElement, prefix: string, parts: readonly SetupPart[], withSave: boolean,
+): void {
+  const details = parts.map((part) => PART_MARKUP[part]).join('');
+  const markup = `<div class="device-setup-form__fields" data-setup="details">${details}`
+    + `${withSave ? SAVE_MARKUP : ''}</div>`;
   // Parsed from this module's static markup; the nodes upgrade when adopted into the page.
   host.replaceChildren(...new DOMParser().parseFromString(markup, 'text/html').body.childNodes);
   host.querySelectorAll<HTMLElement>('[data-setup]').forEach((element) => {
@@ -57,3 +56,45 @@ export function buildDevicePowerSetupForm(host: HTMLElement, prefix: string, par
     element.setAttribute('aria-describedby', ids.join(' '));
   });
 }
+
+export type SetupSelect = HTMLElement & {
+  value: string;
+  disabled: boolean;
+};
+
+export const setupControl = <T extends HTMLElement = HTMLElement>(root: HTMLElement, name: string): T | null => (
+  root.querySelector<T>(`[data-setup="${name}"]`)
+);
+
+type Toggle = HTMLElement & { selected: boolean; disabled: boolean };
+type NumberField = HTMLElement & { value: string; disabled: boolean };
+
+/** One form's controls; a device page's form carries only its own part. */
+export function readSetupFields(root: HTMLElement) {
+  const details = setupControl(root, 'details');
+  const save = setupControl<HTMLElement & { disabled: boolean }>(root, 'save');
+  if (!details || !save) return undefined;
+  const source = setupControl<SetupSelect>(root, 'source');
+  const sourceField = setupControl(root, 'source-field');
+  const managedSockets = setupControl(root, 'managed-sockets');
+  const help = setupControl(root, 'help');
+  const control = setupControl<SetupSelect>(root, 'binary');
+  const switchField = setupControl(root, 'binary-field');
+  const switchHelp = setupControl(root, 'binary-help');
+  const lastResort = setupControl(root, 'last-resort');
+  const lastResortToggle = setupControl<Toggle>(root, 'last-resort-toggle');
+  const lastResortHelp = setupControl(root, 'last-resort-help');
+  const maximum = setupControl<NumberField>(root, 'maximum');
+  return {
+    details,
+    save,
+    source: source && sourceField && managedSockets && help
+      ? { select: source, field: sourceField, managedSockets, help } : undefined,
+    binary: control && switchField && switchHelp
+      ? { select: control, field: switchField, help: switchHelp } : undefined,
+    lastResort: lastResort && lastResortToggle && lastResortHelp && maximum
+      ? { section: lastResort, toggle: lastResortToggle, help: lastResortHelp, maximum } : undefined,
+  };
+}
+
+export type SetupFields = NonNullable<ReturnType<typeof readSetupFields>>;
