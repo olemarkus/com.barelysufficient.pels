@@ -301,6 +301,7 @@ export class PlanRebuildThrottle {
     // reading, not a verdict: the guard judges it against the last plan's.
     if (
       posture.shortfallUnrecoverable && !posture.relayShedVerdictPending
+      && !posture.externalLoadReservationChanged
       && !this.suppressionInvalidated
       && signal.isInShortfall
       && !signal.planConvergenceActive
@@ -317,6 +318,9 @@ export class PlanRebuildThrottle {
     // shortfall, even on a steady reading. Only this fresh meter decision spends the recheck.
     if (posture.relayShedVerdictPending) {
       return this.request(signal, { ...decision, tightUnactionable: false }, 'power_sample_convergence', now);
+    }
+    if (posture.externalLoadReservationChanged) {
+      return this.request(signal, decision, 'external_load_reservation_changed', now);
     }
     if (!decision.shouldRebuild) {
       this.recordSkip(signal, decision, now);

@@ -377,6 +377,8 @@ export class PowerSamplePipeline {
           // quarter this sample completed may have raised the held hard cap.
           const heldLimits = this.deps.getHeldPowerLimits();
           const capacityGuard = this.deps.getCapacityGuard();
+          const reservations = capacityGuard.externalLoadReservations;
+          reservations.admitSample(admittedTracker, nowMs);
           feedPhaseLearning(capacityGuard, this.deps.getDeviceSurfaces(), planEngine.state.actuation, nowMs);
           feedPhasePeaks(
             capacityGuard,
@@ -396,15 +398,22 @@ export class PowerSamplePipeline {
               gridImportLimitKw: heldLimits.gridImportLimitKw,
               totalKw: requireLastTotalPowerKw(admittedTracker),
               limitKw: heldLimits.limitKw,
-              powerLimitKw: planService.computePhysicalPowerLimit(),
+              powerLimitKw: reservations.controlLimitKw(planService.computePhysicalPowerLimit()),
               shortfallThresholdKw: planEngine.computeShortfallThreshold(),
               phaseDeficitKw: planEngine.computePhaseDeficitKw(requireLastTotalPowerKw(admittedTracker)),
             },
-            resolvePlanRebuildPosture(
-              latestPlanSummary, planState,
-              publishedMeta?.powerIsMeasured === true && publishedMeta.unrelievedPhase !== null,
-              resolveMeterEvidenceAtMs(admittedTracker),
-            ),
+            {
+              ...resolvePlanRebuildPosture(
+                latestPlanSummary, planState,
+                publishedMeta?.powerIsMeasured === true && publishedMeta.unrelievedPhase !== null,
+                resolveMeterEvidenceAtMs(admittedTracker),
+              ),
+              ...(reservations.needsDecision(latestPublishedPlan?.plan.externalLoadReservation)
+                ? { externalLoadReservationChanged: true } : {}),
+            },
+          );
+          reservations.confirmReadyForSample(
+            planService.getLatestPublishedPlan()?.plan.externalLoadReservation, admittedTracker, nowMs, Date.now(),
           );
         },
         saveState: (state) => this.deps.savePowerTracker(state),

@@ -1,0 +1,41 @@
+{
+  "title": {
+    "en": "Reserve capacity for an external load"
+  },
+  "titleFormatted": {
+    "en": "Reserve [[watts]] W for [[load]] for [[minutes]] minutes"
+  },
+  "hint": {
+    "en": "Ask PELS to make room for a named load in the Main home. PELS may limit managed devices in priority order after the next power reading. Start the load when the matching Capacity for an external load is ready trigger fires."
+  },
+  "args": [
+    {
+      "name": "load",
+      "type": "text",
+      "title": {
+        "en": "External load name"
+      },
+      "placeholder": {
+        "en": "Sauna"
+      }
+    },
+    {
+      "name": "watts",
+      "type": "number",
+      "title": {
+        "en": "Power (W)"
+      },
+      "min": 1,
+      "max": 100000
+    },
+    {
+      "name": "minutes",
+      "type": "number",
+      "title": {
+        "en": "Duration (minutes)"
+      },
+      "min": 1,
+      "max": 1440
+    }
+  ]
+}

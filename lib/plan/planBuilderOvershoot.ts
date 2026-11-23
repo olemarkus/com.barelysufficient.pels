@@ -79,6 +79,7 @@ export class OvershootTracker {
     power: MeasuredPower,
     overshootDecision: SoftOvershootDecision,
     nowTs: number,
+    hasExternalReservation: boolean,
   ): void {
     const {
       context,
@@ -87,6 +88,7 @@ export class OvershootTracker {
       planDevices,
     } = facts;
     const overshootActive = overshootDecision.actionable;
+    const reservationPressure = hasExternalReservation && (power.headroom.kind === 'off' || power.headroom.kw >= 0);
     const incident = this.state.overshoot;
     const prevOvershoot = incident.isActive();
     const trackedPlanDevicesById = trackPlanDevicesForOvershoot(
@@ -116,7 +118,7 @@ export class OvershootTracker {
       );
       this.deps.structuredLog.info({
         event: 'overshoot_entered',
-        reasonCode: 'active_overshoot',
+        reasonCode: reservationPressure ? 'external_load_reservation' : 'active_overshoot',
         headroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
         ...overshootTimingFields,
         ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw),
@@ -138,7 +140,7 @@ export class OvershootTracker {
         }, { summarySource: 'plan_build', summarySourceAtMs: nowTs }),
         ...overshootDiagnostics.logFields,
       });
-      this.attributeOvershootToRecentRestores(nowTs, overshootDiagnostics);
+      if (!reservationPressure) this.attributeOvershootToRecentRestores(nowTs, overshootDiagnostics);
     } else if (!overshootActive && prevOvershoot) {
       const durationMs = incident.clear(nowTs);
       // The pending-relief latch belongs to the incident that just

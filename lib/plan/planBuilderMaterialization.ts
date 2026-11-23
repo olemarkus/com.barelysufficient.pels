@@ -21,7 +21,7 @@ import { resolveCapacityAdmissionCutKw } from './planBudget';
  * membership into per-device `plannedState`/shed actions, or decline to lift an
  * existing shed.
  */
-import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { PlanEngineState, StorageLeverState } from './planState';
@@ -44,8 +44,12 @@ import { stampSteppedFairnessHolds } from './planSteppedFairnessHold';
 import { stampSteppedStepUpHolds } from './planSteppedStepUpHold';
 import { reconcileSteppedKeepFairness } from './planSteppedKeepFairness';
 import { trackPlanStage } from './planStageTiming';
+import { ChargingInstallationPlan, attachDeferredReleaseIntents } from './planBuilderDecoration';
+import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { StandingPostureHolds } from './planBuilderSurplus';
+import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 
-type HoldPlanResult = {
+export type HoldPlanResult = {
   planDevices: DevicePlanDevice[];
   availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
@@ -62,6 +66,20 @@ export class PlanMaterializationStages {
     private readonly deps: PlanBuilderDeps,
     private readonly state: PlanEngineState,
   ) { }
+
+  // Resolve owner inputs once before decoration; objective evaluation shares the phase owner's
+  // permitted envelopes, while the execution hold gate reads the admitted task authority.
+  prepareDevicePlanningInputs(
+    devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
+  ): ChargingInstallationPlan {
+    this.state.beginChargingPhaseCycle(this.deps.getChargingPhasePlanningRead(nowTs));
+    const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
+      this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
+    ));
+    this.state.chargingPhaseCycle.setRequirements(decoration.chargingPhaseRequirements);
+    this.state.externalOffHoldLiftedIds = decoration.externalOffHoldLiftedDeviceIds;
+    return new ChargingInstallationPlan(decoration);
+  }
 
   buildPlanDevices(
     context: PlanContext,
@@ -94,7 +112,30 @@ export class PlanMaterializationStages {
     });
   }
 
-  applyHoldPlan(
+  finalizeMeasuredPlan(
+    context: PlanContext,
+    admissionPower: MeasuredPower,
+    restoreResult: RestorePlanResult,
+    sheddingPlan: SheddingPlan,
+    decoration: DeferredDecorationBundle,
+    postureHolds: StandingPostureHolds,
+  ): FinalizedPlanResult & { hold: HoldPlanResult; budgetHeldDeviceIds: ReadonlySet<string> } {
+    const hold = this.applyHoldPlan(restoreResult, sheddingPlan, context.temperatureSetpoints);
+    const reasoned = this.normalizeReasons(context, admissionPower, restoreResult, sheddingPlan, {
+      deferredHoldCauseByDeviceId: decoration.deferredHoldCauseByDeviceId,
+      postureHoldReasonById: postureHolds.reasonById,
+    }, hold);
+    const devices = attachDeferredReleaseIntents(
+      reasoned.planDevices, decoration.deferredReleaseIntentByDeviceId, true, this.deps.getShedBehavior,
+    );
+    return {
+      ...this.finalizePlan(devices, context.temperatureSetpoints, context.nowTs),
+      hold,
+      budgetHeldDeviceIds: reasoned.budgetHeldDeviceIds,
+    };
+  }
+
+  private applyHoldPlan(
     // The restore pass's result carries the devices it decided and this
     // cycle's effective timing — the same object the binary stay-off lane was
     // fed (startup fields zeroed unless capacity is the binding source) — so
@@ -111,7 +152,7 @@ export class PlanMaterializationStages {
     ));
   }
 
-  normalizeReasons(
+  private normalizeReasons(
     context: PlanContext,
     power: MeasuredPower,
     restoreResult: RestorePlanResult,

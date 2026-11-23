@@ -1030,6 +1030,46 @@
       },
       {
         "title": {
+          "en": "Capacity for an external load is ready"
+        },
+        "titleFormatted": {
+          "en": "Capacity for [[load]] is ready"
+        },
+        "hint": {
+          "en": "Fires once when a fresh meter reading confirms room for the named load under the active limits. The reservation remains in effect until it expires or a Flow releases it. Reservations end when PELS restarts."
+        },
+        "args": [
+          {
+            "name": "load",
+            "type": "text",
+            "title": {
+              "en": "External load name"
+            },
+            "placeholder": {
+              "en": "Sauna"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "load",
+            "type": "string",
+            "title": {
+              "en": "External load name"
+            }
+          },
+          {
+            "name": "watts",
+            "type": "number",
+            "title": {
+              "en": "Reserved power (W)"
+            }
+          }
+        ],
+        "id": "external_load_capacity_ready"
+      },
+      {
+        "title": {
           "en": "Operating mode changed to"
         },
         "titleFormatted": {
@@ -2034,6 +2074,30 @@
       },
       {
         "title": {
+          "en": "Release capacity reserved for an external load"
+        },
+        "titleFormatted": {
+          "en": "Release capacity reserved for [[load]]"
+        },
+        "hint": {
+          "en": "Release the reservation with this name. PELS uses its next power reading when deciding what can resume."
+        },
+        "args": [
+          {
+            "name": "load",
+            "type": "text",
+            "title": {
+              "en": "External load name"
+            },
+            "placeholder": {
+              "en": "Sauna"
+            }
+          }
+        ],
+        "id": "release_external_load_capacity"
+      },
+      {
+        "title": {
           "en": "Remove budget exemption for device"
         },
         "titleFormatted": {
@@ -2179,6 +2243,48 @@
           }
         ],
         "id": "report_stepped_load_power"
+      },
+      {
+        "title": {
+          "en": "Reserve capacity for an external load"
+        },
+        "titleFormatted": {
+          "en": "Reserve [[watts]] W for [[load]] for [[minutes]] minutes"
+        },
+        "hint": {
+          "en": "Ask PELS to make room for a named load in the Main home. PELS may limit managed devices in priority order after the next power reading. Start the load when the matching Capacity for an external load is ready trigger fires."
+        },
+        "args": [
+          {
+            "name": "load",
+            "type": "text",
+            "title": {
+              "en": "External load name"
+            },
+            "placeholder": {
+              "en": "Sauna"
+            }
+          },
+          {
+            "name": "watts",
+            "type": "number",
+            "title": {
+              "en": "Power (W)"
+            },
+            "min": 1,
+            "max": 100000
+          },
+          {
+            "name": "minutes",
+            "type": "number",
+            "title": {
+              "en": "Duration (minutes)"
+            },
+            "min": 1,
+            "max": 1440
+          }
+        ],
+        "id": "reserve_external_load_capacity"
       },
       {
         "title": {

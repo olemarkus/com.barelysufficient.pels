@@ -6,6 +6,7 @@ import {
   MockDevice,
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { ExternalLoadReservations } from '../../lib/power/externalLoadReservations';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -34,6 +35,8 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     phaseLearner = { bindStore: vi.fn(), observe: vi.fn(), learnedFootprint: vi.fn() };
     phasePeaks = { bindStore: vi.fn(), observe: vi.fn(), recent: () => [] };
     shortfallLog = { bindStore: vi.fn(), record: vi.fn(), recent: () => [] };
+
+    externalLoadReservations = new ExternalLoadReservations();
 
     public setLimit = vi.fn();
     public setSoftMargin = vi.fn();

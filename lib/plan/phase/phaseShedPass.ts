@@ -270,7 +270,7 @@ function resolveDeficits(
   credits: ReadonlyMap<PhaseName, number>,
 ): Map<PhaseName, number> {
   return new Map(phases.filter((phase) => phase.breached).map((phase) => (
-    [phase.phase, Math.max(0, phase.drawKw - phase.targetKw - (credits.get(phase.phase) ?? 0))]
+    [phase.phase, Math.max(0, -phase.roomKw - (credits.get(phase.phase) ?? 0))]
   )));
 }
 
