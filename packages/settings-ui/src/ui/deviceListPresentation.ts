@@ -1,4 +1,7 @@
-import { devicePowerSetupHint, isDeviceReservedBySetup, readLastResortSetup } from './devicePowerSetup.ts';
+import {
+  devicePowerSetupHint, devicePowerSetupWarning, isDeviceReservedBySetup, isLastResortOffered, readLastResortSetup,
+  resolveLastResortHint,
+} from './devicePowerSetup.ts';
 import {
   HOMEY_ENERGY_SETUP_REASON, HOMEY_ENERGY_SETUP_DOCS_URL, needsHomeyEnergySetup,
 } from '../../../shared-domain/src/homeyEnergySetup.ts';
@@ -82,23 +85,26 @@ export const appendDeviceStateChips = (container: HTMLElement, device: SettingsU
   });
 };
 
-export function resolveDevicePowerSetupPresentation(device: SettingsUiDeviceListItem) {
+export function resolveDevicePowerSetupPresentation(device: SettingsUiDeviceListItem, managed: boolean) {
   const lastResort = readLastResortSetup(device.id);
+  const lastResortHint = resolveLastResortHint(lastResort, managed);
   const needsHomeyEnergy = needsHomeyEnergySetup(device);
   return {
     offersHomeyEnergy: needsHomeyEnergy && !lastResort,
     showLimitReason: !needsHomeyEnergy && !lastResort,
-    managedHint: devicePowerSetupHint(device.id) ?? lastResort?.hint,
-    lastResortHint: lastResort?.hint,
+    managedHint: devicePowerSetupHint(device.id) ?? devicePowerSetupWarning(device.id) ?? lastResortHint,
+    lastResortHint,
   };
 }
 
-export const createPowerSetupWarning = (deviceName: string): HTMLElement => {
+export const createPowerSetupWarning = (deviceId: string, deviceName: string): HTMLElement => {
+  const reason = isLastResortOffered(deviceId)
+    ? `${HOMEY_ENERGY_SETUP_REASON}, or set up last-resort control in Device setup` : HOMEY_ENERGY_SETUP_REASON;
   const button = document.createElement('md-icon-button');
   button.className = 'pels-device-card__power-warning';
   button.setAttribute('type', 'button');
-  button.setAttribute('aria-label', `Power use needs setup for ${deviceName}. ${HOMEY_ENERGY_SETUP_REASON}.`);
-  setTooltip(button, HOMEY_ENERGY_SETUP_REASON);
+  button.setAttribute('aria-label', `Power use needs setup for ${deviceName}. ${reason}.`);
+  setTooltip(button, reason);
   button.dataset.tooltipGuide = HOMEY_ENERGY_SETUP_DOCS_URL;
   button.dataset.tooltipGuideLabel = 'Set up power use in Homey';
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

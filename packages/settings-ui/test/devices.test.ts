@@ -97,10 +97,42 @@ describe('devices render — redesign shell', () => {
       buildDevice({ ...switchDevice, id: 'ordinary', name: 'Ordinary' }),
     ]);
 
-    const relay = document.querySelector('[data-device-id="relay"]');
-    expect(relay?.textContent).toContain('Last resort.');
-    expect(relay?.querySelector('.pels-device-card__power-warning')).toBeNull();
+    const relay = () => document.querySelector('[data-device-id="relay"]');
+    expect(relay()?.textContent).toContain('Turn on Managed by PELS to use last-resort control.');
+    expect(relay()?.querySelector('.pels-device-card__power-warning')).toBeNull();
     expect(document.querySelector('[data-device-id="ordinary"] .pels-device-card__power-warning')).not.toBeNull();
+
+    state.managedMap = { relay: true };
+    renderDevices([buildDevice({ ...switchDevice, id: 'relay', name: 'Relay' })]);
+    expect(relay()?.textContent).toContain('Last resort.');
+  });
+
+  it('points an unmetered relay to last-resort control and names a missing socket or thermostat', async () => {
+    const { renderDevices } = await importDevicesInRedesign();
+    const { state } = await import('../src/ui/state.ts');
+    const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
+    state.initialLoadComplete = true;
+    state.managedMap = { heater: true };
+    const base = { configured: true, sourceId: null, sourceReady: true, usedBy: null, sources: [] };
+    acceptDevicePowerSetup({ devices: [
+      { ...base, id: 'relay', name: 'Relay', lastResortAvailable: true, defaultBinarySwitchAvailable: true },
+      { ...base, id: 'heater', name: 'Heater', sourceId: 'gone', sourceReady: false },
+      { ...base, id: 'load', name: 'Load', thermostatId: 'gone', thermostats: [] },
+    ] });
+    const switchDevice = { deviceType: 'onoff' as const, deviceClass: 'socket', powerCapable: false,
+      binaryControllable: true, capabilities: ['onoff'] };
+    renderDevices([
+      buildDevice({ ...switchDevice, id: 'relay', name: 'Relay' }),
+      buildDevice({ ...switchDevice, id: 'heater', name: 'Heater' }),
+      buildDevice({ ...switchDevice, id: 'load', name: 'Load' }),
+    ]);
+
+    expect(document.querySelector('[data-device-id="relay"] .pels-device-card__power-warning')
+      ?.getAttribute('aria-label')).toContain('or set up last-resort control in Device setup');
+    expect(document.querySelector('[data-device-id="heater"]')?.textContent)
+      .toContain('Metering socket unavailable. Choose another power source in Device setup.');
+    expect(document.querySelector('[data-device-id="load"]')?.textContent)
+      .toContain('External thermostat unavailable. Check it in Homey or change it in Device setup.');
   });
 
   it('renders one surface card per device class with managed count chip', async () => {
