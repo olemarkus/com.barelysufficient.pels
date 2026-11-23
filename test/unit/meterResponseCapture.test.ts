@@ -12,7 +12,7 @@ const T0 = 1_800_000_000_000;
 const STEP_MS = 5_000;
 /** The command goes out after the capture has watched the meter for longer than the quiet period. */
 const DISPATCH_AT = T0 + PRIOR_QUIET_MS + 61_000;
-const METER = 'meter-1';
+const STREAM = 0;
 
 type DeviceFixture = {
   id: string;
@@ -37,6 +37,7 @@ type Scene = {
   devices: (atMs: number) => DeviceFixture[];
   generationKw?: (atMs: number) => number;
   stepMs?: (atMs: number) => number;
+  streamGeneration?: (atMs: number) => number;
   command?: DeviceCommand;
   /** Extra writes, by when they go out. */
   otherCommands?: ReadonlyArray<{ atMs: number; command: DeviceCommand }>;
@@ -100,7 +101,7 @@ const playScene = (scene: Scene): { outcomes: MeterResponseOutcome[]; deviceRead
     const readAtMs = atMs;
     capture.recordSample({
       powerW: (scene.houseKw(atMs) + ripple(atMs)) * 1000,
-      meterDeviceId: METER,
+      streamGeneration: scene.streamGeneration?.(atMs) ?? STREAM,
       ...(generationKw === undefined ? {} : { generationW: generationKw * 1000 }),
     }, atMs, () => {
       deviceReads += 1;
@@ -143,6 +144,13 @@ describe('MeterResponseCapture', () => {
       resolutionMs: STEP_MS,
       changeKw: expect.closeTo(2, 1),
     }]);
+  });
+
+  it('discards an open measurement on a stream discontinuity', () => {
+    const outcomes = runScene(turnOnScene(DISPATCH_AT + 20_000, {
+      streamGeneration: (atMs) => (atMs < DISPATCH_AT + 10_000 ? STREAM : STREAM + 1),
+    }));
+    expect(droppedReason(outcomes)).toBe('meter_changed');
   });
 
   it('times a lone switch-off by the device\'s own direct reading, which agrees with the home', () => {
@@ -191,7 +199,7 @@ describe('MeterResponseCapture', () => {
       // The lamp's write settles once the capture already reads devices again.
       if (atMs === T0 + 330_000) capture.commandSettled(lamp, { requested: false }, atMs);
       const readAtMs = atMs;
-      capture.recordSample({ powerW: (3 + ripple(atMs)) * 1000, meterDeviceId: METER }, atMs, () => (
+      capture.recordSample({ powerW: (3 + ripple(atMs)) * 1000, streamGeneration: STREAM }, atMs, () => (
         surfaces([{ id: 'heater' }], readAtMs)
       ));
     }
@@ -220,6 +228,13 @@ describe('MeterResponseCapture', () => {
   it('drops a watch when production moves in the window', () => {
     expect(droppedReason(runScene(turnOnScene(DISPATCH_AT + 20_000, {
       generationKw: (atMs) => (atMs >= DISPATCH_AT + 15_000 ? 1.5 : 2),
+    })))).toBe('generation_moved');
+  });
+
+  it('rejects a response when a later production observation explains the net move', () => {
+    expect(droppedReason(runScene(turnOnScene(DISPATCH_AT + 20_000, {
+      // The production poll catches up after net power already crossed the threshold.
+      generationKw: (atMs) => (atMs >= DISPATCH_AT + 35_000 ? 0 : 2),
     })))).toBe('generation_moved');
   });
 
@@ -315,7 +330,7 @@ describe('MeterResponseCapture', () => {
     const surfaces = datedSurfaces();
     for (let atMs = T0; atMs <= DISPATCH_AT; atMs += STEP_MS) {
       const readAtMs = atMs;
-      capture.recordSample({ powerW: (3 + ripple(atMs)) * 1000, meterDeviceId: METER }, atMs, () => (
+      capture.recordSample({ powerW: (3 + ripple(atMs)) * 1000, streamGeneration: STREAM }, atMs, () => (
         surfaces([{ id: 'heater' }], readAtMs)
       ));
     }

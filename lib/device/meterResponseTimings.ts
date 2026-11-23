@@ -16,7 +16,7 @@
 import type { ActuatorOutcome, DeviceCommand } from '../actuator/deviceCommand';
 import type { DeviceCommandWitness } from '../actuator/commandWitness';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
-import type { MeterPowerSample } from '../ports/homeMeterReadings';
+import type { WholeHomePowerObservation } from '../ports/homeMeterReadings';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import type { UserdataDatabase } from '../store/userdataDatabase';
@@ -191,10 +191,12 @@ export class MeterResponseTimings implements DeviceCommandWitness {
   }
 
   /**
-   * One of Main's whole-home readings from a meter. Main's devices are read
+   * One of Main's whole-home observations. Main's devices are read
    * through `readDevices` only when the capture needs them.
    */
-  recordWholeHomeSample(sample: MeterPowerSample, atMs: number, readDevices: () => readonly DeviceSurfaces[]): void {
+  recordWholeHomeSample(
+    sample: WholeHomePowerObservation, atMs: number, readDevices: () => readonly DeviceSurfaces[],
+  ): void {
     this.contained(() => this.capture.recordSample(sample, atMs, readDevices));
   }
 

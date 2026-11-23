@@ -56,6 +56,15 @@ export type MeterPowerSample = {
   importCounter?: MeterImportCounter;
 };
 
+/** Whole-home power as seen by the response timing recorder. */
+export type WholeHomePowerObservation = {
+  readonly powerW: number;
+  /** Production known at the time of the observation. */
+  readonly generationW?: number;
+  /** Opaque continuity value. A different value starts a new observation window. */
+  readonly streamGeneration: number;
+};
+
 /**
  * One poll's meters, captured once, and where each reading goes. Recording only
  * after the poll is known current is what lets a poll be discarded as a unit:
