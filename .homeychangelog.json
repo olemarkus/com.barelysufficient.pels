@@ -892,5 +892,8 @@
   },
   "3.49.0": {
     "en": "A mode schedule can now have devices ready by its time: heaters with a higher temperature in the new mode start early, so they reach it when the mode changes. Smart tasks shows the plan and when each heater starts. A thermostat that PELS cannot limit without a power reading from the device now says so on its card.\n\nFixed: While a smart task is replanned, its device stays as it is instead of switching off. Prices from Power by the Hour and charger control stay in place while PELS starts up."
+  },
+  "3.50.0": {
+    "en": "A heater without its own power meter can now use a metering socket for its power: open the device and choose the socket under External sensors. A device with a separate heating switch, such as a spa, can be limited through that switch: choose it under Setup. An on/off relay with no power reading can be turned off as a last resort when there is nothing else left to limit: turn it on under Power limiting and enter the most it can draw. A device that needs a socket or switch before PELS can use it is added with Add a device in Devices.\n\nFixed: A device removed from Homey no longer keeps its metering socket reserved. Support reports show which chargers share an installation."
   }
 }
