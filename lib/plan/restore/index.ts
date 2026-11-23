@@ -62,7 +62,6 @@ export function applyRestorePlan(
 ): RestorePlanResult {
   const { sheddingActive, guardInShortfall } = sheddingPlan;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
-  const swapLedger = state.swapLedger;
   const timing = buildRestoreTiming(state, power.headroom, deps, planDevices, context.nowTs);
   const effectiveTiming = resolveEffectiveTiming(timing, context);
   // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
@@ -87,7 +86,7 @@ export function applyRestorePlan(
   const laneServes = (target: DevicePlanDevice): boolean => (
     restoresPlannable || (exemptRestoresPlannable && target.budgetExempt)
   );
-  swapLedger.reconcile(deviceMap, timing.nowTs, laneServes, deps.structuredLog);
+  state.swapLedger.reconcile(deviceMap, timing.nowTs, laneServes, deps.structuredLog);
   // A startup reservation's window counts only cycles in which a restore lane runs: one with no
   // restore holds nobody back.
   const headroomReserves = resolveHeadroomReserves(
@@ -112,7 +111,7 @@ export function applyRestorePlan(
     state,
     deps,
     deviceMap,
-    swapLedger,
+    swapLedger: state.swapLedger,
     timing: effectiveTiming,
     restoredThisCycle,
     storageHandedBack,

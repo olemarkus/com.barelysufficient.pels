@@ -239,6 +239,13 @@ const holdsItsBookings = (
 ): boolean => task.reservationEligible && completion.kind !== 'accepted_near_target'
   && !reservationSuppressed;
 
+const suppressesReservations = (
+  evaluation: TaskEvaluation,
+  task: OrderedDeferredObjective,
+  readers: TaskEvaluationReaders,
+): boolean => evaluation.usesAvailablePower === true
+  || readers.isReservationSuppressed(task.deviceId, task.objective.deadlineAtMs);
+
 // A task that no longer governs its device reaches the tasks below as the
 // device's maximum step, not also as the bookings it settled. Only a device with
 // no known maximum (one missing through grace) keeps its settled bookings.
@@ -348,8 +355,7 @@ export const buildDeferredObjectiveTaskResults = (
       evaluation, readers.getStallClassification, readers.hasObservedTask(deviceId, objective),
     );
     const evaluationResult = withAcceptedCompletion(evaluation, acceptedCompletion);
-    const reservationSuppressed = evaluationResult.usesAvailablePower === true
-      || readers.isReservationSuppressed(deviceId, objective.deadlineAtMs);
+    const reservationSuppressed = suppressesReservations(evaluationResult, task, readers);
     const holdsBookings = holdsItsBookings(task, acceptedCompletion, reservationSuppressed);
     const governs = holdsBookings && governsItsDevice(task, evaluationResult, nowMs);
     if (evaluationResult.planning.kind !== 'awaiting_plan' && reservesItsBookings(holdsBookings, governs, device)) {
