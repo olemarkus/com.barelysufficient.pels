@@ -249,9 +249,9 @@ export class HomeBatteryAppActions {
     if (binding === undefined) return { kind: 'unavailable', reasonCode: 'binding_unavailable' };
     const devices = this.getDevices();
     const recovery = binding.resolveLegacyTarget(device, devices);
-    const inventory = this.inventory;
     if (recovery.kind !== 'confirmation_required') return recovery;
-    if (inventory.kind !== 'read' || isKeyMissing(this.access) || this.access.status().state === 'permission_denied') {
+    const inventory = this.cardInventory.last();
+    if (!inventory || isKeyMissing(this.access) || this.access.status().state === 'permission_denied') {
       return { kind: 'confirmation_required', candidates: [] };
     }
     return {
