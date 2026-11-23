@@ -425,3 +425,5 @@ If a relay has no device power reading, open **Devices** and find it under **Dev
 PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
 
 PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after a restart, turn the relay back on to resume control.
+
+If the relay starts reporting its own power, PELS still turns back on a relay it switched off, then stops last-resort control for it. Turn off **Turn off as a last resort** to let PELS limit it like any other metered device.

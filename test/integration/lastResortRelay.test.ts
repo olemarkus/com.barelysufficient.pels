@@ -70,6 +70,27 @@ describe('last-resort relay control', () => {
     )).toMatchObject({ deviceId: 'healthy' });
   });
 
+  it('keeps authority over an OFF relay that starts reporting power, never over a running one', () => {
+    const ctx = createAppContextMock({
+      deviceControlSettings: deviceControlSettingsFixture({ lastResortDevices: { relay: 4000 } }),
+      resolveManagedState: () => true,
+    });
+    const now = Date.now();
+    const relay = (on: boolean, measuredPowerKw: number) => toPlanDevice(ctx, withDeviceConfiguration({
+      id: 'relay', name: 'relay', deviceClass: 'socket', available: true, canSetControl: true, targets: [],
+      binaryCapabilityId: 'onoff', binaryControl: { on }, measuredPowerKw,
+      binaryControlObservation: {
+        valid: true as const, capabilityId: 'onoff', observedCapabilityIds: ['onoff'],
+        observedValue: on, observedAtMs: now, source: 'snapshot_refresh' as const,
+      },
+    }));
+
+    const off = relay(false, 0);
+    expect(off.lastResort).toMatchObject({ maximumW: 4000, observedOffAtMs: now });
+    expect(off.control.commandAuthority).toBe(true);
+    expect(relay(true, 1.5).control.commandAuthority).toBe(false);
+  });
+
   it('waits for ordinary limiting and alternates cuts only after a fresh meter verdict', () => {
     const pending = createPendingBinaryCommandStore({}, fixedConfirmationWindows);
     const now = Date.now();

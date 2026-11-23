@@ -144,11 +144,16 @@ function resolveLastResortSetup(source: PlanInputProjectionSource, device: ToPla
   };
 }
 
+// A reading that appears while the relay is off cannot strand PELS's own OFF:
+// the restore still reserves the full maximum. A running relay with a reading
+// is no longer an unmetered relay, so PELS leaves it alone.
 function resolveLastResortControl(managed: boolean, source: PlanInputProjectionSource, device: ToPlanDeviceInput) {
+  const observation = device.binaryControlObservation;
   return {
     managed,
-    commandAuthority: managed && device.canSetControl === true && device.binaryControlObservation !== undefined
-      && device.binaryControl?.on === device.binaryControlObservation.observedValue && !hasObservedMeasuredPower(device)
+    commandAuthority: managed && device.canSetControl === true && observation !== undefined
+      && device.binaryControl?.on === observation.observedValue
+      && (observation.observedValue === false || !hasObservedMeasuredPower(device))
       && !source.deviceControl.devicePowerSources?.[device.id],
   };
 }
