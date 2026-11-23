@@ -1,4 +1,5 @@
 import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
+import { readLastResortSetup } from './devicePowerSetup.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { DeviceDetailFocus } from './cardActivation.ts';
 import { readHomeMembership, refreshHomeScopeAndNotify } from './homeScope.ts';
@@ -114,6 +115,8 @@ const setupDeviceHint = (
   if (isHomeBatteryClassKey(device.deviceClass)) {
     return manageability.supportsPower ? resolveBatteryManagedHint() : BATTERY_WATCH_MANAGED_HINT;
   }
+  const lastResort = readLastResortSetup(device.id);
+  if (lastResort) return lastResort.hint;
   if (needsHomeyEnergySetup(device)) return HOMEY_ENERGY_SETUP_REASON;
   if (manageability.supportsPower) return 'PELS may lower or pause this device.';
   return manageability.supportsTemperature

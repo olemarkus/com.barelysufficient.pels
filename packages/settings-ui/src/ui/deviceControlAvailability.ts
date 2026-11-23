@@ -68,6 +68,18 @@ export const getManagedDisabledReason = (
   return null;
 };
 
+export const getCapacityTitle = (params: {
+  isLoadingComplete: boolean;
+  supportsPower: boolean;
+  isManaged: boolean;
+}, lastResortHint?: string): string => {
+  const { isLoadingComplete, supportsPower, isManaged } = params;
+  if (!isLoadingComplete) return 'Loading...';
+  if (!supportsPower) return lastResortHint ?? `Power-limit control (needs ${POWER_READING_REMEDY})`;
+  if (isManaged) return 'Power-limit control';
+  return 'Power-limit control (requires Managed by PELS)';
+};
+
 export const getLimitDisabledReason = (params: {
   isLoadingComplete: boolean;
   supportsPower: boolean;

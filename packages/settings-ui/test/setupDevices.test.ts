@@ -33,6 +33,27 @@ describe('Setup device choices', () => {
     expect(choices.devices[0].hint).not.toContain('temperature');
   });
 
+  it('describes active and dormant last-resort devices without recommending Homey Energy', async () => {
+    const { readSetupDeviceChoices } = await load();
+    const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
+    const configuration = {
+      name: 'Relay', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
+    };
+    acceptDevicePowerSetup({ devices: [
+      { ...configuration, id: 'active' },
+      { ...configuration, id: 'dormant', binarySwitchId: 'onoff.unavailable' },
+    ] });
+    const relay = { powerCapable: false, capabilities: ['onoff'] };
+    const choices = readSetupDeviceChoices([device('active', 'Active relay', relay), device('dormant', 'Dormant relay', relay)]);
+    if (choices.state !== 'ready') throw new Error('Choices unavailable');
+    expect(choices.devices.map(({ hint }) => hint)).toEqual([
+      'Last resort. PELS can turn it off after limiting other devices.',
+      'Review last-resort control in Device setup.',
+    ]);
+    expect(choices.devices.every(({ disabled }) => !disabled)).toBe(true);
+  });
+
   it('keeps the same order when a newly managed device moves first in the API payload', async () => {
     const { state, readSetupDeviceChoices } = await load();
     const alpha = device('a', 'Alpha');

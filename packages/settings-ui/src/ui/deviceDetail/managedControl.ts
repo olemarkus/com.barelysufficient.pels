@@ -43,15 +43,25 @@ export const renderManagedControl = (
     deviceDetailManaged.disabled = !controlState.canManageDevice || reservedSocket
       || (!controlState.isManaged && setupHint !== null);
   }
-  const managedHint = document.getElementById('device-detail-managed-hint');
-  if (managedHint) {
-    managedHint.textContent = setupHint ?? resolveManagedHint(device, controlState);
-    managedHint.dataset.tone = device && needsHomeyEnergySetup(device) ? 'warning' : 'neutral';
-  }
-  const setup = device ? readDevicePowerSetupDetail(device.id) : undefined;
-  renderPowerSetupDetail(setup);
-  renderHomeyEnergySetupLink(needsHomeyEnergySetup(device) && !setup?.socketPending);
+  renderManagedPowerSetup(device, resolveManagedHint(device, controlState), setupHint);
 };
+
+function renderManagedPowerSetup(
+  device: SettingsUiDeviceView | null, defaultHint: string, setupHint: string | null,
+): void {
+  const setup = device ? readDevicePowerSetupDetail(device.id) : undefined;
+  const offersHomeyEnergy = needsHomeyEnergySetup(device) && !setup?.lastResort;
+  renderManagedSetupHint(setupHint ?? setup?.lastResort?.hint ?? defaultHint, offersHomeyEnergy);
+  renderPowerSetupDetail(setup);
+  renderHomeyEnergySetupLink(offersHomeyEnergy && !setup?.socketPending);
+}
+
+function renderManagedSetupHint(text: string, warning: boolean): void {
+  const hint = document.getElementById('device-detail-managed-hint');
+  if (!hint) return;
+  hint.textContent = text;
+  hint.dataset.tone = warning ? 'warning' : 'neutral';
+}
 
 function renderHomeyEnergySetupLink(visible: boolean): void {
   const energySetupLink = document.getElementById('device-detail-homey-energy-setup');
@@ -70,9 +80,15 @@ function renderPowerSetupDetail(setup: ReturnType<typeof readDevicePowerSetupDet
   const switchFallback = setup?.switchMissing ? 'Selected on/off control unavailable' : '';
   const socketText = setup?.socket ? `Metering socket is ${setup.socket}` : socketFallback;
   const switchText = setup?.switchName ? `On/off control uses ${setup.switchName}` : switchFallback;
-  setPowerSetupSummary('device-detail-metering-socket', socketText);
-  setPowerSetupSummary('device-detail-on-off-control', switchText);
-  if (summary) summary.hidden = !socketText && !switchText;
+  const maximum = setup?.lastResort?.maximumW;
+  const lastResortText = maximum === undefined ? '' : `Maximum power ${maximum.toLocaleString()} W`;
+  const rows = [
+    ['device-detail-last-resort-maximum', lastResortText],
+    ['device-detail-metering-socket', socketText],
+    ['device-detail-on-off-control', switchText],
+  ] as const;
+  rows.forEach(([id, text]) => setPowerSetupSummary(id, text));
+  if (summary) summary.hidden = !rows.some(([, text]) => text);
   if (edit) edit.hidden = !setup?.editable;
 }
 

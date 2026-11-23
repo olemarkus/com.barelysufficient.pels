@@ -129,6 +129,24 @@ describe('device detail power when running', () => {
     expect(sourceLine().textContent).toContain('no reading for this device yet');
   });
 
+  it('keeps Power when running available only when the last-resort configuration is dormant', async () => {
+    const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
+    const { renderExpectedPowerField } = await import('../src/ui/deviceDetail/expectedPower.ts');
+    const relay = buildDevice();
+    const configuration = {
+      id: relay.id, name: relay.name, configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
+    };
+    acceptDevicePowerSetup({ devices: [configuration] });
+    renderExpectedPowerField(relay);
+    expect(row().hidden).toBe(true);
+
+    acceptDevicePowerSetup({ devices: [{ ...configuration, binarySwitchId: 'onoff.unavailable' }] });
+    renderExpectedPowerField(relay);
+    expect(row().hidden).toBe(false);
+    expect(field().value).toBe('1000');
+  });
+
   it('names a measured source without inviting a correction', async () => {
     await openDetailFor(buildDevice({ expectedPowerKw: 2.1, expectedPowerSource: 'measured-peak' }));
 

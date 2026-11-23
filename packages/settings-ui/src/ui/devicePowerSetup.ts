@@ -33,6 +33,18 @@ export const devicePowerSetupHint = (deviceId: string): string | null => {
   return null;
 };
 
+export function readLastResortSetup(deviceId: string) {
+  const entry = findSetupEntry(deviceId);
+  if (entry?.lastResortMaximumW === undefined || entry.sourceId) return undefined;
+  if (canEnableLastResort(entry, entry.binarySwitchId ?? '')) {
+    return {
+      hint: 'Last resort. PELS can turn it off after limiting other devices.',
+      maximumW: entry.lastResortMaximumW,
+    };
+  }
+  return { hint: 'Review last-resort control in Device setup.' };
+}
+
 export const readDevicePowerSetupDetail = (deviceId: string) => {
   const entry = findSetupEntry(deviceId);
   if (!entry) return undefined;
@@ -40,6 +52,7 @@ export const readDevicePowerSetupDetail = (deviceId: string) => {
   const selectedSwitch = entry.binarySwitches?.find(({ id }) => id === entry.binarySwitchId);
   return {
     editable: entry.usedBy === null,
+    lastResort: readLastResortSetup(deviceId),
     socket: socket ? formatDisplayDeviceName(socket.name) : undefined,
     switchName: selectedSwitch?.name,
     socketPending: Boolean(entry.sourceId && !entry.sourceReady),
@@ -221,16 +234,20 @@ function readSetupFields(root: HTMLDetailsElement) {
 
 type SetupFields = NonNullable<ReturnType<typeof readSetupFields>>;
 
-function hasDraftSwitch(entry: DevicePowerSetupEntry | undefined, draft: SetupDraft): boolean {
-  if (draft.switchId) return entry?.binarySwitches?.some(({ id }) => id === draft.switchId) ?? false;
+function hasUsableSwitch(entry: DevicePowerSetupEntry | undefined, switchId: string): boolean {
+  if (switchId) return entry?.binarySwitches?.some(({ id }) => id === switchId) ?? false;
   return entry?.defaultBinarySwitchAvailable === true;
+}
+
+function canEnableLastResort(entry: DevicePowerSetupEntry | undefined, switchId: string): boolean {
+  return entry?.lastResortAvailable === true && hasUsableSwitch(entry, switchId);
 }
 
 function syncLastResort(fields: SetupFields, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft): boolean {
   const { lastResort, lastResortToggle, maximum, lastResortHelp } = fields;
   const offered = entry?.lastResortAvailable === true || entry?.lastResortMaximumW !== undefined;
-  const usableSwitch = hasDraftSwitch(entry, draft);
-  const canEnable = entry?.lastResortAvailable === true && usableSwitch;
+  const usableSwitch = hasUsableSwitch(entry, draft.switchId);
+  const canEnable = canEnableLastResort(entry, draft.switchId);
   const maximumIsValid = isLastResortMaximumW(Number(draft.maximum));
   const displayed = offered && !draft.source;
   lastResort.hidden = !displayed;
@@ -255,7 +272,7 @@ function hasUnavailableEdit(entry: DevicePowerSetupEntry, draft: SetupDraft): bo
   const sourceUnavailable = Boolean(draft.source && draft.source !== entry.sourceId
     && !entry.sources.some(({ id, state }) => id === draft.source && state === 'selectable'));
   const switchUnavailable = Boolean(draft.switchId && draft.switchId !== entry.binarySwitchId
-    && !hasDraftSwitch(entry, draft));
+    && !hasUsableSwitch(entry, draft.switchId));
   return sourceUnavailable || switchUnavailable;
 }
 
@@ -320,7 +337,7 @@ class DevicePowerSetupForm {
     fields.control.disabled = disabled;
     fields.help.textContent = sourceHelp(entry, current.source);
     fields.switchField.hidden = !current.switchId && !entry?.binarySwitches?.length;
-    fields.switchHelp.textContent = current.switchId && !hasDraftSwitch(entry, current)
+    fields.switchHelp.textContent = current.switchId && !hasUsableSwitch(entry, current.switchId)
       ? 'PELS cannot use this switch right now.' : 'Choose which switch PELS uses for power limiting.';
     if (fields.lastResortToggle.selected !== current.lastResort) fields.lastResortToggle.selected = current.lastResort;
     if (fields.maximum.value !== current.maximum) fields.maximum.value = current.maximum;

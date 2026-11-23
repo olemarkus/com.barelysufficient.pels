@@ -4,6 +4,7 @@ import type {
 } from '../../../../contracts/src/types.ts';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { expectedPowerSourceLine } from '../../../../shared-domain/src/expectedPowerCopy.ts';
+import { readLastResortSetup } from '../devicePowerSetup.ts';
 import { isSteppedLoadProfileActive } from '../deviceControlProfiles.ts';
 import { supportsPowerDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
@@ -44,7 +45,8 @@ const INVALID_EXPECTED_POWER_MESSAGE = 'Power when running must be a positive nu
 export const supportsExpectedPowerDevice = (
   device: SettingsUiDeviceDetailItem | null | undefined,
 ): boolean => (
-  supportsPowerDevice(device) && !isSteppedLoadProfileActive(device)
+  Boolean(device && supportsPowerDevice(device) && !isSteppedLoadProfileActive(device)
+    && readLastResortSetup(device.id)?.maximumW === undefined)
 );
 
 type ExpectedPowerFieldEntry =

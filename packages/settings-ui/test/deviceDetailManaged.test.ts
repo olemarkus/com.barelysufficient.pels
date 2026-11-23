@@ -45,6 +45,10 @@ const buildDom = () => {
         <md-switch id="device-detail-managed"></md-switch>
         <small id="device-detail-managed-hint"></small>
         <a id="device-detail-homey-energy-setup" hidden></a>
+        <div id="device-detail-power-setup-summary" hidden>
+          <div id="device-detail-last-resort-maximum" hidden></div>
+        </div>
+        <md-text-button id="device-detail-open-power-setup" hidden></md-text-button>
         <md-switch id="device-detail-controllable"></md-switch>
         <md-switch id="device-detail-price-opt"></md-switch>
         <md-switch id="device-detail-budget-exempt"></md-switch>
@@ -171,6 +175,45 @@ describe('device detail managed state saves', () => {
     expect(link?.hidden).toBe(true);
     expect(hint?.textContent).not.toBe(HOMEY_ENERGY_SETUP_HINT);
     expect(hint?.dataset.tone).toBe('neutral');
+  });
+
+  it('shows active maximum power and leaves dormant last-resort setup editable', async () => {
+    mockDeviceDetailCollaborators();
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock());
+    const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+    const relay = { deviceClass: 'socket', deviceType: 'onoff' as const, binaryControllable: true,
+      targets: [], capabilities: ['onoff'], powerCapable: false };
+    state.latestDevices = [buildDevice('active', 'Active relay', relay), buildDevice('dormant', 'Dormant relay', relay)];
+    const configuration = {
+      name: 'Relay', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
+    };
+    acceptDevicePowerSetup({ devices: [
+      { ...configuration, id: 'active' },
+      { ...configuration, id: 'dormant', binarySwitchId: 'onoff.unavailable' },
+    ] });
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('active');
+    await flushPromises();
+    const hint = document.getElementById('device-detail-managed-hint');
+    const maximum = document.getElementById('device-detail-last-resort-maximum');
+    const energyLink = document.getElementById('device-detail-homey-energy-setup');
+    expect(hint?.textContent).toMatch(/^Last resort/);
+    expect(hint?.dataset.tone).toBe('neutral');
+    expect(maximum?.textContent).toBe(`Maximum power ${(4500).toLocaleString()} W`);
+    expect(maximum?.hidden).toBe(false);
+    expect(energyLink?.hidden).toBe(true);
+
+    openDeviceDetail('dormant');
+    await flushPromises();
+    expect(hint?.textContent).toBe('Review last-resort control in Device setup.');
+    expect(maximum?.hidden).toBe(true);
+    expect(energyLink?.hidden).toBe(true);
+    expect(document.getElementById('device-detail-open-power-setup')?.hidden).toBe(false);
   });
 
   it('keeps the currently open device panel stable when an earlier managed save resolves late', async () => {

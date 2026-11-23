@@ -2,7 +2,9 @@ import type { MdFilledSelect } from '@material/web/select/filled-select.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DevicePowerSetupEntry } from '../../contracts/src/settingsUi/devices.ts';
 import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../shared-domain/src/settings/settingsKeys.ts';
-import { acceptDevicePowerSetup, openDevicePowerSetup, renderDevicePowerSetup } from '../src/ui/devicePowerSetup.ts';
+import {
+  acceptDevicePowerSetup, openDevicePowerSetup, readLastResortSetup, renderDevicePowerSetup,
+} from '../src/ui/devicePowerSetup.ts';
 
 const write = vi.hoisted(() => vi.fn());
 vi.mock('../src/ui/deviceDetail/settingsWrite.ts', () => ({
@@ -144,6 +146,11 @@ describe('Device setup', () => {
     renderDevicePowerSetup(refresh, true);
     expect(root.open).toBe(true);
     expect(control.value).toBe('onoff.heater');
+  });
+
+  it('gives the selected metering socket precedence over a stale last-resort maximum', () => {
+    acceptDevicePowerSetup({ devices: [device({ lastResortMaximumW: 4500 })] });
+    expect(readLastResortSetup('heater')).toBeUndefined();
   });
 
   it('requires an available selected switch and offers removal if a saved switch goes away', () => {

@@ -81,6 +81,28 @@ describe('devices render — redesign shell', () => {
     return import('../src/ui/devices.ts');
   };
 
+  it('uses the last-resort description instead of the Homey Energy warning for a configured relay', async () => {
+    const { renderDevices } = await importDevicesInRedesign();
+    const { state } = await import('../src/ui/state.ts');
+    const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
+    state.initialLoadComplete = true;
+    acceptDevicePowerSetup({ devices: [{
+      id: 'relay', name: 'Relay', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
+      lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
+    }] });
+    const switchDevice = { deviceType: 'onoff' as const, deviceClass: 'socket', powerCapable: false,
+      binaryControllable: true, capabilities: ['onoff'] };
+    renderDevices([
+      buildDevice({ ...switchDevice, id: 'relay', name: 'Relay' }),
+      buildDevice({ ...switchDevice, id: 'ordinary', name: 'Ordinary' }),
+    ]);
+
+    const relay = document.querySelector('[data-device-id="relay"]');
+    expect(relay?.textContent).toContain('Last resort.');
+    expect(relay?.querySelector('.pels-device-card__power-warning')).toBeNull();
+    expect(document.querySelector('[data-device-id="ordinary"] .pels-device-card__power-warning')).not.toBeNull();
+  });
+
   it('renders one surface card per device class with managed count chip', async () => {
     const { renderDevices } = await importDevicesInRedesign();
     const { state } = await import('../src/ui/state.ts');
