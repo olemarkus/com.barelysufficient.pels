@@ -164,14 +164,14 @@ function buildLastResortBinaryCommand(dev: PlanDevice): PlannedBinaryCommand | u
   };
 }
 
-/** The binary intent projected from a finalized device decision. */
 const binarySwitchAuthority = (dev: PlanDevice): { binarySwitchGeneration?: number } => (
   dev.binarySwitchGeneration === undefined ? {} : { binarySwitchGeneration: dev.binarySwitchGeneration }
 );
 
+/** The binary intent projected from a finalized device decision. */
 export const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
   if (dev.waitingForTaskPlan && dev.plannedState !== 'shed') return undefined;
-  if (dev.externalThermostatRole || isSteppedLoadDevice(dev)) return undefined;
+  if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
   if (dev.lastResort) return buildLastResortBinaryCommand(dev);
   // A device can remain visible before power setup, or after losing its power
