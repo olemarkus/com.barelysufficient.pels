@@ -128,11 +128,11 @@ describe('devices render — redesign shell', () => {
     ]);
 
     expect(document.querySelector('[data-device-id="relay"] .pels-device-card__power-warning')
-      ?.getAttribute('aria-label')).toContain('or set up last-resort control in Device setup');
+      ?.getAttribute('aria-label')).toContain('or turn on last-resort control under Power and control');
     expect(document.querySelector('[data-device-id="heater"]')?.textContent)
-      .toContain('Metering socket unavailable. Choose another power source in Device setup.');
+      .toContain('Metering socket unavailable. Choose another power source under Power and control.');
     expect(document.querySelector('[data-device-id="load"]')?.textContent)
-      .toContain('External thermostat unavailable. Check it in Homey or change it in Device setup.');
+      .toContain('External thermostat unavailable. Check it in Homey or change it under Power and control.');
   });
 
   it('renders one surface card per device class with managed count chip', async () => {

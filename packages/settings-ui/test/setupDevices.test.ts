@@ -49,7 +49,7 @@ describe('Setup device choices', () => {
     if (choices.state !== 'ready') throw new Error('Choices unavailable');
     expect(choices.devices.map(({ hint }) => hint)).toEqual([
       'Last resort. PELS can turn it off after limiting other devices.',
-      'Review last-resort control in Device setup.',
+      'Review last-resort control under Power and control.',
     ]);
     expect(choices.devices.every(({ disabled }) => !disabled)).toBe(true);
   });

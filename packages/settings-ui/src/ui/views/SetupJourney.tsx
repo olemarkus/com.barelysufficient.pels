@@ -55,7 +55,7 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
     ))}
     {props.choices.state === 'ready' && props.choices.devices.length === 0 && (
       <p>No suitable devices found. {props.deviceSetupAvailable
-        ? <>Use <strong>Device setup</strong> above to add a device with a switch or metering socket.</>
+        ? <>Use <strong>Add a device</strong> above to add a device with a switch or metering socket.</>
         : 'Check the devices available in Homey.'}</p>
     )}
   </div>

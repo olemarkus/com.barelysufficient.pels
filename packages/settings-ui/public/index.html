@@ -142,59 +142,18 @@
           </li>
         </ul>
       </details>
-      <details id="device-power-setup" class="pels-surface-card" hidden>
-        <summary>Device setup</summary>
-        <p class="field__hint">Measure a device with a metering socket, choose its on/off switch, link a thermostat, or let PELS turn off an unmetered relay as a last resort.</p>
-        <div class="field">
-          <md-filled-select id="device-power-setup-target" label="Device"></md-filled-select>
-        </div>
-        <div class="field">
-          <md-filled-select id="device-power-setup-source" label="Power source"
-            aria-describedby="device-power-setup-help"></md-filled-select>
-          <small class="field__hint" id="device-power-setup-help"></small>
-        </div>
-        <label class="field" id="device-power-setup-binary-field" hidden>
-          <md-filled-select id="device-power-setup-binary" label="On/off control"
-            aria-describedby="device-power-setup-binary-help"></md-filled-select>
-          <small class="field__hint" id="device-power-setup-binary-help"></small>
-        </label>
-        <div class="field" id="device-power-setup-thermostat-field" hidden>
-          <md-filled-select id="device-power-setup-thermostat" label="External thermostat"
-            aria-describedby="device-power-setup-thermostat-help device-power-setup-thermostat-preview"></md-filled-select>
-          <small class="field__hint" id="device-power-setup-thermostat-help">
-            Connect the thermostat to this device directly or through Homey Flows. In Homey, change the target on the
-            thermostat’s tile and check that it controls this device before turning on Power-limit control.
-          </small>
-          <small class="field__hint" id="device-power-setup-thermostat-preview"></small>
-          <small class="field__hint" id="device-power-setup-thermostat-status" aria-live="polite"></small>
-        </div>
-        <md-dialog id="device-power-setup-thermostat-confirm">
-          <div slot="headline">Remove last-resort control?</div>
-          <form slot="content" id="device-power-setup-thermostat-confirm-form" method="dialog">
-            <p class="muted">Saving this thermostat setup removes last-resort control.
-              An off device stays off. Turn it on in Homey when you are ready.</p>
-          </form>
-          <div slot="actions">
-            <md-text-button form="device-power-setup-thermostat-confirm-form" value="cancel">Cancel</md-text-button>
-            <md-text-button form="device-power-setup-thermostat-confirm-form" value="confirm">Save device setup</md-text-button>
-          </div>
-        </md-dialog>
-        <div class="field" id="device-power-setup-last-resort" hidden>
-          <label class="setting-row">
-            <span>Turn off as a last resort</span>
-            <md-switch id="device-power-setup-last-resort-toggle"
-              aria-label="Turn off as a last resort"></md-switch>
-          </label>
-          <small class="field__hint" id="device-power-setup-last-resort-help" aria-live="polite"></small>
-          <md-filled-text-field id="device-power-setup-maximum" type="number" min="1" step="1"
-            label="Maximum power" suffix-text="W" aria-describedby="device-power-setup-last-resort-help"></md-filled-text-field>
-        </div>
-        <md-filled-tonal-button type="button" id="device-power-setup-save">Save device setup</md-filled-tonal-button>
+      <details id="device-power-setup" class="pels-surface-card settings-collapse device-setup-card" hidden>
+        <summary>
+          <h3 class="section-title">Add a device</h3>
+          <span class="section-hint">For a device that needs a metering socket or switch first</span>
+          <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
+        </summary>
+        <div class="collapse-content device-setup-form" data-setup-host></div>
       </details>
       <div id="device-card-list"></div>
       <p id="empty-state" class="muted" hidden>
         No compatible devices found.
-        <span id="empty-state-device-setup">Use <strong>Device setup</strong> above to add a device with a switch or metering socket.</span>
+        <span id="empty-state-device-setup">Use <strong>Add a device</strong> above to add a device with a switch or metering socket.</span>
         Choose <strong>Request support</strong> below to ask about another device.
       </p>
       <section class="pels-surface-card missing-device-card" id="missing-device-card" aria-labelledby="missing-device-title">
@@ -1685,7 +1644,7 @@
           <details class="settings-collapse detail-collapse" id="device-detail-setup-disclosure">
             <summary>
               <h3 class="section-title">Setup</h3>
-              <span class="section-hint">Management, control model, and wiring</span>
+              <span class="section-hint">Management, power and control, and wiring</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -1740,14 +1699,10 @@
                     <small class="field__hint" id="device-detail-managed-hint">Include this device in modes and optimization plans.</small>
                   </span>
                 </label>
-                <div id="device-detail-power-setup-summary" class="field__hint" hidden>
-                  <div id="device-detail-metering-socket" hidden></div>
-                  <div id="device-detail-on-off-control" hidden></div>
-                  <div id="device-detail-external-thermostat" hidden></div>
-                  <div id="device-detail-thermostat-manual-restart" hidden></div>
-                  <div id="device-detail-last-resort-maximum" hidden></div>
+                <div id="device-detail-power-setup" class="device-setup-form" hidden>
+                  <h4 class="device-setup-form__title">Power and control</h4>
+                  <div data-setup-host></div>
                 </div>
-                <md-text-button type="button" id="device-detail-open-power-setup" hidden>Edit device setup</md-text-button>
                 <a class="plan-card__quiet-link" id="device-detail-homey-energy-setup" hidden>Set up power use in Homey</a>
 
 

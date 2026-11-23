@@ -465,7 +465,9 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
   if (!target) return;
   const journey = currentSetupJourney();
-  const deviceSetupAvailable = renderDevicePowerSetup(refreshDevices, journey !== 'goals');
+  const deviceSetupAvailable = renderDevicePowerSetup(
+    refreshDevices, journey !== 'goals', new Set(devices.map(({ id }) => id)),
+  );
   emptyState.hidden = true;
   if (journey === 'devices') {
     renderSetupDevices(devices, target, deviceSetupAvailable);
