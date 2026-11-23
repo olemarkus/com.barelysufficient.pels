@@ -889,5 +889,8 @@
   },
   "3.48.2": {
     "en": "Fixed: A heater that is already running for a smart task keeps running while PELS replans the task at the turn of the hour, instead of switching off for a few minutes. Changing a device's price adjustment or how PELS limits it applies at once with fewer reads from Homey. Diagnostics reports now name the Homey requests and device reads that PELS repeats often."
+  },
+  "3.49.0": {
+    "en": "A mode schedule can now have devices ready by its time: heaters with a higher temperature in the new mode start early, so they reach it when the mode changes. Smart tasks shows the plan and when each heater starts. A thermostat that PELS cannot limit without a power reading from the device now says so on its card.\n\nFixed: While a smart task is replanned, its device stays as it is instead of switching off. Prices from Power by the Hour and charger control stay in place while PELS starts up."
   }
 }
