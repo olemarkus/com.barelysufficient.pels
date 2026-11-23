@@ -955,6 +955,18 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
 });
 
 describe('finalizePlanDevices', () => {
+  it.each([true, false])('only commands a waiting shed setpoint when it releases demand (%s)', (releasesDemand) => {
+    const device = buildPlanDevice({
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity }, waitingForTaskPlan: true,
+      currentTemperature: 21, currentTarget: 20, plannedTarget: 22, shedAction: 'set_temperature',
+    });
+    const setpoints = new Map([[device.id, fixtureTemperatureSetpointsEntry({
+      shed: fixtureSetpointLimit(22, releasesDemand),
+    })]]);
+    const [result] = finalizePlanDevices([device], setpoints, new Set()).planDevices;
+    expect(result?.targetCommand?.desired).toBe(releasesDemand ? 22 : undefined);
+  });
+
   it('requires finalized devices to carry a structured reason contract', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',

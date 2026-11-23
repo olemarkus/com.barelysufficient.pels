@@ -3924,6 +3924,21 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
   });
 
+  it.each(['low', 'max'])('only applies a waiting step shed below the live %s rung', async (reportedStepId) => {
+    const profile = { steps: [...steppedProfile.steps, { id: 'medium', planningPowerW: 2000 }] };
+    const { executor, desiredSteppedTrigger } = buildExecutor(
+      undefined, steppedSnapshot({ steppedLoadProfile: profile, reportedStepId }),
+    );
+
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
+      currentState: 'on', plannedState: 'shed', shedAction: 'set_step', waitingForTaskPlan: true,
+      steppedLoadProfile: profile, reportedStepId: 'max', selectedStepId: 'max',
+      desiredStepId: 'medium', plannedShedStepId: 'medium',
+    })));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(reportedStepId === 'max' ? 1 : 0);
+  });
+
   it.each([false, true])('records shed actuation for a stepped reduction only under capacity pressure (non-capacity hold: %s)', async (nonCapacityHold) => {
     const state = createPlanEngineState();
     const snapshot = [

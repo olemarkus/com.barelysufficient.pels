@@ -65,7 +65,7 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
     controlAdapter: dev.controlAdapter,
     plannedShedTarget: toPlannedShedTarget(dev.plannedShedTargetKind),
     desired,
-    stepDirection: held || unknownLimitPreparation ? 'down_only' : 'any',
+    stepDirection: resolveStepDirection(dev, held || unknownLimitPreparation !== null),
     // The binary axis is attached ONLY when this cycle's decision moves it.
     // `resolveDesiredOn` answers `null` for the steady / step-up / step-down
     // transitions, where the plan has something to say about the step and
@@ -74,6 +74,12 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
     transition,
   };
   return withBinaryDrive(intent, desiredOn);
+}
+
+function resolveStepDirection(device: PlanDevice, holding: boolean): PlannedSteppedCommand['stepDirection'] {
+  // A shed target picked against the planning rung can be above the live report.
+  const waitingStepShed = device.waitingForTaskPlan && device.plannedShedTargetKind === 'step';
+  return holding || waitingStepShed ? 'down_only' : 'any';
 }
 
 function canCommandSteppedDevice(dev: SteppedPlanDevice): boolean {

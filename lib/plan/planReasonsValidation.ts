@@ -8,7 +8,7 @@ import {
 import { sortByPriorityAsc } from './planSort';
 import { resolvePlannedShedTargetKind } from './planActionMaterialization';
 import { resolveNormalizedShedFloors, shedFloorCFor } from './normalizedShedFloor';
-import { unlimitedSetpointAddsDemand } from './planTemperatureSetpoints';
+import { temperatureSetpointsFor, unlimitedSetpointAddsDemand } from './planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
 export type PlanReasonPairValidationIssue = {
@@ -258,6 +258,12 @@ function formatPlanReasonPairIssue(issue: PlanReasonPairValidationIssue): string
     + `plannedState=${issue.plannedState}, reasonCode=${issue.reasonCode}, allowed=${allowed}${required}`;
 }
 
+function wouldWriteDemandWhileWaiting(device: DevicePlanDevice, setpoints: TemperatureSetpointsByDevice): boolean {
+  if (!device.waitingForTaskPlan || device.plannedShedTargetKind !== 'target_value') return false;
+  const { shed } = temperatureSetpointsFor(setpoints, device.id);
+  return shed.action !== 'set_temperature' || !shed.releasesDemand;
+}
+
 export function finalizePlanDevices(
   planDevices: DevicePlanDevice[],
   /** This build's resolved setpoints — the restore classification below reads
@@ -286,9 +292,11 @@ export function finalizePlanDevices(
     const finalized = { ...dev, plannedShedTargetKind: resolvePlannedShedTargetKind(dev) };
     return {
       ...finalized,
-      targetCommand: buildPlannedTargetCommand(finalized, resolveRecordRestoreOnTargetApply(
-        dev, temperatureSetpoints, normalizedShedFloorCByDevice, wasShedLastBuild,
-      )),
+      targetCommand: wouldWriteDemandWhileWaiting(finalized, temperatureSetpoints)
+        ? undefined
+        : buildPlannedTargetCommand(finalized, resolveRecordRestoreOnTargetApply(
+          dev, temperatureSetpoints, normalizedShedFloorCByDevice, wasShedLastBuild,
+        )),
     };
   });
   const sorted = sortByPriorityAsc(stamped);
