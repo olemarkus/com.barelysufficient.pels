@@ -1,14 +1,16 @@
 Das Auto muss morgens geladen sein, die Wärmepumpe soll das Haus warm halten, am besten dann, wenn der Strom günstig ist. PELS plant das Laden deines Autos und die Heizzeiten anhand deiner Strompreise und steuert unter anderem Wallboxen von Easee, Zaptec, Alfen, Peblar, Wallbox und Zappi, Wärmepumpen, Thermostate und Warmwasserspeicher über die Steuerungsfunktionen ihrer Homey-Apps. Du legst fest, welche Geräte Vorrang haben, auch wenn sie von verschiedenen Herstellern stammen.
 
-Öffne nach der Installation Homey > Mehr > Apps > PELS > Einstellungen, um die Einrichtung abzuschließen. Hier wählst du Geräte aus, richtest PELS ein und siehst, was die App macht.
+Öffne nach der Installation Homey > Mehr > Apps > PELS > Einstellungen, um die Einrichtung abzuschließen.
 
-In Smart tasks legst du zum Beispiel fest, dass das Auto um 7 Uhr zu 80 % geladen oder das Wohnzimmer bei deiner Rückkehr warm sein soll. PELS wählt dafür die günstigsten Stunden. Ist der Akkustand in Homey verfügbar, berücksichtigt PELS ihn bei der Ladeplanung. Mit Schedules kannst du Smart tasks erstellen oder den Modus zu festen Zeiten wechseln, einmalig oder an ausgewählten Tagen.
+Bei einem kompatiblen Gerät ohne eigene Leistungsmessung kannst du die Leistung über eine smarte Steckdose messen. Hat es einen separaten Schalter für die Heizung, kannst du diesen zur Steuerung auswählen.
+
+In Smart tasks legst du zum Beispiel fest, dass das Auto um 7 Uhr zu 80 % geladen oder das Wohnzimmer bei deiner Rückkehr warm sein soll. PELS bevorzugt günstigere Zeiten, in denen genug Leistung verfügbar ist. Ist der Akkustand in Homey verfügbar, berücksichtigt PELS ihn bei der Ladeplanung. Mit Schedules kannst du Smart tasks erstellen oder den Modus zu festen Zeiten wechseln, einmalig oder an ausgewählten Tagen. PELS kann schon vor einem geplanten Moduswechsel mit dem Heizen beginnen.
 
 Die Preise kommen aus Homey Energy, Power by the Hour oder deinen Flows. In der gewählten Preisquelle hinterlegte Tarifzeiten und Netzentgelte gehen in die Planung ein. Für Heizung und Kühlung berücksichtigt PELS auch Viertelstundenpreise.
 
 Erzeugt deine PV-Anlage mehr Strom, als das Haus gerade verbraucht, nutzt PELS den Überschuss fürs Warmwasser, zum Vorheizen oder Kühlen und zum Laden deines Autos. Die Ladeleistung wird an den Solarüberschuss angepasst. PELS berücksichtigt außerdem den Preis für die Einspeisung, auch wenn er negativ ist.
 
-Ein Heimspeicher wie Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy oder Anker SOLIX nimmt den Solarüberschuss auf, den die anderen Geräte nicht nutzen. PELS reduziert die Ladeleistung des Speichers, wenn ein Gerät mit höherer Priorität Leistung braucht, und entlädt ihn, um die eingestellte Leistungsgrenze einzuhalten. Wenn du es einschaltest, kann PELS gespeicherte Energie auch verkaufen, sobald das deine Kosten senkt. Mehrere Speicher plant PELS gemeinsam in deiner Prioritätsreihenfolge, sodass kein Speicher einen anderen lädt.
+PELS verteilt den Solarüberschuss in der von dir gewählten Reihenfolge auf Geräte und Heimspeicher. Ein Speicher kann auch Energie abgeben, um die Leistungsgrenze einzuhalten. Unterstützt werden unter anderem Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy und Anker SOLIX. Wenn du es einschaltest, kann PELS gespeicherte Energie auch verkaufen, sobald das deine Kosten senkt. Für Speicher, deren Ladeplanung du PELS überlässt, erstellt die App einen gemeinsamen Plan, sodass kein Speicher einen anderen lädt.
 
 Mit Grid import limit reduziert PELS bei hohem Netzbezug die Ladeleistung, passt die Heizung an oder pausiert Geräte mit niedrigerer Priorität. Sobald wieder Leistung verfügbar ist, laufen sie weiter. Die Messwerte für das Haus kommen aus Homey Energy, einem Lesegerät für den Stromzähler oder einem Flow.
 
