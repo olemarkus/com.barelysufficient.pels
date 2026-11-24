@@ -26,7 +26,8 @@ import {
   homeScopedSettingsKey,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
-import { isHomeBatteryDeviceId, resolveManagedState, state } from './state.ts';
+import { resolveManagedState, state } from './state.ts';
+import { chargingPriorityGroup, orderModePriorityDevices, rankDisplayedModePriorities } from './modePriorityDisplay.ts';
 import { renderPriorityBatteryNote } from './deviceDetail/batterySection.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
@@ -219,7 +220,7 @@ const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number 
   return tempInput;
 };
 
-const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
+const buildPriorityRow = (device: SettingsUiDeviceListItem, sharedPriority: boolean) => {
   const row = document.createElement('li');
   row.className = 'device-row draggable mode-row';
   row.dataset.deviceId = device.id;
@@ -230,9 +231,9 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   nameText.className = 'mode-row__name-text';
   nameText.textContent = formatDisplayDeviceName(device.name);
   name.appendChild(nameText);
-  const installation = device.controlAdapter?.chargingInstallation;
-  if (installation) {
-    row.dataset.priorityGroup = installation.mainId;
+  const group = chargingPriorityGroup(device);
+  if (group !== undefined) row.dataset.priorityGroup = group;
+  if (sharedPriority) {
     const shared = document.createElement('span');
     shared.className = 'field__hint mode-row__shared-priority';
     shared.textContent = 'Shares priority with the other chargers on this installation.';
@@ -274,13 +275,16 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   priorityEmpty.hidden = true;
 
   const editingMode = state.editingMode || DEFAULT_MODE_NAME;
-  const groups = new Map(managedDevices.map(({ id, controlAdapter }) => [
-    id, controlAdapter?.chargingInstallation?.mainId,
-  ]));
-  const order = state.modePriorityCatalog.getOrder(editingMode, managedDevices.map(({ id }) => id),
-    isHomeBatteryDeviceId, isLastResortConfigured, (id) => groups.get(id));
-  [...managedDevices].sort((a, b) => order.getPriority(a.id) - order.getPriority(b.id))
-    .forEach((d) => priorityList.appendChild(buildPriorityRow(d)));
+  const listedMembers = new Map<string, number>();
+  for (const device of managedDevices) {
+    const group = chargingPriorityGroup(device);
+    if (group !== undefined) listedMembers.set(group, (listedMembers.get(group) ?? 0) + 1);
+  }
+  for (const device of orderModePriorityDevices(state.modePriorityCatalog, editingMode, managedDevices)) {
+    const group = chargingPriorityGroup(device);
+    const sharesPriority = group !== undefined && (listedMembers.get(group) ?? 0) > 1;
+    priorityList.appendChild(buildPriorityRow(device, sharesPriority));
+  }
 
   initPriorityDrag(refreshPriorityBadges, () => renderPriorities(state.latestDevices));
   refreshPriorityBadges();
@@ -318,12 +322,8 @@ export const renameMode = async (oldName: string, newName: string) => {
 
 const refreshPriorityBadges = () => {
   const rows = getPriorityRows();
-  const groupRanks = new Map<string, number>();
-  rows.forEach((row, index) => {
-    const group = row.dataset.priorityGroup;
-    const rank = (group && groupRanks.get(group)) || index + 1;
-    if (group) groupRanks.set(group, rank);
-    const badge = row.querySelector<HTMLElement>('.priority-badge');
+  rankDisplayedModePriorities(rows, (row) => row.dataset.priorityGroup).forEach(({ item, rank }) => {
+    const badge = item.querySelector<HTMLElement>('.priority-badge');
     if (badge) badge.textContent = `#${rank}`;
   });
   // Said for the order on screen, so a drag that moves a battery updates it.

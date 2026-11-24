@@ -1041,7 +1041,7 @@ correct it, not as a settled fact. Reading `expectedPowerSource` to say where th
 number came from is its one sanctioned use — no surface may branch on it to
 decide behaviour.
 
-### Device setup on the device page and the "Add a device" card
+### Device setup on the device page and in Needs setup
 
 Each device setup choice sits in the device-page section it belongs to, with its
 own **Save**, which stays off until something changes:
@@ -1060,9 +1060,15 @@ section, for example `Metering socket unavailable. Choose another power source
 under External sensors.` or `Review last-resort control under Power limiting.`
 For an on/off device without power information, the Managed hint adds what it
 can use, such as `Or choose a metering socket under External sensors, or turn on
-last-resort control under Power limiting.` A device that is not in the device
-list yet is set up from the **Add a device** card at the top of Devices, which
-shows every choice, lists only those devices and hides when there are none.
+last-resort control under Power limiting.`
+
+In **Devices** and during first-run setup, **Needs setup** suggests devices
+with setup choices. Use **Find another device** to search by name, then select
+**Set up**. After choosing the power source and on/off control, select
+**Review setup**, then **Add to PELS**. If the socket is already managed,
+**Use only as a meter** turns off its management so it can measure the device.
+If the meter has yet to report, select **Check meter** after its first reading.
+These dialog actions apply to the selected device and its meter.
 
 ### "Check the power for <Device>" — the power-figure recommendation
 

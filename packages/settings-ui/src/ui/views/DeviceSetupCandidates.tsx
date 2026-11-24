@@ -9,12 +9,16 @@ export const DeviceSetupCandidates = ({ devices, onOpen }: {
 }) => {
   const [query, setQuery] = useState('');
   const search = query.trim().toLocaleLowerCase();
+  const canSearch = devices.some(({ suggested }) => !suggested);
   const shown = search ? devices.filter(({ name }) => name.toLocaleLowerCase().includes(search))
     : devices.filter(({ suggested }) => suggested);
   return (
     <section class="pels-surface-card device-setup-candidates" aria-labelledby="device-setup-candidates-title">
       <h3 class="plan-card__title" id="device-setup-candidates-title">Needs setup</h3>
-      {devices.some(({ suggested }) => !suggested) && (
+      {canSearch && !search && shown.length === 0 && (
+        <p class="pels-card-supporting">Search for a device to set up.</p>
+      )}
+      {canSearch && (
         <MdFilledTextField label="Find another device" value={query}
           onInput={(event: Event) => setQuery((event.currentTarget as HTMLInputElement).value)} />
       )}

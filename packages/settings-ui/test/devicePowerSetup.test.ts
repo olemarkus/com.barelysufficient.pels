@@ -2,6 +2,7 @@ import type { MdDialog } from '@material/web/dialog/dialog.js';
 import type { MdFilledSelect } from '@material/web/select/filled-select.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DevicePowerSetupEntry } from '../../contracts/src/settingsUi/devices.ts';
+import { HOMEY_ENERGY_SETUP_REASON } from '../../shared-domain/src/homeyEnergySetup.ts';
 import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
   acceptDevicePowerSetup, openGuidedDeviceSetup, readLastResortSetup,
@@ -62,7 +63,9 @@ const setup = () => {
   vi.spyOn(dialog, 'close').mockImplementation(async () => { dialog.open = false; });
   const refresh = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
   const manage = vi.fn<(id: string, enabled: boolean) => Promise<boolean>>().mockResolvedValue(true);
-  const actions = { refresh, manage, simulation: () => true };
+  const managedDisabledReason = vi.fn<() => string | null>().mockReturnValue(null);
+  const offersHomeyEnergy = vi.fn().mockReturnValue(false);
+  const actions = { refresh, manage, managedDisabledReason, offersHomeyEnergy, simulation: () => true };
   renderDevicePowerSetup(actions);
   openGuidedDeviceSetup('spa');
   const save = query<HTMLButtonElement>('save');
@@ -109,7 +112,7 @@ describe('Guided device setup', () => {
   });
 
   it('keeps wiring and retries without activating while a meter has no reading', async () => {
-    const { dialog, refresh, manage, save } = setup();
+    const { actions, dialog, refresh, manage, save } = setup();
     review(save);
     refresh.mockImplementation(async () => {
       accept(configured);
@@ -118,6 +121,10 @@ describe('Guided device setup', () => {
     save.click();
     await vi.waitFor(() => expect(dialog.textContent).toContain('Wait for its first power reading'));
     expect(manage).not.toHaveBeenCalled();
+    expect(save.textContent).toBe('Check meter');
+    accept({ ...configured, sources: [] });
+    renderDevicePowerSetup(actions);
+    expect(save.disabled).toBe(false);
     refresh.mockImplementation(async () => {
       accept({ ...configured, sourceReady: true });
       return true;
@@ -125,6 +132,92 @@ describe('Guided device setup', () => {
     save.click();
     await vi.waitFor(() => expect(dialog.open).toBe(false));
     expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows why management was refused and retries without rewriting confirmed wiring', async () => {
+    const { actions, dialog, refresh, manage, save } = setup();
+    review(save);
+    refresh.mockImplementation(async () => {
+      accept({ ...configured, sourceReady: true });
+      return true;
+    });
+    manage.mockResolvedValueOnce(false);
+    actions.managedDisabledReason.mockReturnValue('Managed requires built-in device control to be enabled in Homey.');
+    save.click();
+    await vi.waitFor(() => expect(dialog.querySelector('[data-setup-status]')?.textContent)
+      .toBe('Managed requires built-in device control to be enabled in Homey.'));
+    expect(save.textContent).toBe('Add to PELS');
+    expect(write).toHaveBeenCalledTimes(2);
+    save.click();
+    await vi.waitFor(() => expect(dialog.open).toBe(false));
+    expect(manage).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks the reviewed meter after an outside change and keeps the original choice for a deliberate retry', async () => {
+    const { actions, dialog, refresh, manage, save } = setup();
+    review(save);
+    refresh.mockImplementation(async () => {
+      accept(configured);
+      return true;
+    });
+    save.click();
+    await vi.waitFor(() => expect(save.textContent).toBe('Check meter'));
+    accept({ ...configured, sourceId: null });
+    renderDevicePowerSetup(actions);
+    refresh.mockImplementation(async () => {
+      accept({ ...configured, sourceId: null });
+      return true;
+    });
+    save.click();
+    await vi.waitFor(() => expect(dialog.textContent).toContain('Could not confirm the power source.'));
+    expect(query<MdFilledSelect>('source').value).toBe('socket');
+    expect(manage).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves a newly released socket after going back from a confirmed meter', async () => {
+    const other = { id: 'second', name: 'Other meter', state: 'managed' as const };
+    const sources = [...device().sources, other];
+    accept({ sources });
+    const { dialog, refresh, manage, save } = setup();
+    review(save);
+    refresh.mockImplementation(async () => {
+      accept({ ...configured, sources });
+      return true;
+    });
+    save.click();
+    await vi.waitFor(() => expect(save.textContent).toBe('Check meter'));
+    dialog.querySelector<HTMLButtonElement>('[data-setup-dismiss]')?.click();
+    const releasedSources = [...device().sources, { ...other, state: 'selectable' as const }];
+    refresh.mockImplementationOnce(async () => {
+      accept({ ...configured, sources: releasedSources });
+      return true;
+    });
+    query('managed-sockets').querySelector<HTMLElement>('md-text-button')?.click();
+    await vi.waitFor(() => expect(query<MdFilledSelect>('source').value).toBe('second'));
+    save.click();
+    refresh.mockImplementation(async () => {
+      accept({ ...configured, sourceId: 'second', sourceReady: true, sources: releasedSources });
+      return true;
+    });
+    save.click();
+    await vi.waitFor(() => expect(dialog.open).toBe(false));
+    expect(write.mock.calls.map(([request]) => request.key)).toEqual([
+      DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES, DEVICE_POWER_SOURCES,
+    ]);
+    expect(manage.mock.calls).toEqual([['second', false], ['spa', true]]);
+  });
+
+  it('offers Homey Energy as another source of power information for a supported relay', () => {
+    const { actions } = setup();
+    actions.offersHomeyEnergy.mockReturnValue(true);
+    renderDevicePowerSetup(actions);
+    expect(query('help').textContent).toContain('Choose a metering socket');
+    expect(query('help').textContent).toContain(HOMEY_ENERGY_SETUP_REASON);
+    select('source', 'socket');
+    expect(query('help').textContent).not.toContain('Energy used when on');
   });
 
   it('shows zero watts from a device with its own meter when reviewing setup', () => {

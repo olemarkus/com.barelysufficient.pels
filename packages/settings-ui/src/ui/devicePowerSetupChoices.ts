@@ -1,5 +1,6 @@
 import type { DevicePowerSetupEntry } from '../../../contracts/src/settingsUi/devices.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import { HOMEY_ENERGY_SETUP_REASON } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import type { SetupDraft } from './devicePowerSetupWrites.ts';
 
 export const CHOOSE_SWITCH = 'pels-choose-switch';
@@ -27,7 +28,9 @@ export function sourceOptions(entry: DevicePowerSetupEntry | undefined, selected
   return [{ value: '', label: ownLabel }, ...options];
 }
 
-export function sourceHelp(entry: DevicePowerSetupEntry | undefined, selected: string): string {
+export function sourceHelp(
+  entry: DevicePowerSetupEntry | undefined, selected: string, offersHomeyEnergy: boolean,
+): string {
   if (!entry) return '';
   const socket = entry.sources.find(({ id }) => id === selected);
   if (selected && selected === entry.sourceId && !entry.sourceReady) {
@@ -44,9 +47,16 @@ export function sourceHelp(entry: DevicePowerSetupEntry | undefined, selected: s
       : `${assignment} Latest reading: ${socket.measuredPowerW.toLocaleString()} W.`;
   }
   if (own !== undefined) return `Uses this device's own reading, now ${own.toLocaleString()} W.`;
-  return entry.sources.some(({ state }) => state === 'selectable' || state === 'managed')
+  return unmeteredSourceHelp(entry, offersHomeyEnergy && !selected);
+}
+
+function unmeteredSourceHelp(entry: DevicePowerSetupEntry, offersHomeyEnergy: boolean): string {
+  const meterHelp = entry.sources.some(({ state }) => state === 'selectable' || state === 'managed')
     ? 'This device has no power reading. Choose a metering socket to measure it.'
     : 'No metering socket is available. Add one in Homey, then refresh devices.';
+  return offersHomeyEnergy
+    ? `${meterHelp} ${HOMEY_ENERGY_SETUP_REASON} to use a fixed power estimate.`
+    : meterHelp;
 }
 
 export function switchOptions(

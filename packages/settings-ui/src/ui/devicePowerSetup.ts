@@ -198,12 +198,12 @@ export const allowLastResortPriorityMove = (dragged: HTMLElement, related: HTMLE
 
 function renderSourcePart(
   part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
-  disabled: boolean,
+  disabled: boolean, offersHomeyEnergy: boolean,
 ): void {
   const { select, help } = part;
   updateOptions(select, sourceOptions(entry, draft.source), draft.source);
   select.disabled = disabled;
-  help.textContent = sourceHelp(entry, draft.source);
+  help.textContent = sourceHelp(entry, draft.source, offersHomeyEnergy);
 }
 
 function renderSwitchPart(
@@ -224,6 +224,8 @@ function renderSwitchPart(
 export type GuidedDeviceSetupActions = {
   refresh: () => Promise<boolean>;
   manage: (id: string, enabled: boolean) => Promise<boolean>;
+  managedDisabledReason: (id: string) => string | null;
+  offersHomeyEnergy: (id: string) => boolean;
   simulation: () => boolean;
 };
 
@@ -231,6 +233,7 @@ class DevicePowerSetupForm {
   private selectedId = '';
   private draft: SetupDraft | undefined;
   private awaitingReadback = false;
+  private confirmedSetup: { homeId: DevicePowerSetupEntry['homeId']; draft: SetupDraft } | undefined;
   private saving = false;
   private reviewing = false;
   private status = '';
@@ -253,7 +256,7 @@ class DevicePowerSetupForm {
         this.status = '';
         this.render();
       } else {
-        const operation = () => this.save();
+        const operation = () => this.submit();
         if (this.guided) void trackSetupSave(`wiring:${this.selectedId}`, operation);
         else void operation();
       }
@@ -279,6 +282,7 @@ class DevicePowerSetupForm {
     const entry = findSetupEntry(id);
     if (!this.guided || !entry || this.saving) return;
     this.selectedId = id;
+    this.confirmedSetup = undefined;
     this.clearDraft();
     this.status = '';
     this.reviewing = false;
@@ -294,20 +298,23 @@ class DevicePowerSetupForm {
     const current = this.draft ?? acceptedDraft(entry);
     const { lastResort } = this.fields;
     const invalidLastResort = lastResort ? syncLastResort(lastResort, entry, current) : false;
-    const reserved = Boolean(companionTarget(entry));
     if (this.saving && lastResort) {
       lastResort.toggle.disabled = true;
       lastResort.maximum.disabled = true;
     }
-    const unchanged = !this.guided && sameSetupDraft(current, acceptedDraft(entry));
-    const wiringMissing = this.guided && entry && !canReviewWiring(entry, current);
-    this.fields.save.disabled = this.saving || !entry || reserved || unchanged
-      || Boolean(wiringMissing) || invalidLastResort || hasUnavailableEdit(entry, current);
+    this.fields.save.disabled = this.saving || !entry || (!this.confirmedReviewedSetup(current)
+      && (invalidLastResort || !this.canSaveWiring(entry, current)));
+  }
+
+  private canSaveWiring(entry: DevicePowerSetupEntry, draft: SetupDraft): boolean {
+    const wiringReady = this.guided ? canReviewWiring(entry, draft) : !sameSetupDraft(draft, acceptedDraft(entry));
+    return !companionTarget(entry) && wiringReady && !hasUnavailableEdit(entry, draft);
   }
 
   private readCurrentDraft(entry: DevicePowerSetupEntry | undefined): SetupDraft {
     const accepted = acceptedDraft(entry);
-    if (this.awaitingReadback && this.draft && entry?.configured && sameSetupDraft(this.draft, accepted)) {
+    if (!this.confirmedSetup && this.awaitingReadback && this.draft && entry?.configured
+      && sameSetupDraft(this.draft, accepted)) {
       this.clearDraft();
     }
     return this.draft ?? accepted;
@@ -359,7 +366,8 @@ class DevicePowerSetupForm {
     part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
     disabled: boolean,
   ): void {
-    renderSourcePart(part, entry, draft, disabled);
+    const offersHomeyEnergy = Boolean(this.guided && guidedActions?.offersHomeyEnergy(this.selectedId));
+    renderSourcePart(part, entry, draft, disabled, offersHomeyEnergy);
     if (!this.guided) return;
     const { field } = part;
     field.hidden = entry?.ownPowerW !== undefined && !draft.source;
@@ -382,6 +390,7 @@ class DevicePowerSetupForm {
     try {
       if (await guidedActions.manage(id, false) && await guidedActions.refresh()
         && findSetupEntry(entry.id)?.sources.some((source) => source.id === id && source.state === 'selectable')) {
+        this.confirmedSetup = undefined;
         this.draft = { ...(this.draft ?? acceptedDraft(entry)), source: id };
       } else {
         this.status = 'Could not confirm the socket is ready to use as a meter. Try again or choose another socket.';
@@ -404,6 +413,7 @@ class DevicePowerSetupForm {
     const { source, binary, lastResort } = this.fields;
     const draft = { ...acceptedDraft(entry), ...this.draft };
     this.awaitingReadback = false;
+    this.confirmedSetup = undefined;
     this.draft = {
       source: source ? readSelectValue(source.select) : draft.source,
       switchId: binary ? readSelectValue(binary.select) : draft.switchId,
@@ -414,48 +424,71 @@ class DevicePowerSetupForm {
     this.render();
   }
 
-  private async save(): Promise<void> {
+  private confirmedReviewedSetup(draft: SetupDraft) {
+    const confirmed = this.confirmedSetup;
+    return this.reviewing && confirmed && sameSetupDraft(draft, confirmed.draft) ? confirmed : undefined;
+  }
+
+  private async submit(): Promise<void> {
     const entry = findSetupEntry(this.selectedId);
     if (!entry || this.fields.save.disabled) return;
     const current = this.draft ?? acceptedDraft(entry);
+    const confirmed = this.confirmedReviewedSetup(current);
     this.saving = true;
     this.render();
     try {
-      const maximum = !current.source && current.lastResort ? Number(current.maximum) : undefined;
-      const submitted = { ...current, lastResort: maximum !== undefined, maximum: maximum?.toString() ?? '' };
-      const saved = await persistDeviceSetup(entries, entry, submitted);
-      if (saved) {
-        this.draft = submitted;
-        this.awaitingReadback = true;
-      }
-      if (this.guided) await this.finishGuided(entry, submitted, saved);
-      else await refreshDeviceSetup();
+      if (confirmed) await this.finishGuided(confirmed.homeId, confirmed.draft, true);
+      else await this.save(entry, current);
     } finally {
       this.saving = false;
       this.render();
     }
   }
 
-  private async finishGuided(entry: DevicePowerSetupEntry, submitted: SetupDraft, saved: boolean): Promise<void> {
+  private async save(entry: DevicePowerSetupEntry, current: SetupDraft): Promise<void> {
+    const maximum = !current.source && current.lastResort ? Number(current.maximum) : undefined;
+    const submitted = { ...current, lastResort: maximum !== undefined, maximum: maximum?.toString() ?? '' };
+    const saved = await persistDeviceSetup(entries, entry, submitted);
+    if (saved) {
+      this.draft = submitted;
+      this.awaitingReadback = true;
+    }
+    if (this.guided) await this.finishGuided(entry.homeId, submitted, saved);
+    else await refreshDeviceSetup();
+  }
+
+  private async finishGuided(
+    homeId: DevicePowerSetupEntry['homeId'], submitted: SetupDraft, saved: boolean,
+  ): Promise<void> {
     if (!guidedActions || !this.guided) return;
+    const deviceId = this.selectedId;
     const refreshed = await guidedActions.refresh();
-    const accepted = findSetupEntry(entry.id);
-    const readback = refreshed && accepted?.homeId === entry.homeId ? accepted : undefined;
+    const accepted = findSetupEntry(deviceId);
+    const readback = refreshed && accepted?.homeId === homeId ? accepted : undefined;
     if (!saved || !readback?.configured || !sameSetupDraft(submitted, acceptedDraft(readback))) {
+      if (readback) this.confirmedSetup = undefined;
       this.status = describeSetupReadbackError(submitted, readback && acceptedDraft(readback));
       return;
     }
+    this.confirmedSetup = { homeId, draft: submitted };
+    this.draft = submitted;
+    this.awaitingReadback = false;
     if (readback.sourceId && !readback.sourceReady) {
       this.status = WAIT_FOR_READING;
       return;
     }
-    if (!await guidedActions.manage(entry.id, true)) {
-      this.status = 'Setup saved. PELS could not start managing this device yet. Try Add to PELS again.';
+    if (!await guidedActions.manage(deviceId, true)) {
+      this.status = describeManagementRefusal(deviceId, guidedActions);
       return;
     }
     await this.guided.dialog.close();
   }
 }
+
+const describeManagementRefusal = (id: string, actions: GuidedDeviceSetupActions): string => (
+  devicePowerSetupHint(id) ?? actions.managedDisabledReason(id)
+  ?? 'Could not confirm that PELS is managing this device. Try again.'
+);
 
 let refreshDeviceSetup: () => Promise<void> = async () => {};
 let guidedActions: GuidedDeviceSetupActions | undefined;

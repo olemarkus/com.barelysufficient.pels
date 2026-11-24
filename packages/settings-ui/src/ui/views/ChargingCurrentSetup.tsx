@@ -102,6 +102,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   if (installation && usesInstallationCurrentWithoutSetup(device)) {
     return <section class="charging-current-setup">
       <h3 class="pels-text-settings-label">Charging current</h3>
+      {props.error && <p class="field__hint" role="alert">{props.error}</p>}
       <ChargingInstallationHint installation={installation} />
     </section>;
   }

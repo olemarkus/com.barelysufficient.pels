@@ -1,3 +1,6 @@
+import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
+import { DeviceSetupCandidates } from '../src/ui/views/DeviceSetupCandidates.tsx';
 import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
 
 const load = async () => {
@@ -105,4 +108,24 @@ it('shows each appliance that needs setup and keeps ready devices and other home
   expect(main.find(({ id }) => id === 'light')?.suggested).toBe(false);
   expect(readGuidedDeviceChoices(roster, false).map(({ id }) => id))
     .toEqual(['light', 'hidden', 'listed', 'other-home', 'relay']);
+});
+
+it('explains how to find a device when none are suggested', () => {
+  const root = document.createElement('div');
+  act(() => render(h(DeviceSetupCandidates, {
+    devices: [{ id: 'light', name: 'Hall light', suggested: false }],
+    onOpen: vi.fn(),
+  }), root));
+
+  expect(root.textContent).toContain('Needs setup');
+  expect(root.textContent).toContain('Search for a device to set up.');
+  const search = root.querySelector<HTMLElement & { value: string; label?: string }>('md-filled-text-field')!;
+  expect(search.label ?? search.getAttribute('label')).toBe('Find another device');
+  act(() => {
+    search.value = 'garage';
+    search.dispatchEvent(new Event('input'));
+  });
+  expect(root.textContent).toContain('No devices match that name.');
+  expect(root.textContent).not.toContain('Search for a device to set up.');
+  act(() => render(null, root));
 });

@@ -6,7 +6,7 @@ import { CHARGING_SETUP_UPDATED, FINISH_CHARGING_SETUP, VEHICLE_CHARGING_SETUP_H
   vehicleChargingConsentMissing } from './chargingSetupFacts.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import {
-  hasOpenSmartTask, isHomeBatteryDeviceId, resolveHomeHasSolar, resolveSolarSurplusPending,
+  hasOpenSmartTask, resolveHomeHasSolar, resolveSolarSurplusPending,
   resolveSolarSurplusPendingNote, state,
 } from './state.ts';
 import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
@@ -31,6 +31,7 @@ import {
 } from './views/SetupJourney.tsx';
 import { renderDevices } from './devices.ts';
 import { setEditingMode } from './modes.ts';
+import { chargingPriorityGroup, orderModePriorityDevices, rankDisplayedModePriorities } from './modePriorityDisplay.ts';
 import {
   loadCapacitySettings, loadStaleDataStatus, saveSimulationModeSettings, saveCapacityPeriodSettings,
   saveCapacityOffSettings,
@@ -193,12 +194,10 @@ const readReviewDevices = (): SetupReviewDevice[] => {
   const managed = readMainHomeManagedDevices();
   if (managed.state !== 'ready') return [];
   const mode = state.loadedModeHomeId === MAIN_HOME_ID ? state.activeMode : null;
-  const order = mode === null ? null : state.modePriorityCatalog.getOrder(
-    mode, managed.devices.map(({ id }) => id), isHomeBatteryDeviceId,
-  );
-  return [...managed.devices]
-    .sort((a, b) => order === null ? 0 : order.getPriority(a.id) - order.getPriority(b.id))
-    .map((device) => ({
+  const ordered = mode === null ? managed.devices
+    : orderModePriorityDevices(state.modePriorityCatalog, mode, managed.devices);
+  return rankDisplayedModePriorities(ordered, chargingPriorityGroup)
+    .map(({ item: device, rank }) => ({
       id: device.id,
       name: formatDisplayDeviceName(device.name),
       control: describeDeviceJobs(device),
@@ -208,7 +207,7 @@ const readReviewDevices = (): SetupReviewDevice[] => {
           hint: VEHICLE_CHARGING_SETUP_HINT },
       } : {}),
       configuration: [
-        ...(order === null ? [] : [`Priority ${order.getPriority(device.id)}`]),
+        ...(mode === null ? [] : [`Priority ${rank}`]),
         ...readReviewTarget(device, mode),
       ],
     }));
