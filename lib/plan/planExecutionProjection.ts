@@ -24,8 +24,6 @@ export function buildExecutablePlan(plan: DevicePlan): PlannedCommandPlan {
 }
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
-  const limitReason = resolveDeviceLimitReason(planDevice);
-  const availablePowerKw = planMeta?.powerIsMeasured ? planMeta.headroomKw : null;
   const target = planDevice.targetCommand;
   const installation = planDevice.controlAdapter?.chargingInstallation;
   const binary = installation ? planDevice.chargingInstallationSwitch : buildPlannedBinaryCommand(planDevice);
@@ -45,12 +43,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     name: planDevice.name,
     commandAuthority: planDevice.control.commandAuthority,
     projection: 'decided',
-    ...(limitReason ? {
-      deviceLimit: {
-        reason: limitReason,
-        ...(availablePowerKw !== null ? { availablePowerKw } : {}),
-      },
-    } : {}),
+    ...buildDeviceLimitAttribution(planDevice, planMeta),
     ...(target ? { target } : {}),
     ...(binary ? { binary } : {}),
     ...(release ? { release } : {}),
@@ -70,6 +63,18 @@ function installationStepOnly(
     desired: isSteppedLoadOffStep(command.steppedLoadProfile, desired.stepId)
       ? { ...desired, stepId: undefined } : desired,
     transition: transition && { ...transition, binaryTarget: null },
+  };
+}
+
+function buildDeviceLimitAttribution(
+  device: PlanDevice,
+  planMeta?: PlanMeta,
+): Pick<PlannedDeviceCommands, 'deviceLimit'> {
+  const reason = resolveDeviceLimitReason(device);
+  if (!reason) return {};
+  const availablePowerKw = planMeta?.powerIsMeasured ? planMeta.headroomKw : null;
+  return {
+    deviceLimit: { reason, ...(availablePowerKw !== null ? { availablePowerKw } : {}) },
   };
 }
 
