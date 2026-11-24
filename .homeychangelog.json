@@ -895,5 +895,8 @@
   },
   "3.50.0": {
     "en": "A heater without its own power meter can now use a metering socket for its power: open the device and choose the socket under External sensors. A device with a separate heating switch, such as a spa, can be limited through that switch: choose it under Setup. An on/off relay with no power reading can be turned off as a last resort when there is nothing else left to limit: turn it on under Power limiting and enter the most it can draw. A device that needs a socket or switch before PELS can use it is added with Add a device in Devices.\n\nFixed: A device removed from Homey no longer keeps its metering socket reserved. Support reports show which chargers share an installation."
+  },
+  "3.51.0": {
+    "en": "Zaptec chargers that share one installation are now controlled together: when every charger is managed, PELS sets the installation's current through one of them and pauses or resumes the chargers in your priority order. Chargers on the same installation share one priority in Modes. If a Flow sets the current, each charger keeps its own switching and Flow control.\n\nDevices that need a metering socket or a switch before PELS can use them are now listed under Needs setup in Devices and during first-run setup. Choose Set up, pick the socket and switch, then review the setup with the device's latest power reading before adding it to PELS."
   }
 }
