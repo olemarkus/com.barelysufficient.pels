@@ -2,7 +2,7 @@ Pörssisähkön hinta vaihtelee, mutta koti ja käyttövesi pitää saada lämpi
 
 Viimeistele käyttöönotto kohdassa Homey > More > Apps > PELS > Settings. Jos yhteensopivassa laitteessa ei ole omaa tehomittausta, sen tehon voi mitata älypistorasialla, ja jos laitteessa on erillinen lämmityskytkin, voit valita sen PELSin käyttöön.
 
-Hinnat tulevat Homey Energy -toiminnosta, Power by the Hour -sovelluksesta tai Flow-automaatioiden kautta. PELS huomioi hintaan sisältyvät ajasta riippuvat siirtomaksut. Lämmitys ja jäähdytys voivat seurata varttihintoja.
+PELS saa hinnat Homey Energy -toiminnosta, Power by the Hour -sovelluksesta tai Flow-automaatioista. PELS huomioi hintaan sisältyvät ajasta riippuvat siirtomaksut. Lämmitys ja jäähdytys voivat seurata varttihintoja.
 
 Smart tasks -toiminnolla voit asettaa tavoitteeksi esimerkiksi auton 80 prosentin latauksen aamuseitsemäksi, lämpimän huoneen kotiin tullessasi tai tietyn energiamäärän lämminvesivaraajalle. PELS suosii edullisempia ajankohtia, jolloin tehoa on käytettävissä, ja hyödyntää Homeyn ilmoittamaa auton akun varaustasoa, jos se on saatavilla. Schedules-toiminnolla voit luoda tehtäviä tai vaihtaa tilaa tiettyyn kellonaikaan, kerran tai valittuina päivinä. PELS voi aloittaa lämmityksen ennen ajastamaasi tilanvaihtoa.
 
