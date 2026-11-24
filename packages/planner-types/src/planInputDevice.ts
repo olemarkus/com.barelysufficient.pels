@@ -301,6 +301,8 @@ export type PlanInputDevice =
 
 /** The shared current and draw observed at the installation boundary, for capacity only. */
 export type ChargingInstallationLoad = {
+  /** The fold resolves whether the shared level can be set for this cycle. */
+  control: 'step' | 'switch_only';
   currentDrawKw?: number;
   level?: { stepId: string; watts: number };
   running: boolean;

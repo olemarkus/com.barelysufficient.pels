@@ -1,20 +1,10 @@
 import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
-import type { DeviceStatusInput } from './deviceStatusReadModel';
+import type { ChargingInstallationCard, DeviceStatusInput } from './deviceStatusInput';
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
 import { EV_BLOCK_REASON_CODES } from '../../packages/shared-domain/src/commandableNowReason';
 import {
   isEvPlugStateBlocked, isEvPlugStateConnected, resolveEvChargeAction,
 } from '../../packages/shared-domain/src/evPlugState';
-
-/**
- * A charger's place on a charging installation PELS controls as one load, as
- * its card tells it: the main with the installation's total draw (`undefined`
- * without a reading from any member), or a secondary with the charger its
- * current is set through. Each card keeps its own draw beside this.
- */
-export type ChargingInstallationCard =
-  | { role: 'main'; memberCount: number; totalKw: number | undefined }
-  | { role: 'secondary'; mainName: string };
 
 const DRAWING_KW = 0.05;
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
@@ -73,8 +63,10 @@ function buildSecondaryChargerStatus(
     cardKind, kind, tone: displayStateTone(kind), label: displayStateLabel(kind),
     powerText: draw === undefined ? null : formatKw(draw), powerVariant: 'live',
     factText, reading,
-    reason: { text: `Its current is set through ${installation.mainName}. `
-      + 'The chargers share the available current between the cars that are charging.' },
+    reason: installation.mainName === undefined ? null : {
+      text: `Its current is set through ${installation.mainName}. `
+        + 'The chargers share the available current between the cars that are charging.',
+    },
     rail: null, limited: false, wouldLimit: false, canEaseOff: false, controlOffDrawing: false, holdCause: null,
   };
 }

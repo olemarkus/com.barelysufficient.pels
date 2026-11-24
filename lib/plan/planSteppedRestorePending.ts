@@ -222,7 +222,7 @@ export function resolveAcknowledgedStepUpReservationKw(dev: DevicePlanDevice): n
 
 /** Charging can fill the installation's current assignment before the next meter sample. */
 export function resolveRunningInstallationReservationKw(dev: DevicePlanDevice): number {
-  if (dev.controlAdapter?.chargingInstallation?.role !== 'main'
+  if (dev.controlAdapter?.chargingInstallation?.mainId !== dev.id
     || !isMeteredPlanDevice(dev) || !isPlanDeviceObservedOn(dev)) return 0;
   if (!isSteppedLoadDevice(dev)) return Math.max(0, dev.residualKw.restore.kw - dev.currentDrawKw);
   const step = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);

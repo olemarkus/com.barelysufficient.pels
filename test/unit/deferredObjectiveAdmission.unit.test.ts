@@ -356,7 +356,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       id: 'ev1', controllable: true, controlModel: 'binary_power', surplusTracking,
       controlAdapter: {
         kind: 'capability_adapter', activationRequired: false, activationEnabled: false,
-        chargingInstallation: { id: 'installation', role: 'secondary', mainId: 'ev2', memberIds: ['ev2', 'ev1'] },
+        chargingInstallation: { id: 'installation', mainId: 'ev2', memberIds: ['ev2', 'ev1'] },
       },
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic.evaluation], [device]);

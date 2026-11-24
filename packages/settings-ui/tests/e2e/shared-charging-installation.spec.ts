@@ -16,12 +16,12 @@ test.beforeEach(async ({ page }) => {
     (window as unknown as StubWindow).__PELS_HOMEY_STUB__ = {
       settings: {
         target_devices_snapshot: [
-          ...chargers.map(({ id, name, measuredPowerKw, role }) => ({
+          ...chargers.map(({ id, name, measuredPowerKw }) => ({
             id, name, measuredPowerKw, available: true, deviceClass: 'evcharger', isEvCharger: true,
             capabilities: ['evcharger_charging', 'measure_power'],
             binaryControllable: true, canSetControl: true, powerCapable: true, targets: [],
             controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true,
-              chargingInstallation: { ...installation, role } },
+              chargingInstallation: installation },
           })),
           { id: 'heater', name: 'Hall heater', available: true, deviceType: 'temperature',
             capabilities: ['onoff'], measuredPowerKw: 0.3, powerCapable: true,

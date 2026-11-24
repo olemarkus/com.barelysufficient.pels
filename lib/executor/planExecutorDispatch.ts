@@ -257,7 +257,8 @@ const applySteppedShedRestoreIntent = async (
   let commandRequestCount = 0;
   if (steppedAction) {
     if (await applySteppedLoadCommand(ctx, steppedAction, snapshot)) commandRequestCount += 1;
-    if (steppedAction.intent.controlAdapter?.chargingInstallation?.role === 'main') {
+    const { intent } = steppedAction;
+    if (intent.controlAdapter?.chargingInstallation?.mainId === intent.id) {
       return delta(Number(await applyIndependentBinaryIntent(ctx, device)), commandRequestCount);
     }
     if (await applySteppedLoadShedOff(ctx, steppedAction, snapshot)) deviceWriteCount += 1;

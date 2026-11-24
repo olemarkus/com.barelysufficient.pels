@@ -1,4 +1,5 @@
-import { buildDeviceStatus, type DeviceStatusInput } from '../../lib/plan/deviceStatusReadModel';
+import { buildDeviceStatus } from '../../lib/plan/deviceStatusReadModel';
+import type { DeviceStatusInput } from '../../lib/plan/deviceStatusInput';
 import { withChargingInstallation } from '../../lib/plan/chargingInstallationCardText';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -528,14 +529,19 @@ describe('charging installation controlled as one load', () => {
   const status = (device: DeviceStatusInput) => withChargingInstallation(device, buildDeviceStatus(device, false, 0));
 
   it('keeps the installation total on the main\'s power line beside its own draw, whatever the reason line says', () => {
-    const main = status(card({ role: 'main', memberCount: 2, totalKw: 10.4 }));
+    const main = status(card({ role: 'main', totalKw: 10.4 }));
     expect(main.powerText).toBe('3.2 kW · installation 10.4 kW');
     expect(main.reason?.text).toBe('Sets the available current for this installation.');
-    const held = status(card({ role: 'main', memberCount: 2, totalKw: 10.4 }, {
+    const held = status(card({ role: 'main', totalKw: 10.4 }, {
       plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
     }));
     expect(held.powerText).toContain('installation 10.4 kW');
     expect(held.reason?.text).not.toBe('Sets the available current for this installation.');
+  });
+
+  it('keeps the secondary reading when the installation main has no name in the plan', () => {
+    const secondary = status(card({ role: 'secondary', mainName: undefined }));
+    expect(secondary).toMatchObject({ label: 'Running', factText: 'Charging', powerText: '3.2 kW', reason: null });
   });
 
   it.each([

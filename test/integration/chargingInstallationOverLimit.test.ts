@@ -40,16 +40,17 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-const fact = (role: 'main' | 'secondary') => ({
+const fact = {
   kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: false,
-  chargingInstallation: { id: 'inst', role, mainId: 'main', memberIds: ['main', 'secondary'] },
-});
+  chargingInstallation: { id: 'inst', mainId: 'main', memberIds: ['main', 'secondary'] },
+};
 // Two cars sharing 23 A; the main's own watt target reads 0 W, its off step.
-const members = (): PlanInputSnapshotDevice[] => [
-  { id: 'main', controlModel: 'stepped_load', steppedLoadProfile: installationLadder, selectedStepId: 'off',
-    measuredPowerKw: INSTALLATION_KW / 2, binaryControl: { on: true }, controlAdapter: fact('main') },
-  { id: 'secondary', controlModel: 'binary_power', measuredPowerKw: INSTALLATION_KW / 2, binaryControl: { on: true },
-    controlAdapter: fact('secondary') },
+const members = (mainAvailable = true): PlanInputSnapshotDevice[] => [
+  { id: 'main', available: mainAvailable, controlModel: 'stepped_load',
+    steppedLoadProfile: installationLadder, selectedStepId: 'off',
+    measuredPowerKw: INSTALLATION_KW / 2, binaryControl: { on: true }, controlAdapter: fact },
+  { id: 'secondary', available: true, controlModel: 'binary_power',
+    measuredPowerKw: INSTALLATION_KW / 2, binaryControl: { on: true }, controlAdapter: fact },
 ] as unknown as PlanInputSnapshotDevice[];
 const levelSource = { readChargingInstallationLevelW: () => 23 * WATTS_PER_AMP };
 
@@ -92,9 +93,17 @@ async function decide(selectedStepId: string, softLimitKw: number, drawKw = INST
 it('reads the installation at its 23 A level and summed draw, not the main\'s own off step', () => {
   const [main, secondary] = foldChargingInstallations(members(), levelSource);
   expect(main?.chargingInstallationLoad).toEqual({
-    currentDrawKw: INSTALLATION_KW, running: true, level: { stepId: `${23 * WATTS_PER_AMP}w`, watts: 23 * WATTS_PER_AMP },
+    control: 'step', currentDrawKw: INSTALLATION_KW, running: true,
+    level: { stepId: `${23 * WATTS_PER_AMP}w`, watts: 23 * WATTS_PER_AMP },
   });
   expect(secondary?.measuredPowerKw).toBe(INSTALLATION_KW / 2);
+});
+
+it('retains the last level for switch-only restore when the main is unavailable', () => {
+  const folded = foldChargingInstallations(members(false), levelSource);
+  expect(folded[0]?.chargingInstallationLoad).toMatchObject({
+    control: 'switch_only', level: { watts: 23 * WATTS_PER_AMP },
+  });
 });
 
 it('steps an over-limit installation down to the step that fits, without switching it off', async () => {

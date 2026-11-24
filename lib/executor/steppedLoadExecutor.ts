@@ -107,7 +107,7 @@ export const applySteppedLoadCommand = async (
   // commands are real actuation too: suppress every one while the durable hold
   // is active, just as the binary restore funnels do.
   const { intent } = action;
-  if (intent.controlAdapter?.chargingInstallation?.role !== 'main' && ctx.feedback.isExternalOffHeld(intent.id)) {
+  if (intent.controlAdapter?.chargingInstallation?.mainId !== intent.id && ctx.feedback.isExternalOffHeld(intent.id)) {
     emitExecutorDebug({
       event: 'stepped_load_command_skipped',
       deviceId: intent.id,
@@ -174,7 +174,7 @@ const isReportedStepDescent = (
   desiredStep: SteppedLoadStep,
 ): boolean => {
   const profile = intent.steppedLoadProfile;
-  const sharedLevel = intent.controlAdapter?.chargingInstallation?.role === 'main';
+  const sharedLevel = intent.controlAdapter?.chargingInstallation?.mainId === intent.id;
   if (!live || (!sharedLevel && !isBinaryOnOrUnknown(live)) || live.reportedStepId === undefined
     || isSteppedLoadOffStep(profile, live.reportedStepId)) return false;
   const reportedPowerW = getSteppedLoadStep(profile, live.reportedStepId)?.planningPowerW ?? live.reportedStepPowerW;

@@ -22,7 +22,8 @@ import {
 } from './planOverviewTemperatureState';
 import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
-import { buildDeviceStatus, type ChargingInstallationCard } from './deviceStatusReadModel';
+import { buildDeviceStatus } from './deviceStatusReadModel';
+import type { ChargingInstallationCard } from './deviceStatusInput';
 import { withChargingInstallation } from './chargingInstallationCardText';
 import {
   buildHomeBatteryStatus,
@@ -222,8 +223,8 @@ function resolveChargingInstallationCard(
 ): ChargingInstallationCard | undefined {
   const installation = deps.getDeviceControlAdapter(deviceId)?.chargingInstallation;
   if (!installation) return undefined;
-  if (installation.role === 'secondary') {
-    return { role: 'secondary', mainName: nameById.get(installation.mainId) ?? 'another charger' };
+  if (installation.mainId !== deviceId) {
+    return { role: 'secondary', mainName: nameById.get(installation.mainId) };
   }
   const draws = installation.memberIds.flatMap((id) => {
     const drawKw = deps.getDeviceExecutionState(id).currentDrawKw;
@@ -231,7 +232,6 @@ function resolveChargingInstallationCard(
   });
   return {
     role: 'main',
-    memberCount: installation.memberIds.length,
     totalKw: draws.length > 0 ? draws.reduce((sum, kw) => sum + kw, 0) : undefined,
   };
 }

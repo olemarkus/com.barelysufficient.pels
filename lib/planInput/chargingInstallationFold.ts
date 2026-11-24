@@ -1,4 +1,5 @@
 import { getDebugEmitter } from '../logging/logger';
+import { membersOf } from '../utils/membersOf';
 import {
   getSteppedLoadLowestActiveStep, isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -20,20 +21,18 @@ export function foldChargingInstallations<T extends PlanInputSnapshotDevice>(
   const byId = new Map(devices.map((device) => [device.id, device]));
   return devices.map((device) => {
     const installation = device.controlAdapter?.chargingInstallation;
-    if (installation?.role !== 'main') return device;
-    const members = installation.memberIds.flatMap((id) => {
-      const member = byId.get(id);
-      return member ? [member] : [];
-    });
+    if (installation?.mainId !== device.id) return device;
+    const members = membersOf(installation.memberIds, byId);
     const levelW = source.readChargingInstallationLevelW(device.id);
     const profile = device.controlModel === 'stepped_load' ? device.steppedLoadProfile : undefined;
-    const step = profile && levelW !== undefined ? stepAtLevel(profile, levelW) : null;
-    const metered = members.filter((member) => member.measuredPowerKw !== undefined);
-    const totalKw = metered.reduce((sum, member) => sum + (member.measuredPowerKw ?? 0), 0);
+    const level = resolveLevel(profile, levelW);
+    const readings = members.flatMap(({ measuredPowerKw }) => measuredPowerKw === undefined ? [] : [measuredPowerKw]);
+    const totalKw = readings.reduce((sum, kw) => sum + kw, 0);
     const running = members.some((member) => member.binaryControl?.on === true);
+    const control = device.available && (level !== undefined || !running) ? 'step' : 'switch_only';
     emitPlanInputDebug({
       event: 'charging_installation_planned', installationId: installation.id, mainId: device.id,
-      totalKw, levelW: levelW ?? null, stepId: step?.id ?? null,
+      totalKw, levelW: levelW ?? null, stepId: level?.stepId ?? null,
       members: members.map((member) => ({
         id: member.id, drawKw: member.measuredPowerKw ?? null, on: member.binaryControl?.on ?? null,
       })),
@@ -41,12 +40,19 @@ export function foldChargingInstallations<T extends PlanInputSnapshotDevice>(
     return {
       ...device,
       chargingInstallationLoad: {
-        ...(metered.length ? { currentDrawKw: totalKw } : {}),
-        ...(step && levelW !== undefined ? { level: { stepId: step.id, watts: levelW } } : {}),
+        control,
+        ...(readings.length ? { currentDrawKw: totalKw } : {}),
+        ...(level ? { level } : {}),
         running,
       },
     };
   });
+}
+
+function resolveLevel(profile: SteppedLoadProfile | undefined, watts: number | undefined) {
+  if (profile === undefined || watts === undefined) return undefined;
+  const step = stepAtLevel(profile, watts);
+  return step ? { stepId: step.id, watts } : undefined;
 }
 
 function stepAtLevel(profile: SteppedLoadProfile, levelW: number): SteppedLoadProfile['steps'][number] | null {
