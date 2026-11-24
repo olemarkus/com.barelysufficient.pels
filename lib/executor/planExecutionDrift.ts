@@ -58,7 +58,7 @@ export function hasPlanDeviceExecutionDrift(
   // a posture rather than a reading, and this layer never asks why.
   const intent = device.commands;
   if (externalOffHeld && (!hasPlannedStep(intent)
-    || intent.steppedLoad.controlAdapter?.chargingInstallation?.role !== 'main')) return false;
+    || intent.steppedLoad.controlAdapter?.chargingInstallation?.mainId !== intent.steppedLoad.id)) return false;
   // A planned claim of the watt target is work by itself: the plan decides it
   // only while the device reads a mode other than `homey` and no accepted or
   // refused claim is still settling (`lib/device/targetPowerControlClaims.ts`),

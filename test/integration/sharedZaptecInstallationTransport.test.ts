@@ -65,8 +65,8 @@ test('each member carries the neutral installation fact; only the main keeps its
   const main = transport.getSnapshotByDeviceId(MAIN);
   const secondary = transport.getSnapshotByDeviceId(SECONDARY);
   const fact = { id: 'zaptec-installation', mainId: MAIN, memberIds: [MAIN, SECONDARY] };
-  expect(main?.controlAdapter?.chargingInstallation).toEqual({ ...fact, role: 'main' });
-  expect(secondary?.controlAdapter?.chargingInstallation).toEqual({ ...fact, role: 'secondary' });
+  expect(main?.controlAdapter?.chargingInstallation).toEqual(fact);
+  expect(secondary?.controlAdapter?.chargingInstallation).toEqual(fact);
   expect(main).toMatchObject({ nativeWriteCapabilities: ['target_power'] });
   expect(secondary?.nativeWriteCapabilities).toBeUndefined();
   expect(secondary?.steppedLoadProfile).toBeUndefined();
@@ -266,8 +266,8 @@ test('the ownership refresh reparses an installation blocked at startup', async 
   await vi.waitFor(() => {
     const primary = transport.getSnapshotByDeviceId(MAIN);
     const secondary = transport.getSnapshotByDeviceId(SECONDARY);
-    expect(primary?.controlAdapter?.chargingInstallation).toMatchObject({ mainId: MAIN, role: 'main' });
-    expect(secondary?.controlAdapter?.chargingInstallation).toMatchObject({ mainId: MAIN, role: 'secondary' });
+    expect(primary?.controlAdapter?.chargingInstallation).toMatchObject({ mainId: MAIN });
+    expect(secondary?.controlAdapter?.chargingInstallation).toMatchObject({ mainId: MAIN });
     expect(primary?.steppedLoadProfile).toBeDefined();
   });
   expect(get).toHaveBeenCalledWith(DEVICES_API_PATH);

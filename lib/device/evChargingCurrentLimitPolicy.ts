@@ -105,7 +105,7 @@ export class EvChargingCurrentLimitPolicy {
     const range = this.installationRange(installation);
     if (range.kind === 'unrestricted') return configuration;
     if (range.kind === 'hold') return { ...configuration, carCurrentRangeUnavailable: true };
-    if (installation.role !== 'main' || configuration.controlModel !== 'stepped_load') return configuration;
+    if (installation.mainId !== configuration.id || configuration.controlModel !== 'stepped_load') return configuration;
     const { steppedLoadProfile, targetPowerConfig } = configuration;
     const steps = steppedLoadProfile.steps.map((step) => ({
       ...step, planningCurrentA: step.planningPowerW / range.wattsPerAmp,

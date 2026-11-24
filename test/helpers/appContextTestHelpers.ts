@@ -67,6 +67,7 @@ import {
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import type { HomeModeCatalog, HomeModeCatalogSnapshot } from '../../lib/home/homeModeCatalog';
+import type { HomeModePriorityDevices } from '../../lib/home/homeModeCatalogTypes';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildTaskEvaluationSource } from '../../setup/appInit/taskEvaluationSource';
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
@@ -92,7 +93,7 @@ type AppContextMockOptions = Omit<Partial<AppContext>, 'priceOptimizationSetting
   modeCatalog?: Partial<HomeModeCatalogSnapshot>;
 };
 
-type MutableAppContextMock = AppContext & {
+type MutableAppContextMock = AppContext & HomeModePriorityDevices & {
   latestTargetSnapshot: TransportDeviceSnapshot[];
 };
 
@@ -288,19 +289,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => context.canContributeCurtailmentSurplus?.() === true,
   );
   surplusPoolReachability.observeExportEvidence(powerTracker);
-  const homeModeCatalog = createHomeModeCatalog(
-    MAIN_HOME_ID,
-    homey.settings,
-    () => homeModeCatalog.getSnapshot(),
-    () => context.deviceControlSettings.managedDevices,
-    () => context.homeMembership,
-    () => testLogger,
-    {
-      readHomeBatteryDevices: () => context.readHomeBatteryDevices(),
-      readDeviceControlAdapter: (id) => context.deviceConfiguration.get(id)?.controlAdapter,
-    },
-  );
-  const context: AppContext = {
+  const context: AppContext & HomeModePriorityDevices = {
     readContinuousBatteryPlan: () => ({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),
     hasEnabledContinuousBatteryPlan: () => false,
     forecastBatteryBackgroundKWh: () => undefined,
@@ -403,6 +392,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     readHomeBatteryDevices: () => (typeof context.deviceManager?.readHomeBatteryDevices === 'function'
       ? context.deviceManager.readHomeBatteryDevices()
       : { status: 'resolved', deviceIds: new Set<string>() }),
+    readDeviceControlAdapter: (id) => context.deviceManager && context.deviceConfiguration.get(id)?.controlAdapter,
     batteryManaged: new BatteryManagedSettings(homey.settings),
     // The whole record is the fixture's device projected the way the transport
     // projects it; the named reads resolve it as the observer does
@@ -560,6 +550,15 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   });
 
   Object.assign(context, overrides);
+  const homeModeCatalog = createHomeModeCatalog(
+    MAIN_HOME_ID,
+    homey.settings,
+    () => homeModeCatalog.getSnapshot(),
+    () => context.deviceControlSettings.managedDevices,
+    () => context.homeMembership,
+    () => testLogger,
+    context,
+  );
   homeModeCatalogByContext.set(context, homeModeCatalog);
   if (modeCatalogOverride) configureHomeModeCatalog(context, modeCatalogOverride);
   return context as MutableAppContextMock;

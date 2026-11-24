@@ -9,6 +9,7 @@
  */
 import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModePriorityDevices } from '../../lib/home/homeModeCatalogTypes';
 import type { HomesStore } from '../../lib/home/homeConfig';
 import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
@@ -31,7 +32,7 @@ export type HomeRuntimeRegistry = SubHomeRegistry<OwningHomeHooks>;
 
 /** Construct the registry over the app's ports; the caller runs its first reconcile. */
 export function createHomeRuntimeRegistry(
-  ctx: AppContext,
+  ctx: AppContext & HomeModePriorityDevices,
   mainModeCatalog: HomeModeCatalog,
   /** The readiness signal handed to every bundle (execution gate). */
   membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,

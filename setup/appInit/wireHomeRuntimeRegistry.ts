@@ -12,6 +12,7 @@
  */
 import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModePriorityDevices } from '../../lib/home/homeModeCatalogTypes';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
@@ -22,7 +23,7 @@ import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
 
 /** Construct the registry and run its boot-time reconcile (empty = inert). */
 export const createHomeRuntimeRegistryForApp = (
-  ctx: AppContext,
+  ctx: AppContext & HomeModePriorityDevices,
   homeModeCatalog: HomeModeCatalog,
   membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
   controlContests: ControlContestRecording,

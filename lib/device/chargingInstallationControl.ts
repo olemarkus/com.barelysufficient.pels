@@ -7,9 +7,13 @@ import type { PowerSourceHome } from './transport/externalDevicePower';
 
 export type InstallationCurrentRoute = 'shared' | 'flow' | 'per_charger' | 'refused' | 'unverified';
 
+export function withholdsInstallationSteps(access: InstallationCurrentAccess): boolean {
+  return access === 'secondary' || access === 'blocked';
+}
+
 /** Admission and current authority for a shared charging installation. */
 export class ChargingInstallationControl {
-  private readonly loggedInstallations = new Map<string, string>();
+  private readonly loggedInstallations = new Map<string, { key: string; mainId: string }>();
 
   constructor(
     private readonly sessions: Pick<DeviceAdapterSessions, 'chargingInstallationOf' | 'sharedChargingMemberIds'>,
@@ -23,7 +27,12 @@ export class ChargingInstallationControl {
   ) {}
 
   accessOf(device: HomeyDeviceLike): InstallationCurrentAccess {
-    const membership = this.sessions.chargingInstallationOf(device);
+    return this.resolveDeviceAccess(device, this.sessions.chargingInstallationOf(device));
+  }
+
+  private resolveDeviceAccess(
+    device: HomeyDeviceLike, membership: ChargingInstallationMembership | undefined,
+  ): InstallationCurrentAccess {
     if (membership) return this.resolveAccess(device.id, membership);
     const shared = this.sessions.sharedChargingMemberIds(device);
     if (!shared) return undefined;
@@ -38,11 +47,19 @@ export class ChargingInstallationControl {
   }
 
   installationOf(device: HomeyDeviceLike): ChargingInstallation | undefined {
+    return this.project(device).installation;
+  }
+
+  project(device: HomeyDeviceLike): {
+    access: InstallationCurrentAccess;
+    installation: ChargingInstallation | undefined;
+  } {
     const membership = this.sessions.chargingInstallationOf(device);
-    if (!membership) return undefined;
-    const role = this.resolveAccess(device.id, membership);
-    if (role !== 'main' && role !== 'secondary') return undefined;
-    return { id: membership.id, role, mainId: membership.mainId, memberIds: [...membership.memberIds] };
+    const access = this.resolveDeviceAccess(device, membership);
+    const installation = membership && (access === 'main' || access === 'secondary')
+      ? { id: membership.id, mainId: membership.mainId, memberIds: [...membership.memberIds] }
+      : undefined;
+    return { access, installation };
   }
 
   /** Setup can offer a current route before it has been enabled. */
@@ -99,9 +116,9 @@ export class ChargingInstallationControl {
     const control = this.resolveAccess(mainId, membership) === 'main' ? 'one_load' : 'per_charger';
     const key = `${control}|${mainId}|${memberIds.join(',')}`;
     const previous = this.loggedInstallations.get(id);
-    if (previous === key) return;
-    this.loggedInstallations.set(id, key);
-    const previousMainId = previous?.split('|')[1];
+    if (previous?.key === key) return;
+    this.loggedInstallations.set(id, { key, mainId });
+    const previousMainId = previous?.mainId;
     if (previousMainId !== undefined && previousMainId !== mainId) {
       this.logger.structuredLog.info({
         event: 'charging_installation_main_changed', installationId: id, previousMainId, mainId, memberIds,

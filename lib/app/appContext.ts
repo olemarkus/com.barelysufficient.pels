@@ -48,7 +48,6 @@ import type { PlanService } from '../plan/planService';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import type { BatteryManagedSettings } from '../battery/batteryControlSettings';
-import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
@@ -175,9 +174,6 @@ export type AppContext = {
    */
   readonly flowBacked: FlowBackedDeviceState;
   resolveManagedState: (deviceId: string) => boolean;
-  // The home batteries the device layer knows, `unavailable` before it exists
-  // or has settled them (`lib/device/deviceRoleReads.ts`).
-  readHomeBatteryDevices: () => HomeBatteryDevicesRead;
   /**
    * Observer-owned maintained observed truth, fed by the dispatcher push
    * (`lib/observer/observedDeviceStateProjection.ts`): the general read, the

@@ -28,7 +28,8 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
   const installation = planDevice.controlAdapter?.chargingInstallation;
   const binary = installation ? planDevice.chargingInstallationSwitch : buildPlannedBinaryCommand(planDevice);
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
-  const step = installation?.role === 'secondary' ? undefined : buildPlannedSteppedCommand(planDevice);
+  const step = installation && installation.mainId !== planDevice.id
+    ? undefined : buildPlannedSteppedCommand(planDevice);
   const steppedLoad = installation && step ? installationStepOnly(step) : step;
   // The claim follows from PELS's authority over the device this cycle, a
   // smart task's included, and not from this cycle's step: a device the plan

@@ -17,10 +17,14 @@ import {
   canSetChargingCurrent, hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
   installationPresetWattsPerAmp, resolveInstallationCurrentTargetPowerObservation,
 } from './chargingCurrentAdapter';
-import type { CapabilityWrite, ChargingCurrentBinding } from './deviceAdapter';
+import type { CapabilityWrite, ChargingCurrentBinding, InstallationCurrentAccess } from './deviceAdapter';
 import { currentSettingCapabilities, currentSettingFlows, installationCurrentFlows } from './chargingCurrentFlowRoutes';
-import { withChargingInstallation, withCurrentRoute } from './chargingCurrentProjection';
-import { ChargingInstallationControl, type InstallationCurrentRoute } from './chargingInstallationControl';
+import {
+  describeCurrentBinding, projectedInstallationRole, withChargingInstallation, withCurrentRoute,
+} from './chargingCurrentProjection';
+import {
+  ChargingInstallationControl, withholdsInstallationSteps, type InstallationCurrentRoute,
+} from './chargingInstallationControl';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
 import type { PowerSourceHome } from './transport/externalDevicePower';
 import type { FlowActionCardInventory } from './flowActionCardInventory';
@@ -196,7 +200,9 @@ export class ChargingCurrentControl {
    * selected.
    */
   routesBuiltIn(deviceId: string): boolean {
-    return this.routesBuiltInFor(deviceId, this.setup(deviceId));
+    const setup = this.setup(deviceId);
+    const device = this.findDevice(deviceId);
+    return this.routesBuiltInFor(device, setup, device && this.installations.accessOf(device));
   }
 
   /**
@@ -231,13 +237,15 @@ export class ChargingCurrentControl {
    */
   lacksCurrentRoute(deviceId: string): boolean {
     const device = this.findDevice(deviceId);
-    const adapter = device && resolveChargingCurrentAdapter(device);
-    if (!device || !adapter || this.routesAutomaticWatts(device)) return false;
-    if (this.isInstallationSecondary(deviceId)) return false;
-    if (hasSharedChargingInstallation(adapter, this.knownDevices()) && !this.isInstallationMain(deviceId)) {
-      return false;
-    }
-    return !this.routesBuiltIn(deviceId) && currentSettingFlows(adapter, this.flowWrites).size === 0;
+    return device !== undefined && this.lacksCurrentRouteFor(device, this.installations.accessOf(device));
+  }
+
+  private lacksCurrentRouteFor(device: HomeyDeviceLike, access: InstallationCurrentAccess): boolean {
+    const adapter = resolveChargingCurrentAdapter(device);
+    if (!adapter || this.routesAutomaticWatts(device, access) || access === 'secondary') return false;
+    if (access !== 'main' && hasSharedChargingInstallation(adapter, this.knownDevices())) return false;
+    return !this.routesBuiltInFor(device, this.setup(device.id), access)
+      && currentSettingFlows(adapter, this.flowWrites).size === 0;
   }
 
   /**
@@ -252,11 +260,12 @@ export class ChargingCurrentControl {
     snapshot: Pick<TransportDeviceSnapshot, 'flowConflict'> | undefined,
   ): UnusedBuiltInControl {
     if (snapshot?.flowConflict !== undefined) return 'held_by_flow';
-    if (this.isInstallationSecondary(deviceId)) return 'none';
     const device = this.findDevice(deviceId);
-    if (device && this.withholdsInstallationSteps(device)) return 'none';
-    if (device && this.withdrawsCurrentLadder(device)) return 'needs_app_update';
-    return this.lacksCurrentRoute(deviceId) ? 'not_set_up' : 'none';
+    if (!device) return 'none';
+    const access = this.installations.accessOf(device);
+    if (withholdsInstallationSteps(access)) return 'none';
+    if (this.hasLostBuiltInCurrentRoute(device)) return 'needs_app_update';
+    return this.lacksCurrentRouteFor(device, access) ? 'not_set_up' : 'none';
   }
 
   // Automatic watts own the route; an existing manual current choice stays in force.
@@ -267,30 +276,32 @@ export class ChargingCurrentControl {
       ) === 'automatic';
   }
 
-  private routesBuiltInFor(deviceId: string, setup: ChargingCurrentSetup): boolean {
-    const device = this.findDevice(deviceId);
-    if (device && this.routesAutomaticWatts(device)) return false;
-    if (this.isInstallationSecondary(deviceId)) return false;
+  private routesBuiltInFor(
+    device: HomeyDeviceLike | undefined, setup: ChargingCurrentSetup, access: InstallationCurrentAccess,
+  ): boolean {
+    if (device && this.routesAutomaticWatts(device, access)) return false;
+    if (access === 'secondary') return false;
     const adapter = device && resolveChargingCurrentAdapter(device);
     // A saved choice whose app now offers no current write (a read-only
     // capability without an app action) routes nothing: the device leaves
     // current stepping until the app is updated or a Flow is chosen.
-    if (adapter && (!canSetChargingCurrent(adapter) || !this.permitsInstallationCurrent(adapter, setup))) return false;
+    if (adapter && (!canSetChargingCurrent(adapter)
+      || !this.permitsInstallationCurrent(adapter, setup, access))) return false;
     return isBuiltInControlInEffect(
       setup.method === 'built_in',
       adapter !== undefined && currentSettingFlows(adapter, this.flowWrites).size > 0,
     );
   }
 
-  private routesAutomaticWatts(device: HomeyDeviceLike): boolean {
-    const access = this.installations.accessOf(device);
+  private routesAutomaticWatts(device: HomeyDeviceLike, access: InstallationCurrentAccess): boolean {
     return (access === undefined || access === 'main') && this.automaticWattsOwnRoute(device);
   }
 
   private currentRouteKey(): string {
-    return JSON.stringify(this.knownDevices().map((device) => (
-      [device.id, this.installations.accessOf(device), this.routesBuiltIn(device.id)]
-    )));
+    return JSON.stringify(this.knownDevices().map((device) => {
+      const access = this.installations.accessOf(device);
+      return [device.id, access, this.routesBuiltInFor(device, this.setup(device.id), access)];
+    }));
   }
 
   /**
@@ -307,8 +318,11 @@ export class ChargingCurrentControl {
 
   projectControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
     const setup = this.setup(source.id);
-    const projected = this.sessions.project(withCurrentRoute(source, this.routesBuiltInFor(source.id, setup)), setup);
-    return withChargingInstallation(projected, this.chargingInstallation(source.id));
+    const device = this.findDevice(source.id);
+    const installation = device && this.installations.project(device);
+    const builtIn = this.routesBuiltInFor(device, setup, installation?.access);
+    const projected = this.sessions.project(withCurrentRoute(source, builtIn), setup);
+    return withChargingInstallation(projected, installation?.installation);
   }
 
   chargingInstallation(deviceId: string): ChargingInstallation | undefined {
@@ -333,10 +347,14 @@ export class ChargingCurrentControl {
 
   private hasManualInstallationLadder(main: HomeyDeviceLike): boolean {
     const adapter = resolveChargingCurrentAdapter(main);
-    const saved = this.deviceSettings.getDeviceTargetPowerConfig(main.id)
-      ?? resolveDeviceCompatibilityTargetPowerConfig(main);
+    const saved = this.resolveTargetPowerConfig(main);
     return adapter !== undefined && canSetChargingCurrent(adapter) && saved !== undefined
       && resolveTargetPowerSteppedControl(getDeviceAdapter(main).configureTargetPower(main, saved)) !== undefined;
+  }
+
+  private resolveTargetPowerConfig(device: HomeyDeviceLike) {
+    return this.deviceSettings.getDeviceTargetPowerConfig(device.id)
+      ?? resolveDeviceCompatibilityTargetPowerConfig(device);
   }
 
   private assertInstallationWrite(deviceId: string, capabilityId: string): void {
@@ -364,9 +382,10 @@ export class ChargingCurrentControl {
    */
   installationLevelW(deviceId: string): number | undefined {
     const device = this.findDevice(deviceId);
-    if (!device || this.chargingInstallation(deviceId)?.role !== 'main') return undefined;
+    if (!device || this.installations.accessOf(device) !== 'main') return undefined;
     const adapter = getDeviceAdapter(device);
-    return this.routesBuiltIn(deviceId) ? this.builtInInstallationLevelW(device) : adapter.installationLevelW(device);
+    return this.routesBuiltInFor(device, this.setup(deviceId), 'main')
+      ? this.builtInInstallationLevelW(device) : adapter.installationLevelW(device);
   }
 
   installationWattsPerAmp(deviceId: string): number | undefined {
@@ -374,8 +393,7 @@ export class ChargingCurrentControl {
     if (!device) return undefined;
     const integration = getDeviceAdapter(device);
     if (!this.routesBuiltIn(deviceId)) return integration.installationWattsPerAmp(device);
-    const config = this.deviceSettings.getDeviceTargetPowerConfig(deviceId)
-      ?? resolveDeviceCompatibilityTargetPowerConfig(device);
+    const config = this.resolveTargetPowerConfig(device);
     return config && installationPresetWattsPerAmp(integration.configureTargetPower(device, config));
   }
 
@@ -383,8 +401,7 @@ export class ChargingCurrentControl {
     const binding = resolveChargingCurrentAdapter(device);
     if (binding?.current.kind !== 'capability') return undefined;
     const current = device.capabilitiesObj[binding.current.capabilityId];
-    const savedConfig = this.deviceSettings.getDeviceTargetPowerConfig(device.id)
-      ?? resolveDeviceCompatibilityTargetPowerConfig(device);
+    const savedConfig = this.resolveTargetPowerConfig(device);
     if (!current || !savedConfig) return undefined;
     const config = getDeviceAdapter(device).configureTargetPower(device, savedConfig);
     const level = resolveInstallationCurrentTargetPowerObservation(config, current);
@@ -393,12 +410,8 @@ export class ChargingCurrentControl {
   }
 
   isInstallationMain(deviceId: string): boolean {
-    return this.chargingInstallation(deviceId)?.role === 'main';
-  }
-
-  /** A member whose switch is independent and whose current comes from the installation. */
-  private isInstallationSecondary(deviceId: string): boolean {
-    return this.chargingInstallation(deviceId)?.role === 'secondary';
+    const device = this.findDevice(deviceId);
+    return device !== undefined && this.installations.accessOf(device) === 'main';
   }
 
   /** Ownership and claim changes require reparsing the current route, not just updating the published role. */
@@ -412,7 +425,7 @@ export class ChargingCurrentControl {
       return snapshot.controlAdapter?.chargingInstallation !== undefined
         || snapshot.automaticPowerControl?.mode === 'automatic';
     }
-    return access !== snapshot.controlAdapter?.chargingInstallation?.role;
+    return access !== projectedInstallationRole(snapshot.controlAdapter?.chargingInstallation, snapshot.id);
   }
 
   setup(deviceId: string): ChargingCurrentSetup {
@@ -427,8 +440,7 @@ export class ChargingCurrentControl {
   }
 
   withholdsInstallationSteps(device: HomeyDeviceLike): boolean {
-    const access = this.installations.accessOf(device);
-    return access === 'secondary' || access === 'blocked';
+    return withholdsInstallationSteps(this.installations.accessOf(device));
   }
 
   /**
@@ -439,8 +451,11 @@ export class ChargingCurrentControl {
    * the app or chooses a Flow.
    */
   withdrawsCurrentLadder(device: HomeyDeviceLike): boolean {
+    return this.withholdsInstallationSteps(device) || this.hasLostBuiltInCurrentRoute(device);
+  }
+
+  private hasLostBuiltInCurrentRoute(device: HomeyDeviceLike): boolean {
     const adapter = resolveChargingCurrentAdapter(device);
-    if (this.withholdsInstallationSteps(device)) return true;
     return adapter !== undefined && !canSetChargingCurrent(adapter)
       && this.setup(device.id).method === 'built_in'
       && currentSettingFlows(adapter, this.flowWrites).size === 0;
@@ -453,16 +468,6 @@ export class ChargingCurrentControl {
 
   async list(): Promise<ChargingCurrentRead[]> {
     return this.describe(await this.readFlows());
-  }
-
-  private describeCurrentBinding(adapter: ChargingCurrentBinding | undefined): Pick<
-    ChargingCurrentRead, 'scope' | 'capabilityWritable' | 'supportsAppAction'
-  > {
-    return {
-      scope: adapter?.scope.kind ?? 'installation',
-      capabilityWritable: adapter?.current.kind === 'capability' && adapter.current.writable,
-      supportsAppAction: adapter?.supportsAppAction === true,
-    };
   }
 
   /**
@@ -482,7 +487,7 @@ export class ChargingCurrentControl {
       if (names) flowCheck = names.size ? 'conflict' : 'clear';
       return [{
         deviceId: device.id, name: device.name, setup: this.setup(device.id),
-        ...this.describeCurrentBinding(adapter),
+        ...describeCurrentBinding(adapter),
         sharedInstallation: chargingInstallation?.role === 'secondary'
           || (!chargingInstallation && (memberIds !== undefined
             || (adapter !== undefined && hasSharedChargingInstallation(adapter, devices)))),
@@ -509,7 +514,7 @@ export class ChargingCurrentControl {
     if (!main || !memberIds) return undefined;
     const route = this.installationRoute(main, memberIds);
     if (route === 'flow' || route === 'refused' || route === 'unverified') return undefined;
-    const automatic = this.routesAutomaticWatts(main);
+    const automatic = this.routesAutomaticWatts(main, this.installations.accessOf(main));
     if (!automatic && !this.hasManualInstallationLadder(main)) return undefined;
     const role = device.id === main.id ? 'main' : 'secondary';
     return {
@@ -604,13 +609,17 @@ export class ChargingCurrentControl {
     return 'homey_action';
   }
 
-  private permitsInstallationCurrent(adapter: ChargingCurrentBinding, setup: ChargingCurrentSetup): boolean {
-    if (adapter.scope.kind !== 'installation' || this.isInstallationMain(adapter.deviceId)) return true;
+  private permitsInstallationCurrent(
+    adapter: ChargingCurrentBinding, setup: ChargingCurrentSetup, access: InstallationCurrentAccess,
+  ): boolean {
+    if (adapter.scope.kind !== 'installation' || access === 'main') return true;
     return setup.confirmation === 'single_charger' && !hasSharedChargingInstallation(adapter, this.knownDevices());
   }
 
   private assertInstallation(adapter: ChargingCurrentBinding): void {
-    if (!this.permitsInstallationCurrent(adapter, this.setup(adapter.deviceId))) {
+    const device = this.findDevice(adapter.deviceId);
+    const access = device && this.installations.accessOf(device);
+    if (!this.permitsInstallationCurrent(adapter, this.setup(adapter.deviceId), access)) {
       throw new Error('Built-in current control requires a single-charger installation.');
     }
   }

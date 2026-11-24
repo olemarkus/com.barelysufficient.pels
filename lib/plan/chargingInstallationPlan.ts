@@ -9,6 +9,7 @@ import { toInstallationSwitch } from './chargingInstallationSwitchDecision';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveHeldChargeTarget } from './shedding/chargeTargetHold';
+import { membersOf } from '../utils/membersOf';
 
 const installationOf = (device: PlanInputDevice | DevicePlanDevice) => device.controlAdapter?.chargingInstallation;
 
@@ -38,7 +39,7 @@ function planInstallationLoad(device: PlanInputDevice, members: readonly PlanInp
   const { externalOffHoldActive: _ownerHold, deferredHold: _taskHold, waitingForTaskPlan: _taskPending,
     carCurrentRangeUnavailable: _carRange, ...base } = withoutDraw(device);
   const level = load.level;
-  const canStep = device.available && (level !== undefined || !load.running);
+  const canStep = load.control === 'step';
   const currentOn = load.running && level?.watts !== 0;
   const reachable = members.filter((member) => member.commandableNow && !memberHeld(member));
   const eligible = reachable.filter((member) => !member.waitingForTaskPlan);
@@ -122,11 +123,8 @@ export class ChargingInstallationPlan {
       admittedDevices: admittedDevices.map((device) => {
         const installation = installationOf(device);
         if (!installation) return device;
-        if (installation.role === 'secondary') return withoutDraw(device);
-        const members = installation.memberIds.flatMap((id) => {
-          const member = this.members.get(id);
-          return member ? [member] : [];
-        });
+        if (installation.mainId !== device.id) return withoutDraw(device);
+        const members = membersOf(installation.memberIds, this.members);
         return planInstallationLoad(device, members);
       }),
       // A member's task may only pause that member's switch.

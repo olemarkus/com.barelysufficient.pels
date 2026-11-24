@@ -39,6 +39,7 @@
  */
 import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModePriorityDevices } from '../../lib/home/homeModeCatalogTypes';
 import type { SubHomeBundle } from '../../lib/home/homeRuntimeRegistry';
 import type {
   PowerTrackerMeterIdentity,
@@ -368,7 +369,7 @@ function createAreaTrackerDeps(ctx: AppContext, runtime: SubHomeRuntime): HomeTr
 }
 
 export function createHomeCapacityBundle(
-  ctx: AppContext,
+  ctx: AppContext & HomeModePriorityDevices,
   mainModeCatalog: HomeModeCatalog,
   /** The area's state and the registry's membership and meter-source gates. */
   runtime: SubHomeRuntime,
@@ -406,10 +407,7 @@ export function createHomeCapacityBundle(
     () => ctx.deviceControlSettings.managedDevices,
     () => ctx.homeMembership,
     () => ctx.getStructuredLogger('homes'),
-    {
-      readHomeBatteryDevices: ctx.readHomeBatteryDevices,
-      readDeviceControlAdapter: (id) => ctx.deviceConfiguration.get(id)?.controlAdapter,
-    },
+    ctx,
   );
   const {
     scope,

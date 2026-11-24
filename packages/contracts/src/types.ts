@@ -283,7 +283,6 @@ export type AdapterUnavailableStatus = {
 export type ChargingInstallation = {
     /** Opaque: the same for every member of one installation. */
     id: string;
-    role: 'main' | 'secondary';
     mainId: string;
     /** Every member's device id, the main included. */
     memberIds: string[];

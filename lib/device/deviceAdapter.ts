@@ -2,7 +2,7 @@ import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type {
-  ChargingInstallation, DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
+  DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
   HomeBatteryMeterModes, HomeBatteryObserveOnlyReason, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
@@ -367,7 +367,7 @@ export type ChargingInstallationMembership = {
 };
 
 /** Authority to set current on an installation member. Undefined keeps the legacy routes. */
-export type InstallationCurrentAccess = ChargingInstallation['role'] | 'per_charger' | 'blocked' | undefined;
+export type InstallationCurrentAccess = 'main' | 'secondary' | 'per_charger' | 'blocked' | undefined;
 
 /** Session details remain behind resolved eligibility. */
 export type DeviceAdapterSession = {

@@ -53,9 +53,9 @@ test('a fully managed shared installation is one load whose main has the lowest 
   const { control } = fixture(inventory, { 'homey-a': true, 'homey-b': true });
   await control.save('homey-b', { ...selected, confirmation: 'none' });
   expect(control.chargingInstallation('homey-b')).toEqual({
-    id: 'installation', role: 'main', mainId: 'homey-b', memberIds: ['homey-b', 'homey-a'],
+    id: 'installation', mainId: 'homey-b', memberIds: ['homey-b', 'homey-a'],
   });
-  expect(control.chargingInstallation('homey-a')).toMatchObject({ role: 'secondary', mainId: 'homey-b' });
+  expect(control.chargingInstallation('homey-a')).toMatchObject({ mainId: 'homey-b' });
   expect(control.chargingInstallation('homey-c')).toBeUndefined();
   const listed = await control.list();
   expect(listed.find((entry) => entry.deviceId === 'homey-b')).toMatchObject({
@@ -141,7 +141,7 @@ test('a partial read cannot elect a new main', async () => {
   const { control } = fixture(inventory, { 'homey-b': true, 'homey-a': true });
   await control.save('homey-b', { ...selected, confirmation: 'none' });
   control.retainDevices([garage()], control.trustEpoch(), 1);
-  expect(control.chargingInstallation('homey-a')).toMatchObject({ role: 'secondary', mainId: 'homey-b' });
+  expect(control.chargingInstallation('homey-a')).toMatchObject({ mainId: 'homey-b' });
 });
 
 test('an installation is active only while all chargers have one resolved meter home', async () => {
@@ -150,7 +150,7 @@ test('an installation is active only while all chargers have one resolved meter 
   const { control } = fixture([garage(), driveway()], managed, managed, (id) => homes.get(id));
   expect(control.chargingInstallation('homey-b')).toBeUndefined();
   await control.save('homey-b', { ...selected, confirmation: 'none' });
-  expect(control.chargingInstallation('homey-b')).toMatchObject({ role: 'main' });
+  expect(control.chargingInstallation('homey-b')).toMatchObject({ mainId: 'homey-b' });
 
   for (const home of ['other', undefined]) {
     if (home === undefined) homes.delete('homey-a');

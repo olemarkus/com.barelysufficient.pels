@@ -606,7 +606,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       leadMs: (device, fromC, targetC) => resolveModePreparationLeadMs(this.powerTracker, device, fromC, targetC),
     });
   // Boot/teardown orchestration + per-service construction.
-  protected readonly serviceWiring = new AppServiceWiring({
+  protected readonly serviceWiring: AppServiceWiring = new AppServiceWiring({
     ctx: this.ctx,
     getDailyKwh: (dateKey) => this.powerTrackerHelpers.readDailyKwh(dateKey, this.getTimeZone()),
     getHomeOperatingMode: this.getHomeOperatingMode,
@@ -616,7 +616,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     readPreparedTemperatureC: this.modePreparation.readPreparedTemperatureC,
     resolveOperatingModeForDevice: (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId),
     createHomeRuntimeRegistry: (membership) => createHomeRuntimeRegistryForApp(
-      this.ctx, this.homeModeCatalog, membership, this.controlContests, this.meterMonthlyPeaks,
+      this, this.homeModeCatalog, membership, this.controlContests, this.meterMonthlyPeaks,
     ),
     controlContests: this.controlContests,
     handles: this.runtime,

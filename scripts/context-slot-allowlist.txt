@@ -1,6 +1,6 @@
 # Budget for scripts/check-context-slots.mjs (see its header). Every count may only
 # shrink: lower or delete a line in the change that removes a slot.
-AppContext 113
+AppContext 112
 setup/appInit/createBatteryControl.ts batteryControl 1
 setup/appInit/priceServices.ts getCombinedPricesForUi 1
 setup/appInit/priceServices.ts getHomeyPriceFormulaUiStatus 1

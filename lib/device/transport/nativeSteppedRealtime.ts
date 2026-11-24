@@ -294,7 +294,7 @@ function resolveExactStepObservationWatts(
     if (presetWatts !== undefined) return presetWatts;
     return capabilityId === 'target_power' && typeof value === 'number'
         && snapshot.automaticPowerControl?.mode === 'automatic'
-        && snapshot.controlAdapter?.chargingInstallation?.role === 'main' ? value : undefined;
+        && snapshot.controlAdapter?.chargingInstallation?.mainId === snapshot.id ? value : undefined;
 }
 
 function isInvalidNativeNumericStep(capabilityId: string, value: unknown): boolean {

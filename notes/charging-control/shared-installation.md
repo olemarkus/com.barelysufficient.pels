@@ -119,8 +119,8 @@ car is served first.
 
 - **Device layer.** The integration's adapter resolves membership, main selection by its charger
   id, the write route, and which capabilities each member exposes: watt control on the main only.
-  It publishes one vendor-neutral fact per member on the device snapshot: installation id, role
-  (main or secondary), main id and member ids. Writes of current or watt targets to a secondary are
+  It publishes one vendor-neutral fact per member on the device snapshot: installation id, main
+  id and member ids. Writes of current or watt targets to a secondary are
   refused at the write seam. Nothing outside the device layer and the adapter registry knows the
   vendor.
 - **Planner input** (`lib/planInput/`) is the only place the installation becomes one load. The
