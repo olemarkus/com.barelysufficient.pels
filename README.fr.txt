@@ -10,7 +10,7 @@ Dans Smart tasks, vous fixez un objectif et une échéance : une voiture à 80 %
 
 Avec Grid import limit, vous réglez la limite de puissance prélevée sur le réseau selon les besoins de la maison. À son approche, PELS réduit la recharge, ajuste le chauffage ou met les appareils moins prioritaires en pause. Ils reprennent lorsque de la puissance est disponible.
 
-Dans Main fuse, indiquez la puissance souscrite en kVA. Sur une installation triphasée avec neutre, PELS peut réduire la puissance sur une phase qui approche de sa limite si le compteur mesure chaque phase séparément.
+Dans Main fuse, indiquez la puissance souscrite en kVA. PELS s'appuie sur la puissance totale mesurée par le compteur pour réduire la consommation des appareils qu'il pilote à l’approche de cette limite. Sur une installation triphasée avec neutre, PELS peut réduire la puissance sur une phase qui approche de sa limite si le compteur mesure chaque phase séparément.
 
 Avec des panneaux solaires, le surplus sert à chauffer l'eau, préchauffer ou rafraîchir la maison et recharger la voiture. PELS adapte la puissance de recharge au surplus disponible. Le prix de vente au réseau est pris en compte, y compris s'il est négatif. PELS répartit le surplus entre vos appareils et votre batterie domestique selon vos priorités. Il peut aussi décharger la batterie pour respecter la limite de puissance. Parmi les modèles compatibles figurent Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy et Anker SOLIX. Si vous l'activez, PELS peut aussi vendre l'énergie stockée lorsque cela réduit vos coûts.
 

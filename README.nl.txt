@@ -1,6 +1,6 @@
 Haal meer uit je eigen zonnestroom. PELS gebruikt je zonne-overschot om water te verwarmen, je woning voor te verwarmen of te koelen en je auto te laden. Het laadvermogen past zich aan de beschikbare zonnestroom aan. PELS stuurt warmtepompen, thermostaten, boilers, thuisbatterijen en laadpalen van onder meer Easee, Zaptec, Alfen, Peblar, Wallbox en Zappi aan via hun Homey-apps.
 
-Open na de installatie Homey > Meer > Apps > PELS > Instellingen. De instelhulp helpt je je energiemeter te koppelen en een eerste apparaat te kiezen. Voor een geschikt apparaat zonder eigen vermogensmeting kun je een slimme stekker als meter gebruiken. Heeft het apparaat een aparte schakelaar voor de verwarming, dan kun je die kiezen.
+Open na de installatie Homey > Meer > Apps > PELS > Instellingen. In de instelhulp koppel je je energiemeter en kies je een eerste apparaat. Voor een geschikt apparaat zonder eigen vermogensmeting kun je een slimme stekker als meter gebruiken. Heeft het apparaat een aparte schakelaar voor de verwarming, dan kun je die kiezen.
 
 Je terugleverprijs telt mee in de planning, ook wanneer die negatief is. Bij geschikte installaties kan PELS ook ongebruikte zonneproductie benutten wanneer teruglevering is uitgeschakeld. Op de Usage-pagina zie je de productie, het eigen verbruik, de teruglevering en de bespaarde kosten voor stroom uit het net.
 
