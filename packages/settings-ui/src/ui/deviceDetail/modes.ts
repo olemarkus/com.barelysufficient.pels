@@ -5,7 +5,10 @@ import {
 } from '../../../../shared-domain/src/targetCapabilities.ts';
 import { getTargetCapabilityStep } from '../targetCapabilityStep.ts';
 import { deviceDetailModes, deviceDetailModesSection, type MdFilledTextFieldElement } from '../dom.ts';
-import { isHomeBatteryDeviceId, resolveManagedState, state } from '../state.ts';
+import { resolveManagedState, state } from '../state.ts';
+import {
+  chargingPriorityGroup, orderModePriorityDevices, rankDisplayedModePriorities,
+} from '../modePriorityDisplay.ts';
 import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
 import {
@@ -124,15 +127,14 @@ const getAllModes = (catalog: DetailModeCatalog) => {
   return Array.from(modes).sort();
 };
 
-const getPriorityLabel = (catalog: DetailModeCatalog, mode: string, deviceId: string) => {
-  const homeId = getHomeIdForUiDevice(deviceId);
-  // The same managed set and battery ordering the Modes list and the runtime
-  // rank with, so this page's number matches theirs.
-  const deviceIds = state.latestDevices
-    .filter((entry) => resolveManagedState(entry.id) && getHomeIdForUiDevice(entry.id) === homeId)
-    .map((entry) => entry.id);
-  const order = catalog.priorities.getOrder(mode, [...deviceIds, deviceId], isHomeBatteryDeviceId);
-  return `Priority ${order.getPriority(deviceId)}`;
+const getPriorityLabel = (catalog: DetailModeCatalog, mode: string, device: SettingsUiDeviceDetailItem) => {
+  const homeId = getHomeIdForUiDevice(device.id);
+  const otherDevices = state.latestDevices.filter((entry) => entry.id !== device.id
+    && resolveManagedState(entry.id) && getHomeIdForUiDevice(entry.id) === homeId);
+  const ordered = orderModePriorityDevices(catalog.priorities, mode, [...otherDevices, device]);
+  const position = rankDisplayedModePriorities(ordered, chargingPriorityGroup)
+    .find(({ item }) => item.id === device.id);
+  return position ? `Priority ${position.rank}` : '';
 };
 
 const getTargetInputValue = (
@@ -270,7 +272,7 @@ const buildDeviceDetailModeRow = (
 
   const prioritySpan = document.createElement('div');
   prioritySpan.className = 'detail-mode-row__priority';
-  prioritySpan.textContent = getPriorityLabel(catalog, mode, device.id);
+  prioritySpan.textContent = getPriorityLabel(catalog, mode, device);
   nameWrap.appendChild(prioritySpan);
 
   const target = getPrimaryTargetCapability(device.targets);

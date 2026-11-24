@@ -169,6 +169,48 @@ describe('settings script: devices, modes and diagnostics', () => {
     expect(document.querySelector('#priority-list [data-device-id="unmetered"] .mode-target-input')).not.toBeNull();
   });
 
+  it('numbers charging groups once and explains shared priority only beside listed siblings', async () => {
+    const charger = (id: string, mainId: string, memberIds: string[]) => ({
+      id, name: id, isEvCharger: true, powerCapable: true, targets: [],
+      controlAdapter: {
+        kind: 'capability_adapter', activationRequired: false, activationEnabled: true,
+        chargingInstallation: { id: mainId, mainId, memberIds, role: id === mainId ? 'main' : 'secondary' },
+      },
+    });
+    const thermostat = (id: string) => ({
+      id, name: id, targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+    });
+
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        thermostat('first'),
+        charger('main', 'main', ['main', 'second']),
+        charger('second', 'main', ['main', 'second']),
+        thermostat('after'),
+        charger('solo', 'solo', ['solo', 'unmanaged']),
+        charger('unmanaged', 'solo', ['solo', 'unmanaged']),
+      ],
+      capacity_priorities: { Home: { first: 1, main: 2, second: 3, after: 4, solo: 5 } },
+      managed_devices: { first: true, main: true, second: true, after: true, solo: true },
+      mode_device_targets: { Home: {} },
+    });
+    await loadDeviceAndModeSettings();
+
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('#priority-list .mode-row'));
+    expect(rows.map((row) => row.dataset.deviceId)).toEqual(['first', 'main', 'second', 'after', 'solo']);
+    expect(rows.map((row) => row.querySelector('.priority-badge')?.textContent)).toEqual(['#1', '#2', '#2', '#3', '#4']);
+    const sharedRows = rows.filter((row) => row.querySelector('.mode-row__shared-priority'));
+    expect(sharedRows.map((row) => row.dataset.deviceId)).toEqual(['main', 'second']);
+
+    const { state } = await import('../src/ui/state.ts');
+    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
+    const after = state.latestDevices.find(({ id }) => id === 'after');
+    if (!after) throw new Error('Missing thermostat after the installation');
+    renderDeviceDetailModes(after);
+    expect(document.querySelector('#device-detail-modes [data-mode="Home"] .detail-mode-row__priority')?.textContent)
+      .toBe('Priority 3');
+  });
+
   it('normalizes loaded priorities to a strict, deterministic order', async () => {
     // Persisted payload has duplicate priorities (dev-1/dev-2 both 5) and a gap.
     // The UI must resolve to the same strict order the planner uses so the list

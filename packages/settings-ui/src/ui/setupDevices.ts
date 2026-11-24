@@ -2,7 +2,9 @@ import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPow
 import { h, render } from 'preact';
 import {
   devicePowerSetupHint, openGuidedDeviceSetup, readDeviceSetupEntries, readLastResortSetup,
+  type GuidedDeviceSetupActions,
 } from './devicePowerSetup.ts';
+import { getManagedDisabledReason } from './deviceControlAvailability.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { DeviceDetailFocus } from './cardActivation.ts';
@@ -166,7 +168,7 @@ export const renderGuidedDeviceChoices = (devices: SettingsUiDeviceListItem[], j
   return new Set(candidates.map(({ id }) => id));
 };
 
-export const createGuidedManageAction = (
+const createGuidedManageAction = (
   setManaged: (deviceId: string, enabled: boolean) => Promise<void>, refresh: () => Promise<boolean>,
 ) => async (deviceId: string, enabled: boolean): Promise<boolean> => {
   if (enabled) {
@@ -178,6 +180,23 @@ export const createGuidedManageAction = (
   if (!enabled) return true;
   return await refresh() && state.latestDevices.some((device) => device.id === deviceId && device.managed);
 };
+
+const guidedManagedDisabledReason = (id: string): string | null => {
+  const device = state.latestDevices.find((entry) => entry.id === id);
+  if (!device) return 'PELS could not find this device in the refreshed device list.';
+  const { supportsManage, nativeWiringRequired } = resolveDeviceManageability(device);
+  return getManagedDisabledReason(state.initialLoadComplete, supportsManage, nativeWiringRequired);
+};
+
+export const createGuidedSetupActions = (
+  setManaged: (deviceId: string, enabled: boolean) => Promise<void>, refresh: () => Promise<boolean>,
+): GuidedDeviceSetupActions => ({
+  refresh,
+  manage: createGuidedManageAction(setManaged, refresh),
+  managedDisabledReason: guidedManagedDisabledReason,
+  offersHomeyEnergy: (id) => needsHomeyEnergySetup(state.latestDevices.find((device) => device.id === id)),
+  simulation: () => state.dryRun,
+});
 
 export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): SetupDeviceChoices => {
   const membership = readHomeMembership();

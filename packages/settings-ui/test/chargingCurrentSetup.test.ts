@@ -59,6 +59,28 @@ test('retains the entered key after a failed save and clears it after success', 
   await vi.waitFor(() => expect(field.value).toBe(''));
 });
 
+test.each([
+  { role: 'secondary', mainName: 'Driveway', automaticWatts: false },
+  { role: 'main', mainName: 'Garage', automaticWatts: true },
+] as const)('shows a save error after moving to short installation setup: %o', async (chargingInstallation) => {
+  let device = charger;
+  callApi.mockImplementation(async (method: string, path: string) => {
+    if (method === 'PUT' && path === '/ui_charging_current/charger') {
+      device = { ...charger, chargingInstallation };
+      throw new Error('Charging setup changed. Check the new setup.');
+    }
+    return path === '/ui_charging_current' ? [device] : { configured: true, state: 'ready' };
+  });
+
+  await act(async () => setChargingCurrentDevice('charger', true));
+  await vi.waitFor(() => expect(button('Use built-in control')).toBeTruthy());
+  await act(async () => button('Use built-in control').click());
+  await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent)
+    .toBe('Charging setup changed. Check the new setup.'));
+  expect(document.body.textContent).toContain('The chargers share that current');
+  expect(document.body.textContent).not.toContain('Use built-in control');
+});
+
 test('ignores a stale failed read after selecting another device', async () => {
   let rejectRead!: (error: Error) => void;
   callApi.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectRead = reject; }));

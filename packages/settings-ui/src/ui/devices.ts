@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { SetupDevicePicker } from './views/SetupJourney.tsx';
 import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
 import {
-  createGuidedManageAction, renderGuidedDeviceChoices, readSetupDeviceChoices, retrySetupDeviceReads,
+  createGuidedSetupActions, renderGuidedDeviceChoices, readSetupDeviceChoices, retrySetupDeviceReads,
 } from './setupDevices.ts';
 import { renderSetupGoals } from './setupGoalsRender.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
@@ -469,11 +469,9 @@ const refreshGuidedDevices = async (): Promise<boolean> => {
   return refreshDevices();
 };
 
-const guidedSetupActions = {
-  refresh: refreshGuidedDevices,
-  manage: createGuidedManageAction((id, enabled) => buildManagedToggleHandler(id)(enabled), refreshGuidedDevices),
-  simulation: () => state.dryRun,
-};
+const guidedSetupActions = createGuidedSetupActions(
+  (id, enabled) => buildManagedToggleHandler(id)(enabled), refreshGuidedDevices,
+);
 
 export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
