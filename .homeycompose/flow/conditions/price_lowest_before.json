@@ -16,7 +16,7 @@
         "en": "2 - 23"
       },
       "hint": {
-        "en": "Counted back from the end hour. The window can cross midnight. For example, 6 hours before 04:00 searches 22:00 the previous day through 03:59."
+        "en": "Counts back from the end hour and can cross midnight. Six hours before 04:00 starts at 22:00 the day before."
       },
       "min": 2,
       "max": 23,

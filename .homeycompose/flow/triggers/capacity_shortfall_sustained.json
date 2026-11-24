@@ -18,7 +18,7 @@
     }
   ],
   "hint": {
-    "en": "Fires once when PELS has expected one part of your home to exceed its hard cap in the selected capacity period, without a break, for the time you choose, with every managed device there already turned off or at its lowest step. If the situation clears inside that time, nothing fires. If your power comes from a Flow, report power more often than once a minute, for example every 30 seconds. A gap longer than a minute restarts the wait. PELS limits managed devices immediately. This card decides when your Flow starts. Use it instead of Hard cap breach imminent: manual action needed when a brief spike is not worth a notification. The [[home]] tag names the part of the home: the Main home, or a meter area by name. Daily budget overruns do not fire this trigger."
+    "en": "Fires when PELS expects a hard cap breach for the chosen time and has no more devices to limit. If power comes from a Flow, report it every 30 seconds. A gap longer than a minute restarts the wait. The [[home]] tag names the affected area."
   },
   "tokens": [
     {
