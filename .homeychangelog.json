@@ -898,5 +898,8 @@
   },
   "3.51.0": {
     "en": "Zaptec chargers that share one installation are now controlled together: when every charger is managed, PELS sets the installation's current through one of them and pauses or resumes the chargers in your priority order. Chargers on the same installation share one priority in Modes. If a Flow sets the current, each charger keeps its own switching and Flow control.\n\nDevices that need a metering socket or a switch before PELS can use them are now listed under Needs setup in Devices and during first-run setup. Choose Set up, pick the socket and switch, then review the setup with the device's latest power reading before adding it to PELS."
+  },
+  "3.52.0": {
+    "en": "You can now start, change or end a temperature override from the Device insight widget, and temperature override Flows can run for up to seven days. New Flow cards fire when PELS limits or resumes a device, and Prepare operating mode heats eligible devices early so a mode is ready at the time you choose. The resume card covers devices limited since PELS last started.\n\nAn energy smart task whose device stops taking power while it is allowed to run is now Tentatively met. Smart task Flows report this as device_idle instead of missed or at_risk, so add device_idle to any filter that should include it. A home battery left in PELS control by an earlier version now asks you to confirm the hand-back on its device page. Dismissed recommendations stay dismissed across settings sessions."
   }
 }
