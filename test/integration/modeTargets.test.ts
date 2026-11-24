@@ -193,11 +193,12 @@ describe('Mode device targets', () => {
     // setpoint at opt-in, not the one it had when PELS first saw it.
     await heater.setCapabilityValue('target_temperature', 19);
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
-    await app.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
 
-    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
-      Home: { 'dev-1': 19 },
-      Away: { 'dev-1': 19 },
-    });
+    await vi.waitFor(() => {
+      expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
+        Home: { 'dev-1': 19 },
+        Away: { 'dev-1': 19 },
+      });
+    }, { timeout: 3_000 });
   });
 });
