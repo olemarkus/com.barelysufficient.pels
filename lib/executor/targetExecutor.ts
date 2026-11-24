@@ -242,10 +242,11 @@ const resolveTargetDeviceLimitChange = (
   ctx: ExecutorCommandContext,
   command: ExecutableTargetCommand,
   skipContext: TargetSkipContext,
+  temperatureC: number,
 ): DeviceLimitChange | undefined => {
   if (ctx.owner !== 'ordinary' || !ctx.recordDeviceLimitChange) return undefined;
   if (skipContext === 'shedding' && ctx.deviceLimit) {
-    return { kind: 'limited', ...ctx.deviceLimit, action: 'temperature_setback' };
+    return { kind: 'limited', ...ctx.deviceLimit, action: 'temperature_setback', temperatureC };
   }
   if (!ctx.deviceLimit && 'isRestoring' in command && command.isRestoring === true) return { kind: 'resumed' };
   return undefined;
@@ -278,7 +279,7 @@ const executeTargetCommandDispatch = async (
     const requestedValue = outcome.requestedTargetValue;
     const pending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
-      resolveTargetDeviceLimitChange(ctx, command, skipContext),
+      resolveTargetDeviceLimitChange(ctx, command, skipContext, requestedValue),
     );
     ctx.execution.controlContests.commandSent({
       homeId: ctx.homeId,
@@ -310,7 +311,7 @@ const executeTargetCommandDispatch = async (
   } catch (error) {
     const failedPending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, desired, nowMs, 'temporary_unavailable', latestObservedValue ?? observedValue,
-      isHomeyRequestTimeout(error) ? resolveTargetDeviceLimitChange(ctx, command, skipContext) : undefined,
+      isHomeyRequestTimeout(error) ? resolveTargetDeviceLimitChange(ctx, command, skipContext, desired) : undefined,
     );
     const details = {
       targetCommandId, deviceId, deviceName: name, target: 'temperature', desired, skipContext,
