@@ -74,6 +74,7 @@ export type ExecutorCommandContext = {
   lifecycleFallback: LifecycleFallbackView;
   /** Prevents a late actuator completion from installing state after authority ended. */
   isAuthorityCurrent: () => boolean;
+  onBinaryAcknowledged?: import('./binaryControlDispatch').BinaryControlTransport['onBinaryAcknowledged'];
   /** Lifecycle-only retries scheduled when an already-running ordinary write releases its claim. */
   onBinaryCommandClaimReleased?: (released: CommandClaimState<boolean>) => void;
   onSteppedCommandClaimReleased?: (released: CommandClaimState<string>) => void;

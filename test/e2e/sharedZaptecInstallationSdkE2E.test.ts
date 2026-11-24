@@ -4,7 +4,7 @@ import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import {
   CAPACITY_DRY_RUN, CAPACITY_ENABLED, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
   CAPACITY_PRIORITIES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DAILY_BUDGET_KWH, DEVICE_POWER_CONTROL_MODES,
-  EV_CAR_ASSOCIATIONS, EV_CAR_CURRENT_LIMITS, EV_CHARGER_CURRENT_LIMITS, EXTERNAL_OFF_HOLDS, GRID_IMPORT_ENABLED, GRID_IMPORT_LIMIT_KW,
+  DEVICE_TARGET_POWER_CONFIGS, EV_CAR_ASSOCIATIONS, EV_CAR_CURRENT_LIMITS, EV_CHARGER_CURRENT_LIMITS, EXTERNAL_OFF_HOLDS, GRID_IMPORT_ENABLED, GRID_IMPORT_LIMIT_KW,
   MANAGED_DEVICES, NATIVE_EV_WIRING_DEVICES, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
   RESPECT_EXTERNAL_OFF_DEVICES, homeScopedSettingsKey,
 } from '../../lib/utils/settingsKeys';
@@ -14,6 +14,7 @@ import { buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers, setMockZones } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
+import { captureLogger } from '../utils/loggerCapture';
 import { groupModePriorityDeviceIds } from '../../packages/shared-domain/src/modePriorities';
 
 const PRIMARY = 'charger-b';
@@ -38,6 +39,8 @@ type Setup = {
   primaryMode?: 'device' | 'homey';
   splitMeterArea?: boolean;
   unreadableInstallationCurrent?: boolean;
+  flowCurrent?: boolean;
+  retainSecondarySwitchReading?: boolean;
 };
 
 function buildMember(id: MemberId) {
@@ -61,6 +64,7 @@ function simulateInstallation(setup: Setup) {
   let backgroundW = 600;
   let annexBackgroundW = 600;
   let meterOnline = true;
+  let currentFlowAction = setup.flowCurrent ? `homey:device:${PRIMARY}:available_installation_current` : undefined;
   const members = { [PRIMARY]: buildMember(PRIMARY), [SECONDARY]: buildMember(SECONDARY) };
   if (setup.noLadder) {
     members[PRIMARY].removeCapability('target_power');
@@ -101,7 +105,7 @@ function simulateInstallation(setup: Setup) {
       report(id, 'target_power', targetW[id]);
       report(id, 'available_installation_current',
         id === PRIMARY && setup.unreadableInstallationCurrent ? undefined : availableW / WATTS_PER_AMP);
-      report(id, 'evcharger_charging', charging[id]);
+      report(id, 'evcharger_charging', id === SECONDARY && setup.retainSecondarySwitchReading ? true : charging[id]);
       let plugState = charging[id] ? 'plugged_in_charging' : 'plugged_in_paused';
       if (initial[id] === 'finished') plugState = 'plugged_in_finished';
       if (initial[id] === 'unplugged') plugState = 'plugged_out';
@@ -160,7 +164,10 @@ function simulateInstallation(setup: Setup) {
         ],
       };
     }
-    if (path === 'manager/flow/flow/' || path === 'manager/flow/advancedflow/') return {};
+    if (path === 'manager/flow/flow/') return currentFlowAction ? {
+      bridge: { name: 'Installation current', actions: [{ id: currentFlowAction }] },
+    } : {};
+    if (path === 'manager/flow/advancedflow/') return {};
     if (path === 'manager/devices/device') return {
       ...Object.fromEntries((setup.additionalDevices ?? []).map((device) => [device.idValue, device.toHomeyApiDevice()])),
       [PRIMARY]: devicePayload(PRIMARY),
@@ -176,6 +183,7 @@ function simulateInstallation(setup: Setup) {
     setBackground: (watts: number) => { backgroundW = watts; },
     setAnnexBackground: (watts: number) => { annexBackgroundW = watts; },
     loseMeter: () => { meterOnline = false; },
+    setCurrentFlowAction: (action: string | undefined) => { currentFlowAction = action; },
     finishCharging: (id: MemberId) => {
       initial[id] = 'finished';
       charging[id] = false;
@@ -222,6 +230,16 @@ async function boot(setup: Setup = {}) {
   settings.set(CAPACITY_PRIORITIES, { Home: { [PRIMARY]: 1, [SECONDARY]: 2 } });
   settings.set(DEVICE_POWER_CONTROL_MODES, { [PRIMARY]: 'automatic', [SECONDARY]: 'automatic' });
   settings.set(NATIVE_EV_WIRING_DEVICES, { [PRIMARY]: true, [SECONDARY]: true });
+  if (setup.flowCurrent) {
+    settings.set('charging_current_control', {
+      [PRIMARY]: { method: 'flow', confirmation: 'none' },
+      [SECONDARY]: { method: 'flow', confirmation: 'none' },
+    });
+    settings.set(DEVICE_POWER_CONTROL_MODES, { [PRIMARY]: 'manual', [SECONDARY]: 'manual' });
+    settings.set(DEVICE_TARGET_POWER_CONFIGS, {
+      [PRIMARY]: { enabled: true, preset: 'ev_charger_1_phase', max: INITIAL_W },
+    });
+  }
   settings.set(OVERSHOOT_BEHAVIORS, { [PRIMARY]: { action: 'turn_off' }, [SECONDARY]: { action: 'turn_off' } });
   settings.set('price_optimization_enabled', true);
   seedHourlyFlowPricesForTests(Date.UTC(2026, 0, 1), Array.from({ length: 24 }, (_, hour) => (hour === 17 ? 5 : 50)));
@@ -479,6 +497,78 @@ describe('shared Zaptec load through the Homey SDK', () => {
     expect(sim.pauses()).toHaveLength(2);
     expect(sim.resumes()).toEqual([]);
   });
+
+  it.each([false, true])('finishes silent-meter pauses with an unchanged switch report and rejection=%s', async (rejectFirst) => {
+    const sim = await boot({ retainSecondarySwitchReading: true });
+    const logs = captureLogger('info', []);
+    await advance(90);
+    const secondary = sim.members[SECONDARY];
+    secondary.configureCapabilityBehavior('evcharger_charging', {
+      onApiWrite: { accept: !rejectFirst, updateActual: false, updateApi: false,
+        emitCapabilityEvent: false, emitDeviceUpdate: false },
+    });
+    const secondaryAttempts = () => sim.attempts.filter(({ id, capability, value }) => (
+      id === SECONDARY && capability === 'evcharger_charging' && value === false
+    ));
+    sim.loseMeter();
+    if (rejectFirst) {
+      await advanceUntil(() => secondaryAttempts().length > 0, 'the first pause should be attempted');
+      expect(logs.findEvents('meter_silence_shed_pass_completed')).toHaveLength(0);
+      secondary.configureCapabilityBehavior('evcharger_charging', {
+        onApiWrite: { updateActual: false, updateApi: false, emitCapabilityEvent: false, emitDeviceUpdate: false },
+      });
+    }
+    const rejectedAttempts = secondaryAttempts().length;
+    await advanceUntil(() => MEMBERS.every((id) => sim.pauses().some((write) => write.id === id)),
+      'both chargers should have accepted the pause');
+    expect(await secondary.getCapabilityValue('evcharger_charging')).toBe(true);
+    expect(sim.drawW(PRIMARY) + sim.drawW(SECONDARY)).toBe(0);
+    await advance(360);
+    expect(logs.findEvents('meter_silence_shed_pass_completed')).toHaveLength(1);
+    expect(secondaryAttempts()).toHaveLength(rejectedAttempts + 1);
+    expect(sim.pauses().filter(({ id }) => id === PRIMARY)).toHaveLength(1);
+  });
+
+  it('keeps Flow current stepping on a fully managed installation after a watt claim', async () => {
+    const sim = await boot({ flowCurrent: true, secondary: 'unplugged' });
+    const triggers = () => mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? [];
+    await advance(90);
+    expect(await sim.members[PRIMARY].getCapabilityValue('target_power_mode')).toBe('homey');
+    sim.setBackground(5_000);
+    await advanceUntil(() => triggers().some(({ state }) => state?.deviceId === PRIMARY),
+      'the primary should request a lower current through Flow');
+    expect(sim.currentWrites()).toEqual([]);
+    expect(sim.pauses()).toEqual([]);
+  });
+
+  it.each(['available_installation_current', 'target_power'])(
+    'changes the entire route when a Flow writes the secondary charger’s %s', async (capability) => {
+      const sim = await boot();
+      await advance(90);
+      const initial = await api.ui_devices({ homey: homey() });
+      expect(initial.devices.find(({ id }) => id === PRIMARY)?.controlAdapter?.chargingInstallation?.mainId).toBe(PRIMARY);
+
+      sim.setCurrentFlowAction(`homey:device:${SECONDARY}:${capability}`);
+      const routes = await api.ui_charging_current({ homey: homey() });
+      for (const id of MEMBERS) {
+        expect(routes.find((entry) => entry.deviceId === id)).toMatchObject({
+          sharedInstallation: true, currentRoute: 'flow', flowCheck: 'conflict', flowNames: ['Installation current'],
+        });
+      }
+      const after = await api.ui_devices({ homey: homey() });
+      for (const device of after.devices.filter(({ id }) => id === PRIMARY || id === SECONDARY)) {
+        expect(device.controlAdapter?.chargingInstallation).toBeUndefined();
+      }
+      const writesBeforePressure = sim.currentWrites().length;
+      sim.setBackground(5_000);
+      await advance(90);
+      expect(sim.currentWrites()).toHaveLength(writesBeforePressure);
+
+      sim.setCurrentFlowAction(undefined);
+      const restored = await api.ui_charging_current({ homey: homey() });
+      expect(restored.find((entry) => entry.deviceId === PRIMARY)?.chargingInstallation?.automaticWatts).toBe(true);
+    },
+  );
 
   it('uses only the switch in the meter area under pressure when the installation crosses areas', async () => {
     const sim = await boot({ splitMeterArea: true });

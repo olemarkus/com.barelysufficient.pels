@@ -18,7 +18,9 @@ import {
   installationPresetWattsPerAmp, resolveInstallationCurrentTargetPowerObservation,
 } from './chargingCurrentAdapter';
 import type { CapabilityWrite, ChargingCurrentBinding } from './deviceAdapter';
-import { ChargingInstallationControl } from './chargingInstallationControl';
+import { currentSettingCapabilities, currentSettingFlows, installationCurrentFlows } from './chargingCurrentFlowRoutes';
+import { withChargingInstallation, withCurrentRoute } from './chargingCurrentProjection';
+import { ChargingInstallationControl, type InstallationCurrentRoute } from './chargingInstallationControl';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
 import type { PowerSourceHome } from './transport/externalDevicePower';
 import type { FlowActionCardInventory } from './flowActionCardInventory';
@@ -36,20 +38,6 @@ const MIN_CURRENT_A = 6;
 const SECONDARY_CURRENT_ERROR = 'This charger shares its installation current; PELS sets it through another charger.';
 const SHARED_CURRENT_UNAVAILABLE = 'PELS cannot set the shared current for this installation.';
 const DEFAULT_SETUP: ChargingCurrentSetup = { method: 'flow', confirmation: 'none' };
-
-/** What a Flow writes to set this binding's current: its capability, if any, and its action. */
-function currentSettingCapabilities(adapter: ChargingCurrentBinding): string[] {
-  return adapter.current.kind === 'capability' ? [adapter.current.capabilityId, adapter.actionId] : [adapter.actionId];
-}
-
-/** The Flows that write this binding's current, by Flow id. */
-function currentSettingFlows(adapter: ChargingCurrentBinding, writes: FlowCapabilityWrites): Map<string, string> {
-  const names = new Map<string, string>();
-  for (const capability of currentSettingCapabilities(adapter)) {
-    for (const [id, name] of writes.get(adapter.deviceId)?.get(capability) ?? []) names.set(id, name);
-  }
-  return names;
-}
 
 function readSetup(value: unknown): ChargingCurrentSetup | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
@@ -73,9 +61,9 @@ export class ChargingCurrentControl {
   private readonly setups = new Map<string, ChargingCurrentSetup>();
   private setupsReadState: 'unavailable' | 'resolved' = 'unavailable';
   // The last Flow list PELS accepted, seeded from the one saved before the
-  // restart. Empty with nothing saved: nothing is held back, the same as a Flow
-  // list with no writes.
+  // restart. Shared installations wait for a successful scan before setting current.
   private flowWrites: FlowCapabilityWrites = new Map();
+  private sharedFlowInventoryReady = false;
   // The charging devices the reads carried, for a device the committed list
   // does not hold yet: that list is adopted only after projection, so it is
   // empty for the first refresh after a boot and lacks a device new in this read.
@@ -105,7 +93,7 @@ export class ChargingCurrentControl {
     this.sessions = new DeviceAdapterSessions(this.homeLocation, (device) => this.installations.accessOf(device));
     this.installations = new ChargingInstallationControl(
       this.sessions, (id) => this.findDevice(id), resolveHome, deviceSettings,
-      (device) => this.hasInstallationRoute(device), logger,
+      (main, memberIds) => this.installationRoute(main, memberIds), logger,
     );
     // Unreadable, nothing is held back until the next scan; that scan's save
     // rewrites whatever rows the store still holds.
@@ -183,10 +171,11 @@ export class ChargingCurrentControl {
    * sets the current of itself, so the caller can re-project the snapshot.
    */
   acceptFlowFacts(facts: UserFlowFacts): boolean {
-    const before = this.builtInRouteKey();
+    const before = this.currentRouteKey();
     this.flowWrites = facts.writes;
+    this.sharedFlowInventoryReady = true;
     this.saveFlowWrites();
-    return this.builtInRouteKey() !== before;
+    return this.currentRouteKey() !== before;
   }
 
   /** The Flow list last accepted, for a caller that may have to restore it. */
@@ -195,6 +184,7 @@ export class ChargingCurrentControl {
   /** Puts back an earlier accepted list, when applying a later one failed. */
   restoreFlowWrites(writes: FlowCapabilityWrites): void {
     this.flowWrites = writes;
+    this.sharedFlowInventoryReady = false;
     this.saveFlowWrites();
   }
 
@@ -242,7 +232,7 @@ export class ChargingCurrentControl {
   lacksCurrentRoute(deviceId: string): boolean {
     const device = this.findDevice(deviceId);
     const adapter = device && resolveChargingCurrentAdapter(device);
-    if (!device || !adapter || this.automaticWattsOwnRoute(device)) return false;
+    if (!device || !adapter || this.routesAutomaticWatts(device)) return false;
     if (this.isInstallationSecondary(deviceId)) return false;
     if (hasSharedChargingInstallation(adapter, this.knownDevices()) && !this.isInstallationMain(deviceId)) {
       return false;
@@ -279,7 +269,7 @@ export class ChargingCurrentControl {
 
   private routesBuiltInFor(deviceId: string, setup: ChargingCurrentSetup): boolean {
     const device = this.findDevice(deviceId);
-    if (device && this.automaticWattsOwnRoute(device)) return false;
+    if (device && this.routesAutomaticWatts(device)) return false;
     if (this.isInstallationSecondary(deviceId)) return false;
     const adapter = device && resolveChargingCurrentAdapter(device);
     // A saved choice whose app now offers no current write (a read-only
@@ -292,10 +282,15 @@ export class ChargingCurrentControl {
     );
   }
 
-  // The devices PELS sets the current of itself, as one comparable key.
-  private builtInRouteKey(): string {
-    return this.knownDevices().filter((device) => this.routesBuiltIn(device.id)).map((device) => device.id)
-      .sort().join('|');
+  private routesAutomaticWatts(device: HomeyDeviceLike): boolean {
+    const access = this.installations.accessOf(device);
+    return (access === undefined || access === 'main') && this.automaticWattsOwnRoute(device);
+  }
+
+  private currentRouteKey(): string {
+    return JSON.stringify(this.knownDevices().map((device) => (
+      [device.id, this.installations.accessOf(device), this.routesBuiltIn(device.id)]
+    )));
   }
 
   /**
@@ -312,7 +307,8 @@ export class ChargingCurrentControl {
 
   projectControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
     const setup = this.setup(source.id);
-    return this.withChargingInstallation(this.sessions.project(this.withCurrentRoute(source, setup), setup));
+    const projected = this.sessions.project(withCurrentRoute(source, this.routesBuiltInFor(source.id, setup)), setup);
+    return withChargingInstallation(projected, this.chargingInstallation(source.id));
   }
 
   chargingInstallation(deviceId: string): ChargingInstallation | undefined {
@@ -320,13 +316,19 @@ export class ChargingCurrentControl {
     return device && this.installations.installationOf(device);
   }
 
-  private hasInstallationRoute(main: HomeyDeviceLike): boolean {
-    if (this.automaticWattsOwnRoute(main)) {
-      return this.sessions.targetPowerClaims.resolve(main, Date.now()) !== 'refused';
+  private installationRoute(main: HomeyDeviceLike | undefined, memberIds: readonly string[]): InstallationCurrentRoute {
+    if (!this.sharedFlowInventoryReady) return 'unverified';
+    const automatic = main !== undefined && this.automaticWattsOwnRoute(main);
+    if (automatic && this.sessions.targetPowerClaims.resolve(main, Date.now()) === 'refused') return 'refused';
+    if (this.findInstallationFlows(memberIds, this.flowWrites).size > 0) return 'flow';
+    if (main && (automatic || (this.setup(main.id).method === 'built_in' && this.hasManualInstallationLadder(main)))) {
+      return 'shared';
     }
-    const adapter = resolveChargingCurrentAdapter(main);
-    return this.setup(main.id).method === 'built_in' && this.hasManualInstallationLadder(main)
-      && adapter !== undefined && currentSettingFlows(adapter, this.flowWrites).size === 0;
+    return 'per_charger';
+  }
+
+  private findInstallationFlows(memberIds: readonly string[], writes: FlowCapabilityWrites): Map<string, string> {
+    return installationCurrentFlows(memberIds.flatMap((id) => this.findDevice(id) ?? []), writes);
   }
 
   private hasManualInstallationLadder(main: HomeyDeviceLike): boolean {
@@ -343,16 +345,16 @@ export class ChargingCurrentControl {
     const adapter = resolveChargingCurrentAdapter(device);
     const currentCapability = adapter?.current.kind === 'capability' ? adapter.current.capabilityId : undefined;
     if (capabilityId === currentCapability || WATT_CONTROL_CAPABILITIES.includes(capabilityId)) {
-      this.assertInstallationStepAllowed(deviceId);
+      this.assertInstallationStepAllowed(deviceId, true);
     }
   }
 
   /** Recheck the current authority even when the requested step predates a home or mode change. */
-  assertInstallationStepAllowed(deviceId: string): void {
+  assertInstallationStepAllowed(deviceId: string, nativeWrite = false): void {
     const device = this.findDevice(deviceId);
     const access = device && this.installations.accessOf(device);
     if (access === 'secondary') throw new Error(SECONDARY_CURRENT_ERROR);
-    if (access === 'blocked') throw new Error(SHARED_CURRENT_UNAVAILABLE);
+    if (access === 'blocked' || (nativeWrite && access === 'per_charger')) throw new Error(SHARED_CURRENT_UNAVAILABLE);
   }
 
   /**
@@ -406,35 +408,11 @@ export class ChargingCurrentControl {
     if (access === 'blocked') {
       return snapshot.controlAdapter?.chargingInstallation !== undefined || snapshot.steppedLoadProfile !== undefined;
     }
+    if (access === 'per_charger') {
+      return snapshot.controlAdapter?.chargingInstallation !== undefined
+        || snapshot.automaticPowerControl?.mode === 'automatic';
+    }
     return access !== snapshot.controlAdapter?.chargingInstallation?.role;
-  }
-
-  private withChargingInstallation(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
-    const chargingInstallation = this.chargingInstallation(source.id);
-    if (!chargingInstallation) {
-      if (source.controlAdapter?.chargingInstallation === undefined) return source;
-      const { chargingInstallation: _dropped, ...controlAdapter } = source.controlAdapter;
-      return { ...source, controlAdapter };
-    }
-    return { ...source, controlAdapter: {
-      kind: 'capability_adapter', activationRequired: false, activationEnabled: false,
-      ...source.controlAdapter, chargingInstallation,
-    } };
-  }
-
-  // A retained snapshot (one whose refresh read was rejected) is projected again
-  // as it is, so a route that is now held back must lose the flag it carried.
-  private withCurrentRoute(source: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
-    if (this.routesBuiltInFor(source.id, setup)) {
-      return { ...source, controlAdapter: {
-        kind: 'capability_adapter', activationRequired: false, activationEnabled: false,
-        ...source.controlAdapter, currentControl: 'built_in',
-      } };
-    }
-    if (!source.controlAdapter) return source;
-    if (source.controlAdapter.currentControl === undefined) return source;
-    const { currentControl: _heldBack, ...controlAdapter } = source.controlAdapter;
-    return { ...source, controlAdapter };
   }
 
   setup(deviceId: string): ChargingCurrentSetup {
@@ -496,36 +474,46 @@ export class ChargingCurrentControl {
     const devices = this.getDevices();
     return devices.flatMap((device) => {
       const adapter = resolveChargingCurrentAdapter(device);
-      const chargingInstallation = this.describeInstallation(device);
+      const memberIds = this.sessions.sharedChargingMemberIds(device);
+      const names = flows.status === 'ok' ? this.describeFlows(adapter, memberIds, flows.facts.writes) : undefined;
+      const chargingInstallation = this.describeInstallation(device, memberIds);
       if (!adapter && !chargingInstallation) return [];
-      const names = flows.status === 'ok' && adapter
-        ? currentSettingFlows(adapter, flows.facts.writes) : new Map<string, string>();
       let flowCheck: ChargingCurrentRead['flowCheck'] = 'unavailable';
-      if (flows.status === 'ok') flowCheck = names.size ? 'conflict' : 'clear';
+      if (names) flowCheck = names.size ? 'conflict' : 'clear';
       return [{
         deviceId: device.id, name: device.name, setup: this.setup(device.id),
         ...this.describeCurrentBinding(adapter),
         sharedInstallation: chargingInstallation?.role === 'secondary'
-          || (!chargingInstallation && adapter !== undefined && hasSharedChargingInstallation(adapter, devices)),
+          || (!chargingInstallation && (memberIds !== undefined
+            || (adapter !== undefined && hasSharedChargingInstallation(adapter, devices)))),
         chargingInstallation,
         flowCheck,
-        flowNames: [...names.values()],
+        flowNames: names ? [...names.values()] : [],
         currentRoute: this.routesBuiltIn(device.id) ? 'built_in' : 'flow',
         missingCompanion: this.sessions.missingCompanion(device.id),
       }];
     });
   }
 
-  private describeInstallation(device: HomeyDeviceLike): ChargingCurrentRead['chargingInstallation'] {
+  private describeFlows(
+    adapter: ChargingCurrentBinding | undefined, memberIds: readonly string[] | undefined, writes: FlowCapabilityWrites,
+  ): Map<string, string> {
+    if (memberIds) return this.findInstallationFlows(memberIds, writes);
+    return adapter ? currentSettingFlows(adapter, writes) : new Map();
+  }
+
+  private describeInstallation(
+    device: HomeyDeviceLike, memberIds: readonly string[] | undefined,
+  ): ChargingCurrentRead['chargingInstallation'] {
     const main = this.installations.eligibleMainOf(device);
-    if (!main) return undefined;
-    const automatic = this.automaticWattsOwnRoute(main);
+    if (!main || !memberIds) return undefined;
+    const route = this.installationRoute(main, memberIds);
+    if (route === 'flow' || route === 'refused' || route === 'unverified') return undefined;
+    const automatic = this.routesAutomaticWatts(main);
     if (!automatic && !this.hasManualInstallationLadder(main)) return undefined;
     const role = device.id === main.id ? 'main' : 'secondary';
     return {
-      role, mainName: main.name,
-      automaticWatts: role === 'main' && automatic
-        && this.sessions.targetPowerClaims.resolve(main, Date.now()) !== 'refused',
+      role, mainName: main.name, automaticWatts: role === 'main' && automatic,
     };
   }
 
