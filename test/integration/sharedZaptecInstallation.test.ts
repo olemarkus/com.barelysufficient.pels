@@ -2,6 +2,7 @@ import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl'
 import { HomeyActionAccess } from '../../lib/device/transport/homeyActionAccess';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
+import { normalizeUserFlowFacts } from '../../lib/flowApi/userFlows';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
@@ -43,6 +44,7 @@ function fixture(
       deviceTargetPowerConfigs: { 'homey-b': { enabled: true, preset: 'ev_charger_3_phase', max: 22080 } },
     }), homes);
   control.retainDevices(inventory, control.trustEpoch(), 0);
+  control.acceptFlowFacts(normalizeUserFlowFacts({}, {}));
   return { control, values };
 }
 
