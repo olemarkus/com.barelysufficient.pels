@@ -1,5 +1,6 @@
 export type DebouncedSyncSchedulerParams = {
   debounceMs: number;
+  maxWaitMs?: number;
   rerunAfterRun?: 'debounce' | 'immediate';
   run: () => Promise<void>;
   onError: (error: unknown) => void;
@@ -15,12 +16,15 @@ export const createDebouncedSyncScheduler = (
 ): DebouncedSyncScheduler => {
   const {
     debounceMs,
+    maxWaitMs,
     rerunAfterRun = 'debounce',
     run,
     onError,
   } = params;
 
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let deadline: number | undefined;
+  let stopped = false;
   let running = false;
   let rerunRequested = false;
   let pendingRun: Promise<void> | null = null;
@@ -44,6 +48,7 @@ export const createDebouncedSyncScheduler = (
 
   const executeRun = (): void => {
     timer = null;
+    deadline = undefined;
     running = true;
     void Promise.resolve()
       .then(() => run())
@@ -67,13 +72,15 @@ export const createDebouncedSyncScheduler = (
     if (timer) {
       clearTimeout(timer);
     }
-    timer = setTimeout(() => {
-      executeRun();
-    }, debounceMs);
+    const delay = deadline === undefined ? debounceMs : Math.min(debounceMs, Math.max(0, deadline - performance.now()));
+    timer = setTimeout(executeRun, delay);
   };
 
   return {
     schedule: (): Promise<void> => {
+      if (stopped) return Promise.resolve();
+      // Measure the cap from the first unserved write.
+      if (maxWaitMs !== undefined) deadline ??= performance.now() + maxWaitMs;
       const promise = ensurePendingRun();
       if (running) {
         rerunRequested = true;
@@ -83,6 +90,8 @@ export const createDebouncedSyncScheduler = (
       return promise;
     },
     stop: (): void => {
+      stopped = true;
+      deadline = undefined;
       if (timer) {
         clearTimeout(timer);
         timer = null;

@@ -678,15 +678,81 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
-  it('refreshes managed devices and rebuilds', async () => {
+  it('reconciles a managed change that arrives during a pending refresh', async () => {
+    vi.useFakeTimers();
+    let managed = { heater: true };
+    const valuesAtReload: Array<typeof managed> = [];
+    let releaseRefresh: (() => void) | undefined;
+    const refreshBlocked = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const deps = buildDeps({
+      loadCapacitySettings: vi.fn(() => { valuesAtReload.push(managed); }),
+      refreshTargetDevicesSnapshot: vi.fn().mockReturnValueOnce(refreshBlocked).mockResolvedValue(undefined),
+    });
+    vi.mocked(deps.homey.settings.get).mockImplementation((key) => (key === MANAGED_DEVICES ? managed : undefined));
+    const handler = createSettingsHandler(deps);
+
+    const firstChange = handler(MANAGED_DEVICES);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledOnce();
+
+    managed = { heater: false };
+    const laterChange = handler(MANAGED_DEVICES);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledOnce();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    releaseRefresh?.();
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.all([firstChange, laterChange]);
+
+    expect(valuesAtReload).toEqual([{ heater: true }, { heater: false }]);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(deps.rebuildPlanFromCache).mock.calls).toEqual([[MANAGED_DEVICES], [MANAGED_DEVICES]]);
+
+    const repeated = handler(MANAGED_DEVICES);
+    await vi.advanceTimersByTimeAsync(500);
+    await repeated;
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(3);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(3);
+  });
+
+  it('cancels an unsettled managed-device batch when the handler stops', async () => {
+    vi.useFakeTimers();
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
 
+    const pending = handler(MANAGED_DEVICES);
+    handler.stop();
+    await pending;
     await handler(MANAGED_DEVICES);
+    await vi.advanceTimersByTimeAsync(500);
 
-    expect(deps.loadCapacitySettings).toHaveBeenCalled();
-    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('reconciles managed devices even while writes keep arriving', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+    let managed: Record<string, boolean> = {};
+    vi.mocked(deps.homey.settings.get).mockImplementation((key) => (key === MANAGED_DEVICES ? managed : undefined));
+
+    for (let index = 0; index < 12; index += 1) {
+      managed = { ...managed, [`heater-${index}`]: true };
+      void handler(MANAGED_DEVICES);
+      expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(250);
+    }
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledOnce();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(MANAGED_DEVICES);
+
+    managed = {};
+    const pending = handler(MANAGED_DEVICES);
+    await vi.advanceTimersByTimeAsync(500);
+    await pending;
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes budget exempt devices, updates daily budget state, and rebuilds', async () => {
@@ -760,8 +826,9 @@ describe('createSettingsHandler', () => {
     });
     const handler = createSettingsHandler(deps);
 
+    vi.useFakeTimers();
     const prior = handler(MANAGED_DEVICES);
-    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(500);
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
 
     const meterChange = handler(HOMEY_ENERGY_METER_DEVICE_ID);

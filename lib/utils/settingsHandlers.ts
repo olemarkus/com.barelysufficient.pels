@@ -66,6 +66,7 @@ import { recordSettingsRebuildRequest } from './settingsRebuildRequest';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from './errorUtils';
 import { createSettingsWriteDedupe } from './settingsWriteDedupe';
+import { createDebouncedSyncScheduler } from './settingsHandlerDebounce';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 const settingsLogger = getLogger('settings');
@@ -227,7 +228,30 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     (key) => deps.homey.settings.get(key),
   );
 
+  const logFailure = (key: string, error: unknown): void => {
+    settingsLogger.error({
+      event: 'settings_handler_failed',
+      settingKey: key,
+      err: normalizeError(error),
+    });
+  };
   let queue = Promise.resolve();
+  const enqueue = (key: string, keyHandler: () => Promise<void>): Promise<void> => {
+    queue = queue.then(() => runIfChanged(
+      key, keyHandler, () => deps.recoverCapacitySettingsAfterSkippedWrite(key),
+    )).catch((error) => logFailure(key, error));
+    return queue;
+  };
+  // Reconcile every batch because another key can load an intermediate Managed map.
+  const managedDeviceSync = createDebouncedSyncScheduler({
+    debounceMs: 500,
+    maxWaitMs: 3_000,
+    run: () => enqueue(
+      MANAGED_DEVICES,
+      () => syncReparsedDeviceSettings(deps, MANAGED_DEVICES, 'managed_devices_change'),
+    ),
+    onError: (error) => logFailure(MANAGED_DEVICES, error),
+  });
   const handler = (async (key: string) => {
     // Load-bearing synchronous edge: an async function executes through its
     // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
@@ -263,25 +287,21 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     }
     logMalformedHomeSuffix(key);
     // `scoped.homeId === MAIN_HOME_ID` implies `scoped.baseKey === key`, so
-    // main-home dispatch below stays exact-key and byte-identical to before.
+    // main-home dispatch below uses the original key.
     deps.noteCapacitySettingWritten(key);
+    // Wait outside the queue so the batch can join it once the writes settle.
+    if (key === MANAGED_DEVICES) {
+      await managedDeviceSync.schedule();
+      return;
+    }
     const keyHandler = handlers[isDeviceOverrideKey(key) ? DEVICE_OVERRIDE_PREFIX : key];
-    if (!keyHandler) return;
-    queue = queue.then(() => runIfChanged(
-      key, keyHandler, () => deps.recoverCapacitySettingsAfterSkippedWrite(key),
-    )).catch((error) => {
-      settingsLogger.error({
-        event: 'settings_handler_failed',
-        settingKey: key,
-        err: normalizeError(error),
-      });
-    });
-    await queue;
+    if (keyHandler) await enqueue(key, keyHandler);
   }) as SettingsHandler;
 
   // eslint-disable-next-line functional/immutable-data
   return Object.assign(handler, {
     stop: (): void => {
+      managedDeviceSync.stop();
       deps.dailyBudget.stop();
     },
   });
@@ -309,7 +329,6 @@ function buildSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
 const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [CHARGING_PHASE_SETTINGS_KEY, 'charging_phase_control_change'],
   [CONTROLLABLE_DEVICES, 'controllable_devices_change'],
-  [MANAGED_DEVICES, 'managed_devices_change'],
   [DEVICE_POWER_SOURCES, 'device_power_source_change'],
   [LAST_RESORT_DEVICES, 'last_resort_devices_change'],
   [DEVICE_BINARY_SWITCHES, 'device_binary_switch_change'],
@@ -328,12 +347,16 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [EV_CHARGER_CURRENT_LIMITS, 'ev_charger_current_limits_change'],
 ];
 
+async function syncReparsedDeviceSettings(deps: SettingsHandlerDeps, key: string, reason: string): Promise<void> {
+  deps.loadCapacitySettings();
+  await refreshSnapshotWithLog(deps, reason);
+  await rebuildPlanFromSettings(deps, key);
+}
+
 function buildSnapshotReparseHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
-  return Object.fromEntries(SNAPSHOT_REPARSE_SETTINGS.map(([key, reason]) => [key, async () => {
-    deps.loadCapacitySettings();
-    await refreshSnapshotWithLog(deps, reason);
-    await rebuildPlanFromSettings(deps, key);
-  }]));
+  return Object.fromEntries(SNAPSHOT_REPARSE_SETTINGS.map(([key, reason]) => [
+    key, () => syncReparsedDeviceSettings(deps, key, reason),
+  ]));
 }
 
 function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
