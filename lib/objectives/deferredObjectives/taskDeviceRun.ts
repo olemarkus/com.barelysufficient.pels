@@ -99,8 +99,9 @@ export class TaskDeviceRunTracker {
 
   private publish(kind: TaskDeviceRunEvent['kind'], diagnostic: EnergyDiagnostic): void {
     const { deviceId, deviceName, targetEnergyKWh, evaluation } = diagnostic;
+    if (deviceName === undefined) return;
     const event = {
-      kind, deviceId, deviceName: deviceName ?? deviceId, targetEnergyKWh, deadlineAtMs: evaluation.deadlineAtMs,
+      kind, deviceId, deviceName, targetEnergyKWh, deadlineAtMs: evaluation.deadlineAtMs,
     };
     for (const listener of this.listeners) listener(event);
   }

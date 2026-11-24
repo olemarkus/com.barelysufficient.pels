@@ -82,23 +82,25 @@ export function createDeferredObjectivePlanHistoryRecorder(
   ctx: AppContext,
 ): DeferredObjectivePlanHistoryRecorder {
   const store = createPlanHistoryStoreForApp(ctx);
-  const recorder = new DeferredObjectivePlanHistoryRecorder({
-    ...createPlanHistoryPersistence(store, ctx.getStructuredLogger('deferred_objectives')),
-    endedBus: ctx.deferredObjectiveEndedBus,
-    getMeteredPricePeriods: (startMs, endMs) => requirePriceCoordinator(ctx).getMeteredPricePeriods(startMs, endMs),
-    // Read lazily on the lifecycle clock, after the plan service exists.
-    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
-    getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
-    getDeliveryControl: (deviceId) => requirePlanService(ctx).getTaskDeliveryControl(deviceId),
-    isLiveMeasuredDraw: (deviceId) => ctx.observer.isLiveMeasuredDraw(deviceId),
-  }, new TaskDeviceRunTracker({
+  const deviceRuns = new TaskDeviceRunTracker({
     readSwitchOn: (deviceId) => requirePlanService(ctx).getConfirmedTaskSwitchOn(deviceId),
     hasStartedDrawing: (deviceId, dispatchedAtMs, nowMs) => (
       ctx.observer.hasStartedDrawingSince(deviceId, dispatchedAtMs, nowMs)
     ),
     hasSwitchedOffSince: (deviceId, confirmedAtMs) => ctx.observer.hasSwitchedOffSince(deviceId, confirmedAtMs),
     isSimulation: () => ctx.capacityDryRun,
-  }));
+  });
+  const recorder = new DeferredObjectivePlanHistoryRecorder({
+    ...createPlanHistoryPersistence(store, ctx.getStructuredLogger('deferred_objectives')),
+    endedBus: ctx.deferredObjectiveEndedBus,
+    deviceRuns,
+    getMeteredPricePeriods: (startMs, endMs) => requirePriceCoordinator(ctx).getMeteredPricePeriods(startMs, endMs),
+    // Read lazily on the lifecycle clock, after the plan service exists.
+    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
+    getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
+    getDeliveryControl: (deviceId) => requirePlanService(ctx).getTaskDeliveryControl(deviceId),
+    isLiveMeasuredDraw: (deviceId) => ctx.observer.isLiveMeasuredDraw(deviceId),
+  });
   runStartupBackfill(ctx, recorder);
   return recorder;
 }
