@@ -27,6 +27,9 @@ import {
   registerManagedDeviceCondition,
 } from './deviceSettingsCards';
 import { registerCapacityShortfallSustainedTrigger } from './capacityShortfallCards';
+import { registerPhaseCurrentCards } from './phaseCurrentCards';
+import type { PhaseReadingTracker } from '../lib/power/phaseReading';
+import type { PhaseMeter } from '../lib/power/mainFusePhaseSource';
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import { registerAllowSmartTaskRescueCard } from './smartTaskRescueCard';
@@ -160,6 +163,8 @@ export type FlowCardDeps = SmartTaskCommandPort & {
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getTimeZone: () => string;
   getNow: () => Date;
+  phaseReadings: PhaseReadingTracker | undefined;
+  readPhaseMeter: () => PhaseMeter | null;
   getStructuredLogger: (component: string) => PinoLogger;
 };
 
@@ -192,6 +197,9 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     // takes out every card after it. The newest one goes at the end.
     registerCapacityShortfallSustainedTrigger(deps);
     registerEvCarAssociationCards(deps);
+    registerPhaseCurrentCards(
+      deps.homey.flow, deps.phaseReadings, deps.readPhaseMeter, deps.getNow, deps.getStructuredLogger('power'),
+    );
   } finally {
     stopSpan();
   }

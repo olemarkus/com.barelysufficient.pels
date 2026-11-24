@@ -2,7 +2,6 @@ import type { MainFusePhaseCapabilities } from '../../../packages/shared-domain/
 import type { MeterPhasesRead } from '../../ports/homeMeterReadings';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
-import { resolveMeterPhases } from '../meterPhases';
 import { getRawDevice } from './managerHomeyApi';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
 
@@ -10,10 +9,9 @@ import { parseHomeyDevicePayload } from './homeyDevicePayload';
 type IdentifyDevice = (device: HomeyDeviceLike) => HomeyDeviceLike;
 
 /**
- * The meter's per-phase capabilities, read from the view its integration gives
- * it (`DeviceAdapter.projectRead`), so a meter app that keeps its phases under
- * its own capability names is read under the standard ones. A failed read or a
- * payload without a usable identity is `unavailable`, never no phases.
+ * The meter's per-phase evidence, read through its integration so the
+ * capability names and quantities are resolved together. A failed read or a
+ * payload without a usable identity is unavailable.
  */
 export async function readMeterPhases(
     meterDeviceId: string,
@@ -26,8 +24,7 @@ export async function readMeterPhases(
         const parsed = polledRead ?? parseHomeyDevicePayload(await getRawDevice(meterDeviceId));
         if (parsed === null) return { state: 'unavailable' };
         const device = identify(parsed);
-        const [view] = getDeviceAdapter(device).projectRead(device);
-        return view === undefined ? { state: 'unavailable' } : resolveMeterPhases(view, ownerChoice);
+        return getDeviceAdapter(device).meterPhases(device, ownerChoice);
     } catch {
         return { state: 'unavailable' };
     }

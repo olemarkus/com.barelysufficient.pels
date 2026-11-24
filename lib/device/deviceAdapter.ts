@@ -17,7 +17,8 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { ChargerPhaseReport } from './chargerPhasePreset';
 import type { ChargingPhaseCommand, ChargingPhaseDevice } from '../ports/chargingPhases';
 import type { ChargingPhaseCount } from '../../packages/contracts/src/chargingPhases';
-import type { MeterMonthlyPeakRead } from '../ports/homeMeterReadings';
+import type { MeterMonthlyPeakRead, MeterPhasesRead } from '../ports/homeMeterReadings';
+import type { MainFusePhaseCapabilities } from '../../packages/shared-domain/src/settings/mainFusePhaseSource';
 
 /** A real app surface: the integration resolves reads, profiles and commands; transport owns I/O. */
 export type ChargingPhaseBinding = {
@@ -317,6 +318,8 @@ export type DeviceAdapter = {
    * way, so the integration recognises and validates it; `none` otherwise.
    */
   meterMonthlyPeak(device: HomeyDeviceLike): MeterMonthlyPeakRead;
+  /** The meter's per-phase evidence, with integration-specific quantities resolved. */
+  meterPhases(device: HomeyDeviceLike, ownerChoice: MainFusePhaseCapabilities | null): MeterPhasesRead;
   readBackAfterWrite: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;

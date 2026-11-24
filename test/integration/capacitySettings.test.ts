@@ -6,6 +6,7 @@ import {
   MockDevice,
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { PhaseReadingTracker } from '../../lib/power/phaseReading';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -30,7 +31,7 @@ type MockCapacityGuardInstance = {
 const capacityGuardInstances: MockCapacityGuardInstance[] = [];
 vi.mock('../../lib/power/capacityGuard', () => ({
   default: class MockCapacityGuard {
-    phaseReadings = { reset: vi.fn(), admit: vi.fn(), current: () => ({ kind: 'none' }) };
+    phaseReadings = new PhaseReadingTracker();
     phaseLearner = { bindStore: vi.fn(), observe: vi.fn(), learnedFootprint: vi.fn() };
     phasePeaks = { bindStore: vi.fn(), observe: vi.fn(), recent: () => [] };
     shortfallLog = { bindStore: vi.fn(), record: vi.fn(), recent: () => [] };

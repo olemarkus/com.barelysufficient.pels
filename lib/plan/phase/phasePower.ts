@@ -38,11 +38,12 @@ const resolveDrawKw = (load: PhaseLoad, signed: boolean): number => {
  */
 export function resolvePhasePower(fuse: MainFuse, reading: PhaseReading, netKw: number): PhasePower {
   if (fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') return PHASE_POWER_OFF;
-  if (reading.kind !== 'healthy' || (!reading.signed && netKw <= 0)) return PHASE_POWER_OFF;
+  if (reading.kind !== 'healthy' || (reading.basis === 'current' && netKw <= 0)) return PHASE_POWER_OFF;
+  const directional = reading.basis === 'active_power';
   const phases = reading.phases.map((load) => {
     const targetKw = mainFusePhaseTargetKw(fuse.amps, load.currentA !== undefined);
-    const drawKw = resolveDrawKw(load, reading.signed);
-    const exportExcessKw = reading.signed ? Math.max(0, -drawKw - targetKw) : 0;
+    const drawKw = resolveDrawKw(load, directional);
+    const exportExcessKw = directional ? Math.max(0, -drawKw - targetKw) : 0;
     return {
       phase: load.phase,
       drawKw,
