@@ -41,9 +41,8 @@ import { nousEnergyMonitorAdapter } from './nous';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type {
   DeviceAdapter, AdapterObservation, AdapterControlTarget, CapabilityWrite, ChargingInstallationMembership,
-  DeviceAdapterSession, InventoryCompleteness,
+  DeviceAdapterSession, InstallationCurrentAccess, InventoryCompleteness,
 } from './deviceAdapter';
-import type { ChargingInstallation } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
@@ -83,16 +82,12 @@ export class DeviceAdapterSessions {
   /** Homey's control of the watt target of the devices PELS steps through it. */
   readonly targetPowerClaims = new TargetPowerControlClaims();
   /**
-   * `installationRole`: the device's role on a charging installation PELS
-   * controls as one load (`ChargingCurrentControl.chargingInstallation`). Its
-   * main keeps its watt control, which sets the installation's current; a
-   * secondary is parsed without it, whatever the integration withholds.
+   * `installationAccess` decides which installation members can set a watt
+   * target. Only the main can do this on a fully controlled installation.
    */
   constructor(
     home: HubHomeLocation,
-    private readonly installationRole: (
-      device: HomeyDeviceLike,
-    ) => ChargingInstallation['role'] | 'blocked' | undefined = () => undefined,
+    private readonly installationAccess: (device: HomeyDeviceLike) => InstallationCurrentAccess = () => undefined,
   ) { this.sessions = adapters.map((adapter) => adapter.createSession(home)); }
   /** The shared charging installation `device` is on, as the first integration that reads one says. */
   chargingInstallationOf(device: HomeyDeviceLike): ChargingInstallationMembership | undefined {
@@ -111,9 +106,9 @@ export class DeviceAdapterSessions {
   }
   private sessionWithheld(device: HomeyDeviceLike): string[] {
     const withheld = this.sessions.flatMap((session) => session.withheldCapabilities(device));
-    const role = this.installationRole(device);
-    if (role === 'main') return withheld.filter((id) => !WATT_CONTROL_CAPABILITIES.includes(id));
-    if (role === 'secondary' || role === 'blocked') return [...withheld, ...WATT_CONTROL_CAPABILITIES];
+    const access = this.installationAccess(device);
+    if (access === 'main') return withheld.filter((id) => !WATT_CONTROL_CAPABILITIES.includes(id));
+    if (access !== undefined) return [...withheld, ...WATT_CONTROL_CAPABILITIES];
     return withheld;
   }
   observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
@@ -140,7 +135,7 @@ export class DeviceAdapterSessions {
   }
   /** Homey's control of `device`'s watt target, read as the sessions parse the device. */
   targetPowerClaimOf(device: HomeyDeviceLike, nowMs: number): TargetPowerControlClaim | undefined {
-    if (this.installationRole(device) === 'blocked' && this.targetPowerClaims.resolve(device, nowMs) === 'refused') {
+    if (this.installationAccess(device) === 'blocked' && this.targetPowerClaims.resolve(device, nowMs) === 'refused') {
       return 'refused';
     }
     const shared = without(device, this.sessionWithheld(device));

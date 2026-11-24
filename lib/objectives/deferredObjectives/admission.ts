@@ -73,7 +73,8 @@ const resolveDecision = (
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
   if (device?.controlAdapter?.chargingInstallation && isTaskSatisfied(evaluation.completion)) {
-    return { kind: 'idle', budgetExempt: false, holdCause: 'task_done', releaseIntent: 'binary_release' };
+    const releaseIntent = resolveReleaseIntent(true, device);
+    return { kind: 'idle', budgetExempt: false, holdCause: 'task_done', ...(releaseIntent ? { releaseIntent } : {}) };
   }
   if (evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
   if (evaluation.planning.kind === 'awaiting_plan') {

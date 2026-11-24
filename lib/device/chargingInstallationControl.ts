@@ -1,11 +1,11 @@
 import type { ChargingInstallation } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import type { ChargingInstallationMembership } from './deviceAdapter';
+import type { ChargingInstallationMembership, InstallationCurrentAccess } from './deviceAdapter';
 import type { DeviceAdapterSessions } from './deviceAdapterRegistry';
 import type { DeviceControlSettings } from './deviceControlSettings';
 import type { PowerSourceHome } from './transport/externalDevicePower';
 
-type InstallationCurrentAccess = ChargingInstallation['role'] | 'blocked' | undefined;
+export type InstallationCurrentRoute = 'shared' | 'flow' | 'per_charger' | 'refused' | 'unverified';
 
 /** Admission and current authority for a shared charging installation. */
 export class ChargingInstallationControl {
@@ -16,7 +16,9 @@ export class ChargingInstallationControl {
     private readonly findDevice: (deviceId: string) => HomeyDeviceLike | undefined,
     private readonly resolveHome: PowerSourceHome,
     private readonly settings: Pick<DeviceControlSettings, 'isManaged' | 'isControllable'>,
-    private readonly hasCurrentRoute: (device: HomeyDeviceLike) => boolean,
+    private readonly currentRoute: (
+      main: HomeyDeviceLike | undefined, memberIds: readonly string[],
+    ) => InstallationCurrentRoute,
     private readonly logger: Pick<Logger, 'structuredLog'>,
   ) {}
 
@@ -24,14 +26,22 @@ export class ChargingInstallationControl {
     const membership = this.sessions.chargingInstallationOf(device);
     if (membership) return this.resolveAccess(device.id, membership);
     const shared = this.sessions.sharedChargingMemberIds(device);
-    return shared && !this.sharesResolvedHome(device, shared) ? 'blocked' : undefined;
+    if (!shared) return undefined;
+    return this.resolveSharedAccess(device, shared);
+  }
+
+  private resolveSharedAccess(device: HomeyDeviceLike, memberIds: readonly string[]): InstallationCurrentAccess {
+    if (!this.sharesResolvedHome(device, memberIds)) return 'blocked';
+    const route = this.currentRoute(undefined, memberIds);
+    if (route === 'unverified') return 'blocked';
+    return route === 'flow' ? 'per_charger' : undefined;
   }
 
   installationOf(device: HomeyDeviceLike): ChargingInstallation | undefined {
     const membership = this.sessions.chargingInstallationOf(device);
     if (!membership) return undefined;
     const role = this.resolveAccess(device.id, membership);
-    if (!role || role === 'blocked') return undefined;
+    if (role !== 'main' && role !== 'secondary') return undefined;
     return { id: membership.id, role, mainId: membership.mainId, memberIds: [...membership.memberIds] };
   }
 
@@ -45,10 +55,13 @@ export class ChargingInstallationControl {
   private resolveAccess(deviceId: string, membership: ChargingInstallationMembership): InstallationCurrentAccess {
     const main = this.mainInSharedHome(membership);
     if (!main) return 'blocked';
-    // An already claimed channel on a mixed installation in one home keeps
-    // its legacy behavior. Fully managed groups with no route use switches.
-    if (!this.allMembersControlled(membership)) return undefined;
-    if (!this.hasCurrentRoute(main)) return 'blocked';
+    // A Flow on any member owns the current for the entire installation.
+    const allControlled = this.allMembersControlled(membership);
+    const route = this.currentRoute(allControlled ? main : undefined, membership.memberIds);
+    if (route === 'refused' || route === 'unverified') return 'blocked';
+    if (route === 'flow') return 'per_charger';
+    if (!allControlled) return undefined;
+    if (route === 'per_charger') return route;
     return membership.mainId === deviceId ? 'main' : 'secondary';
   }
 

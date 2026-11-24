@@ -55,6 +55,8 @@ export type BinaryControlTransport = {
   actuator: Actuator;
   /** False once the issuing lane lost the device mid-write; its outcome is then not recorded. */
   isAuthorityCurrent: () => boolean;
+  /** Receives positive acknowledgment after the issuing lane has rechecked authority. */
+  onBinaryAcknowledged?: (decision: IssuedBinaryControlDecision) => void;
 };
 
 const logger = getLogger('executor/binary-dispatch');
@@ -168,6 +170,7 @@ function handleBinaryOutcome(
   transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
   if (outcome.acknowledged) {
     attempt?.finish('accepted', outcome.relayBinding, outcome.unflaggedRelay);
+    transport.onBinaryAcknowledged?.(decision);
     emitBinaryCommandSuccess({ decision });
   } else {
     attempt?.finish('unknown');

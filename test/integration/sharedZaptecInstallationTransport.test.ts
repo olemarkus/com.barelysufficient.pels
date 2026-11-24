@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import { getLogger } from '../../lib/logging/logger';
+import { normalizeUserFlowFacts } from '../../lib/flowApi/userFlows';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
@@ -33,13 +34,31 @@ afterEach(() => {
   });
 });
 
+function seedInstallation(transport: ReturnType<typeof createTestDeviceTransport>, devices: HomeyDeviceLike[]) {
+  transport.chargingCurrentControl.acceptFlowFacts(normalizeUserFlowFacts({}, {}));
+  return seedTransportDevices(transport, devices);
+}
+
 async function seeded() {
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger());
-  await seedTransportDevices(transport, installation());
+  await seedInstallation(transport, installation());
   const put = vi.fn().mockResolvedValue(undefined);
   setRestClient({ get: vi.fn(), put });
   return { transport, put };
 }
+
+test('shared current stays fenced until the first readable Flow inventory', async () => {
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger());
+  const devices = installation();
+  await seedTransportDevices(transport, devices);
+  expect(transport.getSnapshotByDeviceId(MAIN)?.steppedLoadProfile).toBeUndefined();
+  await expect(transport.setCapability(MAIN, 'target_power_mode', 'homey'))
+    .rejects.toThrow('PELS cannot set the shared current');
+
+  expect(transport.chargingCurrentControl.acceptFlowFacts(normalizeUserFlowFacts({}, {}))).toBe(true);
+  await seedTransportDevices(transport, devices);
+  expect(transport.getSnapshotByDeviceId(MAIN)?.controlAdapter?.chargingInstallation?.mainId).toBe(MAIN);
+});
 
 test('each member carries the neutral installation fact; only the main keeps its watt control', async () => {
   const { transport } = await seeded();
@@ -76,24 +95,46 @@ test('a step goes to the main alone; a secondary takes no amp or watt write', as
   expect(put).not.toHaveBeenCalled();
 });
 
-test('the primary preserves the published ladder while its exact watt observation advances', async () => {
+test('the primary keeps its observed watt level after an acknowledged write with older current telemetry', async () => {
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger());
   await initWithLiveFeed(transport);
   const main = charger(MAIN, 'zaptec-1');
-  await seedTransportDevices(transport, [charger(SECONDARY, 'zaptec-2'), {
+  await seedInstallation(transport, [charger(SECONDARY, 'zaptec-2'), {
     ...main,
     capabilitiesObj: {
       ...main.capabilitiesObj,
-      target_power: { ...main.capabilitiesObj.target_power, value: 2391 },
+      available_installation_current: {
+        ...main.capabilitiesObj.available_installation_current,
+        value: 23,
+        lastUpdated: new Date(Date.now() - 60 * 60_000).toISOString(),
+      },
+      target_power: { ...main.capabilitiesObj.target_power, value: 5520 },
       target_power_mode: { ...main.capabilitiesObj.target_power_mode, value: 'homey' },
     },
   }]);
   const initial = transport.getSnapshotByDeviceId(MAIN);
-  expect(initial?.reportedStepPowerW).toBe(2391);
+  expect(initial?.controlAdapter?.chargingInstallation?.mainId).toBe(MAIN);
+  expect(initial?.reportedStepPowerW).toBe(5520);
+  const control = transport.chargingCurrentControl;
+  expect(control.installationLevelW(MAIN)).toBe(5520);
   const profile = initial?.steppedLoadProfile;
+  const step = profile?.steps.find((entry) => entry.planningPowerW > 0 && entry.planningPowerW !== 5520);
+  if (!profile || !step) throw new Error('Expected a distinct watt step');
+  const put = vi.fn().mockResolvedValue(undefined);
+  setRestClient({ get: vi.fn(), put });
+
+  await expect(transport.requestSteppedLoadStep({
+    deviceId: MAIN, profile, desiredStepId: step.id, planningPowerW: step.planningPowerW, planningCurrentA: 0,
+  })).resolves.toMatchObject({ requested: true, acknowledged: true });
+  expect(put).toHaveBeenCalledExactlyOnceWith(
+    `manager/devices/device/${MAIN}/capability/target_power`, pelsCapabilityWrite(step.planningPowerW),
+  );
+  expect(control.installationLevelW(MAIN)).toBe(5520);
+
   const exactWatts = 2531;
-  expect(profile?.steps.some((step) => step.planningPowerW === exactWatts)).toBe(false);
+  expect(profile.steps.some((entry) => entry.planningPowerW === exactWatts)).toBe(false);
   await emitCapability(MAIN, 'target_power', exactWatts);
+  expect(control.installationLevelW(MAIN)).toBe(exactWatts);
   expect(transport.getSnapshotByDeviceId(MAIN)).toMatchObject({
     reportedStepPowerW: exactWatts, steppedLoadProfile: profile,
   });
@@ -112,7 +153,7 @@ test('each member confirms commands using its own switch reading', async () => {
     settings: { getDevicePowerControlMode: () => 'automatic' },
   });
   const main = charger(MAIN, 'zaptec-1');
-  await seedTransportDevices(transport, [charger(SECONDARY, 'zaptec-2'), {
+  await seedInstallation(transport, [charger(SECONDARY, 'zaptec-2'), {
     ...main,
     capabilitiesObj: {
       ...main.capabilitiesObj,
@@ -138,7 +179,7 @@ test('the main reports the installation\'s level: its watt target under Homey\'s
   const control = transport.chargingCurrentControl;
 
   // A 0 W target stops only the main's car: the installation stays at its 23 A.
-  await seedTransportDevices(transport, withMain({
+  await seedInstallation(transport, withMain({
     available_installation_current: { ...base.available_installation_current, value: 23 },
     target_power: { ...base.target_power, value: 0 },
     target_power_mode: { ...base.target_power_mode, value: 'homey' },
@@ -147,18 +188,91 @@ test('the main reports the installation\'s level: its watt target under Homey\'s
   expect(control.installationLevelW(MAIN)).toBe(Math.round(23 * (2391 / 6)));
   expect(control.installationLevelW(SECONDARY)).toBeUndefined();
 
-  await seedTransportDevices(transport, withMain({
+  await seedInstallation(transport, withMain({
     available_installation_current: { ...base.available_installation_current, value: 23 },
     target_power: { ...base.target_power, value: 5520 },
     target_power_mode: { ...base.target_power_mode, value: 'homey' },
   }));
   expect(control.installationLevelW(MAIN)).toBe(5520);
 
-  await seedTransportDevices(transport, withMain({
+  await seedInstallation(transport, withMain({
     available_installation_current: { ...base.available_installation_current, value: 4 },
     target_power_mode: { ...base.target_power_mode, value: 'device' },
   }));
   expect(control.installationLevelW(MAIN)).toBe(0);
+});
+
+test('an acknowledged preparation with unchanged readback leaves the installation mode unclaimed', async () => {
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+    settings: {
+      getDevicePowerControlMode: () => 'automatic',
+      resolveEvChargerCurrentLimits: (id) => id === SECONDARY
+        ? { kind: 'limited', limits: { minA: 6, maxA: 10 } } : { kind: 'unrestricted' },
+    },
+  });
+  const main = charger(MAIN, 'zaptec-1');
+  const devices = [charger(SECONDARY, 'zaptec-2'), {
+    ...main,
+    capabilitiesObj: {
+      ...main.capabilitiesObj,
+      target_power: { ...main.capabilitiesObj.target_power, value: 5520 },
+    },
+  }];
+  // The first 230 W grid point at or above the 2391 W operating threshold.
+  const firstSafeW = 2530;
+
+  for (const read of ['initial', 'unchanged']) {
+    await seedInstallation(transport, devices);
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: vi.fn(), put });
+
+    await expect(transport.requestTargetPowerControlClaim({ deviceId: MAIN }), read)
+      .resolves.toEqual({ kind: 'not_sent' });
+    expect(put, read).toHaveBeenCalledExactlyOnceWith(
+      `manager/devices/device/${MAIN}/capability/target_power`, pelsCapabilityWrite(firstSafeW),
+    );
+    expect(transport.getTargetPowerControlClaim(MAIN), read).toBe('needed');
+  }
+});
+
+test('the ownership refresh reparses an installation blocked at startup', async () => {
+  const resolveHome = vi.fn<() => string | undefined>();
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {}, {}, {
+    externalPower: {
+      settings: {
+        devicePowerSources: {}, managedDevices: {}, isMeteringSocketReserved: () => false,
+        isMainFusePhaseMeter: () => false,
+      },
+      resolveHome,
+    },
+  });
+  const devices = installation();
+  const snapshots = await seedInstallation(transport, devices);
+  expect(snapshots).toHaveLength(2);
+  for (const snapshot of snapshots) {
+    expect(snapshot.binaryCapabilityId).toBe('evcharger_charging');
+    expect(snapshot.controlAdapter?.chargingInstallation).toBeUndefined();
+    expect(snapshot.steppedLoadProfile).toBeUndefined();
+  }
+  const put = vi.fn().mockResolvedValue(undefined);
+  const get = vi.fn(async (path: string) => path === DEVICES_API_PATH
+    ? Object.fromEntries(devices.map((device) => [device.id, device])) : mockHomeyInstance.api.get(path));
+  setRestClient({ get, put });
+  await expect(transport.setCapability(MAIN, 'target_power', 2391)).rejects.toThrow('PELS cannot set the shared current');
+  expect(put).not.toHaveBeenCalled();
+
+  resolveHome.mockReturnValue('main');
+  transport.refreshExternalDevicePowers();
+  await vi.waitFor(() => {
+    const primary = transport.getSnapshotByDeviceId(MAIN);
+    const secondary = transport.getSnapshotByDeviceId(SECONDARY);
+    expect(primary?.controlAdapter?.chargingInstallation).toMatchObject({ mainId: MAIN, role: 'main' });
+    expect(secondary?.controlAdapter?.chargingInstallation).toMatchObject({ mainId: MAIN, role: 'secondary' });
+    expect(primary?.steppedLoadProfile).toBeDefined();
+  });
+  expect(get).toHaveBeenCalledWith(DEVICES_API_PATH);
+  await expect(transport.setCapability(SECONDARY, 'target_power', 2391)).rejects.toThrow('another charger');
+  expect(put).not.toHaveBeenCalled();
 });
 
 test('a member moving to another meter area withdraws the ladder and fences an old step at dispatch', async () => {
@@ -172,12 +286,12 @@ test('a member moving to another meter area withdraws the ladder and fences an o
     },
   });
   const devices = installation();
-  await seedTransportDevices(transport, devices);
+  await seedInstallation(transport, devices);
   const profile = transport.getSnapshotByDeviceId(MAIN)?.steppedLoadProfile;
   const step = profile?.steps.find((entry) => entry.planningPowerW > 0);
   if (!profile || !step) throw new Error('Expected the main to carry the installation ladder');
 
-  const snapshots = await seedTransportDevices(transport, devices.map((device) => (
+  const snapshots = await seedInstallation(transport, devices.map((device) => (
     device.id === SECONDARY ? { ...device, zone: 'other-zone' } : device
   )));
   expect(snapshots).toHaveLength(2);
@@ -205,6 +319,9 @@ test('a refused automatic current claim leaves both switches available until the
   vi.useFakeTimers({ toFake: ['Date'] });
   try {
     const { transport } = await seeded();
+    const profile = transport.getSnapshotByDeviceId(MAIN)?.steppedLoadProfile;
+    const step = profile?.steps.find((entry) => entry.planningPowerW > 0);
+    if (!profile || !step) throw new Error('Expected the main to carry the installation ladder');
     const devices = installation();
     const get = async (path: string) => path === DEVICES_API_PATH
       ? Object.fromEntries(devices.map((device) => [device.id, device])) : mockHomeyInstance.api.get(path);
@@ -223,9 +340,16 @@ test('a refused automatic current claim leaves both switches available until the
     });
     expect(transport.getTargetPowerControlClaim(MAIN)).toBe('refused');
     expect(transport.getTargetPowerControlClaim(SECONDARY)).toBeUndefined();
+    put.mockClear();
+    await expect(transport.requestSteppedLoadStep({
+      deviceId: MAIN, profile, desiredStepId: step.id, planningPowerW: step.planningPowerW, planningCurrentA: 0,
+    })).rejects.toThrow('PELS cannot set the shared current');
+    await expect(transport.setCapability(MAIN, 'target_power', step.planningPowerW))
+      .rejects.toThrow('PELS cannot set the shared current');
+    expect(put).not.toHaveBeenCalled();
 
     vi.setSystemTime(Date.now() + 15 * 60_000);
-    await seedTransportDevices(transport, devices);
+    await seedInstallation(transport, devices);
     expect(transport.getTargetPowerControlClaim(MAIN)).toBe('needed');
     expect(transport.getTargetPowerControlClaim(SECONDARY)).toBeUndefined();
     expect(transport.getSnapshotByDeviceId(MAIN)?.steppedLoadProfile).toBeDefined();

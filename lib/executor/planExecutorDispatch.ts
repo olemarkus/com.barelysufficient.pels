@@ -1,6 +1,6 @@
 import {
   hasPlannedStep, hasTargetPowerClaim, type ExecutionPlan, type PlannedDeviceCommands, type PlannedDeviceExecution,
-  type PlannedStepBaseline,
+  type PlannedBinaryCommand, type PlannedStepBaseline,
 } from '../planContract/executionPlan';
 import { applyTargetPowerClaim } from './targetPowerClaim';
 import { isBinaryDrivenIntent } from './executableDesiredState';
@@ -337,13 +337,19 @@ const applyDecidedCommands = async (
  * Carries out a plan against the executor's current read of every device, then
  * the storage lane's decisions.
  */
+export type SharedChargingPauses = {
+  isCurrent: () => boolean;
+  wasAcknowledged: (command: PlannedBinaryCommand) => boolean;
+  acknowledge: (command: PlannedBinaryCommand, issuedAtMs: number) => void;
+};
+
 export const dispatchPlanActions = async (
   ctx: ExecutorCommandContext,
   plan: ExecutionPlan,
   devices: ExecutorDeviceRead[],
   storage: StorageLane,
   chargingPhases: ChargingPhaseExecutor,
-  canRunSharedPause: () => boolean,
+  sharedPauses: SharedChargingPauses,
 ): Promise<PlanActuationResult> => {
   const phaseIntents = new Map(plan.chargingPhaseDecisions.map((decision) => [decision.deviceId, decision]));
   const observedMap = new Map(devices.map((device) => [
@@ -357,9 +363,19 @@ export const dispatchPlanActions = async (
   // device's shed. Keep each device's command sequence intact and settle all
   // devices before storage runs or the caller flushes batched persistence.
   const results = await dispatchInSharedPauseOrder(plan.devices, async (device) => {
-    const inSharedPause = sharedPausePrimary(device) !== undefined;
-    if (inSharedPause && !canRunSharedPause()) return { ok: true, delta: ZERO_DELTA };
-    const commandContext = inSharedPause ? { ...ctx, isAuthorityCurrent: canRunSharedPause } : ctx;
+    const { commands } = device;
+    const pause = hasBinaryCommand(commands) && commands.binary.meterSilencePausePrimaryId !== undefined
+      ? commands.binary : undefined;
+    if (pause && (!sharedPauses.isCurrent() || sharedPauses.wasAcknowledged(pause))) {
+      return { ok: true, delta: ZERO_DELTA };
+    }
+    const commandContext: ExecutorCommandContext = pause ? {
+      ...ctx,
+      isAuthorityCurrent: sharedPauses.isCurrent,
+      onBinaryAcknowledged: ({ capacityShed, startedAtMs }) => {
+        if (capacityShed === pause) sharedPauses.acknowledge(pause, startedAtMs);
+      },
+    } : ctx;
     try {
       const applied = await withChargingPhaseControl(chargingPhases, device.commands,
         observedMap.get(device.commands.id),

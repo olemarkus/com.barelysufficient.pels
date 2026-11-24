@@ -283,9 +283,9 @@ function buildReason(
     return { text: simulatedAction, ...resolvePhaseSettingOffer(device), ...resolveCarConfirmationOffer(device) };
   }
   const ordinary = buildOrdinaryReason(device, dryRun, nowMs, powerPredatesSwitchOff);
-  if (!dryRun || ordinary !== null) return ordinary;
-  const target = resolveOrdinarySimulatedTargetLine(device);
-  return target === null ? null : { text: target };
+  if (ordinary?.text === TARGET_POWER_CONTROL_REFUSED_LINE) return { ...ordinary, tone: 'warning' };
+  const target = dryRun && ordinary === null ? resolveOrdinarySimulatedTargetLine(device) : null;
+  return target === null ? ordinary : { text: target };
 }
 
 /**

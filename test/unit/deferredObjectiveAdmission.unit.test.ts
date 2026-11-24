@@ -350,6 +350,24 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', releaseIntent: 'binary_release' });
   });
 
+  it.each([false, true])('resolves a satisfied shared charger with solar surplus %s', (surplusTracking) => {
+    const diagnostic = buildDiagnostic({ deviceId: 'ev1', objectiveKind: 'ev_soc', ...satisfiedUnbooked });
+    const device = buildEvDevice({
+      id: 'ev1', controllable: true, controlModel: 'binary_power', surplusTracking,
+      controlAdapter: {
+        kind: 'capability_adapter', activationRequired: false, activationEnabled: false,
+        chargingInstallation: { id: 'installation', role: 'secondary', mainId: 'ev2', memberIds: ['ev2', 'ev1'] },
+      },
+    });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic.evaluation], [device]);
+    expect(decisions.get('ev1')).toEqual({
+      kind: 'idle', budgetExempt: false, holdCause: 'task_done',
+      ...(surplusTracking ? {} : { releaseIntent: 'binary_release' }),
+    });
+    const applied = applyDeferredAdmissionToInput([device], decisions);
+    expect(applied.forceShedSet.has('ev1')).toBe(!surplusTracking);
+  });
+
   it('releases a satisfied cap-off heater through its configured posture', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'heater1', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'heater1', controllable: false });

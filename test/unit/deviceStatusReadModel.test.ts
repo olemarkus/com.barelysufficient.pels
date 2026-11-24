@@ -383,7 +383,9 @@ describe('a device whose app refused level control', () => {
   }), false, 0);
 
   it('says PELS can only switch it, where the card has nothing else to say', () => {
-    expect(kept().reason).toEqual({ text: 'PELS can only turn it on and off: its app does not accept level control' });
+    expect(kept().reason).toEqual({
+      text: 'PELS can only turn it on and off: its app does not accept level control', tone: 'warning',
+    });
   });
 
   it('keeps the hold reason of a limited device', () => {

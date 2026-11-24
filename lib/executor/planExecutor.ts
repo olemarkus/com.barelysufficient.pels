@@ -2,7 +2,7 @@ import { resolveLatchedMeterReading, resolveMeterEvidenceAtMs } from '../power/l
 import type { RelayMeterObservation } from '../ports/nativeRelay';
 import { RelayShedRecovery } from './relayShedRecovery';
 import { hasBinaryCommand } from './executablePlan';
-import type { ExecutionPlan } from '../planContract/executionPlan';
+import type { ExecutionPlan, PlannedBinaryCommand } from '../planContract/executionPlan';
 import {
   type ExecutorDeviceReadDeps,
   readExecutorDevice,
@@ -37,7 +37,7 @@ import type { DriftObservationDeps } from './driftObservedDevice';
 import { hasPlanExecutionDriftAgainstIntent } from './executorConvergence';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
-import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryObservedOff, isBinaryObservedOn } from '../../packages/shared-domain/src/binaryControlState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { resolveDeviceExecutionState, resolvePlannedCommandValues } from './deviceExecutionState';
 import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
@@ -459,14 +459,32 @@ export class PlanExecutor {
     return this.deps.inverterLane.pendingReleaseCount(plan.inverterDecisions);
   }
 
+  private sharedPauseStamp?: number;
+  private readonly sharedPauseAcks = new Map<string, { command: PlannedBinaryCommand; issuedAtMs: number }>();
+
+  private wasSharedPauseAcknowledged(stamp: number | undefined, command: PlannedBinaryCommand): boolean {
+    if (stamp === undefined || this.sharedPauseStamp !== stamp || command.desiredOn) return false;
+    const ack = this.sharedPauseAcks.get(command.deviceId);
+    if (!ack || ack.command.binarySwitchGeneration !== command.binarySwitchGeneration) return false;
+    const observed = this.deps.getObservedState(command.deviceId);
+    // A newly reported ON or an opposing in-flight restore makes the pause owed again.
+    if (this.deps.pendingBinaryCommandStore.hasActiveTurnOn(command.deviceId)
+      || (isBinaryObservedOn(observed) && observed?.binaryControlObservation !== undefined
+        && observed.binaryControlObservation.observedAtMs > ack.issuedAtMs)) {
+      this.sharedPauseAcks.delete(command.deviceId);
+      return false;
+    }
+    return true;
+  }
+
   public hasPendingSharedChargingPause(plan: ExecutionPlan): boolean {
     if (plan.meterSilenceStamp === undefined) return false;
     return plan.devices.some(({ commands }) => {
       if (!hasBinaryCommand(commands) || commands.binary.meterSilencePausePrimaryId === undefined) return false;
       const observed = this.deps.getObservedState(commands.id);
-      return observed !== undefined && observed.available !== false && (
-        !isBinaryObservedOff(observed) || this.deps.pendingBinaryCommandStore.hasActiveTurnOn(commands.id)
-      );
+      return observed !== undefined && observed.available !== false
+        && !this.wasSharedPauseAcknowledged(plan.meterSilenceStamp, commands.binary)
+        && (!isBinaryObservedOff(observed) || this.deps.pendingBinaryCommandStore.hasActiveTurnOn(commands.id));
     });
   }
 
@@ -497,12 +515,24 @@ export class PlanExecutor {
     this.nonCapacityHoldShedIds = new Set(
       plan.devices.filter((device) => device.nonCapacityHoldShed).map((device) => device.commands.id),
     );
+    const { meterSilenceStamp } = plan;
+    if (this.sharedPauseStamp !== meterSilenceStamp) {
+      this.sharedPauseStamp = meterSilenceStamp;
+      this.sharedPauseAcks.clear();
+    }
     this.controlPersistenceBatchDepth += 1;
     try {
       const phaseWork = this.chargingPhases.apply(plan.chargingPhaseDecisions, Date.now());
       const [result, phaseResult] = await Promise.all([
-        dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage, this.chargingPhases,
-          () => resolveMeterEvidenceAtMs(this.deps.getPowerTracker()) === plan.meterSilenceStamp),
+        dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage, this.chargingPhases, {
+          isCurrent: () => resolveMeterEvidenceAtMs(this.deps.getPowerTracker()) === meterSilenceStamp,
+          wasAcknowledged: (command) => this.wasSharedPauseAcknowledged(meterSilenceStamp, command),
+          acknowledge: (command, issuedAtMs) => {
+            if (this.sharedPauseStamp === meterSilenceStamp) {
+              this.sharedPauseAcks.set(command.deviceId, { command, issuedAtMs });
+            }
+          },
+        }),
         phaseWork,
       ]);
       const inverterResult = await this.deps.inverterLane.apply(plan.inverterDecisions);

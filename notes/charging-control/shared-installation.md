@@ -35,8 +35,13 @@ A shared installation is controlled this way only when every member is:
 The main also needs a usable current-control route and ladder. An unavailable main
 that still appears in a complete inventory retains its role.
 
-Otherwise each member keeps today's behaviour: switching, Flow current control, and no built-in
-current control. Mixed installations need no migration.
+An enabled current-setting Flow on any member sets the route for the whole installation. Each
+member keeps its own switch and any Flow current control, and PELS sends no built-in current or
+watt writes. The same fallback applies when every member is controlled and the main has no shared
+route. Installations with some unmanaged members keep their existing routes when no Flow sets
+shared current. PELS blocks current control until the first successful Flow scan, while meter-area
+ownership is unresolved, when members span meter areas, or while the main's automatic watt claim
+is refused. During a refused claim, the main's card can explain why only switching is available.
 
 The main is the member with the lowest integration charger id. That id survives a re-pair, unlike
 the Homey device id, so the main does not move when a charger is re-paired. It is recomputed from
