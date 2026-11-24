@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Release capacity reserved for an external load"
+  },
+  "titleFormatted": {
+    "en": "Release capacity reserved for [[load]]"
+  },
+  "hint": {
+    "en": "Release the reservation with this name. PELS uses its next power reading when deciding what can resume."
+  },
+  "args": [
+    {
+      "name": "load",
+      "type": "text",
+      "title": {
+        "en": "External load name"
+      },
+      "placeholder": {
+        "en": "Sauna"
+      }
+    }
+  ]
+}

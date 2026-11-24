@@ -1,0 +1,39 @@
+{
+  "title": {
+    "en": "Capacity for an external load is ready"
+  },
+  "titleFormatted": {
+    "en": "Capacity for [[load]] is ready"
+  },
+  "hint": {
+    "en": "Fires once when a fresh meter reading confirms room for the named load under the active limits. The reservation remains in effect until it expires or a Flow releases it. Reservations end when PELS restarts."
+  },
+  "args": [
+    {
+      "name": "load",
+      "type": "text",
+      "title": {
+        "en": "External load name"
+      },
+      "placeholder": {
+        "en": "Sauna"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "load",
+      "type": "string",
+      "title": {
+        "en": "External load name"
+      }
+    },
+    {
+      "name": "watts",
+      "type": "number",
+      "title": {
+        "en": "Reserved power (W)"
+      }
+    }
+  ]
+}

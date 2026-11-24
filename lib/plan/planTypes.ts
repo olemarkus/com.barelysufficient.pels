@@ -910,6 +910,7 @@ export type PlanMeta = PlanMetaBase & (PlanMeasuredMetaFields | PlanUnmeasuredMe
 
 export type DevicePlan = {
   generatedAtMs?: number;
+  externalLoadReservation?: import('../power/externalLoadReservations').ExternalLoadReservationDecision;
   meta: PlanMeta;
   devices: DevicePlanDevice[];
   /** Production caps and hand-backs, separate from consumption-device decisions. */

@@ -6,6 +6,7 @@ import {
   requirePriceCoordinator,
 } from './contextGuards';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
+import { registerExternalLoadReservationCards } from '../../flowCards/externalLoadReservationCards';
 import type { AppContext } from '../../lib/app/appContext';
 import { createFlowPowerSampleReceiver } from '../../lib/power/flowPowerSample';
 import { resolveObservedHeadroom } from '../../lib/power/lastTotalPower';
@@ -31,8 +32,9 @@ export function registerAppFlowCards(
   listDeviceTargetModes: FlowCardDeps['listDeviceTargetModes'],
   setDeviceModeTarget: FlowCardDeps['setDeviceModeTarget'],
 ): void {
+  const homey = requireFlowHomey(ctx);
   registerFlowCards({
-    homey: requireFlowHomey(ctx),
+    homey,
     structuredLog: ctx.getStructuredLogger('devices'),
     resolveModeName,
     getAllModes,
@@ -104,4 +106,10 @@ export function registerAppFlowCards(
     getNow: () => ctx.getNow(),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
   });
+  const reservations = ctx.capacityGuard?.externalLoadReservations;
+  if (reservations !== undefined) {
+    registerExternalLoadReservationCards(
+      homey.flow, reservations, () => ctx.getNow().getTime(), ctx.getStructuredLogger('capacity'),
+    );
+  }
 }

@@ -8,6 +8,7 @@ import {
   CAPACITY_DRY_RUN, CAPACITY_ENABLED, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES, GRID_IMPORT_ENABLED, GRID_IMPORT_LIMIT_KW,
   CONTROLLABLE_DEVICES, MANAGED_DEVICES, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
+  MAIN_FUSE_SUPPLY, MAIN_FUSE_AMPS,
 } from '../../lib/utils/settingsKeys';
 
 const poll = async (): Promise<void> => {
@@ -17,7 +18,7 @@ const poll = async (): Promise<void> => {
 
 // Only Homey reads, writes and the clock are mocked. The actual measurement,
 // planner, executor and command-confirmation path run together.
-const boot = async (capacityEnabled = false, gridEnabled = true, simulating = false) => {
+const boot = async (capacityEnabled = false, gridEnabled = true, simulating = false, gridLimitKw = 3.3) => {
   const ev = new MockDevice('flex', 'Flexible load', ['onoff', 'measure_power', 'meter_power'], 'socket');
   const heater = new MockDevice('heater', 'Water heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
   for (const [device, powerW] of [[ev, 1400], [heater, 800]] as const) {
@@ -34,7 +35,7 @@ const boot = async (capacityEnabled = false, gridEnabled = true, simulating = fa
   settings.set(CAPACITY_LIMIT_KW, 5);
   settings.set(CAPACITY_MARGIN_KW, 0.2);
   settings.set(GRID_IMPORT_ENABLED, gridEnabled);
-  settings.set(GRID_IMPORT_LIMIT_KW, 3.3);
+  settings.set(GRID_IMPORT_LIMIT_KW, gridLimitKw);
   settings.set(CAPACITY_DRY_RUN, simulating);
   settings.set(OPERATING_MODE_SETTING, 'Home');
   settings.set(CONTROLLABLE_DEVICES, { flex: true, heater: true });
@@ -117,6 +118,50 @@ describe('grid import control through Homey', () => {
     expect(restored).toHaveLength(2);
     const restoreTimes = home.transitions.filter((entry) => entry.value).map((entry) => entry.atMs);
     expect(restoreTimes[1] - restoreTimes[0]).toBeGreaterThanOrEqual(300_000);
+  });
+
+  it.each(['release', 'expiry'])('makes room for 3 kW once and restores after %s', async (end) => {
+    const home = await boot(false, true, false, 5);
+    const { flow } = mockHomeyInstance;
+    const request = { load: 'Sauna', watts: 3000, minutes: end === 'release' ? 15 : 5 };
+    await flow._actionCardListeners.reserve_external_load_capacity(request);
+    expect(home.shedCalls()).toHaveLength(0);
+    expect(flow._triggerCardTriggers.external_load_capacity_ready).toBeUndefined();
+
+    for (let i = 0; i < 16 && await home.ev.getCapabilityValue('onoff') === true; i += 1) await poll();
+    expect(await home.ev.getCapabilityValue('onoff')).toBe(false);
+    expect(await home.heater.getCapabilityValue('onoff')).toBe(true);
+    expect(flow._triggerCardTriggers.external_load_capacity_ready).toBeUndefined();
+
+    for (let i = 0; i < 8 && !flow._triggerCardTriggers.external_load_capacity_ready; i += 1) await poll();
+    expect(flow._triggerCardTriggers.external_load_capacity_ready).toEqual([
+      { tokens: { load: 'Sauna', watts: 3000 }, state: { load: 'Sauna' } },
+    ]);
+    const matchesLoad = flow._triggerCardRunListeners.external_load_capacity_ready;
+    expect(await matchesLoad({ load: ' Sauna ' }, { load: 'Sauna' })).toBe(true);
+    expect(await matchesLoad({ load: 'Oven' }, { load: 'Sauna' })).toBe(false);
+    if (end === 'release') {
+      for (let i = 0; i < 36; i += 1) await poll();
+      expect(await home.ev.getCapabilityValue('onoff')).toBe(false);
+      await flow._actionCardListeners.release_external_load_capacity({ load: 'Sauna' });
+      expect(await home.ev.getCapabilityValue('onoff')).toBe(false);
+    }
+    for (let i = 0; i < 42; i += 1) await poll();
+    expect(await home.ev.getCapabilityValue('onoff')).toBe(true);
+    expect(flow._triggerCardTriggers.external_load_capacity_ready).toHaveLength(1);
+  });
+
+  it.each(['simulation', 'missing phase readings'])('withholds readiness with %s even if total power fits', async (condition) => {
+    if (condition === 'missing phase readings') {
+      mockHomeyInstance.settings.set(MAIN_FUSE_SUPPLY, 'three_phase_neutral');
+      mockHomeyInstance.settings.set(MAIN_FUSE_AMPS, 25);
+    }
+    const home = await boot(false, true, condition === 'simulation', 5);
+    const { flow } = mockHomeyInstance;
+    await flow._actionCardListeners.reserve_external_load_capacity({ load: 'Sauna', watts: 2000, minutes: 5 });
+    for (let i = 0; i < 12; i += 1) await poll();
+    expect(home.shedCalls()).toHaveLength(0);
+    expect(flow._triggerCardTriggers.external_load_capacity_ready).toBeUndefined();
   });
 
   // Nothing is switched in simulation, so the meter never shows a limit's

@@ -151,6 +151,12 @@ Most supported EV chargers need neither card: PELS sets and reads their current 
 
 Open **Car** on the charger and select the supported cars that charge there. PELS uses the matched car’s battery level. With the selection empty, PELS can read a battery level exposed on the charging device itself or use **Report battery level for charger** with the car app’s percentage tag. [Set up battery reporting](/how-to-deadline-charging-soc#step-2-give-pels-the-battery-percentage).
 
+### Make room for an external load
+
+Use **Reserve capacity for an external load** with a name, power in watts and a duration in minutes. This works in the Main home with live control and a capacity or grid import limit enabled. PELS can limit managed devices in priority order to make room. When **Capacity for an external load is ready** fires for that name, the Flow can start the load. On a protected three-phase supply, PELS checks whether every phase has enough room.
+
+The duration starts when you request the reservation. Requesting the same name again replaces it and starts the duration again. The reservation stays in force after the trigger. Use **Release capacity for an external load** when you no longer need to hold that space. PELS counts the load's actual draw as soon as the meter sees it, in addition to any reservation still in force. Reservations also end when their duration runs out or when PELS restarts.
+
 ### Smart tasks
 
 For a one-off goal, open **Smart tasks > New smart task**. For a regular departure or heating deadline, use **Settings > Schedules**. Use the cards below when a Homey event should create or change the task.

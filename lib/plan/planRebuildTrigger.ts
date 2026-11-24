@@ -40,6 +40,7 @@ export const POWER_SAMPLE_REBUILD_TRIGGERS = [
   'phase_pressure',
   'headroom_tight',
   'power_sample_convergence',
+  'external_load_reservation_changed',
   'power_delta',
   // The first reading in a new planning period (`rebuildScheduler/policy.ts`).
   'period_boundary',

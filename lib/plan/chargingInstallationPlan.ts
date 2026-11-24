@@ -162,6 +162,15 @@ export class ChargingInstallationPlan {
     };
   }
 
+  /** A simultaneous start still needs a subsequent meter sample for admission evidence. */
+  hasUnobservedStart(plan: DevicePlan): boolean {
+    return plan.devices.some((device) => {
+      if (device.chargingInstallationSwitch?.desiredOn !== true) return false;
+      const member = this.members.get(device.id);
+      return member === undefined || !isBinaryPlanDevice(member) || !member.currentOn;
+    });
+  }
+
   private planMemberSwitch(
     member: PlanInputDevice, groupSwitch: boolean | null, device: DevicePlanDevice,
   ): PlannedBinaryCommand | undefined {

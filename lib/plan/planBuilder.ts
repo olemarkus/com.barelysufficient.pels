@@ -49,7 +49,6 @@ import {
   resolvePhysicalPowerLimit,
   type DailySoftLimitResolution,
   type CapacityPlanLimit,
-  resolveMeasuredPower,
   type MeasuredPower,
   type PlanContext,
 } from './planContext';
@@ -86,11 +85,13 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
 import { recordCleanWholeHomeSample } from './admission';
+import {
+  resolveExternalLoadPlanningPower, resolveExternalLoadReservationDecision, withExternalLoadReservationDecision,
+} from './externalLoadReservationPlan';
 import { requireLatchedMeterReading } from '../power/lastTotalPower';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
-import { ChargingInstallationPlan, attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 
@@ -146,20 +147,6 @@ export class PlanBuilder {
     return this.deps.getCapacityDryRun()
       ? this.state.simulatedPeriodEnergy.planningView(this.powerTracker)
       : this.powerTracker;
-  }
-
-  // Resolve owner inputs once before decoration; objective evaluation shares the phase owner's
-  // permitted envelopes, while the execution hold gate reads the admitted task authority.
-  private prepareDevicePlanningInputs(
-    devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
-  ): ChargingInstallationPlan {
-    this.state.beginChargingPhaseCycle(this.deps.getChargingPhasePlanningRead(nowTs));
-    const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
-      this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
-    ));
-    this.state.chargingPhaseCycle.setRequirements(decoration.chargingPhaseRequirements);
-    this.state.externalOffHoldLiftedIds = decoration.externalOffHoldLiftedDeviceIds;
-    return new ChargingInstallationPlan(decoration);
   }
 
   private get dailyBudgetSnapshot(): DailyBudgetUiPayload | null {
@@ -335,7 +322,7 @@ export class PlanBuilder {
     // lifecycle clock, not on this plan cycle. A home with no smart tasks binds
     // `decorateWithoutDeferredObjectives`, so the identity case arrives through
     // the seam like any other answer.
-    const installations = this.prepareDevicePlanningInputs(devices, dailyBudgetSnapshot, nowTs);
+    const installations = this.stages.prepareDevicePlanningInputs(devices, dailyBudgetSnapshot, nowTs);
     const decoration = installations.forCapacity();
 
     // One reading per build, resolved by `lib/power` — pure: the silence
@@ -377,7 +364,10 @@ export class PlanBuilder {
     this.state.capacityDrainStart.record(
       settings, this.pacingTracker, nowTs, this.resolvePacingDrawKw(reading.totalKw),
     );
-    const power = resolveMeasuredPower(reading, context, installations.usageDevices, this.deps.getMainFuse());
+    const { measuredPower, power, mainFuse, reservation } = resolveExternalLoadPlanningPower(
+      reading, context, capacity, installations.usageDevices,
+      this.deps.getMainFuse(), this.capacityGuard.externalLoadReservations.current(),
+    );
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
     const postureExcludeIds = resolvePostureExcludeIds(decoration, decoration.admittedDevices);
@@ -387,7 +377,7 @@ export class PlanBuilder {
     // is running, it does not make room for more.
     const {
       sheddingPlan, overshootDecision, storageRelief: limitedStorage, admissionPower,
-    } = await this.decideShedding(context, power, surplusOffers, settings);
+    } = await this.decideShedding(context, power, surplusOffers, settings, measuredPower);
     // The "Run on solar surplus" dump-load hold + the post-shedding hold
     // merges; returns the dump-load reason map for reason normalization.
     const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds(
@@ -413,23 +403,10 @@ export class PlanBuilder {
     );
     this.auditShedRelief(heldContext, power, restoreResult);
 
-    const holdResult = this.stages.applyHoldPlan(
-      restoreResult,
-      sheddingPlan,
-      heldContext.temperatureSetpoints,
+    const finalized = this.stages.finalizeMeasuredPlan(
+      heldContext, admissionPower, restoreResult, sheddingPlan, decoration, postureHolds,
     );
-    const reasoned = this.stages.normalizeReasons(
-      heldContext, admissionPower, restoreResult, sheddingPlan, {
-        deferredHoldCauseByDeviceId: decoration.deferredHoldCauseByDeviceId,
-        postureHoldReasonById: postureHolds.reasonById,
-      }, holdResult,
-    );
-    const planDevices = attachDeferredReleaseIntents(
-      reasoned.planDevices, decoration.deferredReleaseIntentByDeviceId, true, this.deps.getShedBehavior,
-    );
-    const decidedDevices = attachStorageDecisions(
-      this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,
-    );
+    const decidedDevices = attachStorageDecisions(finalized.planDevices, storageRelief);
     this.recordPlannedShed(decidedDevices, decoration, storageRelief, heldContext.devices);
     const metaFacts: PlanMetaCycleFacts = {
       context: heldContext,
@@ -447,10 +424,13 @@ export class PlanBuilder {
       simulatedReliefKw: this.deps.getCapacityDryRun() ? this.state.simulatedPeriodEnergy.heldReliefKw() : null,
     };
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState(
-      metaFacts, power, overshootDecision, nowTs,
+      metaFacts, measuredPower, overshootDecision, nowTs, power !== measuredPower,
     ));
 
-    const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta(metaFacts, power));
+    const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta(metaFacts, measuredPower));
+    const externalLoadReservation = resolveExternalLoadReservationDecision(
+      reservation, heldContext, reading, mainFuse, restoreResult, finalized.hold, this.deps.getCapacityDryRun(),
+    );
     this.stages.observeDiagnostics(
       heldContext,
       power,
@@ -458,10 +438,10 @@ export class PlanBuilder {
       restoreResult,
       isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, settings),
       decoration.drivingDeviceIds,
-      reasoned.budgetHeldDeviceIds,
+      finalized.budgetHeldDeviceIds,
     );
     return {
-      plan: installations.withSwitches({
+      plan: withExternalLoadReservationDecision(installations.withSwitches({
         meta,
         devices: decidedDevices,
         inverterDecisions: this.decideInverters(
@@ -469,7 +449,7 @@ export class PlanBuilder {
         ),
         chargingPhaseDecisions: this.state.chargingPhaseCycle.finish(decidedDevices, sheddingPlan.shedSet),
         storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
-      }),
+      }), installations, externalLoadReservation),
       run,
     };
   }
@@ -533,6 +513,7 @@ export class PlanBuilder {
     power: MeasuredPower,
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
     settings: PowerLimitSettings,
+    measuredPower: MeasuredPower,
   ): Promise<{
     sheddingPlan: SheddingPlan;
     overshootDecision: SoftOvershootDecision;
@@ -561,7 +542,8 @@ export class PlanBuilder {
     );
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
-    if ((power.headroom.kind === 'off' || power.headroom.kw >= 0) && !this.state.capacityPeriodSpentFor(context)) {
+    if ((measuredPower.headroom.kind === 'off' || measuredPower.headroom.kw >= 0)
+      && !this.state.capacityPeriodSpentFor(context)) {
       this.recordCleanWholeHomeSample(context.devices, this.powerTracker.lastTimestamp);
     }
 
@@ -574,7 +556,7 @@ export class PlanBuilder {
       () => buildSheddingPlan(
         context, power, this.state, buildSheddingDeps(this.deps),
         // Shedding prices a held battery from its hold (`heldStorage.levers`).
-        overshootDecision, heldStorage,
+        overshootDecision, heldStorage, measuredPower,
       ),
     );
     this.applySheddingOutcome(sheddingPlan);

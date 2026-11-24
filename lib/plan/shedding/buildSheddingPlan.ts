@@ -1,6 +1,7 @@
 import { spendLimitHeadroom, type LimitHeadroom } from '../planContext';
 import { getDebugEmitter } from '../../logging/logger';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type SheddingOutcome } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 
@@ -59,6 +60,7 @@ export async function buildSheddingPlan(
    * measurement: the shortfall verdict and the latch read it alone.
    */
   storage: StorageRelief,
+  measuredPower = power,
 ): Promise<SheddingPlan> {
   const { nowTs } = context;
   const scalar = planShedding(context, power, state, deps, overshoot, storage);
@@ -77,7 +79,9 @@ export async function buildSheddingPlan(
     ...phaseMerged,
     storageSetpoints: new Map([...phaseMerged.storageSetpoints, ...exportPass.storageSetpoints]),
   };
-  const lastResortCut = selectLastResortCut(context, power, state, scalar, phase, deps.pendingBinaryCommandStore);
+  const lastResortCut = measuredPower === power
+    ? selectLastResortCut(context, power, state, scalar, phase, deps.pendingBinaryCommandStore)
+    : selectMeasuredLastResortCut(context, measuredPower, power, state, scalar, phase, deps);
   if (lastResortCut) {
     merged.shedSet.add(lastResortCut.deviceId);
     merged.shedReasons.set(lastResortCut.deviceId, lastResortCut.reason);
@@ -92,7 +96,7 @@ export async function buildSheddingPlan(
   const sheddingActive = resolveSheddingLatch(
     context, power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),
   );
-  await reportShortfallToGuard(context, power, state, selection, deps, storage, lastResortCut?.deviceId);
+  await reportShortfallToGuard(context, measuredPower, state, selection, deps, storage, lastResortCut?.deviceId);
   state.noteRelayMeterDecision(power.sampledAtMs);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
@@ -114,12 +118,38 @@ export async function buildSheddingPlan(
     guardInShortfall,
     outcome,
     recoveredAtMs: recoveredFromShedding ? nowTs : null,
-    unrelievedPhase: phase.unrelievedPhase,
+    unrelievedPhase: phase.unrelievedPhase !== null
+      && isMeasuredPhaseBreach(measuredPower, phase.unrelievedPhase) ? phase.unrelievedPhase : null,
     phaseExportExcessKw: exportPass.remainingExcessKw,
     exportPhase: exportPass.exportPhase,
   };
 }
 /* eslint-enable functional/immutable-data */
+
+function isMeasuredPhaseBreach(power: MeasuredPower, phase: PhaseName): boolean {
+  return power.phase.kind === 'on' && power.phase.phases.some((entry) => entry.phase === phase && entry.breached);
+}
+
+/** An external reservation can ask for ordinary relief, never a last-resort cut. */
+function selectMeasuredLastResortCut(
+  context: PlanContext,
+  measured: MeasuredPower,
+  planned: MeasuredPower,
+  state: PlanEngineState,
+  scalar: PlanSheddingResult,
+  phase: ReturnType<typeof runPhaseShedPass>,
+  deps: SheddingDeps,
+) {
+  const reserveDeficitKw = measured.headroom.kind === 'on' && planned.headroom.kind === 'on'
+    ? measured.headroom.kw - planned.headroom.kw : 0;
+  return selectLastResortCut(context, measured, state, {
+    ...scalar,
+    remainingDeficitKw: Math.max(0, (scalar.remainingDeficitKw ?? 0) - reserveDeficitKw),
+  }, {
+    ...phase,
+    openPhases: phase.openPhases.filter((name) => isMeasuredPhaseBreach(measured, name)),
+  }, deps.pendingBinaryCommandStore);
+}
 
 /** What the scalar selection has decided and not yet delivered, for the phase pass to count. */
 function resolveScalarInFlightRelief(

@@ -1,4 +1,5 @@
 import { PhaseReadingTracker } from './phaseReading';
+import { ExternalLoadReservations } from './externalLoadReservations';
 import { PhaseReadFlight } from './phaseReadFlight';
 import { PhaseFootprintLearner } from '../phaseFootprint/phaseFootprintLearner';
 import { PhasePeakLog } from './phasePeakLog';
@@ -68,6 +69,9 @@ export const isOverShortfallThreshold = (
  * none and so cannot open one.
  */
 export default class CapacityGuard {
+  /** Capacity held for named loads that PELS does not control. */
+  public readonly externalLoadReservations = new ExternalLoadReservations();
+
   /** The accepted per-phase picture of this home's meter. */
   public readonly phaseReadings = new PhaseReadingTracker();
 

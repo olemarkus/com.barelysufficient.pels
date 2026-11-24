@@ -1,3 +1,4 @@
+import { ExternalLoadReservations } from '../../lib/power/externalLoadReservations';
 import {
   mockHomeyInstance,
   resetMockHomey,
@@ -34,6 +35,8 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     phaseLearner = { bindStore: vi.fn(), observe: vi.fn(), learnedFootprint: vi.fn() };
     phasePeaks = { bindStore: vi.fn(), observe: vi.fn(), recent: () => [] };
     shortfallLog = { bindStore: vi.fn(), record: vi.fn(), recent: () => [] };
+
+    externalLoadReservations = new ExternalLoadReservations();
 
     public setLimit = vi.fn();
     public setSoftMargin = vi.fn();
