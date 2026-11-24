@@ -1,0 +1,24 @@
+{
+  "title": {
+    "en": "Resume heating after an open window"
+  },
+  "titleFormatted": {
+    "en": "Resume heating in [[scope]]"
+  },
+  "hint": {
+    "en": "Ends the pause for the same device or zone. Other active pauses and power limiting still apply."
+  },
+  "args": [
+    {
+      "name": "scope",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device or zone"
+      },
+      "placeholder": {
+        "en": "Select heater or zone"
+      }
+    }
+  ],
+  "id": "resume_heating_after_open_window"
+}

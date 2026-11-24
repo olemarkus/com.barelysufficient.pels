@@ -99,6 +99,12 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Clear smart task** | Removes any active Smart task for a device. |
 | **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **reserve power so this task can start sooner**. Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
 
+### Pause heating for an open window
+
+Run **Pause heating for an open window** when a window opens. Choose a managed heater or a Homey zone and a duration from 1 to 120 minutes. The card applies to heaters in the selected zone with on/off control, power readings and **Power-limit control** on. PELS applies the pause through its normal meter-driven control and shows **Paused for open window** once the heater is off.
+
+Run **Resume heating after an open window** for the same device or zone when the window closes. The hold also ends when its duration runs out or PELS restarts. If both a device pause and a zone pause apply, the heater stays off until both end. PELS resumes its usual temperature and power-limit control afterward.
+
 ## Common Automation Patterns
 
 ### Mode switching

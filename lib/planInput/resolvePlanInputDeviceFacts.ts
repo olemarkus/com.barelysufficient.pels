@@ -180,6 +180,18 @@ function canCommandPhysicalDevice(device: ToPlanDeviceInput): boolean {
   return !installationCarFinished && resolveCommandableNow(device);
 }
 
+/** A pause may hold only a heater the owner already lets PELS switch for power limiting. */
+function resolveHeatingPause(
+  source: PlanInputProjectionSource,
+  device: ToPlanDeviceInput,
+  control: ResolvedPlanInputFacts['control'],
+  powerLimitEnabled: boolean,
+): Pick<ResolvedPlanInputFacts, 'heatingPauseActive'> {
+  const eligible = powerLimitEnabled && control.commandAuthority
+    && device.temperature !== undefined && device.binaryControl !== undefined && !isSteppedLoadSnapshot(device);
+  return eligible && source.isHeatingPaused(device.id) ? { heatingPauseActive: true } : {};
+}
+
 export const resolvePlanInputDeviceFacts = (
   source: PlanInputProjectionSource,
   device: ToPlanDeviceInput,
@@ -253,6 +265,7 @@ export const resolvePlanInputDeviceFacts = (
     ...resolvePresenceFlags(resolveSteppedLadderMissing(device, steppedCluster), surplusOnly, externalOffHoldActive),
     currentState: observedCurrentState,
     ...(lastResort ? { lastResort } : {}),
+    ...resolveHeatingPause(source, device, control, capacityControlEnabled),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     confirmedNotDrawing,
     commandableNow: commandability.commandableNow,

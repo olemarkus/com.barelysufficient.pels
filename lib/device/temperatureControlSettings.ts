@@ -114,3 +114,35 @@ export function writeTemperatureControlMode(
   settings.set(TEMPERATURE_CONTROL_MODES, { ...current, [deviceId]: mode });
   return 'written';
 }
+
+const MAX_HEATING_PAUSE_MINUTES = 120;
+
+/** The owner's timed open-window holds. End times use the runtime clock. */
+export class HeatingPauses {
+  private readonly pausedUntil = new Map<string, number>();
+
+  pause(scope: string, minutes: number, nowMs: number): void {
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_HEATING_PAUSE_MINUTES) {
+      throw new Error(`Choose a whole number of minutes from 1 to ${MAX_HEATING_PAUSE_MINUTES}.`);
+    }
+    this.pausedUntil.set(scope, nowMs + minutes * 60_000);
+  }
+
+  resume(scope: string): void {
+    this.pausedUntil.delete(scope);
+  }
+
+  isPaused(deviceId: string, zoneId: string | undefined, nowMs: number): boolean {
+    const byDevice = this.isScopePaused(`device:${deviceId}`, nowMs);
+    const byZone = zoneId !== undefined && this.isScopePaused(`zone:${zoneId}`, nowMs);
+    return byDevice || byZone;
+  }
+
+  private isScopePaused(scope: string, nowMs: number): boolean {
+    const until = this.pausedUntil.get(scope);
+    if (until === undefined) return false;
+    if (until > nowMs) return true;
+    this.pausedUntil.delete(scope);
+    return false;
+  }
+}

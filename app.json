@@ -2034,6 +2034,43 @@
       },
       {
         "title": {
+          "en": "Pause heating for an open window"
+        },
+        "titleFormatted": {
+          "en": "Pause heating in [[scope]] for [[minutes]] minutes"
+        },
+        "hint": {
+          "en": "Holds eligible heaters off in the selected device or zone until Resume heating runs or the duration ends. The pause also ends if PELS restarts. Heaters must be managed with on/off control and power readings. Power limiting must be on."
+        },
+        "args": [
+          {
+            "name": "scope",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device or zone"
+            },
+            "placeholder": {
+              "en": "Select heater or zone"
+            }
+          },
+          {
+            "name": "minutes",
+            "type": "number",
+            "title": {
+              "en": "Duration (minutes)"
+            },
+            "placeholder": {
+              "en": "30"
+            },
+            "min": 1,
+            "max": 120,
+            "step": 1
+          }
+        ],
+        "id": "pause_heating_for_open_window"
+      },
+      {
+        "title": {
           "en": "Remove budget exemption for device"
         },
         "titleFormatted": {
@@ -2179,6 +2216,30 @@
           }
         ],
         "id": "report_stepped_load_power"
+      },
+      {
+        "title": {
+          "en": "Resume heating after an open window"
+        },
+        "titleFormatted": {
+          "en": "Resume heating in [[scope]]"
+        },
+        "hint": {
+          "en": "Ends the pause for the same device or zone. Other active pauses and power limiting still apply."
+        },
+        "args": [
+          {
+            "name": "scope",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device or zone"
+            },
+            "placeholder": {
+              "en": "Select heater or zone"
+            }
+          }
+        ],
+        "id": "resume_heating_after_open_window"
       },
       {
         "title": {

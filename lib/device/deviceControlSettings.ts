@@ -82,7 +82,7 @@ import {
   TEMPERATURE_BOOST_SETTINGS,
 } from '../utils/settingsKeys';
 import {
-  readTemperatureControlDisabledDevicesSetting,
+  HeatingPauses, readTemperatureControlDisabledDevicesSetting,
   resolveTemperatureControlDisabled,
 } from './temperatureControlSettings';
 
@@ -208,6 +208,8 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
  * cannot use.
  */
 export class DeviceControlSettings {
+  readonly heatingPauses = new HeatingPauses();
+
   private maps: DeviceControlMaps = {
     controllable: {},
     managed: {},

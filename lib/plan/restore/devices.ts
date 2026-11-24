@@ -40,6 +40,7 @@ function isEligibleForLivePowerControl(device: DevicePlanDevice): device is Mete
     // binary restore, stepped restore, headroom reservation, and swap
     // participation at once. The device stays managed and its measured
     // draw still counts toward whole-home power — PELS just never resumes it.
+    && device.heatingPauseActive !== true
     && device.externalOffHoldActive !== true
     && device.carCurrentRangeHeld !== true;
 }
@@ -254,6 +255,7 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
     // from, at the surface that shows it — nothing carries a reason string.
     return { code: PLAN_REASON_CODES.inactive, detail: resolveCommandabilityDetail(dev) };
   }
+  if (dev.heatingPauseActive && dev.currentState === 'off') return { code: PLAN_REASON_CODES.heatingPause };
   if (dev.externalOffHoldActive === true) return { code: PLAN_REASON_CODES.externalOffHold };
   // "Only PELS starts this device", once the device is actually off. While it is
   // still running the plan must say `shed`, because that is what makes the

@@ -9,7 +9,7 @@ export function buildPlannedTargetCommand(
   device: DevicePlanDevice,
   recordRestoreOnTargetApply: boolean,
 ): PlannedTargetCommand | undefined {
-  if (!isTemperaturePlanDevice(device)) return undefined;
+  if (!isTemperaturePlanDevice(device) || device.heatingPauseActive) return undefined;
   if (device.waitingForTaskPlan && device.plannedShedTargetKind !== 'target_value') return undefined;
   if (device.reason?.code === PLAN_REASON_CODES.swapPending && device.reason.targetName === null) return undefined;
   if (device.reason && isRestoreAdmissionHoldReason(device.reason)) return undefined;

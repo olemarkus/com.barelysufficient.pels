@@ -225,7 +225,7 @@ const buildPlannedReleaseCommand = (
   planMeta?: PlanMeta,
 ): PlannedReleaseCommand | undefined => {
   const release = dev.deferredReleaseIntent;
-  if (!release || dev.lastResort) return undefined;
+  if (!release || dev.lastResort || dev.heatingPauseActive) return undefined;
   const { kind } = release;
   // The release intent is producer-resolved in deferred-objective admission. This per-cycle
   // projection only reconciles a binary_restore (resume) against the current cycle's planner

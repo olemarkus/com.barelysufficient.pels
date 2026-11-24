@@ -1,3 +1,4 @@
+import { HeatingPauses } from '../../lib/device/temperatureControlSettings';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
@@ -125,6 +126,8 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getHeadroom: vi.fn((): ObservedHeadroom => ({ kind: 'unmeasured' })),
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),
+    heatingPauses: new HeatingPauses(),
+    getHeatingPauseZoneName: () => undefined,
     onSteppedLoadFlowCardUpdate: vi.fn(),
     getControllableDevices: () => ({}),
     confirmCarAssociation: vi.fn(),

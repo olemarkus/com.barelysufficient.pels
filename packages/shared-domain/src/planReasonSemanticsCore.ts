@@ -72,6 +72,7 @@ export const PLAN_REASON_CODES = {
   // Like `awaitingSolarSurplus`, it deliberately carries NO detail: the reason
   // must be byte-stable across plan cycles (rebuild-storm class, f1550cea).
   externalOffHold: 'external_off_hold',
+  heatingPause: 'heating_pause',
   neutralStartupHold: 'neutral_startup_hold',
   startupStabilization: 'startup_stabilization',
   capacityControlOff: 'capacity_control_off',
@@ -260,6 +261,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
   | { code: typeof PLAN_REASON_CODES.carCurrentRangeUnavailable }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
+  | { code: typeof PLAN_REASON_CODES.heatingPause }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }

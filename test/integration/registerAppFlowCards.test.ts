@@ -6,6 +6,7 @@ vi.mock('../../flowCards/registerFlowCards', () => ({
   registerFlowCards: registerFlowCards,
 }));
 
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { registerAppFlowCards } from '../../setup/appInit';
 import type { AppContext, PowerSampleAdmission } from '../../lib/app/appContext';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
@@ -67,6 +68,7 @@ describe('registerAppFlowCards', () => {
       getFlowSnapshot: vi.fn(async () => []),
       refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
+      deviceControlSettings: deviceControlSettingsFixture(),
       setExpectedOverride: vi.fn(() => false),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
@@ -103,6 +105,7 @@ describe('registerAppFlowCards', () => {
       getFlowSnapshot: vi.fn(async () => []),
       refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
+      deviceControlSettings: deviceControlSettingsFixture(),
       setExpectedOverride: vi.fn(() => false),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),

@@ -10,7 +10,7 @@
 // power-estimation classification cases (no externally observable effect).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
-import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, setMockZones, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import {
@@ -84,6 +84,57 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     await cleanupApps();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it.each(['device', 'zone'] as const)('holds a heater off through headroom with a %s pause', async (kind) => {
+    const device = await buildHeatpumpDevice(17, 1500);
+    device.setZone('z-heating');
+    setMockZones({ 'z-heating': { id: 'z-heating', name: 'Living room', parent: null } });
+    setMockDrivers({ heating: new MockDriver('heating', [device]) });
+    enableCapacity(10);
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 17 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'heatpump-a': { action: 'set_temperature', temperature: 15 },
+    });
+    const setHousePower = reportHomePower(1600);
+    const put = vi.spyOn(mockHomeyInstance.api, 'put');
+    const onoff = cap('heatpump-a', 'onoff');
+    const target = cap('heatpump-a', 'target_temperature');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const scope = { id: kind === 'device' ? 'device:heatpump-a' : 'zone:z-heating' };
+    const flow = mockHomeyInstance.flow;
+    await expect(flow._actionCardAutocompleteListeners.pause_heating_for_open_window.scope(''))
+      .resolves.toEqual(expect.arrayContaining([expect.objectContaining(scope)]));
+    put.mockClear();
+    const minutes = kind === 'device' ? 5 : 2;
+    await expect(flow._actionCardListeners.pause_heating_for_open_window({ scope, minutes })).resolves.toBe(true);
+    expect(put).not.toHaveBeenCalledWith(onoff, pelsCapabilityWrite(false));
+    await vi.advanceTimersByTimeAsync(40_000);
+    await drainUntilCalledWith(put, onoff, pelsCapabilityWrite(false));
+
+    setHousePower(100);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 22 } });
+    put.mockClear();
+    await vi.advanceTimersByTimeAsync(40_000);
+    const plan = await api.ui_plan({ homey: app.homey });
+    expect(plan.plan?.devices?.find(({ id }) => id === 'heatpump-a')?.status).toMatchObject({
+      limited: false,
+      reason: { text: 'Paused for open window' },
+    });
+    expect(put).not.toHaveBeenCalledWith(onoff, pelsCapabilityWrite(true));
+    expect(put).not.toHaveBeenCalledWith(target, pelsCapabilityWrite(22));
+
+    if (kind === 'device') {
+      await expect(flow._actionCardListeners.resume_heating_after_open_window({ scope })).resolves.toBe(true);
+      expect(put).not.toHaveBeenCalledWith(onoff, pelsCapabilityWrite(true));
+    }
+    await vi.advanceTimersByTimeAsync(130_000);
+    await drainUntilCalledWith(put, onoff, pelsCapabilityWrite(true));
+    await drainUntilCalledWith(put, target, pelsCapabilityWrite(22));
   });
 
   it.each(['ordinary', 'custom power mode', 'malformed meter'] as const)(
