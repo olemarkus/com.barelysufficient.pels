@@ -1369,6 +1369,44 @@ describe('PlanExecutor pending target commands', () => {
     }));
   });
 
+  it('reports a second confirmed setpoint limit after an external return to the planned temperature', async () => {
+    const state = createPlanEngineState();
+    const emitDeviceLimitEvent = vi.fn();
+    const target = { id: 'target_temperature', value: 21, unit: '°C' };
+    const { executor } = buildExecutor(state, [{
+      id: 'dev-1', name: 'Heater', canSetControl: true, available: true,
+      binaryCapabilityId: 'onoff', binaryControl: { on: true }, targets: [target],
+    }], { emitDeviceLimitEvent });
+    const shed = buildTargetPlan(21, 15);
+    shed.devices = [pd({
+      id: 'dev-1', name: 'Heater', controllable: true, available: true, deviceType: 'temperature',
+      currentTarget: 21, plannedTarget: 15, currentTemperature: 20, currentState: 'on',
+      plannedState: 'shed', shedAction: 'set_temperature', shedTemperature: 15, reason: CAPACITY_REASON,
+    })];
+    const confirmLimit = async () => {
+      await executor.applyPlanActions(buildExecutionPlan(shed));
+      target.value = 15;
+      syncPendingTargetCommands(
+        getTestExecutionState(state), [{ id: 'dev-1', name: 'Heater', targets: [target] }], 'realtime_capability',
+        vi.fn(), executor.recordDeviceLimitChange.bind(executor),
+      );
+    };
+
+    await confirmLimit();
+    expect(emitDeviceLimitEvent).toHaveBeenCalledTimes(1);
+
+    target.value = 18;
+    executor.retainContestedCommands(buildExecutionPlan(buildTargetPlan(18, 21)), 0);
+    await confirmLimit();
+    expect(emitDeviceLimitEvent).toHaveBeenCalledTimes(1);
+
+    target.value = 21;
+    executor.retainContestedCommands(buildExecutionPlan(buildTargetPlan(21, 21)), 0);
+    expect(emitDeviceLimitEvent).toHaveBeenCalledTimes(1);
+    await confirmLimit();
+    expect(emitDeviceLimitEvent.mock.calls.map(([event]) => event.kind)).toEqual(['limited', 'limited']);
+  });
+
   it('does not resend the same target command until the retry deadline', async () => {
     const state = createPlanEngineState();
     const { executor, deviceManager, state: nextState } = buildExecutor(state, [
@@ -2111,6 +2149,51 @@ describe('PlanExecutor stepped loads', () => {
     expect(emitDeviceLimitEvent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       deviceId: 'dev-1', kind: 'limited', reason: 'capacity', action: 'lower_step',
     }));
+  });
+
+  it('reports a second confirmed step limit after an external return to the planned level', async () => {
+    const { store } = steppedStoresForTest();
+    const emitDeviceLimitEvent = vi.fn();
+    const snapshotAtMax = steppedSnapshot({
+      reportedStepId: 'max', binaryControlObservation: onoffObservation(true),
+    });
+    const { executor, deviceManager } = buildExecutor(createPlanEngineState(), snapshotAtMax, {
+      emitDeviceLimitEvent,
+      markSteppedLoadDesiredStepIssued: (command) => store.markDesiredStepIssued(command),
+    });
+    const shed = buildExecutionPlan(steppedPlan({
+      currentState: 'on', plannedState: 'shed', selectedStepId: 'max', reportedStepId: 'max',
+      desiredStepId: 'low', plannedShedStepId: 'low', shedAction: 'turn_off', reason: CAPACITY_REASON,
+    }));
+    const confirmLimit = async () => {
+      await executor.applyPlanActions(shed);
+      const issuedAtMs = store.getDesired('dev-1')?.lastIssuedAtMs;
+      if (issuedAtMs === undefined) throw new Error('Expected a pending step command');
+      deviceManager.getSnapshot.mockReturnValue(steppedSnapshot({
+        reportedStepId: 'low', binaryControlObservation: onoffObservation(true),
+      }));
+      syncSteppedCommands({
+        store, nowMs: issuedAtMs + 1,
+        devices: [{
+          id: 'dev-1', observedOn: true, lowestActiveStepId: 'low',
+          steppedCommandAcknowledgement: { state: 'unavailable' },
+          steppedCommandConfirmation: { state: 'observed', observedStepId: 'low', observedAtMs: issuedAtMs + 1 },
+        }],
+        onReportedStep: (deviceId, report) => executor.recordReportedStepLimit(store, deviceId, report),
+      });
+    };
+
+    await confirmLimit();
+    expect(emitDeviceLimitEvent).toHaveBeenCalledTimes(1);
+
+    deviceManager.getSnapshot.mockReturnValue(snapshotAtMax);
+    const keep = buildExecutionPlan(steppedPlan({
+      currentState: 'on', selectedStepId: 'max', reportedStepId: 'max', desiredStepId: 'max',
+    }));
+    executor.retainContestedCommands(keep, 0);
+    expect(emitDeviceLimitEvent).toHaveBeenCalledTimes(1);
+    await confirmLimit();
+    expect(emitDeviceLimitEvent.mock.calls.map(([event]) => event.kind)).toEqual(['limited', 'limited']);
   });
 
   it('issues independent sheds while another device write waits, isolates failures, and awaits every device', async () => {

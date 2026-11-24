@@ -1,5 +1,5 @@
 import type { DeviceLimitChange, DeviceLimitEvent } from '../ports/deviceLimitEvents';
-import { DeviceLimitEpisodes } from './deviceLimitEpisodes';
+import { DeviceLimitEpisodes, readDeviceLimitRelease } from './deviceLimitEpisodes';
 import { resolveLatchedMeterReading, resolveMeterEvidenceAtMs } from '../power/lastTotalPower';
 import type { RelayMeterObservation } from '../ports/nativeRelay';
 import { RelayShedRecovery } from './relayShedRecovery';
@@ -416,18 +416,22 @@ export class PlanExecutor {
    */
   public retainContestedCommands(plan: ExecutionPlan, observationRevisionAtBuild?: number): void {
     this.relayShed.retain(plan, observationRevisionAtBuild);
+    const observationsCurrent = observationRevisionAtBuild === undefined
+      || observationRevisionAtBuild === this.deps.getObservationRevision();
     const plannedCommands = new Map(plan.devices.map(({ commands }) => {
-      const planned = resolvePlannedCommandValues(commands, this.feedback.isExternalOffHeld(commands.id));
-      return [commands.id, {
+      const { id } = commands;
+      const planned = resolvePlannedCommandValues(commands, this.feedback.isExternalOffHeld(id));
+      const controls = {
         ...planned,
-        charging_phases: this.deps.chargingPhaseOwner.getDesiredForceSingle(commands.id),
-        temperature: this.resolvePlannedTemperature(commands.id, planned.temperature),
-      }] as const;
+        charging_phases: this.deps.chargingPhaseOwner.getDesiredForceSingle(id),
+        temperature: this.resolvePlannedTemperature(id, planned.temperature),
+      };
+      this.deviceLimitEpisodes?.observeRelease(id, () => readDeviceLimitRelease(
+        this.ctx, commands, controls, observationsCurrent,
+      ));
+      return [id, controls] as const;
     }));
-    this.deviceLimitEpisodes?.retainDevices(plannedCommands, (id) => (
-      !this.deps.pendingBinaryCommandStore.peekActive(id)
-      && isBinaryObservedOn(this.deps.getObservedState(id))
-    ));
+    this.deviceLimitEpisodes?.retainDevices(plannedCommands);
     this.execution.controlContests.retainPlanned(this.deps.homeId, plannedCommands);
   }
 

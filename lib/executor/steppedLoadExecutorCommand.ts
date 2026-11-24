@@ -359,13 +359,14 @@ const steppedDeviceLimitChange = (
   ctx: ExecutorCommandContext,
   intent: ExecutableSteppedLoadIntent,
   actuation: SteppedLoadPlanActuation | undefined,
+  stepId: string,
 ): SteppedDeviceLimitChange | undefined => {
   if (ctx.owner !== 'ordinary' || !ctx.recordDeviceLimitChange) return undefined;
   if (actuation === 'limited' && ctx.deviceLimit) {
     return {
       homeId: ctx.homeId,
       deviceName: intent.name,
-      change: { kind: 'limited', ...ctx.deviceLimit, action: 'lower_step' },
+      change: { kind: 'limited', ...ctx.deviceLimit, action: 'lower_step', stepId },
     };
   }
   if (actuation === 'resumed' && !ctx.deviceLimit && intent.transition?.stepPreparationPurpose !== 'prepare_for_on') {
@@ -410,7 +411,7 @@ const recordUnacknowledgedSteppedLoadCommand = (
   outcome: UnacknowledgedStep,
 ): boolean => {
   const actuation = resolveSteppedLoadPlanActuation(action, desiredStep.id, options);
-  const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation);
+  const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation, desiredStep.id);
   markUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now, limitChange);
   logUnacknowledgedSteppedLoadCommand(action, desiredStep, options, outcome);
   recordSteppedLoadPlanActuation(ctx, action.intent, now, actuation, false);
@@ -426,7 +427,7 @@ const recordAcceptedSteppedLoadCommand = (
   commandTransport: SteppedLoadStepRequestTransport,
 ): boolean => {
   const actuation = resolveSteppedLoadPlanActuation(action, desiredStep.id, options);
-  const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation);
+  const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation, desiredStep.id);
   markAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, limitChange);
   logAcceptedSteppedLoadCommand(action, desiredStep, options, commandTransport);
   recordSteppedLoadPlanActuation(ctx, action.intent, now, actuation, true);
