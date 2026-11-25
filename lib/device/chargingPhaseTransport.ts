@@ -43,6 +43,17 @@ type PhaseSettings = Pick<DeviceControlSettings,
 type PhaseReading = NonNullable<ReturnType<ChargingPhaseBinding['read']>>;
 type CurrentRange = { minimumCurrentA: number; maximumCurrentA: number; allowed: boolean };
 
+function canExpandWithoutPause(device: HomeyDeviceLike, reading: PhaseReading): boolean {
+  if (reading.currentLimitA === 0) return true;
+  // A disconnected car cannot draw on the expanded setting. Missing plug
+  // telemetry or an idle but connected car cannot establish that.
+  const state = device.capabilitiesObj.evcharger_charging_state;
+  return isEvChargingState(state?.value) && !isEvPlugStateConnected(state.value)
+    && toCapabilityTimestampMs(state.lastUpdated) !== undefined
+    && reading.totalPower.watts <= CHARGING_PHASE_DRAWING_W
+    && reading.powers.every((power) => power.watts <= CHARGING_PHASE_DRAWING_W);
+}
+
 /**
  * Device-owner host for integration-resolved phase reads and action cards. It never
  * decides a desired phase count, starts a device, or treats a command echo as draw.
@@ -114,14 +125,18 @@ export class ChargingPhaseTransport {
     const reading = this.binding(device)?.read(device);
     if (!reading) return undefined;
     const snapshot = this.snapshots.getSnapshotByDeviceId(device.id);
-    const state = snapshot?.evChargingState ?? device.capabilitiesObj.evcharger_charging_state?.value;
+    const projectedState = snapshot?.evChargingState;
+    // The accepted capability report can arrive before the projected snapshot
+    // changes. Use the same connection evidence for admission and hand-back.
+    const connected = this.observeConnection(device)?.connected
+      ?? (isEvChargingState(projectedState) && isEvPlugStateConnected(projectedState));
     const range = this.currentRange(device.id, reading);
     const controlEnabled = this.settings.isControllable(device.id) && range.allowed
       && snapshot?.automaticPowerControl?.mode === 'automatic' && snapshot.controlAdapter?.activationEnabled === true;
     return { deviceId: device.id, ...reading,
       minimumCurrentA: range.minimumCurrentA, maximumCurrentA: range.maximumCurrentA,
       available: snapshot?.available ?? device.available,
-      connected: isEvChargingState(state) && isEvPlugStateConnected(state),
+      connected,
       managed: this.settings.isManaged(device.id), controlEnabled,
       configuredPhases: this.configuredPhases(device.id), planningPhases: this.planningPhases(device, reading),
       drawingPhases: this.drawingPhases(device, reading),
@@ -191,7 +206,7 @@ export class ChargingPhaseTransport {
     const reading = binding.read(raw);
     if (!reading) throw new Error('Charging phase observations are unavailable.');
     if (command.kind === 'charging_phase_release') {
-      const prepared = await this.prepareRelease(command, reading);
+      const prepared = await this.prepareRelease(command, raw, reading);
       if (prepared === 'unchanged') return true;
       if (prepared === 'expired') return false;
     } else {
@@ -211,10 +226,12 @@ export class ChargingPhaseTransport {
   }
 
   private async prepareRelease(
-    command: Extract<ChargingPhaseCommand, { kind: 'charging_phase_release' }>, reading: PhaseReading,
+    command: Extract<ChargingPhaseCommand, { kind: 'charging_phase_release' }>,
+    raw: HomeyDeviceLike,
+    reading: PhaseReading,
   ): Promise<'ready' | 'unchanged' | 'expired'> {
     if (command.forceSinglePhase === reading.forceSinglePhase) return 'unchanged';
-    if (command.forceSinglePhase || reading.currentLimitA === 0) return 'ready';
+    if (command.forceSinglePhase || canExpandWithoutPause(raw, reading)) return 'ready';
     if (!command.authority.isCurrent()) return 'expired';
     command.pauseLifecycle.onStarting(Date.now());
     try {
@@ -228,7 +245,7 @@ export class ChargingPhaseTransport {
     return command.authority.isCurrent() ? 'ready' : 'expired';
   }
 
-  /** Phase expansion hand-back is never sent after a third party raised the current during its pause. */
+  /** Recheck the expansion gate before writing, including after an awaited pause. */
   private canDeliver(command: ChargingPhaseCommand): boolean {
     if (!command.authority.isCurrent()) return false;
     if (command.kind !== 'charging_phase_release') {
@@ -237,7 +254,9 @@ export class ChargingPhaseTransport {
     }
     if (command.forceSinglePhase) return true;
     const raw = this.snapshots.getLastAcceptedRawDevice(command.deviceId);
-    return raw !== undefined && this.binding(raw)?.read(raw)?.currentLimitA === 0;
+    if (raw === undefined) return false;
+    const reading = this.binding(raw)?.read(raw);
+    return reading !== undefined && canExpandWithoutPause(raw, reading);
   }
 
   private async writeNative(command: ChargingPhaseCommand, writes: readonly CapabilityWrite[]): Promise<boolean> {

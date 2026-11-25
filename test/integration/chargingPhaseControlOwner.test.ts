@@ -170,7 +170,15 @@ describe('physical charging-phase ownership', () => {
     if (reason === 'disable') f.values.delete(CHARGING_PHASE_SETTINGS_KEY);
     const read = f.owner.readPlanning(NOW + 2000);
     expect(read.releases).toEqual([{ kind: 'release', deviceId: ID }]);
-    await f.owner.apply(read.releases[0], NOW + 2001);
+    if (reason !== 'disable') {
+      expect(await f.owner.apply(read.releases[0], NOW + 2001)).toEqual({ requested: false });
+      expect(f.apply).toHaveBeenCalledTimes(1);
+      expect(f.owner.read(ID)).toMatchObject({ status: { kind: 'releasing' } });
+      expect(f.values.get(RECORD_KEY)).toMatchObject({ kind: 'held' });
+      f.setDevice({ currentLimitA: 0 });
+    }
+    const ready = f.owner.readPlanning(NOW + 2500);
+    await f.owner.apply(ready.releases[0], NOW + 2501);
     expect(f.apply).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'charging_phase_release', deviceId: ID,
       forceSinglePhase: false }));
     expect(f.owner.blocksIncrease(ID)).toBe(true);
@@ -179,6 +187,23 @@ describe('physical charging-phase ownership', () => {
         { watts: 0, observedAtMs: NOW + 3000 }] });
     f.owner.readPlanning(NOW + 3001);
     expect(f.values.get(RECORD_KEY)).toMatchObject({ kind: 'free' });
+  });
+
+  it('keeps the phase claim if control is restored before a deferred hand-back', async () => {
+    const f = fixture();
+    f.owner.readPlanning(NOW);
+    await f.owner.apply(switchDecision(1), NOW + 1);
+    f.setDevice({ forceSinglePhase: true, ...singlePhaseRead(NOW + 1000) });
+    f.owner.readPlanning(NOW + 1001);
+    f.setSimulation(true);
+    const { releases } = f.owner.readPlanning(NOW + 2000);
+    expect(await f.owner.apply(releases[0], NOW + 2001)).toEqual({ requested: false });
+
+    f.setSimulation(false);
+    expect(await f.owner.apply(releases[0], NOW + 3000)).toEqual({ requested: false });
+    expect(f.owner.readPlanning(NOW + 3001).releases).toEqual([]);
+    expect(f.values.get(RECORD_KEY)).toMatchObject({ kind: 'held' });
+    expect(f.apply).toHaveBeenCalledTimes(1);
   });
 
   it('serializes an ordinary safety reduction behind the same device phase request without delaying another device', async () => {
@@ -341,6 +366,7 @@ describe('physical charging-phase ownership', () => {
     f.setDevice({ forceSinglePhase: true, ...singlePhaseRead(NOW + 1000) });
     f.owner.readPlanning(NOW + 1001);
     f.setSimulation(true);
+    f.setDevice({ currentLimitA: 0 });
     const leaving = f.owner.readPlanning(NOW + 2000);
     await f.owner.apply(leaving.releases[0], NOW + 2001);
     f.setDevice({ forceSinglePhase: false, totalPower: { watts: 0, observedAtMs: NOW + 3000 } });

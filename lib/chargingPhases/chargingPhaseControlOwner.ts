@@ -488,19 +488,27 @@ export class ChargingPhaseControlOwner implements ChargingPhaseOwner {
 
   private qualifiesProposal(deviceId: string, target: ChargingPhaseCount, nowMs: number): boolean {
     const previous = this.proposals.get(deviceId);
-    if (!previous || previous.target !== target) {
-      this.proposals.set(deviceId, { target, sinceMs: nowMs, seenCycle: this.cycle });
-      return false;
-    }
-    this.proposals.set(deviceId, { ...previous, seenCycle: this.cycle });
-    return nowMs - previous.sinceMs >= CHARGING_PHASE_CHOICE_DELAY_MS;
+    const sinceMs = previous?.target === target ? previous.sinceMs : nowMs;
+    this.proposals.set(deviceId, { target, sinceMs, seenCycle: this.cycle });
+    return nowMs - sinceMs >= CHARGING_PHASE_CHOICE_DELAY_MS;
+  }
+
+  private shouldDeferOptOutRelease(device: ChargingPhaseDevice, originalForceSingle: boolean): boolean {
+    const id = device.deviceId;
+    return (!device.managed || this.source.isSimulation())
+      && this.policyAvailable && this.policy[id] !== undefined
+      && !this.recovering.has(id) && !this.failed.has(id) && !this.pending.has(id) && !this.preparing.has(id)
+      && !originalForceSingle && device.forceSinglePhase && device.connected && device.currentLimitA > 0;
   }
 
   private async release(deviceId: string, nowMs: number, generation: number): Promise<{ requested: boolean }> {
     const record = this.claims.read(deviceId);
     if (record?.kind !== 'held') return { requested: false };
     const device = this.source.readDevices().find((candidate) => candidate.deviceId === deviceId);
-    if (!device?.available) return { requested: false };
+    // Opting out also takes away authority to restart the session. Leave its
+    // existing load alone until returning phase permission can be phase-only.
+    if (!device?.available || !this.needsRelease(device)) return { requested: false };
+    if (this.shouldDeferOptOutRelease(device, record.originalForceSingle)) return { requested: false };
     const prior = this.releaseAttempts.get(deviceId);
     if (prior && nowMs - prior.issuedAtMs < RELEASE_RETRY_MS) return { requested: false };
     const alreadyOriginal = device.forceSinglePhase === record.originalForceSingle;
@@ -515,9 +523,13 @@ export class ChargingPhaseControlOwner implements ChargingPhaseOwner {
 
   private status(deviceId: string): ChargingPhaseStatus {
     const device = this.devices.get(deviceId);
+    const record = this.claims.read(deviceId);
     if (!this.claims.canClaim(deviceId)) return { kind: 'failed',
       reason: 'Phase control recovery could not be loaded.' };
-    if (this.recovering.has(deviceId) || this.releaseAttempts.has(deviceId)) return { kind: 'releasing' };
+    if (this.recovering.has(deviceId) || this.releaseAttempts.has(deviceId)
+      || (device && record?.kind === 'held' && this.shouldDeferOptOutRelease(device, record.originalForceSingle))) {
+      return { kind: 'releasing' };
+    }
     if (this.failed.has(deviceId)) return { kind: 'failed',
       reason: 'Phase switching could not be confirmed. It will be tried again after the car reconnects.' };
     const pending = this.pending.get(deviceId);

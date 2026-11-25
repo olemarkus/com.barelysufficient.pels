@@ -175,8 +175,11 @@ repeated switching. A transition that cannot be confirmed pauses further attempt
 until the car reconnects.
 
 Choosing **Leave to charger**, turning off management or enabling simulation
-returns the phase setting PELS recorded before taking control. Returning to a
-setting that permits more phases can pause charging first.
+returns the phase setting PELS recorded before taking control. If you turn off
+management or enable simulation during an active session, PELS leaves charging
+running and waits until the current limit is zero or the car is unplugged before
+returning a setting that permits more phases. Other hand-backs, including
+recovery after a restart during that wait, can pause charging first.
 
 ## A charger PELS does not list
 

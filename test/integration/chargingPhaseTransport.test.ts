@@ -214,6 +214,22 @@ describe('charging phase transport', () => {
     expect(runAction.mock.calls[0]?.[1]).toMatchObject({ args: { enabled: false } });
   });
 
+  it.each([
+    { name: 'accepted unplug', plugState: 'plugged_out', totalPowerW: 0, pauseCount: 0 },
+    { name: 'unknown plug state', plugState: undefined, totalPowerW: 0, pauseCount: 1 },
+    { name: 'unplug with conflicting power', plugState: 'plugged_out', totalPowerW: 11040, pauseCount: 1 },
+  ])('checks whether expansion can skip its pause for $name', async ({ plugState, totalPowerW, pauseCount }) => {
+    const { raw, transport, runAction, pause } = harness();
+    raw.capabilitiesObj.peblar_force_1_phase = cap(true);
+    raw.capabilitiesObj.evcharger_charging_state = cap(plugState);
+    raw.capabilitiesObj.measure_power = cap(totalPowerW);
+    for (const phase of [1, 2, 3]) raw.capabilitiesObj[`peblar_power_l${phase}`] = cap(totalPowerW / 3);
+    await transport.request({ kind: 'charging_phase_release', authority, pauseLifecycle,
+      deviceId: 'charger', forceSinglePhase: false });
+    expect(pause).toHaveBeenCalledTimes(pauseCount);
+    expect(runAction.mock.calls[0]?.[1]).toMatchObject({ args: { enabled: false } });
+  });
+
   it('does not record a nested pause when the current was already zero', async () => {
     const { raw, transport, pause } = harness();
     raw.capabilitiesObj.peblar_force_1_phase = cap(true);
