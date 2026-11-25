@@ -10,9 +10,17 @@ import { ChargingCurrentSetupView, ChargingCurrentLoadView } from '../views/Char
 
 let selectedDeviceId = '';
 let installationMainId: string | undefined;
+let prerequisiteOnly = false;
+let refreshSelectedChargingSetup: (() => Promise<void>) | undefined;
 let loadVersion = 0;
 let pendingFocusVersion: number | null = null;
 let focusRequestGeneration = 0;
+
+export function refreshChargingSetupForControlSettings(): void {
+  if (!refreshSelectedChargingSetup) return;
+  invalidateChargingSetupReads();
+  void refreshSelectedChargingSetup();
+}
 
 /** Request a one-shot landing after the asynchronous charging controls arrive. */
 export function requestChargingControlFocus(): void {
@@ -44,23 +52,34 @@ async function consumeChargingControlFocus(): Promise<void> {
  * @param showProgress Whether this page may show the read's loading and failure
  *   states. Only a charger's page can: any other device appears here only once
  *   the read lists it, so a failed read leaves no charger block on a heater.
+ * @param showPrerequisiteOnly An automatic charger already has its power model
+ *   control. Show Charging current only if shared setup needs a start policy.
  */
-export function setChargingCurrentDevice(deviceId: string, showProgress: boolean, mainId?: string): void {
-  if (deviceId === selectedDeviceId && mainId === installationMainId) return;
+export function setChargingCurrentDevice(
+  deviceId: string, showProgress: boolean, mainId?: string, showPrerequisiteOnly = false,
+): void {
+  if (deviceId === selectedDeviceId && mainId === installationMainId
+    && showPrerequisiteOnly === prerequisiteOnly) return;
   selectedDeviceId = deviceId;
   installationMainId = mainId;
+  prerequisiteOnly = showPrerequisiteOnly;
+  refreshSelectedChargingSetup = undefined;
   const version = ++loadVersion;
-  pendingFocusVersion = null;
+  cancelChargingControlFocus();
   const container = document.getElementById('device-detail-charging-current');
   if (!container) return;
   render(null, container);
   if (!deviceId) return;
   let busy = false;
   let error = '';
-  let device: ChargingCurrentRead;
-  let access: ChargingAccessStatus;
+  let selected: { device: ChargingCurrentRead; access: ChargingAccessStatus } | undefined;
   const display = () => {
     if (version !== loadVersion) return;
+    if (!selected) {
+      render(null, container);
+      return;
+    }
+    const { device, access } = selected;
     render(<ChargingCurrentSetupView key={deviceId} device={device} access={access} busy={busy} error={error}
       onReady={consumeChargingControlFocus}
       onCheck={() => perform(async () => {
@@ -81,9 +100,9 @@ export function setChargingCurrentDevice(deviceId: string, showProgress: boolean
     const { devices, access: status } = await loadChargingSetup();
     const match = devices.find((entry) => entry.deviceId === deviceId);
     if (version !== loadVersion) return;
-    if (!match) { render(null, container); return; }
-    device = match;
-    access = status;
+    const show = match && (!showPrerequisiteOnly || match.chargingInstallation
+      || match.sharedInstallationStartPolicyRequiredBy?.length);
+    selected = show ? { device: match, access: status } : undefined;
     display();
   };
   const perform = async (operation: () => Promise<unknown>) => {
@@ -120,6 +139,9 @@ export function setChargingCurrentDevice(deviceId: string, showProgress: boolean
         render(<ChargingCurrentLoadView busy={false} onRetry={loadInitial} />, container);
       }
     }
+  };
+  refreshSelectedChargingSetup = async () => {
+    try { await load(); } catch { /* Retain the last accepted setup. */ }
   };
   void loadInitial();
 }

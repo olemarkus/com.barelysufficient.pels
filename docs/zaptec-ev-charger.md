@@ -25,7 +25,12 @@ Before switching from an existing Flow, remove its current-setting action and ch
 
 ## Several chargers on one installation
 
-Turn on **Managed by PELS** and **Power-limit control** for every charger in the installation. Under **Setup → Charging current**, each charger shows which one PELS uses to set the available current. Zaptec shares that current between the cars that are charging. PELS lowers the available current when it needs to limit charging and pauses the cars if the lowest level still uses too much power.
+Turn on **Managed by PELS** for every charger in the installation. For each charger, choose how it starts:
+
+- Turn on **Power-limit control** to let it charge whenever power allows.
+- Leave **Power-limit control** off and turn on **Only PELS starts this device** to charge only for Smart tasks. **Setup → Charging current** links to that switch if the charger still needs it.
+
+The chargers can use different start settings. Under **Setup → Charging current**, each charger shows which one PELS uses to set the available current. Zaptec shares that current between the cars that are charging. PELS lowers the available current when it needs to limit charging and pauses the cars if the lowest level still uses too much power.
 
 The chargers share a priority. Moving one in **Modes** moves the other chargers on its installation. Each charger keeps its own switch and car settings. A charger you leave off stays off when charging resumes elsewhere on the installation. A battery-level smart task stops only its own charger when its car reaches the target.
 
@@ -33,7 +38,7 @@ PELS uses one charging-current range for the shared assignment. It takes the hig
 
 A battery-level task's extra permissions can protect the shared current. Only the power used by a charger with a budget exemption is counted as exempt.
 
-If a charger is unmanaged, has **Power-limit control** off, is in another meter area, or PELS lacks a working shared-current route, keep the Flow that coordinates the installation's current. PELS still starts and stops managed chargers individually when it has permission to control them.
+If a charger is unmanaged, has neither start setting enabled, is in another meter area, or PELS lacks a working shared-current route, use a Flow to coordinate the installation's current. PELS still starts and stops managed chargers individually when it has permission to control them.
 
 ## Battery Reporting
 

@@ -9,13 +9,14 @@ import { toInstallationSwitch } from './chargingInstallationSwitchDecision';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveHeldChargeTarget } from './shedding/chargeTargetHold';
+import { isStartPolicyHeldDevice } from './shedding/startPolicyHold';
 import { membersOf } from '../utils/membersOf';
 
 const installationOf = (device: PlanInputDevice | DevicePlanDevice) => device.controlAdapter?.chargingInstallation;
 
 const memberHeld = (device: PlanInputDevice): boolean => (
   device.externalOffHoldActive === true || resolveHeldChargeTarget(device) !== null
-  || device.deferredHold !== undefined || device.carCurrentRangeUnavailable === true
+  || device.deferredHold !== undefined || device.carCurrentRangeUnavailable === true || isStartPolicyHeldDevice(device)
 );
 
 function withoutDraw(device: PlanInputDevice): PlanInputDevice {
@@ -37,7 +38,8 @@ function planInstallationLoad(device: PlanInputDevice, members: readonly PlanInp
   const load = device.chargingInstallationLoad;
   if (!load) return withoutDraw(device);
   const { externalOffHoldActive: _ownerHold, deferredHold: _taskHold, waitingForTaskPlan: _taskPending,
-    carCurrentRangeUnavailable: _carRange, ...base } = withoutDraw(device);
+    carCurrentRangeUnavailable: _carRange, startPolicyHoldLifted: _taskLift, usesAvailablePower: _availablePower,
+    ...base } = withoutDraw(device);
   const level = load.level;
   const canStep = load.control === 'step';
   const currentOn = load.running && level?.watts !== 0;
@@ -54,6 +56,9 @@ function planInstallationLoad(device: PlanInputDevice, members: readonly PlanInp
     available: members.some((member) => member.available),
     phaseFootprint: installationFootprint(device, members),
     commandableNow: reachable.length > 0,
+    // The current writer can be held off while another charger needs the shared current.
+    startPolicyInForce: members.every(isStartPolicyHeldDevice) ? 'pels_only' as const : 'unrestricted' as const,
+    ...(reachable.length > 0 && eligible.length === 0 ? { waitingForTaskPlan: true as const } : {}),
     ...installationClaims(eligible, canStep && isSteppedLoadDevice(device)),
     chargeTargetHold: { kind: 'none' as const },
     confirmedNotDrawing: false,
@@ -100,6 +105,8 @@ function installationClaims(members: readonly PlanInputDevice[], stepped: boolea
     // from the members' separate power readings (usageDevices below).
     budgetExempt: members.some((member) => member.budgetExempt),
     reservesStartupPower: members.some((member) => member.reservesStartupPower === true),
+    ...(members.length > 0 && members.every((member) => member.usesAvailablePower === true)
+      ? { usesAvailablePower: true as const } : {}),
   };
 }
 
@@ -155,7 +162,11 @@ export class ChargingInstallationPlan {
         const orderedPause = !plan.meta.powerIsMeasured && groupSwitch === false;
         const chargingInstallationSwitch = orderedPause
           ? { ...command, meterSilencePausePrimaryId: installation.mainId } : command;
-        return { ...device, chargingInstallationSwitch };
+        return {
+          ...device,
+          chargingInstallationSwitch,
+          ...(isStartPolicyHeldDevice(member) ? { startPolicyHoldActive: true as const } : {}),
+        };
       }),
     };
   }

@@ -4,7 +4,8 @@ import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import {
   CAPACITY_DRY_RUN, CAPACITY_ENABLED, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
   CAPACITY_PRIORITIES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DAILY_BUDGET_KWH, DEVICE_POWER_CONTROL_MODES,
-  DEVICE_TARGET_POWER_CONFIGS, EV_CAR_ASSOCIATIONS, EV_CAR_CURRENT_LIMITS, EV_CHARGER_CURRENT_LIMITS, EXTERNAL_OFF_HOLDS, GRID_IMPORT_ENABLED, GRID_IMPORT_LIMIT_KW,
+  DEVICE_START_POLICIES, DEVICE_TARGET_POWER_CONFIGS, EV_CAR_ASSOCIATIONS, EV_CAR_CURRENT_LIMITS, EV_CHARGER_CURRENT_LIMITS,
+  EXTERNAL_OFF_HOLDS, GRID_IMPORT_ENABLED, GRID_IMPORT_LIMIT_KW,
   MANAGED_DEVICES, NATIVE_EV_WIRING_DEVICES, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
   RESPECT_EXTERNAL_OFF_DEVICES, homeScopedSettingsKey,
 } from '../../lib/utils/settingsKeys';
@@ -28,7 +29,7 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 5);
 const homey = () => mockHomeyInstance as never;
 
 type MemberId = typeof MEMBERS[number];
-type MemberSetup = 'charging' | 'finished' | 'held' | 'unplugged' | 'waiting';
+type MemberSetup = 'charging' | 'finished' | 'held' | 'paused' | 'unplugged' | 'waiting';
 type Setup = {
   primary?: MemberSetup;
   secondary?: MemberSetup;
@@ -41,6 +42,7 @@ type Setup = {
   unreadableInstallationCurrent?: boolean;
   flowCurrent?: boolean;
   retainSecondarySwitchReading?: boolean;
+  taskOnlyMembers?: readonly MemberId[];
 };
 
 function buildMember(id: MemberId) {
@@ -184,6 +186,10 @@ function simulateInstallation(setup: Setup) {
     setAnnexBackground: (watts: number) => { annexBackgroundW = watts; },
     loseMeter: () => { meterOnline = false; },
     setCurrentFlowAction: (action: string | undefined) => { currentFlowAction = action; },
+    startCharging: (id: MemberId) => {
+      charging[id] = true;
+      publish();
+    },
     finishCharging: (id: MemberId) => {
       initial[id] = 'finished';
       charging[id] = false;
@@ -225,8 +231,16 @@ async function boot(setup: Setup = {}) {
   const extraManaged = Object.fromEntries((setup.additionalDevices ?? [])
     .filter((device) => device.getDeviceClass() !== 'car')
     .map((device) => [device.idValue, true]));
+  const taskOnlyMembers = new Set(setup.taskOnlyMembers);
   settings.set(MANAGED_DEVICES, { [PRIMARY]: true, [SECONDARY]: setup.mixed !== 'unmanaged', ...extraManaged });
-  settings.set(CONTROLLABLE_DEVICES, { [PRIMARY]: true, [SECONDARY]: setup.mixed !== 'power limit off', ...extraManaged });
+  settings.set(CONTROLLABLE_DEVICES, {
+    [PRIMARY]: !taskOnlyMembers.has(PRIMARY),
+    [SECONDARY]: !taskOnlyMembers.has(SECONDARY) && setup.mixed !== 'power limit off',
+    ...extraManaged,
+  });
+  if (taskOnlyMembers.size > 0) {
+    settings.set(DEVICE_START_POLICIES, Object.fromEntries([...taskOnlyMembers].map((id) => [id, 'pels_only'])));
+  }
   settings.set(CAPACITY_PRIORITIES, { Home: { [PRIMARY]: 1, [SECONDARY]: 2 } });
   settings.set(DEVICE_POWER_CONTROL_MODES, { [PRIMARY]: 'automatic', [SECONDARY]: 'automatic' });
   settings.set(NATIVE_EV_WIRING_DEVICES, { [PRIMARY]: true, [SECONDARY]: true });
@@ -433,6 +447,90 @@ describe('shared Zaptec load through the Homey SDK', () => {
     expect(sim.resumes().map((write) => write.id)).toContain(activeId);
     expect(sim.resumes().every((write) => write.id !== heldId)).toBe(true);
     expect(sim.drawW(heldId)).toBe(0);
+  });
+
+  it('sets shared current for a secondary Smart task while the task-only primary stays off', async () => {
+    const sim = await boot({ primary: 'paused', secondary: 'paused', taskOnlyMembers: MEMBERS });
+    sim.setBackground(5_000);
+    await advance(360);
+    expect(sim.resumes()).toEqual([]);
+    expect(sim.drawW(PRIMARY) + sim.drawW(SECONDARY)).toBe(0);
+    const beforeTask = sim.writes.length;
+
+    expect(await api.ui_smart_task_create({
+      homey: homey(),
+      body: {
+        deviceId: SECONDARY, kind: 'ev_soc', target: 80,
+        readyByLocalTime: '21:00', deadlineAtMs: NOW_MS + 3 * 3_600_000,
+      },
+    })).toMatchObject({ ok: true });
+    await advanceUntil(() => sim.drawW(SECONDARY) > 0, 'the secondary should charge for its task');
+
+    const taskWrites = sim.writes.slice(beforeTask);
+    const currentWrite = taskWrites.findIndex((write) => (
+      write.id === PRIMARY && write.capability === 'target_power'
+      && typeof write.value === 'number' && write.value >= MINIMUM_W && write.value < INITIAL_W
+    ));
+    const startWrite = taskWrites.findIndex((write) => write.id === SECONDARY
+      && write.capability === 'evcharger_charging' && write.value === true);
+    expect(currentWrite).toBeGreaterThanOrEqual(0);
+    expect(startWrite).toBeGreaterThan(currentWrite);
+    expect(sim.drawW(PRIMARY)).toBe(0);
+    expect(sim.resumes().map((write) => write.id)).toEqual([SECONDARY]);
+    const { plan } = await api.ui_plan({ homey: homey() });
+    expect(plan?.devices?.find(({ id }) => id === PRIMARY)?.status).toMatchObject({
+      kind: 'off', reason: { text: 'Waiting for a smart task' },
+    });
+
+    sim.members[SECONDARY].setActualCapabilityValue('measure_battery', 80, { emitDeviceUpdate: false });
+    await advanceUntil(() => sim.drawW(SECONDARY) === 0, 'the secondary should stop at its task target');
+    await advance(360);
+    expect(sim.resumes().map((write) => write.id)).toEqual([SECONDARY]);
+    expect(sim.currentWrites().every((write) => write.id === PRIMARY)).toBe(true);
+  });
+
+  it('stops a manual start on the task-only charger while its power-limited sibling keeps charging', async () => {
+    const sim = await boot({ secondary: 'paused', taskOnlyMembers: [SECONDARY] });
+    await advance(360);
+    expect(sim.drawW(PRIMARY)).toBe(INITIAL_W);
+    expect(sim.resumes().every((write) => write.id !== SECONDARY)).toBe(true);
+
+    sim.startCharging(SECONDARY);
+    expect(sim.drawW(SECONDARY)).toBeGreaterThan(0);
+    await advanceUntil(() => sim.drawW(SECONDARY) === 0, 'the secondary should stop outside a task');
+    expect(sim.pauses().map((write) => write.id)).toEqual([SECONDARY]);
+    expect(sim.drawW(PRIMARY)).toBe(INITIAL_W);
+
+    sim.setBackground(5_000);
+    await advanceUntil(
+      () => sim.wattWrites().some(({ value }) => Number(value) < INITIAL_W),
+      'the primary should still lower the shared current',
+    );
+    expect(sim.drawW(PRIMARY)).toBeGreaterThan(0);
+    expect(sim.resumes().every((write) => write.id !== SECONDARY)).toBe(true);
+  });
+
+  it('withdraws shared current when a managed member clears its task-only start policy', async () => {
+    const sim = await boot({ secondary: 'paused', taskOnlyMembers: [SECONDARY] });
+    await advance(90);
+    const readPrimaryInstallation = async () => {
+      const { devices } = await api.ui_devices({ homey: homey() });
+      return devices.find(({ id }) => id === PRIMARY)?.controlAdapter?.chargingInstallation?.mainId;
+    };
+    expect(await readPrimaryInstallation()).toBe(PRIMARY);
+    expect(await sim.members[PRIMARY].getCapabilityValue('target_power_mode')).toBe('homey');
+
+    mockHomeyInstance.settings.set(DEVICE_START_POLICIES, {});
+    await advance(90);
+    expect(await readPrimaryInstallation()).toBeUndefined();
+    const writesBeforePressure = sim.currentWrites().length;
+    sim.setBackground(5_000);
+    await advanceUntil(() => sim.drawW(PRIMARY) === 0, 'the primary should still pause individually');
+    expect(sim.currentWrites()).toHaveLength(writesBeforePressure);
+
+    mockHomeyInstance.settings.set(DEVICE_START_POLICIES, { [SECONDARY]: 'pels_only' });
+    await advance(90);
+    expect(await readPrimaryInstallation()).toBe(PRIMARY);
   });
 
   it('keeps a car that finished charging off through the installation resume', async () => {

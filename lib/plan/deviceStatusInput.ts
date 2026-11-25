@@ -46,5 +46,5 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   modePreparation?: PreparedModeTarget;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
-} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>
+} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold' | 'startPolicyHoldActive'>
   & Partial<Pick<DevicePlanDevice, 'phaseFootprint' | 'lastResort' | 'lastResortOwnedOffAtMs'>>;

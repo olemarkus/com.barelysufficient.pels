@@ -7,6 +7,7 @@ import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowCon
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
+import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { FlowActionCardInventory } from '../../lib/device/flowActionCardInventory';
@@ -29,6 +30,7 @@ const driveway = () => charger('homey-b', 'zaptec-1');
 function fixture(
   inventory: HomeyDeviceLike[], managedDevices: Record<string, boolean>, controllableDevices = managedDevices,
   homes = (_id: string): string | undefined => 'main',
+  deviceStartPolicies: Record<string, DeviceStartPolicy> = {},
 ) {
   const values = new Map<string, unknown>();
   const settings = { get: (key: string) => values.get(key), getKeys: () => [...values.keys()],
@@ -40,9 +42,9 @@ function fixture(
   const control = new ChargingCurrentControl(settings, access, new FlowActionCardInventory(logger), logger, () => inventory,
     () => ({ connected: true, revision: 0 }), createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)),
     deviceControlSettingsFixture({
-      managedDevices, controllableDevices,
+      managedDevices, controllableDevices, deviceStartPolicies,
       deviceTargetPowerConfigs: { 'homey-b': { enabled: true, preset: 'ev_charger_3_phase', max: 22080 } },
-    }), homes);
+    }), homes, (id) => inventory.some((device) => device.id === id));
   control.retainDevices(inventory, control.trustEpoch(), 0);
   control.acceptFlowFacts(normalizeUserFlowFacts({}, {}));
   return { control, values };
@@ -113,15 +115,51 @@ test.each([[16, 11040], [4, 0]])('reads %i A on the built-in current ladder as %
   expect(control.installationLevelW(main.id)).toBe(watts);
 });
 
-test('every member must have Power-limit control on and an integration charger id', () => {
+test('every member needs a standing grant and an integration charger id', async () => {
   const managed = { 'homey-b': true, 'homey-a': true };
-  const noPowerLimit = fixture([garage(), driveway()], managed, { 'homey-b': true }).control;
+  const { control: noPowerLimit, values } = fixture([garage(), driveway()], managed, { 'homey-b': true });
   expect(noPowerLimit.chargingInstallation('homey-b')).toBeUndefined();
+  expect(() => noPowerLimit.assertControlAllowed(driveway(), 'target_power')).not.toThrow();
+  expect(await noPowerLimit.list()).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      deviceId: 'homey-b',
+      sharedInstallationStartPolicyRequiredBy: [{ id: 'homey-a', name: 'Go homey-a' }],
+    }),
+  ]));
+
+  values.set('charging_current_control', { 'homey-b': selected });
+  expect(() => noPowerLimit.assertControlAllowed(driveway(), 'target_power')).toThrow('PELS cannot set the shared current');
+  expect(() => noPowerLimit.assertControlAllowed(driveway(), 'evcharger_charging')).not.toThrow();
 
   const unknownCharger = charger('homey-a', '');
   const missingId = fixture([unknownCharger, driveway()], managed).control;
   expect(missingId.chargingInstallation('homey-b')).toBeUndefined();
   expect(missingId.chargingInstallation('homey-a')).toBeUndefined();
+});
+
+test('does not ask a charger to opt in when the installation has no writable current route', async () => {
+  const main = driveway();
+  main.capabilitiesObj.available_installation_current = { value: 16, setable: false };
+  const managed = { 'homey-b': true, 'homey-a': true };
+  const { control } = fixture([garage(), main], managed, { 'homey-b': true });
+
+  const listed = await control.list();
+  expect(listed).toHaveLength(2);
+  expect(listed.every((device) => device.sharedInstallationStartPolicyRequiredBy === undefined)).toBe(true);
+});
+
+test.each([true, false])('task-only members share current with primary Power-limit control %s', async (primaryLimits) => {
+  const inventory = [garage(), driveway()];
+  const managed = { 'homey-a': true, 'homey-b': true };
+  const { control } = fixture(inventory, managed, { 'homey-b': primaryLimits }, () => 'main', {
+    'homey-a': 'pels_only', 'homey-b': 'pels_only',
+  });
+  await control.save('homey-b', { ...selected, confirmation: 'none' });
+  expect(control.chargingInstallation('homey-a')).toMatchObject({ mainId: 'homey-b' });
+  expect(await control.list()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ deviceId: 'homey-a', chargingInstallation: { role: 'secondary',
+      mainName: 'Go homey-b', automaticWatts: false } }),
+  ]));
 });
 
 test('known physical sharing across meter areas blocks current even if a charger id is missing', () => {

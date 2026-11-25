@@ -15,6 +15,7 @@ import { requestChargingControlFocus } from './chargingCurrent.tsx';
 import { formatDevicePageStartRule, resolveDeviceStartRule } from '../deviceStartRule.ts';
 import { hasUsedSmartTasks } from '../smartTaskUsage.ts';
 import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
+import { sharedInstallationStartPolicyRequired } from '../chargingSetupFacts.ts';
 
 /**
  * "Only PELS starts this device" — the per-device opt-in that gives a device a
@@ -49,7 +50,8 @@ import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
  * one it is a way to switch the device off for good, and most homes never use
  * Smart tasks: the device page is about power limiting, and the Smart task
  * surfaces say what happens around a task and link here (owner ruling
- * 2026-10-10).
+ * 2026-10-10). Shared charger setup can also ask for the policy before the
+ * first Smart task so PELS can set current for the installation.
  */
 
 // Queried here rather than in `dom.ts` for the same reason `respectExternalOff`
@@ -94,7 +96,8 @@ const isSmartTaskDevice = (deviceId: string): boolean => (
 
 /**
  * Show the row while Power-limit control is off, for a managed device PELS can
- * switch that has a Smart task, OR when the device is already opted in.
+ * switch that has a Smart task or needs the policy for shared charging.
+ * An already opted-in device always keeps its row.
  *
  * The opted-in half is the escape hatch every sibling setting keeps: without it
  * a device that stops qualifying (unmanaged now, its binary handle gone, or
@@ -107,7 +110,7 @@ const shouldShowStartPolicyRow = (
   isManaged: boolean,
 ): boolean => (
   (!isPowerLimitControlOn(deviceId) && isManaged && device?.binaryControllable === true
-    && isSmartTaskDevice(deviceId))
+    && (isSmartTaskDevice(deviceId) || sharedInstallationStartPolicyRequired(deviceId)))
   || isPelsOnly(deviceId)
 );
 
@@ -125,7 +128,10 @@ const revealDetailRow = (row: HTMLElement | null): void => {
  * within Smart tasks" suggestion names this setting, so opening the device with
  * Setup collapsed would leave the owner hunting for it.
  */
-const revealStartPolicyRow = (): void => revealDetailRow(rowEl);
+const revealStartPolicyRow = (): void => {
+  revealDetailRow(rowEl);
+  if (rowEl?.hidden === false) toggleEl?.focus({ preventScroll: true });
+};
 
 /**
  * Land on Power-limit control, with the rows that refine it ("Leave off until

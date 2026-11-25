@@ -23,6 +23,8 @@ export type ChargingCurrentRead = {
   scope: 'installation' | 'vehicle' | 'charger';
   /** A shared installation where built-in current is not available through this charger. */
   sharedInstallation: boolean;
+  /** Shared-installation members that must opt into task-only starting before PELS can set the current. */
+  sharedInstallationStartPolicyRequiredBy?: { id: string; name: string }[];
   /** The shared installation PELS operates as one load, where a single charger sets the current. */
   chargingInstallation?: { role: 'main' | 'secondary'; mainName: string; automaticWatts: boolean };
   flowCheck: 'clear' | 'conflict' | 'unavailable';

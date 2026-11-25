@@ -28,9 +28,13 @@ In UI copy "main" is not used, because **Main** names the main home.
 
 A shared installation is controlled this way only when every member is:
 
-- managed by PELS, with Power-limit control on, and
+- managed by PELS, with either Power-limit control or **Only PELS starts this device** on, and
 - identified by its integration's own charger id, and
 - assigned to the same resolved meter area as the other members.
+
+Members can mix these grants. The task-only policy acts on each charger: its own
+Smart task must allow it to charge before the shared capacity decision can start it.
+The installation can still set current through a main that stays off.
 
 The main also needs a usable current-control route and ladder. An unavailable main
 that still appears in a complete inventory retains its role.
@@ -39,7 +43,8 @@ An enabled current-setting Flow on any member sets the route for the whole insta
 member keeps its own switch and any Flow current control, and PELS sends no built-in current or
 watt writes. The same fallback applies when every member is controlled and the main has no shared
 route. Installations with some unmanaged members keep their existing routes when no Flow sets
-shared current. PELS blocks current control until the first successful Flow scan, while meter-area
+shared current. If all members are managed and one lacks either grant, built-in
+current control is held back. Individual switching still follows each member’s grants. PELS blocks current control until the first successful Flow scan, while meter-area
 ownership is unresolved, when members span meter areas, or while the main's automatic watt claim
 is refused. During a refused claim, the main's card can explain why only switching is available.
 
@@ -182,6 +187,7 @@ SDK end-to-end cases cover, for a two-member installation:
   the installation's current;
 - a member held off by the owner staying off through the installation's restore;
 - moving one member's priority moving the other;
-- a mixed installation (one member unmanaged, or Power-limit control off) behaving as today.
+- individual switching and Flow current control when a member lacks a standing grant;
+- a Smart task starting a task-only secondary while the task-only main stays off.
 
 The member cards read as above at 320 px wide.

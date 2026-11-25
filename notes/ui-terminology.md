@@ -1265,13 +1265,14 @@ cap is exactly what produces the cap. Source: `resolvePriceTargetReason` in
 | Concept | Label |
 |---|---|
 | Per-device start policy (toggle) | `Only PELS starts this device` |
-| Card, while the policy is holding the device off | `Off`, and no reason line |
+| Card, while the policy is holding the device off | `Waiting for a smart task` |
 
-The start policy is offered only for a device that has used Smart tasks (one
-stored, or one in task history, the evidence the "Keep {device} within Smart
-tasks" suggestion also reads), a device whose first task is being created, or one
-already opted in: it means "runs only for a Smart task", and most homes never use
-Smart tasks (owner ruling 2026-10-10).
+The start policy is offered for a device that has used Smart tasks (one stored,
+or one in task history, the evidence the "Keep {device} within Smart tasks"
+suggestion also reads), a device whose first task is being created, or one
+already opted in. Shared Zaptec charging setup also offers it when the charger
+needs the policy for built-in current control. **Charging current** names the
+chargers that need it and links to their **Only PELS starts this device** row.
 
 **The start rule.** One sentence states who starts a managed device PELS can
 switch, from its settings (`packages/settings-ui/src/ui/deviceStartRule.ts`). The

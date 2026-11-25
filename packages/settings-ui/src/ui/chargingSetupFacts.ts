@@ -71,6 +71,12 @@ export const isReportBackCardForUnroutedCharger = (
 ): boolean => id.startsWith('level-report:') && target.kind === 'device' && target.deviceId !== undefined
   && chargingCurrentRouteMissing(target.deviceId) && setupCardDeviceIds.has(target.deviceId);
 
+/** The same prerequisite shown in Charging current can expose the device's existing switch. */
+export const sharedInstallationStartPolicyRequired = (deviceId: string): boolean => (
+  accepted?.devices.some((device) => device.sharedInstallationStartPolicyRequiredBy
+    ?.some((member) => member.id === deviceId)) === true
+);
+
 /** Unknown setup never invents a prerequisite; failed refreshes retain accepted facts. */
 export const vehicleChargingConsentMissing = (deviceId: string): boolean => {
   const device = accepted?.devices.find((candidate) => candidate.deviceId === deviceId);

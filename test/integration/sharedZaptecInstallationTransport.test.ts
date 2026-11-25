@@ -60,6 +60,29 @@ test('shared current stays fenced until the first readable Flow inventory', asyn
   expect(transport.getSnapshotByDeviceId(MAIN)?.controlAdapter?.chargingInstallation?.mainId).toBe(MAIN);
 });
 
+test('only offers the start policy when the charger has an admitted binary switch', async () => {
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+    settings: { isControllable: (id) => id === MAIN },
+  });
+  const secondary = charger(SECONDARY, 'zaptec-2');
+  const main = charger(MAIN, 'zaptec-1');
+  const setup = () => transport.chargingCurrentControl.describe({ status: 'unknown', reason: 'not read' })
+    .find((device) => device.deviceId === MAIN);
+  await seedInstallation(transport, [secondary, main]);
+  expect(setup()?.sharedInstallationStartPolicyRequiredBy).toEqual([{ id: SECONDARY, name: secondary.name }]);
+
+  await seedInstallation(transport, [{
+    ...secondary,
+    capabilitiesObj: {
+      ...secondary.capabilitiesObj,
+      evcharger_charging: { ...secondary.capabilitiesObj.evcharger_charging, value: undefined },
+    },
+  }, main]);
+  expect(transport.getSnapshotByDeviceId(SECONDARY)?.binaryControllable).not.toBe(true);
+  expect(setup()).toBeDefined();
+  expect(setup()?.sharedInstallationStartPolicyRequiredBy).toBeUndefined();
+});
+
 test('each member carries the neutral installation fact; only the main keeps its watt control', async () => {
   const { transport } = await seeded();
   const main = transport.getSnapshotByDeviceId(MAIN);

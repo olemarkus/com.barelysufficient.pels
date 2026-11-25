@@ -151,7 +151,7 @@ export type DeviceTransportOptions = {
     acceptedFlowWrites: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
     /** The owner's per-device configuration (`DeviceControlSettings`). */
     settings: DeviceParseSettings & Pick<
-      DeviceControlSettings, 'resolveEvCarCurrentLimits' | 'resolveEvChargerCurrentLimits'
+      DeviceControlSettings, 'resolveEvCarCurrentLimits' | 'resolveEvChargerCurrentLimits' | 'deviceStartPolicies'
     > & Partial<Pick<DeviceControlSettings,
       'getBinarySwitchSelection' | 'getBinarySwitchRevision' | 'isBinarySwitchWriteCurrent'
       | 'lastResortDevices' | 'isManaged'>>;

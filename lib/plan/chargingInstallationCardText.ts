@@ -2,6 +2,8 @@ import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
 import type { ChargingInstallationCard, DeviceStatusInput } from './deviceStatusInput';
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
 import { EV_BLOCK_REASON_CODES } from '../../packages/shared-domain/src/commandableNowReason';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_STATE_AWAITING_PELS_START_STATUS } from '../../packages/shared-domain/src/planStateLabels';
 import {
   isEvPlugStateBlocked, isEvPlugStateConnected, resolveEvChargeAction,
 } from '../../packages/shared-domain/src/evPlugState';
@@ -89,10 +91,18 @@ export function withChargingInstallation(device: DeviceStatusInput, status: Devi
   const installation = device.chargingInstallation;
   if (installation === undefined) return status;
   const secondary = buildSecondaryChargerStatus(device, status.cardKind, status.reading);
-  if (secondary) return secondary;
+  if (secondary) {
+    const { code } = device.reason;
+    const hasTaskHold = code === PLAN_REASON_CODES.awaitingPelsStart
+      || code === PLAN_REASON_CODES.deferredObjectiveAvoid || code === PLAN_REASON_CODES.deferredObjectiveSatisfied;
+    return hasTaskHold && status.reason !== null ? { ...secondary, reason: status.reason } : secondary;
+  }
+  const primaryHeld = installation.role === 'main' && device.startPolicyHoldActive === true
+    && device.execution.available && device.execution.physicalState === 'off';
   return {
     ...status,
     ...withInstallationTotal(device, status),
-    reason: status.reason ?? resolveChargingInstallationReason(installation),
+    reason: primaryHeld ? { text: PLAN_STATE_AWAITING_PELS_START_STATUS }
+      : status.reason ?? resolveChargingInstallationReason(installation),
   };
 }

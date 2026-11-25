@@ -438,11 +438,8 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // settings snapshot, so a rebuild before the adoption would replan against
       // the map the owner just replaced.
       deps.loadCapacitySettings();
-      // No snapshot refresh though: the policy changes neither which devices are
-      // fetched nor how they parse. It is read at `toPlanDevice`, so the rebuild
-      // is the whole propagation — a device just opted in gets its standing OFF
-      // intent on that build, and one just opted out loses it. The map is keyed
-      // on device, so a meter area's device gets it from its own area's rebuild.
+      // A start-policy grant can form or dissolve a shared charging installation.
+      await refreshSnapshotWithLog(deps, 'device_start_policies_change');
       await rebuildPlanFromSettings(deps, DEVICE_START_POLICIES);
       deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
