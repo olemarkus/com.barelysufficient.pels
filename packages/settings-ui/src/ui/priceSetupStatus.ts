@@ -77,17 +77,6 @@ export const resolveNorwayChoices = (read: SettingsUiPricesPayload['priceSetup']
 };
 
 /**
- * Whether Homey Energy has given PELS any prices for this hub. Outside Norway
- * Homey Energy is the source PELS assumes, and a hub Homey has no prices for
- * leaves PELS with none at all.
- */
-export const homeyEnergyHasPrices = (
-  payload: Pick<SettingsUiPricesPayload, 'homeyToday' | 'homeyTomorrow'>,
-): boolean => (
-  getFlowPricePayload(payload.homeyToday) !== null || getFlowPricePayload(payload.homeyTomorrow) !== null
-);
-
-/**
  * Whether a payload-fed source has given PELS prices for today or tomorrow.
  * PELS keeps the days it last read, so a day left from a stopped source does
  * not count as configured prices.
@@ -100,6 +89,10 @@ const hasCurrentPriceDay = (days: readonly unknown[]): boolean => {
     return day !== null && current.has(day.dateKey);
   });
 };
+
+export const homeyEnergyHasPrices = (
+  payload: Pick<SettingsUiPricesPayload, 'homeyToday' | 'homeyTomorrow'>,
+): boolean => hasCurrentPriceDay([payload.homeyToday, payload.homeyTomorrow]);
 
 /** A transient source-day read can leave the runtime serving its accepted Flow prices. */
 const hasRetainedFlowPrices = (combined: unknown): boolean => {
@@ -157,9 +150,8 @@ const SOURCE_NAMES: Record<Exclude<PriceSchemeSetting, 'norway'>, string> = {
 /**
  * Prices are set up when the owner chose the source and the source can price
  * the home: on Norway's own source that takes the grid company, the price area
- * and the pricing model; Homey Energy must have prices for this hub in a
- * price setup PELS can work out; Power by the Hour and Flow must have given
- * PELS prices for today or tomorrow.
+ * and the pricing model. The other sources must have given PELS prices for
+ * today or tomorrow, with a supported price setup on Homey Energy.
  */
 export const resolvePriceSetupStatus = (
   payload: Pick<

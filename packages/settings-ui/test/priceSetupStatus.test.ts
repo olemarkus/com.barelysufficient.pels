@@ -11,6 +11,8 @@ import type {
   SettingsUiPricesPayload,
 } from '../../contracts/src/settingsUi/prices.ts';
 
+vi.mock('../src/ui/homey.ts', () => ({ getHomeyTimezone: () => 'Europe/Oslo' }));
+
 const NOTHING_CHOSEN: NorwayPriceSetup = {
   county: { value: '03', chosen: false },
   gridCompany: { kind: 'none' },
@@ -87,6 +89,9 @@ describe('resolveNorwayChoices', () => {
 });
 
 describe('resolvePriceSetupStatus', () => {
+  beforeEach(() => { vi.setSystemTime(new Date('2026-10-11T12:00:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('is complete on Norway once the grid company, price area and pricing model are chosen', () => {
     expect(statusOf(readOf({ scheme: 'norway', basis: CHOSEN }, ARVA_NORGESPRIS_NO4)))
       .toEqual({ state: 'complete', summary: 'Norway · ARVA AS · NO4 · Norgespris' });
@@ -118,6 +123,23 @@ describe('resolvePriceSetupStatus', () => {
   it('is open on Homey Energy while Homey has no prices for the hub, whoever chose it', () => {
     expect(statusOf(readOf({ scheme: 'homey', basis: CHOSEN })))
       .toEqual({ state: 'open', summary: 'Homey Energy has no prices for your Homey.' });
+  });
+
+  it('requires a current Homey day in either cache slot before completing setup', () => {
+    const priceSetup = readOf({ scheme: 'homey', basis: CHOSEN });
+    const statusWith = (homeyToday: unknown, homeyTomorrow: unknown = null) => resolvePriceSetupStatus({
+      priceSetup, homeyToday, homeyTomorrow, homeyPriceFormula: { kind: 'applied' },
+      powerhourToday: null, powerhourTomorrow: null, flowToday: null, flowTomorrow: null, combinedPrices: null,
+    });
+    const stale = { ...HOMEY_DAY, dateKey: '2026-10-10' };
+    const missing = { state: 'open', summary: 'Homey Energy has no prices for your Homey.' };
+    const complete = { state: 'complete', summary: 'Homey Energy' };
+
+    expect(statusWith(stale)).toEqual(missing);
+    expect(statusWith({ ...HOMEY_DAY, pricesByHour: {} })).toEqual(missing);
+    expect(statusWith(HOMEY_DAY)).toEqual(complete);
+    expect(statusWith(null, { ...HOMEY_DAY, dateKey: '2026-10-12' })).toEqual(complete);
+    expect(statusWith(stale, HOMEY_DAY)).toEqual(complete);
   });
 
   it('is open on Power by the Hour until it has given PELS prices, whoever chose it', () => {
