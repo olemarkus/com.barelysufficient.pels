@@ -26,6 +26,7 @@ import {
   resolveHeldCardReasonVerb,
 } from './planCardReasonLine';
 import type { SteppedFairnessHold } from './planTypes';
+import type { DeviceStatusInput } from './deviceStatusInput';
 import { formatTemperatureTargetPair } from './planTemperatureCardText';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import {
@@ -229,6 +230,17 @@ const resolveOffStatusLine = (
   return resolveHeldCardReasonLine(device.reason, device.starvation);
 };
 
+export function resolveFairnessHoldCardLine(device: SteppedDevice, profile: SteppedLoadProfile): string | null {
+  const hold = device.steppedFairnessHold;
+  const limitedDeviceCount = hold?.limitedDeviceCount
+    ?? (device.reason.code === PLAN_REASON_CODES.shedInvariant ? device.reason.shedDeviceCount : undefined);
+  if (limitedDeviceCount === undefined) return null;
+  const reportedStepId = resolveCurrentStepId(device);
+  const activeStepId = device.currentState !== 'off' && isPoweredStep(profile, reportedStepId)
+    ? reportedStepId : null;
+  return formatFairnessHoldCardLine(activeStepId, limitedDeviceCount, hold ? device.starvation : undefined);
+}
+
 export const resolveSteppedStatusLine = (
   device: SteppedDevice,
   profile: SteppedLoadProfile,
@@ -253,7 +265,7 @@ export const resolveSteppedStatusLine = (
   // cooldown's "Waiting after limiting a device", a meter settle, or the empty
   // line of `keep`. The move to the step above keeps its own line.
   if (device.steppedFairnessHold) {
-    return formatFairnessHoldCardLine(device.steppedFairnessHold, device.starvation);
+    return resolveFairnessHoldCardLine(device, profile);
   }
   // Kept below its top step for lack of room, whichever of `keep` and a refused
   // step-up the cycle wrote: it waits to increase until a step-up is admitted.
@@ -266,10 +278,12 @@ export const resolveSteppedStatusLine = (
     }
   }
   // A RUNNING stepped device denied a step up never reaches `resolveOffStatusLine`
-  // below, so this branch stays — but the sentence itself now comes from the
-  // shared formatter, which the device-detail page and the logs also use.
-  if (device.reason.code === PLAN_REASON_CODES.shedInvariant
-    || device.reason.code === PLAN_REASON_CODES.deferredObjectiveWaitingForPlan) {
+  // below. The reason's fromStep can come from planning, so use reported level
+  // here as well as on a stamped hold.
+  if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
+    return resolveFairnessHoldCardLine(device, profile);
+  }
+  if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveWaitingForPlan) {
     return formatDeviceReasonUserFacing(device.reason);
   }
   if (device.reason.code === PLAN_REASON_CODES.waitingForOtherDevices) {
@@ -308,6 +322,15 @@ export const resolveSteppedTemperatureText = (device: {
   // the planned one, each labelled (`formatTemperatureTargetPair`).
   return `${currentTemperature.toFixed(1)} °C · ${formatTemperatureTargetPair(currentTarget, plannedTarget)}`;
 };
+
+/** Reflect live charging on any EV charger card. */
+export function resolveObservedEvDisplayKind(device: DeviceStatusInput, kind: PlanStateKind): PlanStateKind {
+  // A car can start charging between plan builds. A reported session and draw
+  // update the idle label while plan holds and waits keep their labels.
+  return kind === 'idle' && device.isEvCharger && !device.execution.externalOffHeld
+    && isRoutineEvChargingState(device.evChargingState) && (device.currentDrawKw ?? 0) > 0.05
+    ? 'active' : kind;
+}
 
 // ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────
 

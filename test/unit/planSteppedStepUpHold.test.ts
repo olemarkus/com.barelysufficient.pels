@@ -52,7 +52,7 @@ describe('stampSteppedStepUpHolds', () => {
     expect(stampOf(heater(overrides))).toBeUndefined();
   });
 
-  const fairness = { steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 1 } };
+  const fairness = { steppedFairnessHold: { limitedDeviceCount: 1 } };
 
   it('holds a settled device the fairness rule keeps down, whatever reason the cycle wrote', () => {
     expect(stampOf(heater(fairness))).toBe(true);

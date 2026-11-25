@@ -253,7 +253,7 @@ describe('simulation action previews', () => {
     expect(status.reason?.text).not.toContain('Would turn off');
   });
 
-  const steppedHold = (): DeviceStatusInput => {
+  const steppedHold = () => {
     const device = runningPowerHold();
     return { ...device, steppedLoad: {
       profile: { steps: [
@@ -262,7 +262,7 @@ describe('simulation action previews', () => {
       reportedStepId: '16a', targetStepId: '6a', selectedStepId: '16a', planningPowerKw: 3.68, commandPending: false,
     }, execution: { ...device.execution,
       desiredBinary: 'on', binaryProgress: 'settled', observedStepId: '16a', desiredStepId: '6a', stepProgress: 'unmet',
-    } };
+    } } satisfies DeviceStatusInput;
   };
 
   it('names the decided level without claiming the real charger has reduced its draw', () => {
@@ -353,12 +353,27 @@ describe('simulation action previews', () => {
     expect(status.reason?.text).not.toContain('Would set level');
   });
 
-  it('keeps the fairness explanation when a power reason also carries a decided level', () => {
+  it('names the reported level when a fairness hold also carries a decided level in simulation', () => {
     const status = buildDeviceStatus({ ...steppedHold(),
-      steppedFairnessHold: { stepId: '6a', limitedDeviceCount: 2 },
+      steppedFairnessHold: { limitedDeviceCount: 2 },
     }, true, 0);
-    expect(status.reason?.text).toMatch(/^Would be holding at 6 A — /u);
-    expect(status.reason?.text).not.toContain('Would set level');
+    expect(status.reason).toEqual({ text: 'Would be holding at 16 A — cannot increase while 2 devices are limited (simulation)' });
+  });
+
+  it.each([
+    ['on', '6a', 'Holding at 6 A'],
+    ['on', null, 'Holding'],
+    ['off', '6a', 'Holding'],
+  ] as const)('shows the fairness reason without a countdown when %s with report %s', (physicalState, stepId, stem) => {
+    const device = steppedHold();
+    const steppedLoad = { ...device.steppedLoad, reportedStepId: stepId };
+    const status = buildDeviceStatus({
+      ...device, steppedLoad, currentState: physicalState,
+      reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+      steppedFairnessHold: { limitedDeviceCount: 2 },
+      execution: { ...device.execution, physicalState, observedStepId: stepId },
+    }, false, 0);
+    expect(status.reason).toEqual({ text: `${stem} — cannot increase while 2 devices are limited` });
   });
 
   it('keeps the explanation for a running device held below its top level', () => {
@@ -482,6 +497,43 @@ describe('Unavailable cards', () => {
     const status = buildDeviceStatus({ ...device, execution: { ...device.execution, available: false } }, false, 0);
     expect(status.label).toBe('Unavailable');
     expect(status.reason).toBeNull();
+  });
+});
+
+describe('live charging between plan builds', () => {
+  const charger = runningPowerHold({
+    isEvCharger: true, plannedState: 'inactive', reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    evChargingState: 'plugged_in_charging', currentDrawKw: 3.6,
+    steppedLoad: {
+      profile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: '32a', planningPowerW: 7360 }] },
+      reportedStepId: '32a', targetStepId: null, selectedStepId: '32a', planningPowerKw: 7.36, commandPending: false,
+    },
+    execution: { ...runningPowerHold().execution, observedStepId: '32a', desiredBinary: null, binaryProgress: 'undriven' },
+  });
+
+  it.each([false, true])('shows a newly observed charge with an unchanged inactive plan in simulation=%s', (dryRun) => {
+    const before = buildDeviceStatus({
+      ...charger, currentState: 'off', evChargingState: 'plugged_in', currentDrawKw: 0,
+      execution: { ...charger.execution, physicalState: 'off' },
+    }, dryRun, 0);
+    expect(before.label).toBe('Off');
+    expect(buildDeviceStatus(charger, dryRun, 0)).toMatchObject({
+      label: 'Running', powerText: '3.6 kW', factText: 'Charging · level 32 A', reason: null,
+    });
+  });
+
+  it.each([
+    { overrides: { currentDrawKw: 0 }, kind: 'idle' },
+    { overrides: { evChargingState: 'plugged_in_paused' }, kind: 'idle' },
+    { overrides: { execution: { ...charger.execution, externalOffHeld: true } }, kind: 'idle' },
+    { overrides: { reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid } }, kind: 'held' },
+    { overrides: { reason: { code: PLAN_REASON_CODES.chargeTargetReached, targetPercent: 80 } }, kind: 'active' },
+    { overrides: { controllable: false }, kind: 'manual' },
+    { overrides: { execution: { ...charger.execution, available: false } }, kind: 'unavailable' },
+  ] satisfies Array<{ overrides: Partial<DeviceStatusInput>; kind: string }>)('reads $kind with $overrides', ({
+    overrides, kind,
+  }) => {
+    expect(buildDeviceStatus({ ...charger, ...overrides }, false, 0).kind).toBe(kind);
   });
 });
 

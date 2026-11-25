@@ -15,12 +15,12 @@ import {
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import {
-  formatFairnessHoldCardLine, isCeilingHoldReasonCode, resolveHeldCardReasonLine,
+  isCeilingHoldReasonCode, resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb, resolveHeldCardStepView,
 } from './planCardReasonLine';
 import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveSteppedStatusLine, resolveSteppedLevelFact,
-  resolveSteppedTemperatureText } from './planSteppedCardText';
+import { resolveFairnessHoldCardLine, resolveSteppedStatusLine, resolveSteppedLevelFact,
+  resolveObservedEvDisplayKind, resolveSteppedTemperatureText } from './planSteppedCardText';
 import {
   EV_CHARGING_STATE_LABELS,
   resolveSteppedEvExceptionLabel,
@@ -345,8 +345,8 @@ function buildOrdinaryReason(
   if (!text) return null;
   // A fairness hold lasts until other devices resume, not until a timer runs out:
   // the shed cooldown the cycle may carry beside it is not this line's countdown.
-  const fairnessLine = device.steppedFairnessHold !== undefined
-    && text === formatFairnessHoldCardLine(device.steppedFairnessHold, device.starvation);
+  const fairnessLine = device.steppedLoad !== undefined
+    && text === resolveFairnessHoldCardLine(device, device.steppedLoad.profile);
   text = toSimulationReasonLine(text, dryRun);
   const countdown = fairnessLine ? undefined : buildCountdown(device, text, nowMs);
   return {
@@ -596,8 +596,8 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const grammar = { kind: resolveBaseKind(device), reasonCode: device.reason.code,
     starved: device.starvation?.isStarved === true };
   const intentKind = resolveIntentStateKind(grammar);
-  const kind = resolveDisplayStateKind({ ...grammar, dryRun, currentState: device.currentState,
-    satisfiedTemperature: reportsSatisfiedTemperature(device) });
+  const kind = resolveObservedEvDisplayKind(device, resolveDisplayStateKind({ ...grammar, dryRun,
+    currentState: device.currentState, satisfiedTemperature: reportsSatisfiedTemperature(device) }));
   const limited = intentKind === 'held';
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
   const stateLabel = device.lastResort && kind === 'active' ? 'On' : displayStateLabel(kind);

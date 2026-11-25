@@ -59,13 +59,11 @@ const resolveSteppedFairnessHold = (
   const lowest = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
   const highest = getSteppedLoadHighestStep(device.steppedLoadProfile);
   if (!lowest || !highest || lowest.id === highest.id || device.desiredStepId !== lowest.id) return null;
-  // The count the restore side refuses step-ups on. A cycle whose restore was
-  // refused already carries it in its reason; device detail formats that reason,
-  // so the card states the same number.
+  // Keep the same count as the restore refusal when this cycle recorded one.
   const limitedDeviceCount = device.reason.code === PLAN_REASON_CODES.shedInvariant
     ? device.reason.shedDeviceCount
     : countFairnessLimitedDevices(deviceMap, device, shedDecisions);
-  return limitedDeviceCount > 0 ? { stepId: lowest.id, limitedDeviceCount } : null;
+  return limitedDeviceCount > 0 ? { limitedDeviceCount } : null;
 };
 
 /**
