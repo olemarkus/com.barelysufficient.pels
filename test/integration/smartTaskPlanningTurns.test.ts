@@ -21,6 +21,9 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import {
+  OBJECTIVE_PROFILE_RETENTION_MS, updateDeviceObjectiveProfile, updateObjectiveProfilesFromSnapshot,
+} from '../../lib/objectives/profiles';
 import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
@@ -477,6 +480,68 @@ describe('bounded smart-task planning turns', () => {
     expect(freshIds(home.tick(START_MS + 90_000))).toEqual(['load-2']);
     expect(home.evaluate(START_MS + 120_000, SERVING_LANE)
       .find(({ evaluation }) => evaluation.deviceId === 'load-2')?.evaluation.planning.kind).toBe('allocated');
+  });
+
+  it('records a lower task’s review while its learned rate is missing without granting authority', () => {
+    const home = createHarness(2);
+    const higherId = 'load-1';
+    const lowerId = 'load-2';
+    home.devices[1] = { ...deviceFor(lowerId), deviceType: 'temperature', currentTemperature: 20 };
+    home.settings.objectivesByDeviceId[lowerId] = {
+      enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 24, deadlineAtMs: DEADLINE_MS,
+    };
+    const initialSampleAt = START_MS - OBJECTIVE_PROFILE_RETENTION_MS + 50_000;
+    const learnRate = (atMs: number) => {
+      const sample = { observedAtMs: atMs - 18 * 60_000, value: 19, crediblePowerW: 1000 };
+      const baseline = updateDeviceObjectiveProfile(undefined, sample, lowerId, 'Heater', undefined);
+      return updateDeviceObjectiveProfile(baseline, { ...sample, observedAtMs: atMs, value: 20 },
+        lowerId, 'Heater', undefined);
+    };
+    home.powerTracker.objectiveProfiles = { [lowerId]: learnRate(initialSampleAt) };
+    home.tick(START_MS);
+    expect(freshIds(home.tick(START_MS + 30_000))).toEqual([lowerId]);
+    const initial = home.recorder.getActivePlan(lowerId)?.latest;
+    if (!initial) throw new Error('Expected a saved commitment');
+    const now = START_MS + 60_000;
+    home.powerTracker.objectiveProfiles = updateObjectiveProfilesFromSnapshot(home.powerTracker, [], now, undefined)
+      .objectiveProfiles;
+    expect(home.powerTracker.objectiveProfiles?.[lowerId]).toBeUndefined();
+    const lowerReport = (reports: readonly TaskEvaluationReport[]) => (
+      reports.find(({ evaluation }) => evaluation.deviceId === lowerId)
+    );
+    const unchangedContext = lowerReport(home.evaluate(now, SERVING_LANE));
+    expect(unchangedContext).toMatchObject({
+      diagnostic: { reasonCode: 'objective_missing_capacity' }, evaluation: { planning: { kind: 'inactive' } },
+    });
+    expect(unchangedContext?.diagnostic.contextReviewed).toBeUndefined();
+
+    home.settings.objectivesByDeviceId[higherId] = {
+      enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 1.2, deadlineAtMs: DEADLINE_MS,
+    };
+    expect(freshIds(home.tick(now))).toEqual([higherId]);
+    const reviewed = lowerReport(home.tick(now + 30_000));
+    expect(reviewed).toMatchObject({
+      diagnostic: { reasonCode: 'objective_missing_capacity', contextReviewed: true },
+      evaluation: { planning: { kind: 'inactive' } },
+    });
+    expect(home.recorder.getActivePlan(lowerId)?.latest).toMatchObject({
+      revision: initial.revision, hours: initial.hours,
+      allocationContextSignature: reviewed?.diagnostic.allocationContextSignature,
+    });
+
+    const duringBooking = now + 65_000;
+    expect(initial.hours.some(hour =>
+      hour.plannedKWh > 0 && hour.startsAtMs <= duringBooking && duringBooking < hour.endsAtMs)).toBe(true);
+    const serving = home.evaluate(duringBooking, SERVING_LANE);
+    expect(lowerReport(serving)?.evaluation.planning.kind).toBe('inactive');
+    const decisions = applyDeferredObjectiveAdmission(serving.map(({ evaluation }) => evaluation));
+    expect(decisions.get(lowerId)).toEqual({ kind: 'inactive', budgetExempt: false });
+    expect(buildDeferredReleaseIntents(decisions)[lowerId]).toBeUndefined();
+
+    home.powerTracker.objectiveProfiles = { [lowerId]: learnRate(duringBooking) };
+    expect(freshIds(home.tick(duringBooking + 30_000))).toEqual([lowerId]);
+    expect(home.recorder.getActivePlan(lowerId)?.latest?.allocationContextSignature)
+      .not.toBe(reviewed?.diagnostic.allocationContextSignature);
   });
 
   it('serves a lower commitment saved before planning turns until its queued turn replans it', () => {

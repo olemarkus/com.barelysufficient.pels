@@ -84,18 +84,23 @@ export const readAllocationContext = (
   return { changed, needsTurn: changed && !(bounded && servesSavedCommitment(held, current, rosterSignature)) };
 };
 
-/** The task's own turn, in a changed context, ended on its saved commitment. */
+/** The task's own turn reviewed a changed context without replacing its commitment. */
 export const isReviewedTurn = (
-  selected: ReadonlySet<string>, contextChanged: boolean, evaluation: TaskEvaluation,
-): boolean => selected.has(evaluation.deviceId) && contextChanged
-  && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.frozenRead === true;
+  hasTurn: boolean, contextChanged: boolean, diagnostic: DeferredObjectiveDiagnostic, hasCommitment: () => boolean,
+): boolean => {
+  if (!hasTurn || !contextChanged) return false;
+  const { planning } = diagnostic.evaluation;
+  if (planning.kind === 'allocated') return planning.plan.frozenRead === true;
+  return planning.kind === 'inactive' && diagnostic.objectiveKind === 'temperature'
+    && diagnostic.reasonCode === 'objective_missing_capacity' && hasCommitment();
+};
 
 /**
  * Frozen and waiting reports cannot certify that a changed context was planned:
  * they keep the saved signature. The exception is the task's own turn that found
- * no fresh allocation possible (a price or step gap) and served its commitment.
- * Holding the device for a plan that cannot be made would keep it off for the
- * length of the gap, so that turn records the context it reviewed.
+ * no fresh allocation possible and retained its commitment. A missing thermal
+ * rate keeps task control inactive. Recording the review avoids adding a
+ * planning hold while the rate is being learned again.
  */
 export const resolveReportedContext = (
   keepsSaved: boolean, reviewed: boolean, saved: string | undefined, current: string,

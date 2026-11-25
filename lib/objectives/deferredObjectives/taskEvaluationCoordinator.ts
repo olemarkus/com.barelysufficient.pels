@@ -85,7 +85,7 @@ import {
   buildFreshDiagnostic, buildHorizonUnavailableDiagnostic, withAwaitingPricesPlanning,
 } from './freshDiagnostic';
 import {
-  isFreshTaskEvaluation, isReviewedTurn, isSelectedFreshTurn, readAllocationContext,
+  hasPlanningCommitment, isFreshTaskEvaluation, isReviewedTurn, isSelectedFreshTurn, readAllocationContext,
   resolveReportedContext,
   resolveTaskAllocationMode, shouldWaitForPlanningTurn, taskReplanRequested,
   type TaskAllocationMode, type TaskPlanningTurns,
@@ -340,7 +340,8 @@ export const buildDeferredObjectiveTaskResults = (
     const coordinated: DeferredObjectiveDiagnostic = {
       ...diagnostic,
       ...resolveReportedContext(
-        bounded && !freshAllocation, isReviewedTurn(selected, allocationContextChanged, evaluation),
+        bounded && !freshAllocation,
+        isReviewedTurn(hasTurn, allocationContextChanged, diagnostic, () => hasPlanningCommitment(task, snapshot)),
         latestSignature, allocationContextSignature,
       ),
       ...(isSelectedFreshTurn(lane, selected, evaluation)
