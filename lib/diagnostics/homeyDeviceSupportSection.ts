@@ -3,6 +3,7 @@ import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceDiagnosticConfigurationRead } from './deviceDiagnosticConfiguration';
 import { chargingInstallationGroups } from '../device/chargingCurrentAdapter';
+import { getDeviceAdapter } from '../device/deviceAdapterRegistry';
 
 const readCapabilityIds = (device: HomeyDeviceLike): string[] => (
   Array.isArray(device.capabilities)
@@ -79,6 +80,11 @@ export const describeSupportReportMeter = (inventory: HomeyDeviceInventoryRead, 
   };
 };
 
+const describeFirmware = (device: HomeyDeviceLike): SupportReportSection['values'] => {
+  const firmwareVersions = getDeviceAdapter(device).firmwareVersions(device);
+  return Object.keys(firmwareVersions).length === 0 ? {} : { firmwareVersions };
+};
+
 /** A device support request's account of one device: its name and what Homey reports about it. */
 export type HomeyDeviceSupportDescription = { name: string; section: SupportReportSection };
 
@@ -97,6 +103,7 @@ export const describeHomeyDeviceForSupport = (device: HomeyDeviceLike): SupportR
     driverId: device.driverId,
     available: device.available,
     capabilities: describeCapabilities(device),
+    ...describeFirmware(device),
     energySettings: describeEnergySettings(device),
     energy: toReportValue(device.energyObj ?? device.energy ?? null, 1),
   },
@@ -133,6 +140,7 @@ export const reportHomeyDevices = (
           ownerUri: device.ownerUri,
           driverId: device.driverId,
           available: device.available,
+          ...describeFirmware(device),
           ...(managed === undefined ? {} : { managed }),
           ...(configuration === undefined ? {} : { configuration }),
           ...(chargingInstallation === undefined ? {} : { chargingInstallation }),

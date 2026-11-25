@@ -317,6 +317,8 @@ export type DeviceAdapter = {
    * way, so the integration recognises and validates it; `none` otherwise.
    */
   meterMonthlyPeak(device: HomeyDeviceLike): MeterMonthlyPeakRead;
+  /** Known firmware components from Homey's device read, for diagnostics. */
+  firmwareVersions(device: HomeyDeviceLike): Readonly<Record<string, string>>;
   readBackAfterWrite: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;

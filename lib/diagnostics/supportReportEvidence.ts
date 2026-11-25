@@ -22,6 +22,9 @@ import type { DeviceObjectiveProfile } from '../../packages/contracts/src/object
 import {
   readHomeyDeviceInventory, reportHomeyDevices, type HomeyDeviceInventoryRead, type HomeyDeviceSupportDescription,
 } from './homeyDeviceSupportSection';
+import {
+  INSTALLED_APP_VERSIONS_TITLE, readAppMemorySection, reportInstalledAppVersions, type InstalledAppVersions,
+} from './supportReportHomeyApps';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
 import {
   captureDeviceDiagnosticConfiguration,
@@ -74,6 +77,8 @@ export type SupportReportReads = {
   describeHomeyDeviceForSupport(deviceId: string): Promise<HomeyDeviceSupportDescription | undefined>;
   /** Every device on the Homey, whether or not PELS lists it. Rejects when Homey cannot be read. */
   listHomeyDevices(): Promise<readonly HomeyDeviceLike[]>;
+  /** Installed versions from Homey's app manager. Rejects when Homey cannot be read. */
+  readInstalledAppVersions(): Promise<InstalledAppVersions>;
   getHomeMembership(): Pick<HomeMembershipPort,
     'isOwnershipReady' | 'hasPendingOwnershipGeneration' | 'getHomeIdForDevice'>;
   /** Main's latest plan decisions; `null` before the first plan. */
@@ -543,30 +548,11 @@ const readAppDevicesSection = (
   ? [readSection(title, () => ({ title, values: { devices: [...readDevices()] } }))]
   : []);
 
-export const APP_MEMORY_REPORT_TITLE = 'App memory';
-
-/**
- * Every report states the app's memory, so reports from many homes can be
- * compared: high or unexpectedly low use against their devices, apps and
- * settings. Homey's reading is the one its memory warning acts on.
- */
-const readAppMemorySection = async (host: SupportReportReads): Promise<SectionRead[]> => {
-  let snapshot: AppMemorySnapshot;
-  try {
-    snapshot = await host.readAppMemory();
-  } catch {
-    return [{ state: 'unavailable', reason: `${APP_MEMORY_REPORT_TITLE} is unavailable.` }];
-  }
-  const { usage, ...rest } = snapshot;
-  return [
-    { state: 'available', section: { title: APP_MEMORY_REPORT_TITLE, values: usage ? snapshot : rest } },
-    ...(usage ? [] : [{
-      state: 'unavailable' as const, reason: 'Homey\'s reading of the app\'s memory is unavailable.',
-    }]),
-  ];
+const readInstalledVersions = async (host: SupportReportReads): Promise<InstalledAppVersions | undefined> => {
+  try { return await host.readInstalledAppVersions(); } catch { return undefined; }
 };
 
-/** Captures existing owner readouts without refreshing devices, planning, or actuating. */
+/** Captures Homey and existing owner readouts without changing runtime state. */
 export class SupportReportEvidenceSource {
   constructor(private readonly host: SupportReportReads, private readonly homey: SupportReportHomey) {}
 
@@ -586,8 +572,11 @@ export class SupportReportEvidenceSource {
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
     // Read before the log, which gives up the room these take.
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
-    const inventory = await readHomeyDeviceInventory(() => host.listHomeyDevices());
-    const appMemory = await readAppMemorySection(host);
+    const [inventory, installedVersions, appMemory] = await Promise.all([
+      readHomeyDeviceInventory(() => host.listHomeyDevices()),
+      readInstalledVersions(host),
+      readAppMemorySection(() => host.readAppMemory()),
+    ]);
     const at = capturedAtMs;
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
@@ -604,6 +593,9 @@ export class SupportReportEvidenceSource {
         : reportAreaPowerSource(area, inventory)),
       ...readPriceSections(host, capturedAtMs),
       readHomeyDevicesSection(host, request.subject, inventory),
+      readSection(INSTALLED_APP_VERSIONS_TITLE, () => (
+        installedVersions ? reportInstalledAppVersions(inventory, installedVersions) : null
+      )),
       ...appMemory,
     ];
     return {

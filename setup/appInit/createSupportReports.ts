@@ -1,4 +1,5 @@
 import type { PelsHost } from '../../lib/app/pelsHost';
+import { readInstalledAppVersions } from '../../lib/diagnostics/supportReportHomeyApps';
 import { readHomeyDeviceForSupport } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import { HomeyReportTransport, type HomeyReportRuntime } from '../../lib/diagnostics/homeyReportTransport';
 import {
@@ -36,6 +37,7 @@ export const createSupportReportReads = (
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
   heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
   appMemory: AppMemoryUsageSampler,
+  readAppVersions: SupportReportReads['readInstalledAppVersions'],
 ): SupportReportReads => ({
   readDeviceDiagnosticConfiguration: app.readDeviceDiagnosticConfiguration,
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
@@ -44,6 +46,7 @@ export const createSupportReportReads = (
   describeHomeyDeviceForSupport: (deviceId) => readHomeyDeviceForSupport(
     () => requireDeviceManager(app).getDevicesForDebug(), deviceId),
   listHomeyDevices: () => requireDeviceManager(app).getDevicesForDebug(),
+  readInstalledAppVersions: readAppVersions,
   getHomeMembership: () => requireHomeMembership(app),
   getLatestDevicePlan: () => requirePlanService(app).getLatestPlanSnapshot(),
   readHome: (homeId) => app.homeRuntimeRead.readHome(homeId),
@@ -108,7 +111,10 @@ export const createSupportReports = (
   appMemory: AppMemoryUsageSampler,
 ): SupportReportService => new SupportReportService(
   new SupportReportEvidenceSource(
-    createSupportReportReads(app, homey.settings, readSmartTaskCycle, heatingShadow, appMemory), homey,
+    createSupportReportReads(
+      app, homey.settings, readSmartTaskCycle, heatingShadow, appMemory, () => readInstalledAppVersions(homey),
+    ),
+    homey,
   ),
   new HomeyReportTransport(homey),
 );

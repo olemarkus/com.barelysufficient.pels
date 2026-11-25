@@ -19,6 +19,21 @@ export const requestHomeyAppManager = async (
   method: 'GET' | 'POST',
   message: string | undefined,
   timeoutMs: number,
+): Promise<HomeyAppManagerResponse> => request(
+  homey, `/api/manager/apps/app/${encodeURIComponent(homey.manifest.id)}${suffix}`, method, message, timeoutMs,
+);
+
+/** Read installed app metadata through Homey's owner-authenticated local API. */
+export const requestHomeyAppsList = (
+  homey: HomeyAppManagerRuntime, timeoutMs: number,
+): Promise<HomeyAppManagerResponse> => request(homey, '/api/manager/apps/app/', 'GET', undefined, timeoutMs);
+
+const request = async (
+  homey: HomeyAppManagerRuntime,
+  path: string,
+  method: 'GET' | 'POST',
+  message: string | undefined,
+  timeoutMs: number,
 ): Promise<HomeyAppManagerResponse> => {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -30,7 +45,7 @@ export const requestHomeyAppManager = async (
     timer.unref?.();
   });
   try {
-    return await Promise.race([perform(homey, suffix, method, message, controller.signal), deadline]);
+    return await Promise.race([perform(homey, path, method, message, controller.signal), deadline]);
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -38,7 +53,7 @@ export const requestHomeyAppManager = async (
 
 const perform = async (
   homey: HomeyAppManagerRuntime,
-  suffix: string,
+  path: string,
   method: 'GET' | 'POST',
   message: string | undefined,
   signal: AbortSignal,
@@ -46,7 +61,6 @@ const perform = async (
   const [baseUrl, token] = await Promise.all([homey.api.getLocalUrl(), homey.api.getOwnerApiToken()]);
   signal.throwIfAborted();
   if (!token) throw new Error('Homey authentication unavailable');
-  const path = `/api/manager/apps/app/${encodeURIComponent(homey.manifest.id)}${suffix}`;
   const response = await fetch(new URL(path, baseUrl), {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
