@@ -183,6 +183,11 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
     {props.choices.state === 'ready' && props.choices.devices.map((device) => (
       <section class="pels-surface-card setup-journey__device" key={device.id} data-device-id={device.id}>
         <h3 class="plan-card__title">{device.name}</h3>
+        {device.noGoalReason && <>
+          <p class="pels-card-supporting">A smart task needs a live power reading from this device.</p>
+          <MdTextButton type="button" aria-label={`Device settings for ${device.name}`}
+            onClick={() => props.onOpen(device.id, 'top')}>Device settings</MdTextButton>
+        </>}
         {device.price && <>
           <label class="md-switch-row">
             <MdSwitch selected={device.price.enabled} disabled={props.busy}
@@ -295,20 +300,20 @@ export const REVIEW_DEVICE_NO_JOB = 'Nothing for PELS to do yet';
  */
 export const resolveReviewNoJobNote = (
   devices: readonly SetupReviewDevice[],
-  goalsOffered: boolean,
+  hasGoalActions: boolean,
 ): string | null => {
   if (devices.length === 0 || devices.some((device) => device.control !== REVIEW_DEVICE_NO_JOB)) return null;
   if (devices.some((device) => device.setupAction)) {
     return 'No device has a job PELS can act on yet. Finish charging setup to let PELS charge the car on solar surplus.';
   }
-  return goalsOffered
+  return hasGoalActions
     ? 'No device has a job yet, so PELS has nothing to control. Choose what PELS does to give one a job.'
     : 'No device has a job yet, so PELS has nothing to control. Turn on a power limit, '
       + 'or manage a device that can follow prices, take a Smart task or use solar.';
 };
 
-const ReviewNoJobNote = ({ devices, goalsOffered }: { devices: readonly SetupReviewDevice[]; goalsOffered: boolean }) => {
-  const note = resolveReviewNoJobNote(devices, goalsOffered);
+const ReviewNoJobNote = ({ devices, hasGoalActions }: { devices: readonly SetupReviewDevice[]; hasGoalActions: boolean }) => {
+  const note = resolveReviewNoJobNote(devices, hasGoalActions);
   return note === null ? null : <p class="pels-notice-info" data-setup-review="no-job">{note}</p>;
 };
 
@@ -323,7 +328,9 @@ export type SetupReviewProps = {
   onRetry?: () => void;
   onStart: () => void;
   onContinue: () => void;
-  /** Back to `Choose what PELS does`, while it has something to offer; `null` hides the link. */
+  /** Whether the Goals page offers an action that can give a device a job. */
+  hasGoalActions: boolean;
+  /** Back to `Choose what PELS does` while a managed device is listed there. */
   onChooseGoals: (() => void) | null;
   onOpenDevice?: (id: string, focus: DeviceDetailFocus) => void;
 };
@@ -365,7 +372,7 @@ const ReviewPanel = (props: SetupReviewProps & { path: SetupPath }) => {
           Choose an EV charger (optional)
         </MdTextButton>
       )}
-      <ReviewNoJobNote devices={props.devices} goalsOffered={props.onChooseGoals !== null} />
+      <ReviewNoJobNote devices={props.devices} hasGoalActions={props.hasGoalActions} />
       {props.onChooseGoals && (
         <div class="setup-recommendation-card__actions">
           <MdTextButton type="button" disabled={props.busy} onClick={props.onChooseGoals}>Choose what PELS does</MdTextButton>

@@ -66,11 +66,12 @@ describe('Choose what PELS does', () => {
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([
       {
         id: 'pump', name: 'Heat pump', price: { enabled: false }, smartTask: { state: 'none', charger: false }, solar: null,
-        battery: null,
+        battery: null, noGoalReason: null,
       },
-      { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null, battery: null },
+      { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null,
+        battery: null, noGoalReason: null },
     ]);
-    expect(goals.offersSetupGoals()).toBe(true);
+    expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: true });
   });
 
   it('shows the Price-based control the owner already saved', async () => {
@@ -99,23 +100,40 @@ describe('Choose what PELS does', () => {
     respondToPrices(facts, false);
     expect(ready(goals.resolveSetupGoalChoices()))
       .toEqual([
-        { id: 'pump', name: 'Heat pump', price: null, smartTask: { state: 'none', charger: false }, solar: null, battery: null },
-        { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null, battery: null },
+        { id: 'pump', name: 'Heat pump', price: null, smartTask: { state: 'none', charger: false }, solar: null,
+          battery: null, noGoalReason: null },
+        { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null,
+          battery: null, noGoalReason: null },
       ]);
   });
 
-  it('leaves out devices PELS does not manage, devices in a meter area, and devices with nothing to choose', async () => {
+  it('explains the managed unmetered relay and leaves out unmanaged and meter-area devices', async () => {
     const { goals, state } = await load({ charger: 'garage' });
     manage(state, [heatPump, charger, socket]);
     state.managedMap.pump = false;
+    expect(goals.resolveSetupGoalChoices()).toMatchObject({
+      hasActions: false,
+      devices: [{ id: 'socket', price: null, smartTask: null, solar: null, battery: null, noGoalReason: 'needs_live_power' }],
+    });
+    state.managedMap.socket = false;
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
-    expect(goals.offersSetupGoals()).toBe(false);
+  });
+
+  it('clears the relay explanation once it reports live measured power', async () => {
+    const { goals, state } = await load();
+    manage(state, [{ ...socket, measuredPowerKw: 0.4, measuredPowerIsDirectMeasurement: false }]);
+    expect(ready(goals.resolveSetupGoalChoices())[0]?.noGoalReason).toBe('needs_live_power');
+    manage(state, [{ ...socket, measuredPowerKw: 0.4, measuredPowerIsDirectMeasurement: true }]);
+    expect(goals.resolveSetupGoalChoices()).toMatchObject({
+      hasActions: true,
+      devices: [{ id: 'socket', noGoalReason: null, smartTask: { state: 'none', charger: false } }],
+    });
   });
 
   it('adds the solar action once surplus can reach it', async () => {
     const { goals, state } = await load();
     manage(state, [socket]);
-    expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
+    expect(ready(goals.resolveSetupGoalChoices())[0]?.solar).toBeNull();
     state.surplusPoolReachable = true;
     expect(ready(goals.resolveSetupGoalChoices()).map((device) => device.solar?.label)).toEqual(['Run on solar surplus']);
   });
@@ -184,7 +202,7 @@ describe('Choose what PELS does', () => {
       const { goals, state } = await load();
       manageBattery(state);
       expect(batteryGoal(goals)).toEqual({ state: 'loading' });
-      expect(goals.offersSetupGoals()).toBe(true);
+      expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: true });
     });
 
     it('asks for a usable capacity a battery never saved, instead of assuming one', async () => {

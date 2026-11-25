@@ -1,5 +1,6 @@
 import { supportsTemperatureAdjustments } from './deviceDetail/temperaturePolicy.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import { resolveDefaultSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { namePriceSource } from './afterSetupRecommendations.ts';
 import { readAfterSetupFacts } from './afterSetupFacts.ts';
@@ -29,8 +30,8 @@ import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state
  * It is the one place for these: the after-setup suggestion and Review lead
  * here rather than offering them again.
  *
- * A device with none of these is left out, and a home with none is not offered
- * the page. Nothing here is a completion requirement.
+ * A managed relay without live power can explain what it needs. Nothing here
+ * is a completion requirement.
  */
 export type SetupGoalChoice = {
   id: string;
@@ -41,12 +42,14 @@ export type SetupGoalChoice = {
   solar: SolarSetupAction | null;
   /** A home battery's plan; `null` for any other device. */
   battery: SetupBatteryGoal | null;
+  /** Explains the power-reading prerequisite for a relay with no setup action. */
+  noGoalReason: 'needs_live_power' | null;
 };
 
 export type SetupGoalChoices =
   | { state: 'loading' | 'unavailable' }
   /** `priceSource` names where the prices come from, when PELS already has them. */
-  | { state: 'ready'; priceSource: string | null; devices: readonly SetupGoalChoice[] };
+  | { state: 'ready'; priceSource: string | null; devices: readonly SetupGoalChoice[]; hasActions: boolean };
 
 const resolveSmartTask = (device: SettingsUiDeviceListItem): SetupGoalChoice['smartTask'] => {
   if (!isSmartTaskCapable(device)) return null;
@@ -67,19 +70,27 @@ export const resolveSetupGoalChoices = (): SetupGoalChoices => {
   const respondsToPrices = readSetupRespondsToPrices() === true;
   const solarReady = resolveSurplusControlAvailable();
   const priced = readPricedSource();
+  const devices = managed.devices.flatMap((device): SetupGoalChoice[] => {
+    const price = respondsToPrices && supportsTemperatureAdjustments(device)
+      ? { enabled: state.priceOptimizationSettings[device.id]?.enabled === true }
+      : null;
+    const smartTask = resolveSmartTask(device);
+    const solar = solarReady ? resolveSolarSetupAction(device) : null;
+    const battery = resolveSetupBatteryGoal(device);
+    let noGoalReason: SetupGoalChoice['noGoalReason'] = null;
+    if (!price && !smartTask && !solar && !battery) {
+      if (resolveDefaultSmartTaskKind(device) !== 'energy') return [];
+      noGoalReason = 'needs_live_power';
+    }
+    return [{
+      id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar, battery, noGoalReason,
+    }];
+  });
   return {
     state: 'ready',
+    hasActions: devices.some((device) => device.noGoalReason === null),
     priceSource: priced ? namePriceSource(priced.scheme) : null,
-    devices: managed.devices.flatMap((device) => {
-      const price = respondsToPrices && supportsTemperatureAdjustments(device)
-        ? { enabled: state.priceOptimizationSettings[device.id]?.enabled === true }
-        : null;
-      const smartTask = resolveSmartTask(device);
-      const solar = solarReady ? resolveSolarSetupAction(device) : null;
-      const battery = resolveSetupBatteryGoal(device);
-      if (price === null && smartTask === null && solar === null && battery === null) return [];
-      return [{ id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar, battery }];
-    }),
+    devices,
   };
 };
 
@@ -93,10 +104,4 @@ export const resolveSetupGoalChoices = (): SetupGoalChoices => {
 export const keepAssumedPriceSource = async (): Promise<void> => {
   const priced = readPricedSource();
   if (priced && !priced.chosen) await keepPriceSchemeInForce(priced.scheme);
-};
-
-/** Whether any managed device has a job to choose; a read still loading offers nothing yet. */
-export const offersSetupGoals = (): boolean => {
-  const choices = resolveSetupGoalChoices();
-  return choices.state === 'ready' && choices.devices.length > 0;
 };

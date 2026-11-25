@@ -26,25 +26,40 @@ const battery = (overrides: Partial<SetupGoalChoice> = {}): SetupGoalChoice => (
   smartTask: null,
   solar: null,
   battery: { state: 'ready', enabled: false, capacityKWh: null, simulating: true, othersPlanned: false },
+  noGoalReason: null,
   ...overrides,
 });
 
 const renderPicker = (devices: SetupGoalChoice[], onBatteryPlan = vi.fn(async () => {})) => {
   const root = mount();
+  const onOpen = vi.fn();
   act(() => {
     render(h(() => SetupGoalPicker({
-      choices: { state: 'ready', priceSource: null, devices },
+      choices: { state: 'ready', priceSource: null, devices, hasActions: true },
       busy: false,
       onPrice: vi.fn(),
       onNewSmartTask: vi.fn(),
       onOpenSmartTask: vi.fn(),
       onBatteryPlan,
-      onOpen: vi.fn(),
+      onOpen,
       onRetry: vi.fn(),
     }), {}), root);
   });
-  return { root, onBatteryPlan };
+  return { root, onBatteryPlan, onOpen };
 };
+
+it('explains why a managed relay has no action and links to its device settings', () => {
+  const { root, onOpen } = renderPicker([{
+    id: 'relay', name: 'Relay', price: null, smartTask: null, solar: null, battery: null,
+    noGoalReason: 'needs_live_power',
+  }]);
+  expect(root.textContent).toContain('A smart task needs a live power reading from this device.');
+  expect(root.textContent).not.toContain('New smart task');
+  expect(root.querySelector('md-switch')).toBeNull();
+  const settings = root.querySelector<HTMLElement>('[aria-label="Device settings for Relay"]');
+  act(() => settings?.click());
+  expect(onOpen).toHaveBeenCalledWith('relay', 'top');
+});
 
 describe('Choose what PELS does, battery row', () => {
   it('keeps Plan charging with PELS off until a usable capacity is entered', () => {
@@ -234,7 +249,7 @@ describe('setup review', () => {
         setupAction: { label: 'Finish charging setup', focus: 'charging-control',
           hint: 'Turn on “Control charging through this car” in Setup.' },
       }],
-      onStart: vi.fn(), onContinue: vi.fn(), onChooseGoals: null, onOpenDevice,
+      onStart: vi.fn(), onContinue: vi.fn(), onChooseGoals: null, hasGoalActions: false, onOpenDevice,
     }), root));
     expect(root.textContent).toContain('Turn on “Control charging through this car” in Setup.');
     expect(root.querySelector('[data-setup-review="no-job"]')?.textContent)
