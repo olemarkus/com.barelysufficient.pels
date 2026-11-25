@@ -100,6 +100,18 @@ Every report lists the devices on the Homey (`Current Homey devices`, at most 50
 name, class, the providing app (`ownerUri`), driver, availability, and whether PELS
 manages it, read from Homey at capture. A log names a device by id only, and why a write
 fails often depends on the app behind it. A failed read is a visible omission.
+The inventory and the selected `Homey device` in a device support request reuse one
+fresh bulk read at capture. Each device carries `deviceSettings` from that read.
+An empty settings object is `none`, a missing or unreadable object is `unavailable`,
+and an available object carries only allowlisted values with their known units.
+An absent or unset field has no entry. A present field with an unreadable value is
+marked `invalid`. The allowlist covers Homey's common energy settings and settings
+whose meaning the device integration can verify, such as a thermostat's sensor
+mode and floor minimum or a charger's configured current.
+The inventory also carries the advertised target temperature range, the current Homey
+value, and its last-updated time when reported. In incident and device reports these
+can be compared with the temperature command and its outcome in the kept log. The
+settings describe the capture time.
 `Installed Homey app versions` records the installed version of each app behind a
 listed device when Homey exposes it. Supported integrations also include the firmware
 versions their devices publish in Homey. These readings describe the time of capture.
@@ -109,7 +121,7 @@ accepted one with its age; the process's page faults and peak RSS; and V8's heap
 compiled code. Homey's memory warning acts on that RSS, which the app sandbox cannot
 read itself, and reports from many homes are compared on it, low use included. Without
 a Homey reading the section keeps V8's view and the omission says so.
-The current collector does not dump settings, credentials or raw Homey devices into
+The current collector does not dump credentials or raw Homey devices into
 the message, and of stdout only the structured lines it kept. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.
 

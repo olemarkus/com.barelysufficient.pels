@@ -941,10 +941,13 @@ describe('device support request evidence', () => {
     }),
     getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
   });
+  const relaySettings = { state: 'available', values: { energy_value_on: { value: 3000, unit: 'W' } } };
 
-  it('describes a device PELS does not list from what Homey reports, and no more of its settings', async () => {
-    const host = hostWithHomeyDevices(async () => [relay]);
+  it('uses one Homey read for the settings of an unmanaged device in both report sections', async () => {
+    const read = vi.fn(async () => [relay]);
+    const host = hostWithHomeyDevices(read);
     const report = await source(host).capture(supportRequest, now);
+    expect(read).toHaveBeenCalledOnce();
     expect(report.subjectName).toBe('Water heater relay');
     expect(values(report, 'Homey device')).toEqual({
       id: 'relay', class: 'light', virtualClass: null, ownerUri: 'homey:app:com.knx',
@@ -953,8 +956,11 @@ describe('device support request evidence', () => {
         onoff: { value: true, setable: true, getable: true },
         measure_power: { value: 2950, units: 'W', setable: false },
       },
-      energySettings: { energy_value_on: 3000 },
+      deviceSettings: relaySettings,
       energy: null,
+    });
+    expect(values(report, 'Current Homey devices')).toMatchObject({
+      devices: [{ id: 'relay', deviceSettings: relaySettings }],
     });
     expect(JSON.stringify(report)).not.toContain('secret');
     // PELS has no snapshot of the device, so no section claims to describe one.
@@ -982,14 +988,45 @@ describe('device support request evidence', () => {
       expect(values(report, 'Current Homey devices')).toEqual({
         devices: [
           { id: 'relay', name: 'Water heater relay', class: 'light', ownerUri: 'homey:app:com.knx',
-            driverId: 'switch', available: true },
+            driverId: 'switch', available: true, deviceSettings: relaySettings },
           { id: 'heater', name: 'Hall heater', class: 'heater', ownerUri: 'homey:app:com.example.heat',
             driverId: 'homey:app:com.example.heat:pump', available: true, managed: deviceSnapshot().managed,
-            configuration: { state: 'unavailable' } },
+            deviceSettings: relaySettings, configuration: { state: 'unavailable' } },
         ],
         leftOut: 0,
       });
       expect(JSON.stringify(values(report, 'Current Homey devices'))).not.toContain('secret');
+    });
+
+    it('preserves a charger current and distinguishes absent, unreadable and withheld values', async () => {
+      const charger = {
+        ...relay, id: 'charger', ownerUri: 'homey:app:com.aminacharging', driverId: 'homey:app:com.aminacharging:amina-s',
+        settings: {
+          maxCurrent: 16, singlePhase: false, energy_value_off: 0, energy_value_on: null,
+          load: '10.0.0.1', ipAddress: '192.0.2.2', accessToken: 'private-token',
+          nested: { temperature: 18, ipAddress: '192.0.2.3' },
+        },
+      };
+      const devices = [
+        charger,
+        { ...relay, id: 'empty', settings: {} },
+        { ...relay, id: 'unreadable', settings: {}, settingsUnavailable: true },
+        { ...relay, id: 'private', settings: { accessToken: 'private-token' } },
+      ];
+      const report = await source(hostWithHomeyDevices(async () => devices)).capture(appReport, now);
+      const inventory = values(report, 'Current Homey devices');
+      expect(inventory).toMatchObject({
+        devices: [
+          { id: 'charger', deviceSettings: { state: 'available', values: {
+            maxCurrent: { value: 16, unit: 'A' }, singlePhase: { value: false },
+            energy_value_off: { value: 0, unit: 'W' }, load: { state: 'invalid' },
+          } } },
+          { id: 'empty', deviceSettings: { state: 'none' } },
+          { id: 'unreadable', deviceSettings: { state: 'unavailable' } },
+          { id: 'private', deviceSettings: { state: 'available', values: {} } },
+        ],
+      });
+      expect(JSON.stringify(inventory)).not.toMatch(/private-token|ipAddress|10\.0\.0\.1|192\.0\.2|nested|energy_value_on/);
     });
 
     it('captures installed app versions and reported battery firmware without unrelated metadata', async () => {

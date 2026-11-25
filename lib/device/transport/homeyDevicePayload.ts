@@ -15,6 +15,10 @@ const resolveOwnerUri = (payload: Record<string, unknown>): unknown => (
   isNonEmptyString(payload.ownerUri) ? payload.ownerUri : payload.driverUri
 );
 
+function resolveSettings(raw: unknown): Pick<HomeyDeviceLike, 'settings' | 'settingsUnavailable'> {
+  return isUnknownRecord(raw) ? { settings: raw } : { settings: {}, settingsUnavailable: true };
+}
+
 /**
  * The boundary for a device read from Homey. Homey's payload has two shapes:
  * `ownerUri` with a qualified `driverId`, and an older one with only `driverUri`
@@ -32,7 +36,10 @@ export function parseHomeyDevicePayload(value: unknown): HomeyDeviceLike | null 
   if (typeof id !== 'string' || typeof name !== 'string' || typeof deviceClass !== 'string') return null;
   if (!isNonEmptyString(driverId) || !isNonEmptyString(ownerUri) || typeof available !== 'boolean') return null;
   if (!isStringList(capabilities) || !isUnknownRecord(capabilitiesObj)) return null;
-  const { genericSetupEnabled: _genericSetupEnabled, selectedBinarySwitch: _selectedBinarySwitch, ...payload } = value;
+  const {
+    genericSetupEnabled: _genericSetupEnabled, selectedBinarySwitch: _selectedBinarySwitch,
+    settingsUnavailable: _settingsUnavailable, ...payload
+  } = value;
   return {
     ...payload,
     id,
@@ -45,7 +52,7 @@ export function parseHomeyDevicePayload(value: unknown): HomeyDeviceLike | null 
     capabilities,
     capabilitiesObj: capabilitiesObj as HomeyDeviceLike['capabilitiesObj'],
     data: recordOrNull(value.data) ?? {},
-    settings: recordOrNull(value.settings) ?? {},
+    ...resolveSettings(value.settings),
     energy: recordOrNull(value.energy),
     energyObj: recordOrNull(value.energyObj),
     virtualClass: stringOrNull(value.virtualClass),

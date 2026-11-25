@@ -100,6 +100,8 @@ export type HomeyDeviceLike = {
         pelsCompatibilityTargetPower?: string | TargetPowerSteppedLoadConfig;
         pelsCompatibilityTargetPowerPreset?: TargetPowerSteppedLoadPreset;
     };
+    /** The SDK payload did not contain a readable settings object. */
+    settingsUnavailable?: true;
     energy: Record<string, unknown> | null;
     energyObj: Record<string, unknown> | null;
     available: boolean;

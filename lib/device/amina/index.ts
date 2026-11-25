@@ -22,6 +22,7 @@ import type { ChargerPhaseReport } from '../chargerPhasePreset';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { SettingCurrentLimitSession } from '../settingCurrentLimitSession';
+import { readDeviceReportSettings } from '../deviceReportSettings';
 
 const DRIVER_IDS = new Set(['homey:app:com.aminacharging:amina-s', 'com.aminacharging:amina-s']);
 const SWITCH_CAPABILITY = 'onoff';
@@ -40,11 +41,14 @@ function isAminaCharger(device: HomeyDeviceLike): boolean {
   return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
 }
 
-/** The current limit Homey last sent, or no reading when the setting holds a value outside 6-32 A. */
-function readCurrentLimit(device: HomeyDeviceLike): number | undefined {
-  const value = device.settings[MAX_CURRENT_SETTING];
+function readCurrentLimitValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= MIN_CURRENT_A && value <= MAX_CURRENT_A
     ? value : undefined;
+}
+
+/** The current limit Homey last sent, or no reading when the setting holds a value outside 6-32 A. */
+function readCurrentLimit(device: HomeyDeviceLike): number | undefined {
+  return readCurrentLimitValue(device.settings[MAX_CURRENT_SETTING]);
 }
 
 type CapabilityReadings = Readonly<Partial<DeviceCapabilityMap>>;
@@ -127,6 +131,13 @@ function resolvePhaseReport(device: HomeyDeviceLike): ChargerPhaseReport {
 export const aminaAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
   matches: isAminaCharger,
+  reportSettings: (device) => readDeviceReportSettings(device.settings, {
+    [MAX_CURRENT_SETTING]: (raw) => {
+      const value = readCurrentLimitValue(raw);
+      return value === undefined ? undefined : { value, unit: 'A' };
+    },
+    [SINGLE_PHASE_SETTING]: (value) => typeof value === 'boolean' ? { value } : undefined,
+  }),
   matchesCapabilities: (capabilities) => capabilities.includes(SWITCH_CAPABILITY)
     && [...STATUS_CAPABILITIES].every((id) => capabilities.includes(id)),
   overlay: aminaOverlay,

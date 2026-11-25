@@ -33,6 +33,7 @@ export const standardDeviceAdapter: DeviceAdapter = {
   nativeCurrentControls: [], nativeLevelControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
   meterMonthlyPeak: () => ({ state: 'none' }),
   firmwareVersions: () => ({}),
+  reportSettings: () => ({}),
   readBackAfterWrite: true, supportsProductionLimits: true,
   projectRead: (device) => [device],
   routeReport: (device, capabilityId) => ({ deviceId: device.id, capabilityId }),

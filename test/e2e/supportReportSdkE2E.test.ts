@@ -6,6 +6,9 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { httpResponse } from '../helpers/httpResponse';
 import { decodeReportMessage } from '../helpers/supportReportEvidenceFixtures';
+import { connectLiveFeed } from '../helpers/liveFeedSocketHarness';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { drainUntilCalledWith } from '../utils/asyncDrain';
 
 describe('manual report through the app API and Homey boundary', () => {
   beforeEach(() => {
@@ -123,6 +126,71 @@ describe('manual report through the app API and Homey boundary', () => {
           expect.objectContaining({ id: 'relay', ownerUri: 'homey:app:com.knx', driverId: 'homey:app:com.knx:switch' }),
         ]),
       }),
+    }));
+  });
+
+  it('reports the Heatit floor minimum alongside the advertised range, accepted write and reported target', async () => {
+    connectLiveFeed();
+    const thermostat = new MockDevice('heatit', 'Floor heating',
+      ['target_temperature', 'measure_temperature', 'measure_power'], 'thermostat');
+    thermostat.setDriverIdentity({ ownerUri: 'homey:app:no.thermofloor', driverId: 'Z-TRM6' });
+    thermostat.setSettings({ sensor_mode: '0', floor_sensor_min_temp_limit: 180, password: 'private-password' });
+    thermostat.setCapabilityMetadata('target_temperature', { min: 5, max: 40, step: 0.5, units: '°C', setable: true });
+    await thermostat.setCapabilityValue('target_temperature', 22);
+    await thermostat.setCapabilityValue('measure_temperature', 21);
+    await thermostat.setCapabilityValue('measure_power', 2000);
+    thermostat.configureCapabilityBehavior('target_temperature', {
+      onApiWrite: { updateActual: false, updateApi: false, emitCapabilityEvent: false },
+    });
+    setMockDrivers({ thermostat: new MockDriver('thermostat', [thermostat]) });
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { heatit: true });
+    mockHomeyInstance.settings.set('controllable_devices', { heatit: true });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { heatit: { action: 'set_temperature', temperature: 17 } });
+    const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => (
+      path === 'manager/energy/live'
+        ? { items: [{ type: 'cumulative', id: 'meter-main', values: { W: 5000 } }] }
+        : originalGet(path)
+    ));
+    const put = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(put, 'manager/devices/device/heatit/capability/target_temperature', pelsCapabilityWrite(17));
+    await vi.advanceTimersByTimeAsync(1);
+    const reportedAtMs = Date.now();
+    thermostat.setActualCapabilityValue('target_temperature', 18);
+    await vi.advanceTimersByTimeAsync(1);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => httpResponse({ origin: 'appstore' })));
+
+    const prepared = await api.support_report_prepare({ homey: app.homey, body: {
+      subject: { kind: 'device_support', homeId: 'main', deviceId: 'heatit' },
+      problem: 'The floor heater reported 18 °C after a 17 °C request.',
+      expected: '', occurredAtMs: Date.now(), historyWindow: 'incident',
+    } });
+    if (!prepared.ok) throw Error(prepared.code);
+    const report = decodeReportMessage(prepared.report.message);
+    const deviceSettings = { state: 'available', values: {
+      sensor_mode: { value: 'F' }, floor_sensor_min_temp_limit: { value: 18, unit: '°C' },
+    } };
+    const targetTemperature = {
+      min: 5, max: 40, step: 0.5, units: '°C', setable: true, value: 18, lastUpdatedMs: reportedAtMs,
+    };
+    expect(report.sections.find(({ title }) => title === 'Homey device')?.values).toMatchObject({
+      id: 'heatit', deviceSettings, capabilities: { target_temperature: targetTemperature },
+    });
+    expect(report.sections.find(({ title }) => title === 'Current Homey devices')?.values).toMatchObject({
+      devices: [{ id: 'heatit', deviceSettings, targetTemperature }],
+    });
+    expect(JSON.stringify(report)).not.toContain('private-password');
+    if (report.log.state !== 'available') throw new Error('Device write log is unavailable');
+    expect(report.log.lines.map((line) => line.entry)).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied', deviceId: 'heatit', target: 'temperature', targetValue: 17,
     }));
   });
 

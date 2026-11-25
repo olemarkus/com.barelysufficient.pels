@@ -38,6 +38,7 @@ import { froniusGen24Adapter } from './fronius';
 import { homeWizardAdapter } from './homewizard';
 import { lixeeZlinkyAdapter } from './lixee';
 import { nousEnergyMonitorAdapter } from './nous';
+import { heatitSettingsAdapter } from './heatit';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type {
   DeviceAdapter, AdapterObservation, AdapterControlTarget, CapabilityWrite, ChargingInstallationMembership,
@@ -59,6 +60,12 @@ const adapters: readonly DeviceAdapter[] = [
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {
   return adapters.find((adapter) => adapter.matches(device)) ?? plainDeviceAdapter;
 }
+
+/** Settings-only integrations have priority here and do not participate in device control. */
+export const readDeviceIntegrationReportSettings: DeviceAdapter['reportSettings'] = (device) => (
+  (heatitSettingsAdapter.matches(device) ? heatitSettingsAdapter : getDeviceAdapter(device)).reportSettings(device)
+);
+
 export function getCapabilityAdapter(capabilities: readonly string[]): DeviceAdapter {
   return adapters.find((adapter) => adapter.matchesCapabilities(capabilities)) ?? plainDeviceAdapter;
 }

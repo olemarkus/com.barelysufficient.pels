@@ -12,6 +12,7 @@ import type {
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
+import type { DeviceReportSettings } from './deviceReportSettings';
 import type { DeviceCapabilityMap } from './managerControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { ChargerPhaseReport } from './chargerPhasePreset';
@@ -319,6 +320,8 @@ export type DeviceAdapter = {
   meterMonthlyPeak(device: HomeyDeviceLike): MeterMonthlyPeakRead;
   /** Known firmware components from Homey's device read, for diagnostics. */
   firmwareVersions(device: HomeyDeviceLike): Readonly<Record<string, string>>;
+  /** Allowlisted installed settings with validated values and known units, for diagnostics. */
+  reportSettings(device: HomeyDeviceLike): DeviceReportSettings;
   readBackAfterWrite: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;

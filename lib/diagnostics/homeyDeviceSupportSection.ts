@@ -3,7 +3,9 @@ import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceDiagnosticConfigurationRead } from './deviceDiagnosticConfiguration';
 import { chargingInstallationGroups } from '../device/chargingCurrentAdapter';
-import { getDeviceAdapter } from '../device/deviceAdapterRegistry';
+import { getDeviceAdapter, readDeviceIntegrationReportSettings } from '../device/deviceAdapterRegistry';
+import { readHomeyEnergyReportSettings } from '../device/deviceReportSettings';
+import { toCapabilityTimestampMs } from '../device/managerControl';
 
 const readCapabilityIds = (device: HomeyDeviceLike): string[] => (
   Array.isArray(device.capabilities)
@@ -33,26 +35,43 @@ const toReportValue = (value: unknown, depth = 0): SupportReportValue => {
 
 // What a capability's entry says about how PELS could read and drive it.
 const CAPABILITY_FIELDS = ['value', 'units', 'setable', 'getable', 'min', 'max', 'step', 'values'] as const;
+const TEMPERATURE_FIELDS = ['value', 'min', 'max', 'step'] as const;
+
+const describeTemperatureTarget = (entry: Record<string, unknown>): SupportReportValue => {
+  const lastUpdatedMs = toCapabilityTimestampMs(entry.lastUpdated);
+  return {
+    ...Object.fromEntries(TEMPERATURE_FIELDS.flatMap((field) => (
+      typeof entry[field] === 'number' && Number.isFinite(entry[field]) ? [[field, entry[field]]] : []
+    ))),
+    ...(entry.units === '°C' || entry.units === '°F' ? { units: entry.units } : {}),
+    ...(typeof entry.setable === 'boolean' ? { setable: entry.setable } : {}),
+    ...(typeof entry.getable === 'boolean' ? { getable: entry.getable } : {}),
+    ...(lastUpdatedMs === undefined ? {} : { lastUpdatedMs }),
+  };
+};
+
+const describeCapability = (entry: unknown, id: string): SupportReportValue => {
+  if (!isUnknownRecord(entry)) return null;
+  if (id === 'target_temperature') return describeTemperatureTarget(entry);
+  return Object.fromEntries(CAPABILITY_FIELDS.filter((field) => entry[field] !== undefined)
+    .map((field) => [field, toReportValue(entry[field], 1)]));
+};
 
 const describeCapabilities = (device: HomeyDeviceLike): { [id: string]: SupportReportValue } => {
   const entries = isUnknownRecord(device.capabilitiesObj) ? device.capabilitiesObj : {};
-  return Object.fromEntries(readCapabilityIds(device).map((id) => {
-    const entry: unknown = entries[id];
-    if (!isUnknownRecord(entry)) return [id, null];
-    return [id, Object.fromEntries(CAPABILITY_FIELDS
-      .filter((field) => entry[field] !== undefined)
-      .map((field) => [field, toReportValue(entry[field], 1)]))];
-  }));
+  return Object.fromEntries(readCapabilityIds(device).map((id) => [id, describeCapability(entries[id], id)]));
 };
 
-// The settings that say how much power the device uses when Homey has no reading.
-const ENERGY_SETTINGS = ['load', 'energy_value_on', 'energy_value_off'] as const;
-
-const describeEnergySettings = (device: HomeyDeviceLike): { [key: string]: SupportReportValue } => {
-  const settings = isUnknownRecord(device.settings) ? device.settings : {};
-  return Object.fromEntries(ENERGY_SETTINGS
-    .filter((key) => settings[key] !== undefined)
-    .map((key) => [key, toReportValue(settings[key], 1)]));
+const describeSettings = (device: HomeyDeviceLike): SupportReportValue => {
+  if (device.settingsUnavailable) return { state: 'unavailable' };
+  if (Object.keys(device.settings).length === 0) return { state: 'none' };
+  return {
+    state: 'available',
+    values: {
+      ...readHomeyEnergyReportSettings(device.settings),
+      ...readDeviceIntegrationReportSettings(device),
+    },
+  };
 };
 
 const optionalText = (value: unknown): SupportReportValue => (typeof value === 'string' ? toReportValue(value) : null);
@@ -85,14 +104,7 @@ const describeFirmware = (device: HomeyDeviceLike): SupportReportSection['values
   return Object.keys(firmwareVersions).length === 0 ? {} : { firmwareVersions };
 };
 
-/** A device support request's account of one device: its name and what Homey reports about it. */
-export type HomeyDeviceSupportDescription = { name: string; section: SupportReportSection };
-
-/**
- * What a device support request carries about a device PELS does not list:
- * what Homey says the device is, which app provides it, and every capability
- * with its current value and range. That is what deciding support needs.
- */
+/** The selected Homey device's identity, capabilities and diagnostic settings. */
 export const describeHomeyDeviceForSupport = (device: HomeyDeviceLike): SupportReportSection => ({
   title: 'Homey device',
   values: {
@@ -104,7 +116,7 @@ export const describeHomeyDeviceForSupport = (device: HomeyDeviceLike): SupportR
     available: device.available,
     capabilities: describeCapabilities(device),
     ...describeFirmware(device),
-    energySettings: describeEnergySettings(device),
+    deviceSettings: describeSettings(device),
     energy: toReportValue(device.energyObj ?? device.energy ?? null, 1),
   },
 });
@@ -140,6 +152,10 @@ export const reportHomeyDevices = (
           ownerUri: device.ownerUri,
           driverId: device.driverId,
           available: device.available,
+          deviceSettings: describeSettings(device),
+          ...(device.capabilities.includes('target_temperature') ? {
+            targetTemperature: describeCapability(device.capabilitiesObj.target_temperature, 'target_temperature'),
+          } : {}),
           ...describeFirmware(device),
           ...(managed === undefined ? {} : { managed }),
           ...(configuration === undefined ? {} : { configuration }),
@@ -150,15 +166,3 @@ export const reportHomeyDevices = (
     },
   };
 };
-
-/**
- * One Homey device as a device support request describes it, listed by PELS
- * or not; `undefined` when Homey has no such device. A failed read rejects.
- */
-export async function readHomeyDeviceForSupport(
-  readDevices: () => Promise<HomeyDeviceLike[]>,
-  deviceId: string,
-): Promise<HomeyDeviceSupportDescription | undefined> {
-  const device = (await readDevices()).find((entry) => entry.id === deviceId);
-  return device ? { name: device.name, section: describeHomeyDeviceForSupport(device) } : undefined;
-}
