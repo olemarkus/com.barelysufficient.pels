@@ -7,6 +7,7 @@ import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 export const CHARGING_PHASE_RECORD_PREFIX = 'charging_phase_claim.';
 
 type SwitchHistory = { switchesMs: readonly number[] };
+type ClaimReadFailure = 'keys_unavailable' | 'record_unreadable';
 export type ChargingPhaseRecord = SwitchHistory & (
   | { kind: 'free' }
   | { kind: 'held'; originalForceSingle: boolean; claimedAtMs: number;
@@ -34,6 +35,7 @@ export class ChargingPhaseClaimStore {
   private readonly records = new Map<string, ChargingPhaseRecord>();
   private readonly persistenceFailures = new Set<string>();
   private readonly unreadable = new Set<string>();
+  private readonly heldCommandWarnings = new Map<string, ClaimReadFailure>();
   private loaded = false;
 
   constructor(private readonly settings: SettingsPort) {}
@@ -54,10 +56,29 @@ export class ChargingPhaseClaimStore {
       } catch { this.unreadable.add(id); }
     }
     this.loaded = true;
+    this.clearWarningsForReadableClaims();
     return true;
   }
 
+  private clearWarningsForReadableClaims(): void {
+    for (const id of this.heldCommandWarnings.keys()) {
+      if (!this.unreadable.has(id)) this.heldCommandWarnings.delete(id);
+    }
+  }
+
   canClaim(deviceId: string): boolean { return this.loaded && !this.unreadable.has(deviceId); }
+
+  /** Called by command dispatch, so a failed read alone does not generate a warning. */
+  holdsCommandForUnknownClaim(deviceId: string): boolean {
+    if (this.canClaim(deviceId)) return false;
+    const reason = this.loaded ? 'record_unreadable' : 'keys_unavailable';
+    if (this.heldCommandWarnings.get(deviceId) !== reason) {
+      this.heldCommandWarnings.set(deviceId, reason);
+      logger.warn({ event: 'charging_phase_command_held', deviceId, reason });
+    }
+    return true;
+  }
+
   read(deviceId: string): ChargingPhaseRecord | undefined { return this.records.get(deviceId); }
   entries(): IterableIterator<[string, ChargingPhaseRecord]> { return this.records.entries(); }
 

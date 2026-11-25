@@ -127,7 +127,7 @@ export class ChargingPhaseControlOwner implements ChargingPhaseOwner {
 
   public blocksIncrease(deviceId: string): boolean {
     this.refreshClaims();
-    if (!this.claims.canClaim(deviceId)) return true;
+    if (this.claims.holdsCommandForUnknownClaim(deviceId)) return true;
     return this.releasedCycle.get(deviceId) === this.cycle || this.pending.has(deviceId)
       || this.preparing.has(deviceId) || this.recovering.has(deviceId) || this.releaseAttempts.has(deviceId)
       || (this.claims.read(deviceId)?.kind === 'held'
