@@ -22,15 +22,16 @@ type HouseholdPlan = Extract<BatteryEnergyPlan, { status: 'planned' }>;
 type ExportMemo = { key: string; atMs: number; validUntilMs: number; selection: BatteryExportSelection };
 type HorizonRead = ContinuousBatteryHorizonRead;
 type ReadyHorizon = Extract<HorizonRead, { kind: 'ready' }>;
-type FleetBattery = { deviceId: string; config: ContinuousBatteryPlanConfig; input: ReadyHorizon };
-/** One battery's part of the fleet's inputs: what it planned from, or why it waits. */
+type ConfiguredBattery = { deviceId: string; config: ContinuousBatteryPlanConfig; exportUnsupported: boolean };
+type FleetBattery = ConfiguredBattery & { input: ReadyHorizon };
 /**
  * A waiting battery keeps its export policy in the inputs: its limit still
- * counts toward the fleet's shared one, so a changed limit replans.
+ * counts toward the fleet's shared one while the control can sell or is unresolved.
  */
-type BatteryInputs =
-  | { deviceId: string; inputs: PlanInputs }
-  | { deviceId: string; waiting: string; exportPolicy: string };
+type BatteryInputs = { deviceId: string; exportUnsupported: boolean } & (
+  | { inputs: PlanInputs }
+  | { waiting: string; exportPolicy: string }
+);
 /**
  * Every enabled battery's read, made together and kept together: a battery
  * plans on what the ones before it left, so no read outlives the fleet's.
@@ -125,7 +126,9 @@ const exportEconomicsKey = (input: ReadyHorizon, policy: BatteryPriceExportPolic
 const sameInputs = (made: readonly BatteryInputs[], current: readonly BatteryInputs[]): boolean => (
   made.length === current.length && made.every((battery, index) => {
     const now = current[index];
-    if (now === undefined || now.deviceId !== battery.deviceId) return false;
+    if (now === undefined || now.deviceId !== battery.deviceId || now.exportUnsupported !== battery.exportUnsupported) {
+      return false;
+    }
     if ('waiting' in battery || 'waiting' in now) {
       return 'waiting' in battery && 'waiting' in now && battery.waiting === now.waiting
         && battery.exportPolicy === now.exportPolicy;
@@ -249,16 +252,23 @@ export class ContinuousBatteryPlanService {
   private resolveRead(deviceId: string): ContinuousBatteryPlanRead {
     const accepted = this.acceptedSettings();
     if (accepted.kind === 'unavailable') {
-      return { status: 'waiting', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, reason: 'settings_unavailable' };
+      return {
+        status: 'waiting', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, reason: 'settings_unavailable',
+        ...this.exportSupportFields(deviceId),
+      };
     }
     const storedConfig = Object.hasOwn(accepted.configs, deviceId)
       ? accepted.configs[deviceId]
       : undefined;
     const config = storedConfig ?? DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG;
-    if (!config.enabled) return { status: 'disabled', config };
+    if (!config.enabled) return { status: 'disabled', config, ...this.exportSupportFields(deviceId) };
     const read = this.fleetReads(accepted.configs).get(deviceId);
     if (read === undefined) throw new Error('Every enabled battery has a fleet read');
     return read;
+  }
+
+  private exportSupportFields(deviceId: string): { exportUnsupported?: true } {
+    return this.source.isStoredEnergyExportUnsupported(deviceId) ? { exportUnsupported: true } : {};
   }
 
   /**
@@ -271,19 +281,19 @@ export class ContinuousBatteryPlanService {
   private fleetReads(configs: ContinuousBatteryPlanConfigs): ReadonlyMap<string, ContinuousBatteryPlanRead> {
     const enabledIds = Object.keys(configs).filter(id => configs[id]?.enabled === true);
     const order = this.source.orderByPriority(enabledIds);
-    const batteries = order.map((deviceId) => {
+    const batteries = order.map((deviceId): ConfiguredBattery => {
       const config = configs[deviceId];
       if (config === undefined) throw new Error('An ordered battery has a config');
-      return { deviceId, config };
+      return { deviceId, config, exportUnsupported: this.source.isStoredEnergyExportUnsupported(deviceId) };
     });
     const nowMs = this.source.getNowMs();
     const horizons = this.source.readHorizons(nowMs, batteries);
-    const inputs: BatteryInputs[] = batteries.map(({ deviceId, config }) => {
+    const inputs: BatteryInputs[] = batteries.map(({ deviceId, config, exportUnsupported }) => {
       const horizon = horizons.get(deviceId);
       if (horizon === undefined) throw new Error('Every enabled battery has a horizon read');
       return horizon.kind === 'waiting'
-        ? { deviceId, waiting: horizon.reason, exportPolicy: JSON.stringify(config.exportPolicy) }
-        : { deviceId, inputs: planInputs(horizon, config) };
+        ? { deviceId, exportUnsupported, waiting: horizon.reason, exportPolicy: JSON.stringify(config.exportPolicy) }
+        : { deviceId, exportUnsupported, inputs: planInputs(horizon, config) };
     });
     const previous = this.fleet;
     if (previous !== undefined && sameInputs(previous.inputs, inputs) && nowMs >= previous.atMs
@@ -308,15 +318,18 @@ export class ContinuousBatteryPlanService {
    * control handles it, rather than leaving that battery unplanned.
    */
   private planFleet(
-    batteries: readonly { deviceId: string; config: ContinuousBatteryPlanConfig }[],
+    batteries: readonly ConfiguredBattery[],
     horizons: ReadonlyMap<string, HorizonRead>,
     nowMs: number,
   ): ReadonlyMap<string, ContinuousBatteryPlanRead> {
     const reads = new Map<string, ContinuousBatteryPlanRead>();
-    const ready = batteries.flatMap(({ deviceId, config }): FleetBattery[] => {
+    const ready = batteries.flatMap((battery): FleetBattery[] => {
+      const { deviceId, config, exportUnsupported } = battery;
       const horizon = horizons.get(deviceId);
-      if (horizon?.kind === 'ready') return [{ deviceId, config, input: horizon }];
-      if (horizon?.kind === 'waiting') reads.set(deviceId, { status: 'waiting', config, reason: horizon.reason });
+      if (horizon?.kind === 'ready') return [{ ...battery, input: horizon }];
+      if (horizon?.kind === 'waiting') reads.set(deviceId, {
+        status: 'waiting', config, reason: horizon.reason, ...(exportUnsupported ? { exportUnsupported: true } : {}),
+      });
       return [];
     });
     const supplyKW = (fleet: readonly FleetBattery[]): number => (
@@ -324,16 +337,16 @@ export class ContinuousBatteryPlanService {
     );
     // The most import any battery may have left above the limit for others.
     const deferrableKW = supplyKW(ready.slice(1));
-    // Every battery allowed to sell counts, ready or not: the limit is the
-    // Main meter's, and one battery waiting does not loosen it.
-    const ceilings = batteries.flatMap(({ config }) => (
-      config.exportPolicy.kind === 'price_export' ? [config.exportPolicy.netExportCeilingKW] : []
+    // A waiting battery that could sell still holds its ceiling at the Main meter.
+    const ceilings = batteries.flatMap(({ config, exportUnsupported }) => (
+      !exportUnsupported && config.exportPolicy.kind === 'price_export' ? [config.exportPolicy.netExportCeilingKW] : []
     ));
     const exportTerms = new FleetExportTerms(ceilings.length === 0 ? 0 : Math.min(...ceilings));
     const periodCount = ready[0]?.input.horizon.periods.length ?? 0;
     const otherStorageKWh = new Array<number>(periodCount).fill(0);
     const otherChargeKW = new Array<number>(periodCount).fill(0);
-    ready.forEach(({ deviceId, config, input }, index) => {
+    ready.forEach((battery, index) => {
+      const { deviceId, config, input, exportUnsupported } = battery;
       let following = followingHorizon(input, otherStorageKWh, otherChargeKW, supplyKW(ready.slice(index + 1)));
       let household = planBatteryEnergy(following.horizon);
       if (household.status !== 'planned' && index > 0) {
@@ -341,10 +354,13 @@ export class ContinuousBatteryPlanService {
         household = planBatteryEnergy(following.horizon);
       }
       if (household.status !== 'planned') {
-        reads.set(deviceId, { status: 'waiting', config, reason: 'horizon_infeasible' });
+        reads.set(deviceId, {
+          status: 'waiting', config, reason: 'horizon_infeasible',
+          ...(exportUnsupported ? { exportUnsupported: true } : {}),
+        });
         return;
       }
-      const read = this.plannedRead(deviceId, following, config, household, nowMs, exportTerms);
+      const read = this.plannedRead({ ...battery, input: following }, household, nowMs, exportTerms);
       reads.set(deviceId, read);
       read.plan.periods.forEach((period, periodIndex) => {
         const energyKWh = period.batteryPowerKW * period.durationMs / 3_600_000;
@@ -361,9 +377,7 @@ export class ContinuousBatteryPlanService {
    * authorized selling gets the complete-plan comparison instead.
    */
   private plannedRead(
-    deviceId: string,
-    input: ReadyHorizon,
-    config: ContinuousBatteryPlanConfig,
+    { deviceId, input, config, exportUnsupported }: FleetBattery,
     household: HouseholdPlan,
     nowMs: number,
     exportTerms: FleetExportTerms,
@@ -372,6 +386,10 @@ export class ContinuousBatteryPlanService {
       status: 'planned' as const, generatedAtMs: nowMs, priceUnit: input.priceUnit,
       unpricedSolarExport: input.exportPricing === 'unpriced_solar',
     };
+    if (exportUnsupported) {
+      this.exportMemos.delete(deviceId);
+      return { ...common, config, plan: household, exportUnsupported: true };
+    }
     const policy = config.exportPolicy;
     if (policy.kind === 'household_only') {
       this.exportMemos.delete(deviceId);

@@ -82,6 +82,7 @@ const buildLane = () => {
     wasTakenOver: vi.fn(() => false),
     isWatchOnly: vi.fn(() => false),
     readControlCapability: vi.fn(() => 'drivable' as const),
+    isStoredEnergyExportUnsupported: vi.fn(() => false),
     readDelivery: vi.fn(() => ({ kind: 'following' as const })),
     usesHomeyApiKey: vi.fn(() => false),
     readLegacyRecovery: vi.fn(() => undefined),

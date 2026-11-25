@@ -66,12 +66,15 @@ type PlannedBatteryRead = {
  * contradicts the policy cannot be expressed.
  */
 export type PlannedContinuousBatteryRead =
-  | PlannedBatteryRead & { config: HouseholdOnlyBatteryPlanConfig }
-  | PlannedBatteryRead & { config: PriceExportBatteryPlanConfig; exportDecision: ContinuousBatteryExportDecision };
+  | PlannedBatteryRead & { config: HouseholdOnlyBatteryPlanConfig; exportUnsupported?: never }
+  | PlannedBatteryRead & { config: PriceExportBatteryPlanConfig; exportUnsupported?: never;
+    exportDecision: ContinuousBatteryExportDecision }
+  | PlannedBatteryRead & { config: ContinuousBatteryPlanConfig; exportUnsupported: true };
 
 export type ContinuousBatteryPlanRead =
-  | { status: 'disabled'; config: ContinuousBatteryPlanConfig }
-  | { status: 'waiting'; config: ContinuousBatteryPlanConfig; reason: ContinuousBatteryPlanWaitReason }
+  | { status: 'disabled'; config: ContinuousBatteryPlanConfig; exportUnsupported?: true }
+  | { status: 'waiting'; config: ContinuousBatteryPlanConfig; reason: ContinuousBatteryPlanWaitReason;
+    exportUnsupported?: true }
   | PlannedContinuousBatteryRead;
 
 /**

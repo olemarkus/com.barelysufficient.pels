@@ -435,6 +435,8 @@ export type BatteryControlOwner = {
    * offering a battery's Power-limit control.
    */
   readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery';
+  /** A resolved control surface that cannot discharge stored energy beyond household import. */
+  isStoredEnergyExportUnsupported(deviceId: string): boolean;
   /**
    * Whether the battery follows PELS's setpoints, as verification judged it
    * (`HomeBatteryDelivery`), for its card.

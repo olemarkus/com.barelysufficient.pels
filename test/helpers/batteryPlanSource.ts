@@ -7,12 +7,14 @@ import type { ContinuousBatteryHorizonRead, ContinuousBatteryPlanSource } from '
  */
 export type PerBatterySourceInput = {
   getNowMs: () => number;
+  isStoredEnergyExportUnsupported?: (deviceId: string) => boolean;
   readHorizon: (deviceId: string, config: ContinuousBatteryPlanConfig) => ContinuousBatteryHorizonRead;
   order?: readonly string[];
 };
 
 export const perBatterySource = (input: PerBatterySourceInput): ContinuousBatteryPlanSource => ({
   getNowMs: input.getNowMs,
+  isStoredEnergyExportUnsupported: input.isStoredEnergyExportUnsupported ?? (() => false),
   orderByPriority: (deviceIds) => {
     const order = input.order ?? [];
     const rank = (id: string): number => (order.includes(id) ? order.indexOf(id) : order.length);

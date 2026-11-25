@@ -30,6 +30,8 @@ export type ContinuousBatteryHorizonRead =
 
 export type ContinuousBatteryPlanSource = {
   getNowMs(): number;
+  /** A hardware fact independent of whether a usable horizon can be read. */
+  isStoredEnergyExportUnsupported(deviceId: string): boolean;
   /** These batteries in the owner's priority order, highest priority first. */
   orderByPriority(deviceIds: readonly string[]): readonly string[];
   /**

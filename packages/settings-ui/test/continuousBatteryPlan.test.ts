@@ -390,6 +390,28 @@ test('shows no selling line while selling is off', async () => {
   expect(preview).toContain('Charge from grid');
 });
 
+test.each(['planned', 'waiting'] as const)('hides unsupported selling and preserves the saved policy (%s)', async (status) => {
+  const saved = { ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW: 3 } };
+  callApi.mockResolvedValue(status === 'planned'
+    ? { ...read, config: saved, exportUnsupported: true }
+    : { status, config: saved, exportUnsupported: true, reason: 'battery_unavailable' });
+  getSettingFresh.mockResolvedValue({ battery: saved });
+
+  await openBattery();
+  expect(document.querySelector('[aria-label="Sell stored energy when profitable"]')).toBeNull();
+  expect(field('Export limit at your meter (kW)')).toBeUndefined();
+  expect(document.body.textContent).not.toContain('PELS compares selling');
+  expect(document.body.textContent).not.toContain('Selling is planned');
+  await act(async () => {
+    field('Minimum reserve (%)').value = '35';
+    field('Minimum reserve (%)').dispatchEvent(new Event('input'));
+  });
+  await act(async () => button('Save battery plan').click());
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', {
+    battery: { ...saved, minimumReservePercent: 35 },
+  }));
+});
+
 test('names a stricter export limit another battery set, and nothing otherwise', () => {
   const selling = { ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW: 5 } };
   expect(batteryPlanSharedLimitLine({ kind: 'selling', estimatedSavings: 1, netExportCeilingKW: 2 }, selling))

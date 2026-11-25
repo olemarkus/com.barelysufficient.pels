@@ -201,10 +201,11 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     await home.advance(12);
     // The meter pickers offer the P1 alone: the group battery is no meter.
     expect(await api.homey_energy_meters({ homey: mockHomeyInstance as never })).toEqual([{ id: P1, name: 'P1 meter' }]);
-    const devices = await listedDevices();
+    const { devices, continuousBatteryPlans } = await api.ui_devices({ homey: mockHomeyInstance as never });
     const batteries = devices.filter((device) => device.batteryControl !== 'not_battery');
     expect(batteries.map((device) => device.id)).toEqual([GROUP]);
     expect(batteries[0]).toMatchObject({ name: 'P1 meter batteries', batteryControl: 'drivable' });
+    expect(continuousBatteryPlans[GROUP]).toMatchObject({ status: 'disabled', exportUnsupported: true });
     expect(devices.some((device) => device.id === 'battery-1')).toBe(false);
     // In its own mode the group already holds the P1 at zero, so it takes the
     // export by itself: PELS has no need to claim it, and never grid-charges it.
