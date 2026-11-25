@@ -29,7 +29,8 @@ function describeGuidedSetup(entry: DevicePowerSetupEntry, draft: SetupDraft): s
   const control = switchLabel ? `PELS can turn off ${switchLabel}.` : '';
   if (draft.lastResort && !socket) {
     const watts = Number(draft.maximum).toLocaleString();
-    return [`Last-resort control at up to ${watts} W.`, control].filter(Boolean).join(' ');
+    const cut = `PELS can turn off ${switchLabel ?? 'this device'} as a last resort.`;
+    return `${cut} Resuming requires room for ${watts} W.`;
   }
   if (draft.source && !socket) return 'The selected metering socket is unavailable.';
   const measurement = socket ? `PELS measures power using ${formatDisplayDeviceName(socket.name)}.`
@@ -44,7 +45,7 @@ export function describeSetupReadbackError(submitted: SetupDraft, accepted?: Set
   if (accepted) {
     if (submitted.switchId !== accepted.switchId) field = 'the on/off control';
     else if (submitted.source !== accepted.source) field = 'the power source';
-    else if (submitted.maximum !== accepted.maximum) field = 'the maximum power';
+    else if (submitted.maximum !== accepted.maximum) field = 'the maximum power draw';
   }
   return `Could not confirm ${field}. Try again or go back to check your choices.`;
 }

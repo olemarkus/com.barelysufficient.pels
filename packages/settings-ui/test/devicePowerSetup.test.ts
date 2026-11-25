@@ -2,7 +2,7 @@ import type { MdDialog } from '@material/web/dialog/dialog.js';
 import type { MdFilledSelect } from '@material/web/select/filled-select.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DevicePowerSetupEntry } from '../../contracts/src/settingsUi/devices.ts';
-import { HOMEY_ENERGY_SETUP_REASON } from '../../shared-domain/src/homeyEnergySetup.ts';
+import { HOMEY_ENERGY_SETUP_DOCS_URL } from '../../shared-domain/src/homeyEnergySetup.ts';
 import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
   acceptDevicePowerSetup, openGuidedDeviceSetup, readLastResortSetup,
@@ -210,14 +210,37 @@ describe('Guided device setup', () => {
     expect(manage.mock.calls).toEqual([['second', false], ['spa', true]]);
   });
 
-  it('offers Homey Energy as another source of power information for a supported relay', () => {
-    const { actions } = setup();
+  it('shows both unmetered paths until the user picks a meter or last resort', () => {
+    const { actions, save } = setup();
+    const homeyEnergy = query('homey-energy');
+    const lastResort = query('last-resort');
+    const toggle = query<HTMLElement & { selected: boolean }>('last-resort-toggle');
+    expect(homeyEnergy.hidden).toBe(true);
+
     actions.offersHomeyEnergy.mockReturnValue(true);
     renderDevicePowerSetup(actions);
     expect(query('help').textContent).toContain('Choose a metering socket');
-    expect(query('help').textContent).toContain(HOMEY_ENERGY_SETUP_REASON);
+    expect(homeyEnergy.hidden).toBe(false);
+    expect(homeyEnergy.textContent).toContain('only if the draw stays steady');
+    expect(homeyEnergy.querySelector('a')?.href).toBe(HOMEY_ENERGY_SETUP_DOCS_URL);
+    expect(lastResort.hidden).toBe(false);
+    expect(toggle.selected).toBe(false);
+
+    select('binary', 'onoff.heater');
+    toggle.selected = true;
+    toggle.dispatchEvent(new Event('change'));
+    expect(homeyEnergy.hidden).toBe(true);
+    expect(query('maximum').closest('.md-field-row')).toHaveProperty('hidden', false);
+    expect(query('last-resort-help').textContent).toContain('household meter stops reporting');
+    expect(save.disabled).toBe(true);
+    expect(write).not.toHaveBeenCalled();
+
+    toggle.selected = false;
+    toggle.dispatchEvent(new Event('change'));
+    expect(homeyEnergy.hidden).toBe(false);
     select('source', 'socket');
-    expect(query('help').textContent).not.toContain('Energy used when on');
+    expect(homeyEnergy.hidden).toBe(true);
+    expect(lastResort.hidden).toBe(true);
   });
 
   it('shows zero watts from a device with its own meter when reviewing setup', () => {

@@ -70,6 +70,23 @@ describe('external device power', () => {
     }));
   });
 
+  it('uses the same Homey Energy reading as the picker for relays outside the runtime roster', () => {
+    const { inventory, external } = setup();
+    const devices = [
+      { ...target, id: 'homey-energy-zero', energyObj: { W: 0 } },
+      { ...target, id: 'unmetered' },
+      { ...target, energyObj: { W: 0 } },
+    ];
+    inventory.replaceLatestRawDevices(devices, []);
+    expect(Object.fromEntries(external.readSetup().devices.map(({ id, lastResortAvailable }) => (
+      [id, lastResortAvailable]
+    )))).toEqual({
+      'homey-energy-zero': false,
+      unmetered: true,
+      heater: true, // An external meter is assigned, so Homey's reading is ignored.
+    });
+  });
+
   it('reports the own reading of a device for setup, and none for a device without one', () => {
     const { inventory, external } = setup();
     const source = socket(1234.4);

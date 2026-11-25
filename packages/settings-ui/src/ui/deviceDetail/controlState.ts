@@ -1,3 +1,4 @@
+import { isLastResortConfigured, offersLastResortWithoutMeter } from '../devicePowerSetup.ts';
 import { supportsTemperatureAdjustments, supportsPowerLimiting } from './temperaturePolicy.ts';
 import {
   requiresNativeWiringForActivation,
@@ -12,6 +13,11 @@ import {
   state,
 } from '../state.ts';
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
+
+export function usesLastResortControls(device: SettingsUiDeviceDetailItem | null): boolean {
+  return device !== null && (isLastResortConfigured(device.id)
+    || (!supportsPowerLimiting(device) && offersLastResortWithoutMeter(device.id)));
+}
 
 export const resolveDeviceDetailControlState = (
   device: SettingsUiDeviceDetailItem | null,

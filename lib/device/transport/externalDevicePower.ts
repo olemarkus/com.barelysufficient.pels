@@ -5,7 +5,7 @@ import { hasObservedMeasuredPower, normalizeMeasuredPowerKw }
 import type { DeviceControlSettings } from '../deviceControlSettings';
 import { readMeasurePowerCapability } from '../measuredPowerReader';
 import { toCapabilityTimestampMs } from '../managerControl';
-import { isHomeBatteryDevice, isSolarPanelDevice } from '../managerEnergy';
+import { isHomeBatteryDevice, isSolarPanelDevice, readHomeyEnergyDeviceWatts } from '../managerEnergy';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { resolveZoneId } from './managerHelpers';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
@@ -70,11 +70,12 @@ export function withExternalPowerCapability(
 
 /** Setup can inspect accepted inventory even for a device outside the runtime roster. */
 function hasUsableDevicePower(
-  device: HomeyDeviceLike, snapshot: TransportDeviceSnapshot | undefined,
+  device: HomeyDeviceLike, snapshot: TransportDeviceSnapshot | undefined, usesExternalPower: boolean,
 ): boolean {
   if (snapshot) return hasObservedMeasuredPower(snapshot);
   const reading = readMeasurePowerCapability(device.capabilities, device.capabilitiesObj);
-  return reading !== undefined && normalizeMeasuredPowerKw(reading.watts / 1000) !== null;
+  const watts = reading?.watts ?? (usesExternalPower ? null : readHomeyEnergyDeviceWatts(device));
+  return watts !== null && normalizeMeasuredPowerKw(watts / 1000) !== null;
 }
 
 /** The device's own reading, before any socket replaces it. */
@@ -219,7 +220,9 @@ export class ExternalDevicePower {
     return supportsBinarySwitchSetup(device) && !device.capabilities.includes('target_temperature')
       && !this.inventory.binarySwitches.settings?.getDeviceControlProfile(device.id)
       && (availableBinarySwitches(device).length > 0 || hasAcceptedBinarySwitch(device, 'onoff'))
-      && !hasUsableDevicePower(device, this.inventory.getSnapshotByDeviceId(device.id));
+      && !hasUsableDevicePower(
+        device, this.inventory.getSnapshotByDeviceId(device.id), this.sourceForDevice(device.id) !== undefined,
+      );
   }
 
   private sourceState(

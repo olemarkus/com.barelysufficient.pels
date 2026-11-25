@@ -119,17 +119,15 @@ describe('device detail power when running', () => {
   });
 
   it('prefills the resolved figure in watts and names the source answering now', async () => {
-    await openDetailFor(buildDevice({ expectedPowerKw: 1.38, expectedPowerSource: 'default' }));
+    await openDetailFor(buildDevice({ expectedPowerKw: 1.38, expectedPowerSource: 'default', measuredPowerKw: 0.8 }));
 
     expect(row().hidden).toBe(false);
     expect(field().value).toBe('1380');
-    // The `default` rung is the reported bug's signature: it must read as an
-    // invitation to correct the figure, not as a settled fact.
     expect(sourceLine().hidden).toBe(false);
-    expect(sourceLine().textContent).toContain('no reading for this device yet');
+    expect(sourceLine().textContent).toBe('PELS is using a rough estimate of the running draw.');
   });
 
-  it('keeps Power when running available only when the last-resort configuration is dormant', async () => {
+  it('hides Power when running while last-resort control remains configured', async () => {
     const { acceptDevicePowerSetup } = await import('../src/ui/devicePowerSetup.ts');
     const { renderExpectedPowerField } = await import('../src/ui/deviceDetail/expectedPower.ts');
     const relay = buildDevice();
@@ -141,7 +139,11 @@ describe('device detail power when running', () => {
     renderExpectedPowerField(relay);
     expect(row().hidden).toBe(true);
 
-    acceptDevicePowerSetup({ devices: [{ ...configuration, binarySwitchId: 'onoff.unavailable' }] });
+    acceptDevicePowerSetup({ devices: [{ ...configuration, lastResortAvailable: false }] });
+    renderExpectedPowerField(relay);
+    expect(row().hidden).toBe(true);
+
+    acceptDevicePowerSetup({ devices: [{ ...configuration, lastResortMaximumW: undefined }] });
     renderExpectedPowerField(relay);
     expect(row().hidden).toBe(false);
     expect(field().value).toBe('1000');

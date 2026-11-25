@@ -1018,8 +1018,8 @@ device** Flow card writes. The field is prefilled with the figure PELS is using
 RIGHT NOW, whichever rung of the expected-power ladder produced it
 (`lib/device/devicePowerEstimate.ts`), so typing over it is an edit of a visible
 number rather than a blind entry. Emptying it returns the device to automatic.
-Hidden for a stepped load, which is sized per configured step — the same refusal
-the runtime and the Flow card make.
+Stepped loads use configured power per step. Saved last-resort setups use
+**Maximum power draw**. Both hide this field.
 
 Under it sits **one sentence naming the source answering now** — never a history.
 No timestamps, no "changed from X to Y", no confidence wording: what makes the
@@ -1033,13 +1033,12 @@ Source of truth: `expectedPowerSourceLine` in
 | `load-setting` | `From this device's own settings in Homey.` |
 | `measured-peak` | `PELS measured this while the device was running.` |
 | `homey-energy` | `From Homey's energy information for this device.` |
-| `default` | `PELS has no reading for this device yet, so it is using a rough estimate. Enter the figure if you know it.` |
+| `default` | `PELS is using a rough estimate of the running draw.` |
 
-The `default` row is the one that matters: it is the reported bug's signature (a
-device sized against a figure PELS invented) and must read as an invitation to
-correct it, not as a settled fact. Reading `expectedPowerSource` to say where the
-number came from is its one sanctioned use — no surface may branch on it to
-decide behaviour.
+The default source line describes the estimate. The field hint invites the
+owner to enter watts only when the draw stays steady while on and to use the
+automatic estimate when it varies. Use
+`expectedPowerSource` only to say where the number came from.
 
 ### Device setup on the device page and in Needs setup
 
@@ -1052,19 +1051,24 @@ own **Save**, which stays off until something changes:
   metering socket.
 - **Setup**, after Control model: **On/off control** (`Default` or the device's
   other switch), only for a device that has another switch.
-- **Power limiting**, after Power-limit control: **Turn off as a last resort**
-  with its **Maximum power**, only for an on/off device without a power reading.
+- **Power limiting**: **Turn off as a last resort** for an on/off device without
+  a power reading. **Maximum power draw** sets the highest total draw behind
+  the switch and is used to make room before resuming. The card shows the
+  last-resort status. Ordinary controls hide for saved last-resort setups and
+  eligible relays that still need a power reading for ordinary limiting.
 
 Every select names its default choice; none renders empty. Hints name the
 section, for example `Metering socket unavailable. Choose another power source
 under External sensors.` or `Review last-resort control under Power limiting.`
-For an on/off device without power information, the Managed hint adds what it
-can use, such as `Or choose a metering socket under External sensors, or turn on
-last-resort control under Power limiting.`
+For an on/off device without power information, the Managed hint points to a
+metering socket when available. It recommends last-resort setup for variable
+draw without a meter, or Homey Energy for a steady draw while the device is on.
 
 In **Devices** and during first-run setup, **Needs setup** suggests devices
 with setup choices. Use **Find another device** to search by name, then select
-**Set up**. After choosing the power source and on/off control, select
+**Set up**. For unmetered relays, offer **Homey Energy** for a steady draw
+and **Turn off as a last resort** for a variable draw without a meter. After
+choosing the power source and on/off control, select
 **Review setup**, then **Add to PELS**. If the socket is already managed,
 **Use only as a meter** turns off its management so it can measure the device.
 If the meter has yet to report, select **Check meter** after its first reading.

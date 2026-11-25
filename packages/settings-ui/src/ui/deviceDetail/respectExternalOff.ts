@@ -1,7 +1,8 @@
 import { state, hasActiveDeadlineObjective } from '../state.ts';
 import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
-import { resolveDeviceDetailControlState } from './controlState.ts';
+import { readLastResortSetup } from '../devicePowerSetup.ts';
+import { resolveDeviceDetailControlState, usesLastResortControls } from './controlState.ts';
 import { showToast } from '../toast.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
@@ -12,11 +13,8 @@ import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
  *
  * Shown only for devices PELS can actually switch: the runtime gate is
  * binary-capability-only, so offering it for a temperature-only device would be
- * a switch that silently does nothing. Shown only while Power-limit control is
- * on, since the setting only has meaning when PELS controls whether the device
- * runs: it sits under that switch as its sub-option, and with limiting off there
- * is nothing for the owner to decide here (owner ruling 2026-10-10). Disabled,
- * with a visible "why", while Managed is off.
+ * a switch that silently does nothing. Ordinary power limiting and last-resort
+ * control both honor this hold. An existing opt-in can always be removed.
  *
  * THE GATE IS NOT ABOUT DETECTION, and it does not make the hold safe with Flows.
  * Detection is plan-independent (`setup/externalOffHoldDetection.ts`), so an
@@ -64,10 +62,6 @@ const readStrictBooleanMap = (value: unknown): Record<string, boolean> | null =>
 
 const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjective(deviceId);
 
-const isPowerLimitControlOn = (deviceId: string): boolean => (
-  state.controllableMap[deviceId] === true
-);
-
 /**
  * Power-limit-off is the more fundamental blocker, so its hint wins when both
  * apply. The smart-task hint is a WARNING, not a blocker: an explicit off action
@@ -78,8 +72,10 @@ const applyRespectExternalOffDisabledState = (
   deviceId: string,
   isManaged: boolean,
   optedIn: boolean,
+  canSwitch: boolean,
+  lastResort: boolean,
 ): void => {
-  const powerLimitOff = !isPowerLimitControlOn(deviceId);
+  const powerLimitOff = !canSwitch;
   if (toggleEl) {
     // An already-opted-in device stays TOGGLEABLE whatever the current blockers.
     // Otherwise a device that stops qualifying — power metadata disappears,
@@ -90,30 +86,26 @@ const applyRespectExternalOffDisabledState = (
   }
   if (powerLimitHintEl) {
     powerLimitHintEl.hidden = !powerLimitOff || !isManaged;
+    powerLimitHintEl.textContent = lastResort
+      ? 'Set up last-resort control or add a power reading to use this setting.'
+      : 'Turn on Power-limit control above first. This setting applies when PELS controls whether the device runs.';
   }
   if (smartTaskHintEl) {
-    smartTaskHintEl.hidden = !hasActiveSmartTask(deviceId);
+    smartTaskHintEl.hidden = lastResort || !hasActiveSmartTask(deviceId);
   }
 };
 
 /**
- * Sync the row for the open device. Shown when PELS has a binary handle for it
- * and Power-limit control is on, OR when it is already opted in — the escape
- * hatch, so the opt-OUT stays reachable even if the device stops qualifying
- * later. An opted-in device with Power-limit control off keeps the row with the
- * power-limit hint saying why the setting does nothing right now.
- *
- * The gate is the control capability, NOT `supportsPower`: a temperature-only or
- * step-only device reports power metadata while having no binary handle, and the
- * runtime detection rejects exactly those (`isBinaryPlanDevice`). Offering the
- * switch there would persist a setting that can never take effect and quietly
- * promise something PELS does not do.
+ * An on/off switch and an ordinary or last-resort grant let PELS act on this
+ * preference. The row stays visible after opt-in so the owner can clear it
+ * if the device stops qualifying.
  */
-const shouldShowRow = (
-  deviceId: string,
-  device: SettingsUiDeviceDetailItem | null,
-  optedIn: boolean,
-): boolean => (device?.binaryControllable === true && isPowerLimitControlOn(deviceId)) || optedIn;
+const hasSwitchingPermission = (device: SettingsUiDeviceDetailItem | null, lastResort: boolean): boolean => {
+  if (device?.binaryControllable !== true) return false;
+  return lastResort
+    ? readLastResortSetup(device.id)?.maximumW !== undefined
+    : state.controllableMap[device.id] === true;
+};
 
 export const syncRespectExternalOffRow = (
   deviceId: string | null,
@@ -122,7 +114,9 @@ export const syncRespectExternalOffRow = (
   if (!rowEl || !toggleEl) return;
   const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
   const optedIn = deviceId !== null && state.respectExternalOffMap[deviceId] === true;
-  const showRow = deviceId !== null && shouldShowRow(deviceId, device, optedIn);
+  const lastResort = usesLastResortControls(device);
+  const canSwitch = hasSwitchingPermission(device, lastResort);
+  const showRow = deviceId !== null && (canSwitch || optedIn);
   rowEl.hidden = !showRow;
   if (!showRow || deviceId === null) {
     toggleEl.selected = false;
@@ -145,7 +139,7 @@ export const syncRespectExternalOffRow = (
     // that this switch does not stop PELS setting the temperature.
     temperatureHintEl.hidden = !supportsTemperatureDevice(device);
   }
-  applyRespectExternalOffDisabledState(deviceId, controlState.isManaged, optedIn);
+  applyRespectExternalOffDisabledState(deviceId, controlState.isManaged, optedIn, canSwitch, lastResort);
 };
 
 type RespectExternalOffHandlerDeps = {
