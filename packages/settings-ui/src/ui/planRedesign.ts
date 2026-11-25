@@ -333,7 +333,7 @@ const commitPlan = (plan: PlanSnapshot | null, scope: OverviewScope) => {
  */
 export const renderPlan = (plan: PlanSnapshot | null) => {
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
-  // Main's plan feeds the (Main-only) no-readings banner its consequence line:
+  // Main's plan feeds its no-readings warning the consequence line:
   // an unmeasured cycle draws no hero, so the banner is where the page says
   // why every managed device below reads `Limited`.
   setPlanUnmeasured(plan?.meta?.powerIsMeasured === false);

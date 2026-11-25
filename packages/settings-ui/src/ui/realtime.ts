@@ -16,6 +16,7 @@ import {
 } from '../../../contracts/src/settingsUi/paths.ts';
 import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import { updateStaleDataStatusFromPowerPayload } from './capacity.ts';
+import { refreshAreaPowerReadingsBanner } from './powerReadingsBanner.ts';
 import {
   getHomeyClient,
   invalidateApiCache,
@@ -241,6 +242,7 @@ export const startStaleDataRefreshInterval = () => {
   setInterval(() => {
     invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     refreshStaleDataStatus('staleDataInterval');
+    void refreshAreaPowerReadingsBanner();
     // Shares the status read above rather than sending its own.
     refreshOverviewOnStatusPoll('periodicRefresh');
     refreshCurrentPriceIfVisible();

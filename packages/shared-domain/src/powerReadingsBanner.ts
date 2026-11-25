@@ -109,17 +109,23 @@ export type PowerReadingsBannerInput = {
   planUnmeasured: boolean;
 };
 
+const resolveReadingsLead = (readings: PowerReadingsFact, nowMs: number): string | null => {
+  if (readings.state === 'never') return NONE_YET_LEAD;
+  const elapsed = nowMs - readings.lastPowerUpdateMs;
+  return elapsed <= POWER_SAMPLE_STALE_THRESHOLD_MS ? null : `Last new power reading ${readingAge(elapsed)} ago.`;
+};
+
 /** `null` = fresh readings; the banner hides. */
 export const resolvePowerReadingsBannerContent = (
   input: PowerReadingsBannerInput,
 ): PowerReadingsBannerContent | null => {
   const { readings, source, meterChosen } = input;
+  const lead = resolveReadingsLead(readings, input.nowMs);
+  if (lead === null) return null;
   if (readings.state === 'never') {
     const hint = resolveHint({ source, meterChosen, neverReceived: true });
-    return { text: `${NONE_YET_LEAD} ${hint}`, actionLabel: 'Check power source' };
+    return { text: `${lead} ${hint}`, actionLabel: 'Check power source' };
   }
-  const elapsed = input.nowMs - readings.lastPowerUpdateMs;
-  if (elapsed <= POWER_SAMPLE_STALE_THRESHOLD_MS) return null;
   const consequence = input.planUnmeasured
     ? 'PELS plans to keep managed devices limited until a new reading arrives.'
     : 'PELS uses the last reading for its power plan.';
@@ -127,7 +133,20 @@ export const resolvePowerReadingsBannerContent = (
     ? `Check that ${input.meterName} is available in Homey Energy and its reading is changing.`
     : resolveHint({ source, meterChosen, neverReceived: false });
   return {
-    text: `Last new power reading ${readingAge(elapsed)} ago. ${consequence} ${hint}`,
+    text: `${lead} ${consequence} ${hint}`,
+    actionLabel: 'Check meter',
+  };
+};
+
+/** The area's readings describe its own meter, independently of Main's setup and plan. */
+export const resolveAreaPowerReadingsBannerContent = (
+  readings: PowerReadingsFact,
+  nowMs: number,
+  areaName: string,
+): PowerReadingsBannerContent | null => {
+  const lead = resolveReadingsLead(readings, nowMs);
+  return lead === null ? null : {
+    text: `${lead} Check that the meter for ${areaName} is available in Homey Energy and its reading is changing.`,
     actionLabel: 'Check meter',
   };
 };
