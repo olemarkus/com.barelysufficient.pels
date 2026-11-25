@@ -1,6 +1,7 @@
 import type { DeviceAdapter, HomeBatteryBinding } from '../deviceAdapter';
 import { isDeviceOfApp, STANDARD_HOME_BATTERY_BINDING } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
+import { readFirmwareVersion } from '../firmwareVersion';
 
 /*
  * Zinvolt (`com.zinvolt`, drivers `base` and `power`). Homey's standard
@@ -32,8 +33,24 @@ const ZINVOLT_HOLD_W = 10;
 
 const ZINVOLT_BINDING: HomeBatteryBinding = { ...STANDARD_HOME_BATTERY_BINDING, zeroSetpointW: ZINVOLT_HOLD_W };
 
+// The device can group identical module readings, including unknown versions.
+const readZinvoltFirmware = (value: unknown): string | undefined => {
+  const version = readFirmwareVersion(value);
+  return version && !/^-(?: \(\d+×\))?$/u.test(version) ? version : undefined;
+};
+
 export const zinvoltAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
   matches: (device) => isDeviceOfApp(device, ZINVOLT_APP_ID),
   homeBatteryBinding: () => ZINVOLT_BINDING,
+  firmwareVersions: (device): Readonly<Record<string, string>> => {
+    const inverter = readZinvoltFirmware(device.settings.firmware_inverter);
+    const ems = readZinvoltFirmware(device.settings.firmware_ems);
+    const batteryModules = readZinvoltFirmware(device.settings.firmware_batteries);
+    return {
+      ...(inverter === undefined ? {} : { inverter }),
+      ...(ems === undefined ? {} : { ems }),
+      ...(batteryModules === undefined ? {} : { batteryModules }),
+    };
+  },
 };

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { SupportReportEvidenceSource } from '../../lib/diagnostics/supportReportEvidence';
 import { createSupportReportReads, type SupportReportApp } from '../../setup/appInit/createSupportReports';
+import { APP_MEMORY_REPORT_TITLE, readInstalledAppVersions, type InstalledAppVersions } from '../../lib/diagnostics/supportReportHomeyApps';
 import { SUPPORT_REPORT_MAX_HOMEY_DEVICES } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { SupportReportEvidence, SupportReportRequest } from '../../packages/contracts/src/supportReport';
@@ -30,7 +31,6 @@ import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contract
 import type { ScheduleEntry, SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
 import type { AppMemoryUsageSampler } from '../../lib/diagnostics/appMemoryFootprint';
-import { APP_MEMORY_REPORT_TITLE } from '../../lib/diagnostics/supportReportEvidence';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const request: SupportReportRequest = {
@@ -83,10 +83,11 @@ const appMemoryReading = (usage: typeof appUsage | null = appUsage) => partialDo
   refresh: async () => usage,
   latest: () => usage,
 });
+const noAppVersions = async (): Promise<InstalledAppVersions> => new Map();
 const source = (
   app: SupportReportApp, objectives = objectiveStore(), readCycle: (deviceId: string) => SmartTaskCycleRecord | undefined = noCycle,
-  heating: HeatingObservations = noHeating, appMemory = appMemoryReading(),
-) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle, heating, appMemory), {
+  heating: HeatingObservations = noHeating, appMemory = appMemoryReading(), readAppVersions = noAppVersions,
+) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle, heating, appMemory, readAppVersions), {
   manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
 const values = (report: SupportReportEvidence, title: string) => (
@@ -488,7 +489,7 @@ describe('support report evidence capture', () => {
     host.getDailyBudgetUiPayload = () => ({ kind: 'budget', payload: { todayKey: day.dateKey, days: { [day.dateKey]: day } } });
     const settings = { get: vi.fn(), getKeys: vi.fn(), set: vi.fn() };
     const homey = { app: host, manifest: { version: '3.21.0', apiKey: 'manifest-secret' }, version: '12.0.0', settings };
-    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle, noHeating, appMemoryReading()), homey)
+    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle, noHeating, appMemoryReading(), noAppVersions), homey)
       .capture(request, now);
     expect(values(report, 'Current app-wide prices')).toMatchObject({ importPrice: 42, level: 'cheap' });
     expect(values(report, 'Current app-wide price source')).toEqual({ scheme: 'norway', selection: 'chosen' });
@@ -989,6 +990,66 @@ describe('device support request evidence', () => {
         leftOut: 0,
       });
       expect(JSON.stringify(values(report, 'Current Homey devices'))).not.toContain('secret');
+    });
+
+    it('captures installed app versions and reported battery firmware without unrelated metadata', async () => {
+      const sigenergy = {
+        ...relay, id: 'battery', ownerUri: 'homey:app:com.sigenergy', driverId: 'homey:app:com.sigenergy:battery',
+        capabilities: ['firmware'], capabilitiesObj: { firmware: { value: 'V100R001C00SPC117' } },
+        settings: { firmware: 'V100R001C00SPC115', privateSetting: 'secret' },
+      };
+      const zinvolt = {
+        ...relay, id: 'zinvolt', ownerUri: 'homey:app:com.zinvolt', driverId: 'homey:app:com.zinvolt:power',
+        settings: { firmware_inverter: '1.2.3', firmware_ems: '- (2×)', firmware_batteries: '3'.repeat(257) },
+      };
+      const runtime = {
+        manifest: { id: 'com.barelysufficient.pels' },
+        api: { getLocalUrl: async () => 'http://127.0.0.1:1234', getOwnerApiToken: async () => 'test-token' },
+      };
+      const body = {
+        'com.sigenergy': { id: 'com.sigenergy', version: '0.9.0', settings: { privateSetting: 'secret' } },
+        'com.zinvolt': { id: 'com.zinvolt', version: '1.2.1' },
+        'com.unrelated': { id: 'com.unrelated', version: '1.2.3' },
+        'com.knx': { id: 'com.knx', version: 'not a version' },
+      };
+      const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        partialDouble<Awaited<ReturnType<typeof globalThis.fetch>>>({
+          ok: true, status: 200, text: async () => JSON.stringify(body),
+        }),
+      );
+      try {
+        const host = hostWithHomeyDevices(async () => [sigenergy, zinvolt, {
+          ...sigenergy, id: 'battery-fallback', capabilities: [],
+        }, relay]);
+        const report = await source(host, undefined, undefined, undefined, undefined, () => readInstalledAppVersions(runtime))
+          .capture(appReport, now);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(String(fetch.mock.calls[0]?.[0])).toBe('http://127.0.0.1:1234/api/manager/apps/app/');
+        expect(values(report, 'Installed Homey app versions')).toEqual({ apps: [
+          { ownerUri: 'homey:app:com.sigenergy', version: '0.9.0' },
+          { ownerUri: 'homey:app:com.zinvolt', version: '1.2.1' },
+        ] });
+        expect(values(report, 'Current Homey devices')).toMatchObject({ devices: [
+          { firmwareVersions: { battery: 'V100R001C00SPC117' } },
+          { firmwareVersions: { inverter: '1.2.3' } },
+          { firmwareVersions: { battery: 'V100R001C00SPC115' } },
+          { id: relay.id },
+        ] });
+        expect(JSON.stringify(report)).not.toMatch(/secret|com\.unrelated|firmware_ems|batteryModules/);
+      } finally {
+        fetch.mockRestore();
+      }
+    });
+
+    it('keeps device inventory when installed app versions are unavailable', async () => {
+      const unavailable = async (): Promise<InstalledAppVersions> => { throw new Error('private app list error'); };
+      const report = await source(
+        hostWithHomeyDevices(async () => [relay]), undefined, undefined, undefined, undefined, unavailable,
+      ).capture(appReport, now);
+      expect(values(report, 'Current Homey devices')).toMatchObject({ devices: [{ id: relay.id }] });
+      expect(values(report, 'Installed Homey app versions')).toBeUndefined();
+      expect(report.omissions).toContain('Installed Homey app versions is unavailable.');
+      expect(JSON.stringify(report)).not.toContain('private app list error');
     });
 
     it('states how many devices it left out past its limit', async () => {

@@ -100,6 +100,9 @@ Every report lists the devices on the Homey (`Current Homey devices`, at most 50
 name, class, the providing app (`ownerUri`), driver, availability, and whether PELS
 manages it, read from Homey at capture. A log names a device by id only, and why a write
 fails often depends on the app behind it. A failed read is a visible omission.
+`Installed Homey app versions` records the installed version of each app behind a
+listed device when Homey exposes it. Supported integrations also include the firmware
+versions their devices publish in Homey. These readings describe the time of capture.
 Every report also states the app's memory (`App memory`): Homey's own reading from the
 app's `/usage` route (RSS, PSS, shared pages, swap), read fresh at capture or the last
 accepted one with its age; the process's page faults and peak RSS; and V8's heap and

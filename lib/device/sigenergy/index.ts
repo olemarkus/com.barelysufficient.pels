@@ -9,6 +9,7 @@ import type {
 import type { DeviceActionStep } from '../flowActionCards';
 import { isDeviceOfAppDriver } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
+import { readFirmwareVersion } from '../firmwareVersion';
 
 /*
  * Sigenergy (`com.sigenergy`). PELS manages the `battery` device (class
@@ -189,4 +190,11 @@ export const sigenergyAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
   matches: (device) => isDeviceOfAppDriver(device, SIGENERGY_APP_ID, BATTERY_DRIVER_ID),
   homeBatteryBinding: () => SIGENERGY_BINDING,
+  firmwareVersions: (device): Readonly<Record<string, string>> => {
+    if (!isDeviceOfAppDriver(device, SIGENERGY_APP_ID, BATTERY_DRIVER_ID)) return {};
+    const capabilityVersion = device.capabilities.includes('firmware')
+      ? readFirmwareVersion(device.capabilitiesObj.firmware?.value) : undefined;
+    const version = capabilityVersion ?? readFirmwareVersion(device.settings.firmware);
+    return version === undefined ? {} : { battery: version };
+  },
 };
