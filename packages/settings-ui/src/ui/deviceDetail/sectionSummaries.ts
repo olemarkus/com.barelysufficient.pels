@@ -3,6 +3,7 @@ import { isLastResortConfigured, readLastResortSetup } from '../devicePowerSetup
 import { usesLastResortControls } from './controlState.ts';
 import { supportsPowerLimiting } from './temperaturePolicy.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { evLowersChargingLevelFirst, resolveDeviceDetailKind } from '../deviceKind.ts';
 
 /**
  * The one-line summaries in the headers of the device page's Price response and
@@ -26,8 +27,11 @@ export const resolvePriceResponseSummary = (device: SettingsUiDeviceDetailItem):
   return parts.length > 0 ? `On · ${parts.join(', ')}` : 'On';
 };
 
-const limitingAction = (deviceId: string): string => {
-  const behavior = state.shedBehaviors[deviceId];
+const limitingAction = (device: SettingsUiDeviceDetailItem): string => {
+  if (resolveDeviceDetailKind(device) === 'ev_charger') {
+    return evLowersChargingLevelFirst(device) ? 'lowers the charging level' : 'pauses charging';
+  }
+  const behavior = state.shedBehaviors[device.id];
   if (behavior?.action === 'set_temperature') return `lowers to ${degrees(behavior.temperature)}`;
   if (behavior?.action === 'set_step') return 'steps down';
   return 'turns off';
@@ -42,7 +46,7 @@ export const resolvePowerLimitingSummary = (device: SettingsUiDeviceDetailItem):
   }
   if (usesLastResortControls(device)) return 'Off · no device power reading';
   return managed && supportsPowerLimiting(device) && state.controllableMap[device.id] === true
-    ? `On · ${limitingAction(device.id)} when limiting`
+    ? `On · ${limitingAction(device)} when limiting`
     : 'Off';
 };
 

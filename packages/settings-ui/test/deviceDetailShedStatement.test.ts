@@ -77,6 +77,7 @@ const loadShedStatementHarness = async () => {
   vi.doMock('../src/ui/toast.ts', () => ({ showToast: vi.fn().mockResolvedValue(undefined), showToastError: vi.fn() }));
 
   const module = await import('../src/ui/deviceDetail/shedBehavior.ts');
+  const { resolvePowerLimitingSummary: summary } = await import('../src/ui/deviceDetail/sectionSummaries.ts');
   const { state } = await import('../src/ui/state.ts');
   state.shedBehaviors = {};
   state.controllableMap = {};
@@ -89,7 +90,7 @@ const loadShedStatementHarness = async () => {
     module.setDeviceDetailShedBehavior(device.id, device, () => {});
   };
 
-  return { state, statement, segmented, segmentedLabel, hint, shedAction, options, render };
+  return { state, statement, segmented, segmentedLabel, hint, shedAction, options, render, summary };
 };
 
 afterEach(() => {
@@ -101,7 +102,7 @@ describe('limiting card statement vs radiogroup', () => {
   // charging level, so a bare pause sentence here would contradict the Overview
   // card reading `Limited to 16 A` for the same charger.
   it('renders the lower-the-level statement for an EV-preset charger', async () => {
-    const { state, statement, segmented, hint, render } = await loadShedStatementHarness();
+    const { state, statement, segmented, hint, render, summary } = await loadShedStatementHarness();
     const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
@@ -116,6 +117,7 @@ describe('limiting card statement vs radiogroup', () => {
       'When limiting this charger, PELS lowers the charging level, '
       + 'and pauses charging only if lowering is not enough. It resumes when power allows.',
     );
+    expect(summary(device)).toBe('On · lowers the charging level when limiting');
     expect(segmented.hidden).toBe(true);
     expect(hint.hidden).toBe(true);
   });
@@ -123,8 +125,12 @@ describe('limiting card statement vs radiogroup', () => {
   // No preset means no charging levels to lower, so pausing really is the whole
   // of it and the older sentence stays true.
   it('keeps the pause statement for a charger with no level preset', async () => {
-    const { state, statement, segmented, hint, render } = await loadShedStatementHarness();
-    const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
+    const { state, statement, segmented, hint, render, summary } = await loadShedStatementHarness();
+    const device = buildDevice({
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      suggestedSteppedLoadProfile: { steps: [{ id: '6a', planningPowerW: 1380 }, { id: '10a', planningPowerW: 2300 }] },
+    });
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
 
@@ -134,12 +140,32 @@ describe('limiting card statement vs radiogroup', () => {
     expect(statement.textContent).toBe(
       'When limiting this charger, PELS pauses charging and resumes it when power allows.',
     );
+    expect(summary(device)).toBe('On · pauses charging when limiting');
     expect(segmented.hidden).toBe(true);
     expect(hint.hidden).toBe(true);
   });
 
+  it('describes a stepped charger that cannot pause through a binary control', async () => {
+    const { state, statement, segmented, render, summary } = await loadShedStatementHarness();
+    const device = buildDevice({
+      deviceClass: 'evcharger', deviceType: 'onoff', binaryControllable: false, capabilities: ['measure_power'],
+      steppedLoadProfile: { steps: [{ id: '6a', planningPowerW: 1380 }, { id: '10a', planningPowerW: 2300 }] },
+    });
+    state.managedMap = { [device.id]: true };
+    state.controllableMap = { [device.id]: true };
+    state.shedBehaviors = { [device.id]: { action: 'set_step' } };
+
+    render(device);
+
+    expect(statement.textContent).toBe(
+      'When limiting this charger, PELS lowers the charging level and raises it again when power allows.',
+    );
+    expect(summary(device)).toBe('On · lowers the charging level when limiting');
+    expect(segmented.hidden).toBe(true);
+  });
+
   it('keeps the radiogroup for a thermostat with a genuine choice', async () => {
-    const { state, statement, segmented, hint, render } = await loadShedStatementHarness();
+    const { state, statement, segmented, hint, render, summary } = await loadShedStatementHarness();
     const device = buildDevice({
       deviceClass: 'thermostat',
       deviceType: 'temperature',
@@ -147,16 +173,18 @@ describe('limiting card statement vs radiogroup', () => {
     });
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
+    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 18, coolingTemperature: 28 } };
 
     render(device);
 
     expect(statement.hidden).toBe(true);
     expect(segmented.hidden).toBe(false);
     expect(hint.hidden).toBe(false);
+    expect(summary(device)).toBe('On · lowers to 18° when limiting');
   });
 
   it('states that PELS will not limit when Power-limit control is off', async () => {
-    const { state, statement, render } = await loadShedStatementHarness();
+    const { state, statement, render, summary } = await loadShedStatementHarness();
     const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: false };
@@ -168,10 +196,11 @@ describe('limiting card statement vs radiogroup', () => {
 
     expect(statement.hidden).toBe(false);
     expect(statement.textContent).toBe('Power-limit control is off — PELS will not limit this charger.');
+    expect(summary(device)).toBe('Off');
   });
 
   it('renders the turn-off statement for a plain binary device', async () => {
-    const { state, statement, segmented, render } = await loadShedStatementHarness();
+    const { state, statement, segmented, render, summary } = await loadShedStatementHarness();
     const device = buildDevice({ deviceClass: 'socket', deviceType: 'onoff' });
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
@@ -183,6 +212,20 @@ describe('limiting card statement vs radiogroup', () => {
       'When limiting this device, PELS turns it off and turns it back on when power allows.',
     );
     expect(segmented.hidden).toBe(true);
+    expect(summary(device)).toBe('On · turns off when limiting');
+  });
+
+  it('keeps the step-down summary for a non-charger stepped device', async () => {
+    const { state, summary } = await loadShedStatementHarness();
+    const device = buildDevice({
+      deviceClass: 'waterheater',
+      steppedLoadProfile: { steps: [{ id: 'low', planningPowerW: 500 }, { id: 'high', planningPowerW: 1000 }] },
+    });
+    state.managedMap = { [device.id]: true };
+    state.controllableMap = { [device.id]: true };
+    state.shedBehaviors = { [device.id]: { action: 'set_step' } };
+
+    expect(summary(device)).toBe('On · steps down when limiting');
   });
 
   it('names disabled temperature control when it forced the single option', async () => {
