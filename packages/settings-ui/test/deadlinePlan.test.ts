@@ -2332,6 +2332,58 @@ describe('deadline plan page payload', () => {
     }
   });
 
+  it.each([true, false])('explains a continuous charging run only while the preference is enabled (%s)', (enabled) => {
+    const nowMs = Date.UTC(2026, 0, 1, 13);
+    const atMinute = (minute: number) => nowMs + minute * 60_000;
+    const deadlineAtMs = atMinute(75);
+    const original: DeferredObjectiveActivePlanRevisionV1 = {
+      revision: 1, revisedAtMs: nowMs, computedFromPricesUpTo: deadlineAtMs, reason: 'flow_card',
+      hours: [
+        { startsAtMs: nowMs, coversFromMs: atMinute(5), endsAtMs: atMinute(15), plannedKWh: 0.2 },
+        { startsAtMs: atMinute(30), endsAtMs: atMinute(45), plannedKWh: 0.3 },
+        { startsAtMs: atMinute(45), endsAtMs: atMinute(60), plannedKWh: 0.3 },
+        { startsAtMs: atMinute(60), endsAtMs: deadlineAtMs, plannedKWh: 0.3 },
+      ],
+      energyNeededKWh: 1.1, planStatus: 'on_track',
+    };
+    const latest: DeferredObjectiveActivePlanRevisionV1 = {
+      ...original, revision: 2, revisedAtMs: nowMs + 100, reason: 'prices_revised',
+      hours: [
+        { startsAtMs: nowMs, coversFromMs: atMinute(5), endsAtMs: atMinute(45), plannedKWh: 0.8, keepCharging: true },
+        { startsAtMs: atMinute(45), endsAtMs: atMinute(60), plannedKWh: 0.3 },
+      ],
+    };
+    const bootstrap = buildBootstrap({
+      objectivesByDeviceId: { ev: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 1.1, deadlineAtMs } },
+    }, {
+      deviceId: 'ev', deviceName: 'Garage EV', objectiveKind: 'energy', targetValue: 1.1, deadlineAtMs,
+      startedAtMs: nowMs, pending: false, objectiveSignature: 'energy-task', original, latest,
+      liveCompletion: { kind: 'unmet', status: 'on_track' },
+    });
+    bootstrap.settings.ev_charging_session_smoothing = enabled ? { ev: true } : {};
+    const payload = expectReady(resolveRenderInput({
+      bootstrap, nowMs, deviceId: 'ev', devices: evDevices({}),
+      prices: {
+        ...pricesPayload(null),
+        taskPricePeriods: [100, 115, 100, 100, 100].map((price, index) => ({
+          startsAtMs: atMinute(index * 15), endsAtMs: atMinute((index + 1) * 15),
+          price, planningPrice: price, isExpensive: index === 1, isCheap: index !== 1,
+        })),
+      },
+    }));
+
+    const note = 'Part of a run planned to avoid a short charging break';
+    const revision = 'Updated as new prices arrived';
+    expect(payload.timeline.hours.map((hour) => [hour.startsAtMs, hour.planned, hour.readout.secondary])).toEqual([
+      [nowMs, false, null],
+      [atMinute(5), true, enabled ? note : null],
+      [atMinute(15), true, enabled ? `${note} · ${revision}` : revision],
+      [atMinute(30), true, enabled ? note : null],
+      [atMinute(45), true, null],
+      [atMinute(60), false, revision],
+    ]);
+  });
+
   it('builds the trajectory payload: staircase to target, run bands, ready stateline', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);

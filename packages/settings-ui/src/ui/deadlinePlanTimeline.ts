@@ -13,6 +13,10 @@ import {
 } from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
+  normalizeEvChargingSessionSmoothingSettings,
+} from '../../../shared-domain/src/settings/evChargingSessionSmoothing.ts';
+import { EV_CHARGING_SESSION_SMOOTHING } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import {
   PLANNING_PRICE_REASON_LINE,
   planningPriceDivergesFromImport,
 } from '../../../shared-domain/src/price/planningPrice.ts';
@@ -26,6 +30,7 @@ import {
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 const formatPrice = (total: number): string => total.toFixed(2);
+const CONTINUOUS_CHARGING_READOUT = 'Part of a run planned to avoid a short charging break';
 
 export const resolveActualDeviceKwh = (
   bootstrap: SettingsUiBootstrap,
@@ -82,6 +87,13 @@ export const buildTimeline = (
     hour.startsAtMs > nowMs && (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
   ));
   const nextStartLabel = nextPlanned ? formatHourLabel(nextPlanned.startsAtMs) : null;
+  // A saved commitment can retain this marker after the charger opts out.
+  const smoothing = normalizeEvChargingSessionSmoothingSettings(
+    input.bootstrap.settings[EV_CHARGING_SESSION_SMOOTHING],
+  );
+  const continuousBookings = smoothing[ctx.deviceId] === true
+    ? ctx.activePlan.latest.hours.filter((booking) => booking.keepCharging && booking.plannedKWh > 0)
+    : [];
   const hours = horizon.map((hour, index) => {
     const originalKwh = originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
     const currentKwh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
@@ -100,6 +112,13 @@ export const buildTimeline = (
       && input.ctx.activePlan.startedAtMs <= hour.startsAtMs
       ? resolveActualPeriodKwh(input, hour) : null;
     const revisionLine = hourChanged ? (labels.revisionReasonTooltipLine[latestRevisionReason] ?? null) : null;
+    const inContinuousRun = planned && continuousBookings.some((booking) => (
+      (booking.coversFromMs ?? booking.startsAtMs) < hour.endMs && booking.endsAtMs > hour.startsAtMs
+    ));
+    const readoutNotes = [
+      inContinuousRun ? CONTINUOUS_CHARGING_READOUT : null,
+      revisionLine,
+    ].filter(Boolean).join(' · ');
     return {
       startsAtMs: hour.startsAtMs,
       endsAtMs: hour.endMs,
@@ -118,7 +137,7 @@ export const buildTimeline = (
           nextStartLabel,
           measuredKwh,
         ),
-        secondary: revisionLine,
+        secondary: readoutNotes || null,
       },
     };
   });
