@@ -1,4 +1,6 @@
-import type { EvChargeTargetConfig, EvChargeTargetSettings } from '../../../contracts/src/types';
+import type {
+  EvChargeTargetConfig, EvChargeTargetSetting, EvChargeTargetSettings,
+} from '../../../contracts/src/types';
 import { isUnknownRecord } from '../recordGuards';
 
 /**
@@ -6,8 +8,9 @@ import { isUnknownRecord } from '../recordGuards';
  * target hold) and written by the settings UI's charger page.
  *
  * Read policy: sanitize and keep, per entry. An entry whose target is not a
- * whole percent in 1..100 is dropped (no target), because no hold can be decided
- * from it. A `chargeBeforeLevelKnown` that is not a boolean reads as `true`,
+ * whole percent in 1..100 may keep an explicit disabled preference. Other
+ * invalid entries are dropped. On an active target, a `chargeBeforeLevelKnown`
+ * that is not a boolean reads as `true`,
  * which is the default and the behaviour the charger had before it had a target:
  * charge until the car stops. The settings UI writes only typed values it
  * built from a parsed target (`parseEvChargeTargetPercent`).
@@ -38,16 +41,22 @@ export const parseEvChargeTargetPercent = (value: unknown): number | null => {
 export const normalizeEvChargeTargetSettings = (value: unknown): EvChargeTargetSettings => {
   if (!isUnknownRecord(value)) return {};
   return Object.fromEntries(
-    Object.entries(value).flatMap(([deviceId, entry]) => {
+    Object.entries(value).flatMap(([deviceId, entry]): Array<[string, EvChargeTargetSetting]> => {
       if (!isUnknownRecord(entry)) return [];
-      const config = entry;
-      const targetPercent = parseEvChargeTargetPercent(config.targetPercent);
-      if (targetPercent === null) return [];
-      const normalized: EvChargeTargetConfig = {
-        targetPercent,
-        chargeBeforeLevelKnown: config.chargeBeforeLevelKnown !== false,
-      };
-      return [[deviceId, normalized]];
+      const targetPercent = parseEvChargeTargetPercent(entry.targetPercent);
+      if (targetPercent !== null) {
+        return [[deviceId, { targetPercent, chargeBeforeLevelKnown: entry.chargeBeforeLevelKnown !== false }]];
+      }
+      if (entry.disabled === true && typeof entry.chargeBeforeLevelKnown === 'boolean') {
+        return [[deviceId, { disabled: true, chargeBeforeLevelKnown: entry.chargeBeforeLevelKnown }]];
+      }
+      return [];
     }),
   );
 };
+
+export const resolveActiveEvChargeTarget = (
+  setting: EvChargeTargetSetting | undefined,
+): EvChargeTargetConfig | undefined => (
+  setting && 'targetPercent' in setting ? setting : undefined
+);

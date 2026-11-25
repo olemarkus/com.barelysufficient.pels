@@ -1,9 +1,12 @@
-import type { EvChargeTargetConfig, EvChargeTargetSettings } from '../../../../contracts/src/types.ts';
+import type {
+  EvChargeTargetConfig, EvChargeTargetSetting, EvChargeTargetSettings,
+} from '../../../../contracts/src/types.ts';
 import { EV_CHARGE_TARGET_SETTINGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import {
   normalizeEvChargeTargetSettings,
   parseEvChargeTargetPercent,
+  resolveActiveEvChargeTarget,
 } from '../../../../shared-domain/src/settings/evChargeTarget.ts';
 import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
 import { isEvPlugStateConnected } from '../../../../shared-domain/src/evPlugState.ts';
@@ -36,8 +39,7 @@ const DEFAULT_TARGET_PERCENT = 100;
 
 const UNKNOWN_LEVEL_CHARGES_HINT = "A car that doesn't report its level charges to its own limit.";
 const UNKNOWN_LEVEL_NEEDS_TARGET_HINT = 'Applies once Charge to a battery level is on.';
-// What "Charge before the battery level is known" starts at when a target is
-// turned on: there is no stored choice while the target is off.
+// Default for a charger whose owner has never set a target.
 const DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN = true;
 const UNKNOWN_LEVEL_HELD_HINT = "A car that doesn't report its level won't charge here. That includes a car "
   + "not selected under Car, a car whose app doesn't share its battery level, and a selected car while its "
@@ -146,7 +148,7 @@ export const renderEvChargeTargetSettings = (device: SettingsUiDeviceDetailItem 
   deviceDetailChargeTarget.hidden = !visible;
   if (!visible || !device) return;
 
-  const config = state.evChargeTargetSettings[device.id];
+  const config = resolveActiveEvChargeTarget(state.evChargeTargetSettings[device.id]);
   const enabled = config !== undefined;
   const chargeBeforeLevelKnown = config?.chargeBeforeLevelKnown ?? DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN;
   deviceDetailChargeTargetEnabled.selected = enabled;
@@ -170,7 +172,7 @@ export const initEvChargeTargetHandlers = (deps: {
   // undo an edit queued before it.
   const persist = async (
     deviceId: string,
-    change: (current: EvChargeTargetConfig | undefined) => EvChargeTargetConfig | null,
+    change: (current: EvChargeTargetSetting | undefined) => EvChargeTargetSetting | null,
   ) => {
     await runSerializedChargeTargetWrite(async () => {
       await writeFreshSetting<EvChargeTargetSettings>({
@@ -216,11 +218,15 @@ export const initEvChargeTargetHandlers = (deps: {
     if (!deviceId) return;
     const enable = deviceDetailChargeTargetEnabled.selected;
     const targetPercent = readTargetPercentField() ?? DEFAULT_TARGET_PERCENT;
-    // The switch below reads off while the target is off, so it is no source
-    // for the value a new target starts with.
-    await persist(deviceId, () => (
-      enable ? { targetPercent, chargeBeforeLevelKnown: DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN } : null
-    ));
+    await persist(deviceId, (current) => {
+      if (enable) {
+        return {
+          targetPercent,
+          chargeBeforeLevelKnown: current?.chargeBeforeLevelKnown ?? DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN,
+        };
+      }
+      return current ? { disabled: true, chargeBeforeLevelKnown: current.chargeBeforeLevelKnown } : null;
+    });
   });
 
   // An edit to a field applies only while a target is stored; with none, the
@@ -234,13 +240,19 @@ export const initEvChargeTargetHandlers = (deps: {
       deps.refreshOpenDeviceDetail();
       return;
     }
-    await persist(deviceId, (current) => (current ? { ...current, targetPercent } : null));
+    await persist(deviceId, (current) => {
+      const active = resolveActiveEvChargeTarget(current);
+      return active ? { ...active, targetPercent } : current ?? null;
+    });
   });
 
   deviceDetailChargeTargetUnknown?.addEventListener('change', async () => {
     const deviceId = deps.getCurrentDetailDeviceId();
     if (!deviceId) return;
     const chargeBeforeLevelKnown = deviceDetailChargeTargetUnknown.selected;
-    await persist(deviceId, (current) => (current ? { ...current, chargeBeforeLevelKnown } : null));
+    await persist(deviceId, (current) => {
+      const active = resolveActiveEvChargeTarget(current);
+      return active ? { ...active, chargeBeforeLevelKnown } : current ?? null;
+    });
   });
 };

@@ -227,13 +227,12 @@ are read-modify-write operations, not atomic across clients.
 
 `ev_charge_target_settings` (a charger's target battery level) belongs to
 `packages/shared-domain/src/settings/evChargeTarget.ts`. Its reader sanitizes and
-keeps per entry: an entry without a whole percent in 1..100 is dropped (no target),
-and a `chargeBeforeLevelKnown` that is not a boolean reads as `true`, the charger's
-behaviour before it had a target. Its writer, the charger page, saves only a target
-that parses (`parseEvChargeTargetPercent`); a blank or out-of-range field keeps the
-stored one.
+keeps per entry: an active target requires a whole percent in 1..100 and defaults
+`chargeBeforeLevelKnown` to `true`. A disabled entry retains only the explicitly
+stored preference and carries no target percent. Its writer, the charger page,
+uses `parseEvChargeTargetPercent`; a blank or out-of-range field keeps the stored target.
 The runtime holds the last map that read as a map (`DeviceControlSettings`); the
-planner never reads the key, only the hold `projectChargeTargetHold` resolves from it.
+getter exposes only active targets to `projectChargeTargetHold`.
 
 `mode_aliases` belongs to `packages/shared-domain/src/settings/modeAliases.ts`.
 Runtime and settings UI both lowercase alias keys and ignore malformed entries;

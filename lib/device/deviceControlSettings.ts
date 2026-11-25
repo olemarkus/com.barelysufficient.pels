@@ -32,7 +32,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { isBooleanMap, isDeviceControlProfiles, isPlainObjectRecord, isStringMap } from '../utils/appTypeGuards';
 import { normalizeEvBoostSettings } from '../../packages/shared-domain/src/settings/evBoost';
-import { normalizeEvChargeTargetSettings } from '../../packages/shared-domain/src/settings/evChargeTarget';
+import * as evTarget from '../../packages/shared-domain/src/settings/evChargeTarget';
 import { normalizeTemperatureBoostSettings } from '../../packages/shared-domain/src/settings/temperatureBoost';
 import { normalizeEvCarAssociations } from '../../packages/shared-domain/src/settings/evCarAssociations';
 import {
@@ -305,7 +305,7 @@ export class DeviceControlSettings {
   }
   /** The charger's target battery level; `undefined` is "no target", an answer rather than a gap. */
   getEvChargeTargetConfig(deviceId: string): EvChargeTargetConfig | undefined {
-    return this.maps.evChargeTargets[deviceId];
+    return evTarget.resolveActiveEvChargeTarget(this.maps.evChargeTargets[deviceId]);
   }
   getEvCarAssociationCarIds(deviceId: string): string[] { return this.maps.evCarAssociations[deviceId]?.carIds ?? []; }
 
@@ -462,7 +462,7 @@ export class DeviceControlSettings {
         current.evChargingSessionSmoothing,
       ),
       evChargeTargets: normalizeOrKeep(
-        settings.get(EV_CHARGE_TARGET_SETTINGS), normalizeEvChargeTargetSettings, current.evChargeTargets,
+        settings.get(EV_CHARGE_TARGET_SETTINGS), evTarget.normalizeEvChargeTargetSettings, current.evChargeTargets,
       ),
       evCarAssociations: normalizeOrKeep(
         settings.get(EV_CAR_ASSOCIATIONS), normalizeEvCarAssociations, current.evCarAssociations,

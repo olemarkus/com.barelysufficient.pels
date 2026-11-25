@@ -166,8 +166,13 @@ export type EvChargeTargetConfig = {
     chargeBeforeLevelKnown: boolean;
 };
 
-/** Charge targets by charger id; a charger with no entry has no target. */
-export type EvChargeTargetSettings = Record<string, EvChargeTargetConfig>;
+export type EvChargeTargetSetting = EvChargeTargetConfig | {
+    disabled: true;
+    chargeBeforeLevelKnown: boolean;
+};
+
+/** Charge targets and retained disabled preferences by charger id. */
+export type EvChargeTargetSettings = Record<string, EvChargeTargetSetting>;
 
 /**
  * Who wrote a "Power when running" figure: the device page (`settings`) or the
