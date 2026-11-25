@@ -33,6 +33,18 @@ const buildPayload = (today: Record<string, unknown>): SettingsUiPricesPayload =
 } as unknown as SettingsUiPricesPayload);
 
 describe('price config status', () => {
+  it('reports Homey Energy prices found only for the local current day or tomorrow', () => {
+    // 00:30 in Oslo while UTC is still January 18.
+    vi.setSystemTime(new Date('2026-01-18T23:30:00.000Z'));
+    const stale = { ...hourlyPayload(), dateKey: '2026-01-18' };
+    const tomorrow = { ...hourlyPayload(), dateKey: '2026-01-20' };
+    expect(buildHomeyStatus(buildPayload(stale)).hasPrices).toBe(false);
+    expect(buildHomeyStatus(buildPayload({ ...hourlyPayload(), pricesByHour: {} })).hasPrices).toBe(false);
+    expect(buildHomeyStatus(buildPayload(hourlyPayload())).hasPrices).toBe(true);
+    expect(buildHomeyStatus({ ...buildPayload(stale), homeyToday: null, homeyTomorrow: tomorrow }).hasPrices).toBe(true);
+    expect(buildHomeyStatus({ ...buildPayload(stale), homeyTomorrow: hourlyPayload() }).hasPrices).toBe(true);
+  });
+
   it('says tomorrow\'s prices come later today before they are published, uncoloured', () => {
     // 11:00 in Oslo: day-ahead prices publish around 13:00 CET.
     vi.setSystemTime(new Date('2026-01-19T10:00:00.000Z'));

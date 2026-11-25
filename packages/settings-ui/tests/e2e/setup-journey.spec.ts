@@ -168,7 +168,8 @@ const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
         price_optimization_settings: {}, capacity_dry_run: true, capacity_enabled: false,
         daily_budget_enabled: false,
         // Homey Energy, chosen and with prices: the Prices step has nothing to ask.
-        price_scheme: 'homey', homey_prices_today: { dateKey: '2026-10-29', pricesByHour: { 0: 0.21, 1: 0.2 } },
+        price_scheme: 'homey',
+        homey_prices_today: { dateKey: new Date().toISOString().slice(0, 10), pricesByHour: { 0: 0.21, 1: 0.2 } },
         ui_hub_market_country: 'NL',
         ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: false,
         ui_devices_surplus_pool_reachable: false,
