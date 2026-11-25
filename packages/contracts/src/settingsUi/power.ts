@@ -166,8 +166,8 @@ export type SettingsUiPhasePeak = {
 
 /**
  * One time this week PELS had eased off everything it could and the home still
- * went past the hard cap (`lib/power/hardCapShortfallLog.ts`): when, the hard
- * cap then, and what devices PELS does not control drew.
+ * went past the hard cap (`lib/power/hardCapShortfallLog.ts`): when, the configured
+ * hard cap then, and what devices PELS does not control drew.
  */
 export type SettingsUiHardCapShortfall = {
   readonly atMs: number;
