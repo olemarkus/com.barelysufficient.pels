@@ -156,6 +156,10 @@ test('a battery home can leave its charger unmanaged through review, activation 
   await expect(header).toContainText('You can also choose an EV charger.');
   await expect(page.getByRole('switch', { name: 'Manage Thuisbatterij', exact: true })).toBeChecked();
   await header.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page).toHaveURL(/setup=hardCap/);
+  const limitsHeader = page.locator('#limits-panel .setup-journey');
+  await expect(limitsHeader).toContainText('Optional. Set your main fuse to protect each phase.');
+  await limitsHeader.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page).toHaveURL(/setup=goals/);
   await header.getByRole('button', { name: 'Review setup', exact: true }).click();
   const review = page.locator('#setup-review-root');
