@@ -18,7 +18,7 @@ import { partialDouble } from '../helpers/partialDouble';
 import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { reviewedContextSignature } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
 import { fixturePlanningTurnContext } from '../helpers/taskAllocationContext';
-import { orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
+import { committedPriorityReservations, orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion } from '../helpers/deferredObjectiveWiringFixtures';
 
@@ -149,6 +149,33 @@ describe('objective-owned battery task reservations', () => {
       kind: 'ready',
       admission: [{ startMs: START, endMs: END, admissionPowerKw: 7.5 }],
     });
+  });
+
+  it('uses the applicable hard cap across Oslo month-end for legacy bookings without an admission rate', () => {
+    const midnight = Date.parse('2026-11-30T23:00:00Z');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(midnight - HOUR_MS / 2);
+    try {
+      const deadline = midnight + 2 * HOUR_MS;
+      const { latest } = plan({
+        reservationSegments: undefined,
+        hours: [
+          { startsAtMs: midnight - HOUR_MS, endsAtMs: midnight, plannedKWh: 1 },
+          { startsAtMs: midnight, endsAtMs: midnight + HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: midnight + HOUR_MS, endsAtMs: deadline, plannedKWh: 1, plannedAdmissionPowerKw: 3 },
+        ],
+      });
+      if (!latest) throw new Error('Expected a committed fixture');
+      const reservations = committedPriorityReservations(device.id, latest, undefined, {
+        ...limits,
+        marginKw: 0.2,
+        monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: midnight, limitKw: 9.9 },
+      }, deadline, false);
+
+      expect(reservations.map(({ admissionPowerKw }) => admissionPowerKw))
+        .toEqual([expect.closeTo(9.7), expect.closeTo(4.8), 3]);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it.each(['pending', 'signature', 'commitment', 'kind', 'deadline'] as const)('waits for an incoherent %s commitment', (reason) => {

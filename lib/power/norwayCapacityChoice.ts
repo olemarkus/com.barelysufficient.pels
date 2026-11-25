@@ -128,8 +128,8 @@ export class NorwayCapacityChoice {
 
   /** Normal settings plus the accepted choice, resolved later for each planned period. */
   forPlanning(scalars: CapacityScalarSettings, nowMs: number): CapacityScalarSettings {
-    const choice = this.readChoice(scalars);
-    return choice.state === 'active' && choice.offer.monthKey <= norwayMonthKey(nowMs) ? {
+    const choice = this.readState(scalars, nowMs);
+    return choice.state === 'active' ? {
       ...scalars,
       monthlyCapacityChoice: { ...norwayMonthWindowMs(choice.offer.monthKey), limitKw: choice.offer.limitKw },
     } : scalars;

@@ -1,6 +1,6 @@
 import { resolveUsableCapacityKw, resolvePlanningCeilingKw } from '../../lib/power/capacityModel';
 import { resolveHeldPowerLimits } from '../../lib/power/heldCapacityLimit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NorwayCapacityChoice } from '../../lib/power/norwayCapacityChoice';
 import { NORWAY_CAPACITY_CHOICE_REQUEST } from '../../packages/shared-domain/src/settings/norwayCapacityChoice';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
@@ -18,20 +18,23 @@ const fixture = () => {
   const data = new Map<string, unknown>();
   const settings = { get: (key: string) => data.get(key), set: (key: string, value: unknown) => { data.set(key, value); },
     unset: (key: string) => { data.delete(key); }, getKeys: () => [...data.keys()] };
-  return { data, settings, choice: new NorwayCapacityChoice(settings, readTariff) };
+  const readChoiceTariff = vi.fn(readTariff);
+  return { data, settings, readChoiceTariff, choice: new NorwayCapacityChoice(settings, readChoiceTariff) };
 };
 describe('explicit monthly capacity choice', () => {
   it('expires across Oslo month boundary without overwriting the normal setting', () => {
-    const { settings, choice } = fixture();
+    const { settings, choice, readChoiceTariff } = fixture();
     settings.set(NORWAY_CAPACITY_CHOICE_REQUEST, { id: 'a', action: 'apply', offer });
     expect(choice.processRequest(offer, scalars, now)).toBe(true);
     expect(choice.applyTo(scalars, now).limitKw).toBe(9.9);
+    readChoiceTariff.mockClear();
     expect(choice.forPlanning(scalars, now)).toMatchObject({
       limitKw: 5, monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 },
     });
-    expect(choice.forPlanning(scalars, Date.parse('2026-11-30T23:00:00Z'))).toMatchObject({
-      limitKw: 5, monthlyCapacityChoice: { startsAtMs: Date.parse('2026-10-31T23:00:00Z'), endsAtMs: Date.parse('2026-11-30T23:00:00Z'), limitKw: 9.9 },
-    });
+    expect(readChoiceTariff).toHaveBeenCalledWith('2026-11');
+    readChoiceTariff.mockClear();
+    expect(choice.forPlanning(scalars, Date.parse('2026-11-30T23:00:00Z'))).toBe(scalars);
+    expect(readChoiceTariff).not.toHaveBeenCalled();
     expect(choice.applyTo(scalars, Date.parse('2026-11-30T23:00:00Z')).limitKw).toBe(5);
     expect(scalars.limitKw).toBe(5);
     expect(new NorwayCapacityChoice(settings, readTariff).applyTo(scalars, now).limitKw).toBe(9.9);
