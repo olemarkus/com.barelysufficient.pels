@@ -20,6 +20,36 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   ...overrides,
 });
 
+describe('last-resort relay reporting its own power', () => {
+  const relay = (currentDrawKw?: number, controllable = true): DeviceStatusInput => runningPowerHold({
+    plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    lastResort: { maximumW: 2_000 }, currentDrawKw, controllable,
+    expectedPowerKw: 2, hasPowerReading: false,
+  });
+
+  it.each([true, false])('shows the measured power and withdraws Ease off with plan authority=%s', (controllable) => {
+    for (const draw of [0, 0.42]) {
+      expect(buildDeviceStatus(relay(draw, controllable), false, 0)).toMatchObject({
+        label: 'Manual', canEaseOff: false, controlOffDrawing: draw > 0,
+        powerText: draw === 0 ? '0.0 kW' : '0.4 kW',
+        reason: { text: 'Has its own power reading. Turn off last-resort control under Power limiting.' },
+      });
+    }
+  });
+
+  it('keeps the unmetered, unavailable and pending switch-off states', () => {
+    const running = relay(0.42);
+    expect(buildDeviceStatus(relay(), false, 0)).toMatchObject({ label: 'On', powerText: null });
+    expect(buildDeviceStatus({
+      ...running, execution: { ...running.execution, available: false },
+    }, false, 0)).toMatchObject({ label: 'Unavailable', powerText: null });
+    expect(buildDeviceStatus({
+      ...running, plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 1 },
+      execution: { ...running.execution, binaryProgress: 'pending' },
+    }, false, 0)).toMatchObject({ kind: 'held', powerText: null });
+  });
+});
+
 describe('simulation action previews', () => {
   const modeTemperature = (plannedTarget: number, controllable: boolean): DeviceStatusInput => {
     const device = runningPowerHold();

@@ -67,9 +67,16 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
 }
 
 function hasDeviceControl(device: DeviceStatusInput): boolean {
+  if (resolveRunningLastResortReadingKw(device) !== undefined) return false;
   if (device.lastResort?.metered && device.currentState === 'off'
     && device.lastResortOwnedOffAtMs === undefined && device.plannedState !== 'shed') return false;
   return device.controllable || (device.temperature !== undefined && device.execution.targetProgress !== 'undriven');
+}
+
+function resolveRunningLastResortReadingKw(device: DeviceStatusInput): number | undefined {
+  if (device.lastResort && device.execution.available && device.execution.physicalState === 'on'
+    && device.execution.binaryProgress !== 'pending') return device.currentDrawKw;
+  return undefined;
 }
 
 const TARGET_POWER_CONTROL_REFUSED_LINE = 'PELS can only turn it on and off: its app does not accept level control';
@@ -272,6 +279,9 @@ function resolveNotControlledReason(
  */
 function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] {
   if (device.lastResort) {
+    if (resolveRunningLastResortReadingKw(device) !== undefined) {
+      return { text: 'Has its own power reading. Turn off last-resort control under Power limiting.' };
+    }
     return { text: device.currentState === 'off' && device.controllable && device.execution.available
       ? 'Turn on the device manually to resume control'
       : 'Check the last-resort settings in Devices' };
@@ -376,13 +386,18 @@ function resolvePhysicalFact(device: DeviceStatusInput): string | null {
   return stepId === null ? null : formatStepDisplayLabel(stepId);
 }
 
-const hidesDevicePower = (device: DeviceStatusInput): boolean => device.powerSetupRequired
-  || device.lastResort !== undefined;
-
 function resolvePower(
   device: DeviceStatusInput, limited: boolean, dryRun: boolean, previousPower: number | undefined,
 ): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
-  if (hidesDevicePower(device)) return { powerText: null, powerVariant: 'expected' };
+  const reportedKw = resolveRunningLastResortReadingKw(device);
+  if (reportedKw !== undefined) return { powerText: `${reportedKw.toFixed(1)} kW`, powerVariant: 'live' };
+  if (device.powerSetupRequired || device.lastResort) return { powerText: null, powerVariant: 'expected' };
+  return resolveStandardPower(device, limited, dryRun, previousPower);
+}
+
+function resolveStandardPower(
+  device: DeviceStatusInput, limited: boolean, dryRun: boolean, previousPower: number | undefined,
+): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
   if (previousPower !== undefined) {
     return { powerText: `Last reported ${previousPower.toFixed(1)} kW`, powerVariant: 'before_switch_off' };
   }
@@ -557,6 +572,11 @@ const optionalTargetDetail = (targetDetail: string | undefined): { targetDetail?
   targetDetail === undefined ? {} : { targetDetail }
 );
 
+const isControlOffDrawing = (device: DeviceStatusInput): boolean => (
+  (device.currentDrawKw ?? 0) > 0
+  && (!device.controllable || resolveRunningLastResortReadingKw(device) !== undefined)
+);
+
 /** Presentation consumes executor conclusions; it never resolves control axes. */
 export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus {
   const adapterStatus = buildUnavailableAdapterStatus(device);
@@ -584,7 +604,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     reason: buildReason(device, dryRun, nowMs, powerPredatesSwitchOff), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && !powerPredatesSwitchOff && (draw ?? 0) > 0)),
-    controlOffDrawing: !device.controllable && (draw ?? 0) > 0,
+    controlOffDrawing: isControlOffDrawing(device),
     holdCause: resolveHoldCause(device),
     ...resolveCardMarks(device, cardKind),
   };
