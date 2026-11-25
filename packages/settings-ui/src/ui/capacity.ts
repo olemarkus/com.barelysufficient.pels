@@ -90,6 +90,7 @@ import {
   isSimulationCarriedBySetupPath,
   onSetupPathChange,
   publishSetupHardCapRead,
+  publishSetupMainFuse,
   publishSetupHardCapUnavailable,
   publishSetupPowerUnavailable,
 } from './setupPathFacts.ts';
@@ -399,6 +400,12 @@ const syncLoadedPowerSourceForGeneration = (
   if (sourceGeneration === powerSourcePaintGeneration) syncLoadedPowerSource(powerSource);
 };
 
+const syncAcceptedMainFuse = (current: Awaited<ReturnType<typeof readCurrentCapacitySettings>>): void => {
+  const mainFuse = resolveSavedMainFuse(current);
+  syncMainFuseControls(mainFuse, current.mainFuseAmps);
+  publishSetupMainFuse(mainFuse.kind === 'on');
+};
+
 export const loadCapacitySettings = async () => {
   capacitySettingsLoadGeneration += 1;
   const generation = capacitySettingsLoadGeneration;
@@ -432,7 +439,7 @@ export const loadCapacitySettings = async () => {
     settingsGridImportLimitInput.value = String(current.gridImportLimitKw);
   }
   syncCapacityOwnedControls(resolved);
-  syncMainFuseControls(resolveSavedMainFuse(current), current.mainFuseAmps);
+  syncAcceptedMainFuse(current);
   publishLimitUsagePower(powerRead.state === 'resolved' ? powerRead.payload : null);
   // Meter selection is independently persisted. A power-source save may fence
   // source-owned paint while this load is in flight, but it must not discard a
@@ -528,6 +535,7 @@ const saveCapacitySettingsCommand = async (
   const dryRunChanged = state.dryRun !== committed.dryRun;
   commitCapacityScalars(committed);
   if (command.kind === 'limits') {
+    publishSetupMainFuse(command.mainFuse.kind === 'on');
     publishHardCapRead(true, committed);
     syncCapacityLimitControls(committed);
   } else if (command.kind === 'period' || command.kind === 'capacity-off' || command.kind === 'follow-month-peak') {

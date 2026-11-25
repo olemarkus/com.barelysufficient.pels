@@ -44,6 +44,7 @@ type SetupFactsRead<T> =
 
 let power: SetupFactsRead<SetupPowerReadings> = { state: 'loading' };
 let hardCap: SetupFactsRead<SetupHardCap> = { state: 'loading' };
+let mainFuseOn: boolean | null = null;
 // Not part of the `loading` gate: `unavailable` is the market-neutral copy, which
 // is always correct, so the path never waits for this. A resolved market only
 // ever sharpens what is already on screen.
@@ -142,6 +143,11 @@ export const isBelgianHomeOnHourlyPeriod = (): boolean => (
 );
 
 export const readSetupMarket = (): SettingsUiHubMarketRead => market;
+
+export const publishSetupMainFuse = (enabled: boolean): void => {
+  mainFuseOn = enabled;
+  notify();
+};
 
 /**
  * `configured` is the capacity owner's verdict from the SDK settings key list,
@@ -275,6 +281,7 @@ const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   return { state: 'ready', value: {
     power: power.value,
     hardCap: hardCap.value,
+    mainFuseOn,
     market,
     actionableDeviceCount: actionableIds.length,
     unchosenBesideBatteryCount: countUnchosenBesideBattery(knownIds, actionableIds),
