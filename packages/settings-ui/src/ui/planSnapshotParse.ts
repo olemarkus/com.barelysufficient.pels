@@ -30,6 +30,16 @@ const isCountdown = (value: unknown): boolean => {
 
 const isOptionalOffer = (value: unknown): boolean => value === undefined || value === true;
 
+const CHECK_STATES = new Set<unknown>(['met', 'waiting', 'not_checked', 'unverified']);
+const isChargingStartChecks = (value: unknown): boolean => value === undefined || (
+  Array.isArray(value) && value.length > 0 && value.every((item: unknown) => {
+    if (!item || typeof item !== 'object') return false;
+    const check = item as Record<string, unknown>;
+    return typeof check.label === 'string' && CHECK_STATES.has(check.state)
+      && (check.detail === undefined || typeof check.detail === 'string');
+  })
+);
+
 const isStatusReason = (value: unknown): boolean => {
   if (value === null) return true;
   if (!value || typeof value !== 'object') return false;
@@ -98,13 +108,21 @@ const RETIRED_STATE_KEYS = [
 ] as const;
 
 const needsFacetSanitizing = (device: PlanDeviceSnapshot): boolean => (
-  RETIRED_STATE_KEYS.some((key) => key in device)
+  !isChargingStartChecks(device.status.reason?.chargingStartChecks)
+  || RETIRED_STATE_KEYS.some((key) => key in device)
 );
 
 const withValidatedFacets = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => {
+  const { reason } = device.status;
+  const hasInvalidChecks = reason !== null && !isChargingStartChecks(reason.chargingStartChecks);
   if (!needsFacetSanitizing(device)) return device;
   const sanitized: Record<string, unknown> = { ...device };
   for (const key of RETIRED_STATE_KEYS) delete sanitized[key];
+  if (hasInvalidChecks) {
+    const sanitizedReason = { ...reason };
+    delete sanitizedReason.chargingStartChecks;
+    sanitized.status = { ...device.status, reason: sanitizedReason };
+  }
   return sanitized as PlanDeviceSnapshot;
 };
 

@@ -27,6 +27,11 @@ import {
   resolvePendingReason,
 } from './deadlinePlanPending.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
+import { getHomeyTimezone } from './homey.ts';
+import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFormat.ts';
+import { resolveObjectiveTargetValue } from '../../../shared-domain/src/deferredObjectiveValues.ts';
+import { hasPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
+import type { OverviewDecisionItem } from './overviewDecision.ts';
 
 export type OverviewSmartTaskStatus = {
   deviceId: string;
@@ -35,6 +40,7 @@ export type OverviewSmartTaskStatus = {
   tone: 'alert' | 'warn' | 'muted';
   headline: string;
   body: string;
+  checks: readonly OverviewDecisionItem[];
   action: { label: string; targetTab: string; deviceId?: string } | { label: string; href: string };
 };
 
@@ -74,7 +80,41 @@ const resolvePendingTaskStatus = (
     tone: waitingNormally ? 'muted' : 'warn',
     headline: copy.headline,
     body: copy.body,
+    checks: [{
+      label: 'Ready to schedule',
+      state: reason === 'device_data_missing' || reason === 'missing_capacity' ? 'unverified' : 'waiting',
+      detail: copy.body,
+    }],
     action: copy.recourse ?? { label: 'View task', href: buildDeadlineHref(deviceId) },
+  };
+};
+
+const resolveScheduledTaskStatus = (
+  deviceId: string,
+  deviceName: string,
+  plan: OverviewDeferredObjectiveActivePlan,
+  nowMs: number,
+): OverviewSmartTaskStatus | null => {
+  // A current booking with zero planned energy may still run on spare power.
+  // Only describe a future interval when no booking is in effect now.
+  if (plan.latest?.planStatus !== 'on_track') return null;
+  const next = plan.latest.hours.find((hour) => hour.endsAtMs > nowMs
+    && ((hour.coversFromMs ?? hour.startsAtMs) <= nowMs || hasPlannedEnergy(hour)));
+  if (!next || (next.coversFromMs ?? next.startsAtMs) <= nowMs) return null;
+  const startsAt = formatLocalHHMM(next.coversFromMs ?? next.startsAtMs, getHomeyTimezone());
+  return {
+    deviceId,
+    deviceName,
+    deadlineAtMs: plan.deadlineAtMs,
+    tone: 'muted',
+    headline: SMART_TASK_LIST_STATUS_LABELS.queued,
+    body: `Next scheduled period starts at ${startsAt}.`,
+    checks: [
+      { label: 'Run time scheduled', state: 'met' },
+      { label: `Scheduled period starts at ${startsAt}`, state: 'waiting' },
+      { label: 'Power available when that period starts', state: 'not_checked' },
+    ],
+    action: { label: 'View task', href: buildDeadlineHref(deviceId) },
   };
 };
 
@@ -87,13 +127,20 @@ const resolveTaskStatus = (
   nowMs: number,
 ): OverviewSmartTaskStatus | null => {
   const status = resolveSmartTaskListStatus(plan, nowMs);
-  if (status === 'satisfied' || status === 'queued' || status === 'on_track' || status === 'device_idle') return null;
+  if (status === 'satisfied' || status === 'device_idle') return null;
+  if (status === 'queued' || status === 'on_track') {
+    if (plan.deadlineAtMs !== objective.deadlineAtMs
+      || plan.targetValue !== resolveObjectiveTargetValue(objective)) return null;
+    return resolveScheduledTaskStatus(deviceId, deviceName, plan, nowMs);
+  }
   if ((status === 'at_risk' || status === 'cannot_meet') && plan.latest !== null) {
     const labels = deadlineLabels(objective.kind, plan.progressDirection ?? 'unknown');
     const budgetRole = resolveSmartTaskBudgetRole(plan.latest);
     const liveCause = resolveSmartTaskLiveCause(
       plan.diagnosticReasonCode, resolveReportedCarChargeLimit(plan), budgetRole,
     );
+    const forecastState = status === 'at_risk' ? 'at_risk' : 'not_met';
+    const body = resolveCannotMeetMeta(labels, status, budgetRole, liveCause, plan.latest.floorShortfallCause);
     return {
       deviceId,
       deviceName,
@@ -101,7 +148,12 @@ const resolveTaskStatus = (
       action: { label: 'View task', href: buildDeadlineHref(deviceId) },
       tone: status === 'cannot_meet' ? 'alert' : 'warn',
       headline: SMART_TASK_LIST_STATUS_LABELS[status],
-      body: resolveCannotMeetMeta(labels, status, budgetRole, liveCause, plan.latest.floorShortfallCause),
+      body,
+      checks: [{
+        label: 'Reach the target by the deadline',
+        state: liveCause !== null ? 'waiting' : forecastState,
+        detail: body,
+      }],
     };
   }
   return resolvePendingTaskStatus(deviceId, deviceName, objective, plan, prices, nowMs);

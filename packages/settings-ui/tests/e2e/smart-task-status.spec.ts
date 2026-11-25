@@ -8,7 +8,7 @@ const SWITCH = '#price-aware-devices-panel md-switch';
 
 test('shows a current price-policy pause over a cached plan and clears it on recovery', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#plan-smart-task-row')).toHaveAttribute('data-variant', 'steady');
+  await expect(page.locator(SECTION)).toContainText('Next scheduled period starts at');
   await pushOverviewTasks(page, [{ deviceId: 'dev_connected300', deviceName: 'Connected 300', state: 'price_off' }]);
   const section = page.locator(SECTION);
   await expect(section.getByRole('heading', { name: 'Smart task status', exact: true })).toBeVisible();
@@ -29,7 +29,7 @@ test('shows a current price-policy pause over a cached plan and clears it on rec
 
 test('shows tomorrow-price waiting neutrally and opens the affected task', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#plan-smart-task-row')).toHaveAttribute('data-variant', 'steady');
+  await expect(page.locator(SECTION)).toContainText('Next scheduled period starts at');
   await pushOverviewTasks(page, [{ deviceId: 'dev_connected300', deviceName: 'Connected 300', state: 'awaiting_prices' }]);
   const row = page.locator(`${SECTION} [data-task-device-id="dev_connected300"]`);
   await expect(row).toHaveAttribute('data-tone', 'muted');
@@ -43,7 +43,7 @@ test('shows tomorrow-price waiting neutrally and opens the affected task', async
 test('keeps each task’s reason visible and places an actionable pause before normal waiting', async ({ page }) => {
   await seedSecondOverviewTask(page);
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#plan-smart-task-row')).toHaveAttribute('data-variant', 'steady');
+  await expect(page.locator(SECTION)).toContainText('Next scheduled period starts at');
   await pushOverviewTasks(page, [
     { deviceId: 'dev_connected300', deviceName: 'Connected 300', state: 'awaiting_prices' },
     { deviceId: 'dev_heatpump', deviceName: 'Living Room Heat Pump', state: 'price_off' },

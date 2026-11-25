@@ -18,6 +18,13 @@ export type DeviceStatusReading =
   | { kind: 'temperature'; currentC: number; targetC: number }
   | { kind: 'battery'; percent: number };
 
+/** A user-visible condition, resolved by the evidence owner. */
+export type DecisionCheck = {
+  label: string;
+  state: 'met' | 'waiting' | 'not_checked' | 'unverified';
+  detail?: string;
+};
+
 /** Complete presentation, resolved by the backend. No actuation inputs. */
 export type DeviceStatus = {
   cardKind: 'binary' | 'temperature' | 'stepped';
@@ -49,6 +56,7 @@ export type DeviceStatus = {
     text: string;
     tone?: 'neutral' | 'warning';
     detail?: string;
+    chargingStartChecks?: DecisionCheck[];
     countdown?: DeviceStatusCountdown;
   } | null;
   rail: { labels: string[]; activeIndex: number | null } | null;

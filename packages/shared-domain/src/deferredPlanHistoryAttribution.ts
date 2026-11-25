@@ -93,22 +93,36 @@ const blockedMsByCause = (intervals: readonly TaskDeliveryInterval[]): Map<TaskD
  * contributor that fell out of it ranks as zero, and ties keep first-seen order.
  */
 const rankEarlierContributors = (
-  attribution: DeferredPlanHistoryMissAttribution,
+  cause: DeferredPlanHistoryMissCause | null,
+  contributors: readonly TaskDeliveryCause[],
   intervals: readonly TaskDeliveryInterval[],
 ): TaskDeliveryCause[] => {
   const totals = blockedMsByCause(intervals);
-  return attribution.contributors
-    .filter((cause) => cause !== attribution.cause && !TRANSIENT_CAUSES.has(cause))
+  return contributors
+    .filter((candidate) => candidate !== cause && !TRANSIENT_CAUSES.has(candidate))
     .map((cause, order) => ({ cause, order, blockedMs: totals.get(cause) ?? 0 }))
     .sort((left, right) => right.blockedMs - left.blockedMs || left.order - right.order)
     .slice(0, MAX_EARLIER_CONTRIBUTORS)
     .map(({ cause }) => cause);
 };
 
+/** The recorded cause at expiry, without the earlier contributors. */
+export const formatFinalMissBlocker = (entry: AttributionEntry): string | null => {
+  const cause = resolveRecordedCause(entry);
+  if (cause === null || cause === 'delivery_unfulfilled' || cause === 'legacy_unrecorded') return null;
+  return CAUSE_COPY[cause];
+};
+
+export const formatEarlierMissBlocker = (entry: AttributionEntry): string | null => {
+  if (entry.outcome !== 'missed' || entry.deliveryExplanation.kind !== 'recorded') return null;
+  const { contributors, intervals } = entry.deliveryExplanation;
+  const [earlier] = rankEarlierContributors(resolveRecordedCause(entry), contributors, intervals);
+  return earlier === undefined ? null : CAUSE_COPY[earlier];
+};
+
 export const formatRefinedMissCause = (entry: AttributionEntry): string | null => {
-  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
-  if (attribution.cause === null) return null;
-  const intervals = entry.deliveryExplanation.kind === 'recorded' ? entry.deliveryExplanation.intervals : [];
-  const earlier = rankEarlierContributors(attribution, intervals).map((cause) => CAUSE_COPY[cause]).join(' ');
-  return `${CAUSE_COPY[attribution.cause]}${earlier ? ` Earlier: ${earlier}` : ''}`;
+  const cause = resolveRecordedCause(entry);
+  if (cause === null) return null;
+  const earlier = formatEarlierMissBlocker(entry);
+  return `${CAUSE_COPY[cause]}${earlier ? ` Earlier: ${earlier}` : ''}`;
 };

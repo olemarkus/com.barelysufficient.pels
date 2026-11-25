@@ -1,4 +1,5 @@
 import { Chip } from './components/Chip.tsx';
+import { InformationIcon } from './icons.tsx';
 import type { ChipTone } from './components/chipTone.ts';
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodEnergyKWh } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
@@ -314,27 +315,6 @@ const resolveProjectionTone = (scale: EnergyBarScale): ProjectionTone => {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-// The settings webview does not load Material Symbols font, so the info icon
-// is an inline SVG. `currentColor` keeps it tracking the icon-button text token.
-const InfoIcon = () => (
-  <svg
-    class="plan-hero__info-icon"
-    viewBox="0 0 24 24"
-    width="20"
-    height="20"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    aria-hidden="true"
-  >
-    <circle cx="12" cy="12" r="9" />
-    <line x1="12" y1="11" x2="12" y2="16" />
-    <circle cx="12" cy="8" r="0.5" fill="currentColor" />
-  </svg>
-);
-
 // Overview hero answers "am I OK right now?". The chip rail is pared back to
 // the live status signal. Mode and
 // price-level chips were demoted in PR9 (owner walk 2026-05-17): mode is a
@@ -361,7 +341,7 @@ const HeroChipRow = ({ heroStatus, meta }: { heroStatus: HeroStatus; meta: PlanM
           capacityPeriodMinutes, meta.capacitySoftLimitKw !== null, meta.gridImportLimitKw !== null,
         )}
       >
-        <InfoIcon />
+        <InformationIcon class="plan-hero__info-icon" width="20" height="20" />
       </MdIconButton>
     </div>
   );
