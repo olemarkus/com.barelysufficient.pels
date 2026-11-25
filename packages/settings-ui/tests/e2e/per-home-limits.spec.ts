@@ -178,21 +178,35 @@ test('a long unbroken area name cannot overflow the 320 px panel', async ({ page
   expect(overflow.status).toBeLessThanOrEqual(0);
 });
 
-test('a Main-home-only deep link selects the Main home before landing', async ({ page }) => {
+test('the power readings warning follows the selected meter area', async ({ page }) => {
   await installRentalMeterDeviceList(page);
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
   await seedRentalArea(page);
   await openLimitsPanel(page);
+  await page.evaluate((areaId) => {
+    const stub = (window as unknown as StubWindow).Homey.__stub;
+    const now = Date.now();
+    stub.setSetting('power_tracker_state', { lastPowerW: 5200, lastTimestamp: now });
+    stub.setSetting(`power_tracker_state:${areaId}`, { lastPowerW: 300, lastTimestamp: now - 7_200_000 });
+    stub.emitHomeyEvent('plan_status_published', { homeId: 'main' });
+  }, AREA_ID);
   await pickHomeScope(page, AREA_ID);
-  await expect(page.locator('#settings-limits-global')).toBeHidden();
+  await page.getByRole('tab', { name: 'Overview' }).click();
 
-  // The stale-data banner promises the Power source control. Following it while
-  // an area is selected must not land on a page where that control is hidden.
-  // The whole-home readings go stale the way production's do (as in
-  // power-source.spec.ts): the tracker keeps its latch while its stamp ages past
-  // the banner threshold, and the published status says so, so the app shows
-  // the banner itself rather than racing a hand-forced one.
+  const staleBanner = page.locator('#stale-data-banner');
+  await expect(staleBanner).toBeVisible();
+  await expect(staleBanner).toContainText(
+    'Last new power reading 2 h ago. Check that the meter for Rental unit is available in Homey Energy '
+      + 'and its reading is changing.',
+  );
+  await staleBanner.getByRole('button', { name: 'Check meter' }).click();
+  await expect(page.locator('#homes-panel')).toBeVisible();
+  await expect(page.locator('#limits-panel')).toBeHidden();
+  await expect(staleBanner).toBeHidden();
+
+  // Multiple meters shows Main's warning while the area remains selected.
+  // The Main-only shortcut must switch scope before showing its meter control.
   await page.evaluate(() => {
     const stub = (window as unknown as StubWindow).Homey.__stub;
     stub.setSetting('power_tracker_state', { lastPowerW: 5200, lastTimestamp: Date.now() - 120_000 });
@@ -200,13 +214,12 @@ test('a Main-home-only deep link selects the Main home before landing', async ({
     stub.setSetting('app_heartbeat', Date.now());
     stub.emitHomeyEvent('plan_status_published', { homeId: 'main' });
   });
-  await page.getByRole('tab', { name: 'Overview' }).click();
-  const staleBanner = page.locator('#stale-data-banner');
   await expect(staleBanner).toBeVisible();
-  await staleBanner.locator('#stale-data-action').click();
+  await expect(staleBanner).toContainText('Last new power reading 2 min ago.');
+  await staleBanner.getByRole('button', { name: 'Check meter' }).click();
   await expect(page.locator('#limits-panel')).toBeVisible();
   await expect(page.locator('#settings-limits-global')).toBeVisible();
-  await expect(page.locator('#settings-power-source')).toBeVisible();
+  await expect(page.locator('#settings-homey-energy-meter')).toBeInViewport();
   await expect(page.locator('#home-scope-chip')).toContainText('Main home');
 });
 
