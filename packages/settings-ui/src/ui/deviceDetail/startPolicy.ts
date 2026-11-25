@@ -6,7 +6,7 @@ import {
   type DeviceStartPolicy,
 } from '../../../../shared-domain/src/settings/deviceStartPolicy.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
-import { resolveDeviceDetailControlState } from './controlState.ts';
+import { resolveDeviceDetailControlState, usesLastResortControls } from './controlState.ts';
 import { syncRespectExternalOffRow } from './respectExternalOff.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { deviceDetailSetupDisclosure } from '../dom.ts';
@@ -211,7 +211,7 @@ export const syncStartPolicyRow = (
   if (!rowEl || !toggleEl) return;
   const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
   const optedIn = deviceId !== null && isPelsOnly(deviceId);
-  const showRow = deviceId !== null
+  const showRow = deviceId !== null && !usesLastResortControls(device)
     && shouldShowStartPolicyRow(deviceId, device, controlState.isManaged);
   rowEl.hidden = !showRow;
   if (!showRow || deviceId === null) {

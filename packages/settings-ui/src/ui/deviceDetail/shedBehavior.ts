@@ -1,3 +1,4 @@
+import { usesLastResortControls } from './controlState.ts';
 import { supportsPowerLimiting } from './temperaturePolicy.ts';
 import { isIncompleteDecimalText } from '../decimalField.ts';
 import {
@@ -245,7 +246,7 @@ const resolveTemperatureShedBehavior = (device: SettingsUiDeviceDetailItem): Con
 };
 
 const resolveVisibleShedAction = (device: SettingsUiDeviceDetailItem | null): ShedAction | null => {
-  if (!deviceDetailShedAction || !device || !supportsPowerDevice(device)) return null;
+  if (!deviceDetailShedAction || !device || !supportsPowerDevice(device) || usesLastResortControls(device)) return null;
   // Limiting switched off: the statement says PELS will not limit, so the
   // parameter rows (limited temperature / limited step) have nothing to set.
   if (isPowerLimitControlOff(device, device.id)) return null;
@@ -396,12 +397,17 @@ export const setDeviceDetailShedBehavior = (
   });
   const saved = resolveShedBehavior(state.shedBehaviors, deviceId);
 
-  // A device that is no longer there is one PELS does not limit.
-  renderShedStatement(device === null ? 'PELS does not limit this device.' : resolveShedStatement({
-    device,
-    deviceId,
-    shedControls,
-  }));
+  const lastResort = usesLastResortControls(device);
+  const shedField = document.getElementById('device-detail-shed-field');
+  if (shedField) shedField.hidden = lastResort;
+  if (!lastResort) {
+    // A device that is no longer there is one PELS does not limit.
+    renderShedStatement(device === null ? 'PELS does not limit this device.' : resolveShedStatement({
+      device,
+      deviceId,
+      shedControls,
+    }));
+  }
 
   updateShedActionOptions({
     canConfigure: shedControls.canConfigure,

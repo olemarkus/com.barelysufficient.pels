@@ -6,7 +6,7 @@ import {
   HOMEY_ENERGY_SETUP_DOCS_URL, HOMEY_ENERGY_SETUP_HINT, needsHomeyEnergySetup,
 } from '../../../../shared-domain/src/homeyEnergySetup.ts';
 import {
-  devicePowerSetupAlternative, devicePowerSetupHint, devicePowerSetupWarning, isDeviceReservedBySetup,
+  devicePowerSetupGuidance, devicePowerSetupHint, devicePowerSetupWarning, isDeviceReservedBySetup,
   readDevicePowerSetupDetail,
   renderDeviceDetailPowerSetup, resolveLastResortHint,
 } from '../devicePowerSetup.ts';
@@ -53,22 +53,20 @@ export const renderManagedControl = (
 function renderManagedPowerSetup(
   device: SettingsUiDeviceView | null, defaultHint: string, setupHint: string | null, managed: boolean,
 ): void {
-  const setup = device ? readDevicePowerSetupDetail(device.id) : undefined;
+  if (!device) {
+    renderManagedSetupHint(defaultHint, false);
+    renderDeviceDetailPowerSetup(undefined);
+    renderHomeyEnergySetupLink(false);
+    return;
+  }
+  const setup = readDevicePowerSetupDetail(device.id);
   const offersHomeyEnergy = needsHomeyEnergySetup(device) && !setup?.lastResort;
-  const warning = device ? devicePowerSetupWarning(device.id) : null;
-  const hint = setupHint ?? warning ?? resolveLastResortHint(setup?.lastResort, managed)
-    ?? withPowerSetupAlternative(device, defaultHint, offersHomeyEnergy);
+  const warning = devicePowerSetupWarning(device.id);
+  const guidance = offersHomeyEnergy ? devicePowerSetupGuidance(device.id) : null;
+  const hint = setupHint ?? warning ?? resolveLastResortHint(setup?.lastResort, managed) ?? guidance ?? defaultHint;
   renderManagedSetupHint(hint, offersHomeyEnergy || warning !== null);
-  renderDeviceDetailPowerSetup(device?.id);
+  renderDeviceDetailPowerSetup(device.id);
   renderHomeyEnergySetupLink(offersHomeyEnergy && !setup?.socketPending);
-}
-
-/** A device waiting for a power reading also learns what External sensors offers it. */
-function withPowerSetupAlternative(
-  device: SettingsUiDeviceView | null, hint: string, offersHomeyEnergy: boolean,
-): string {
-  const alternative = offersHomeyEnergy && device ? devicePowerSetupAlternative(device.id) : null;
-  return alternative ? `${hint} ${alternative}` : hint;
 }
 
 function renderManagedSetupHint(text: string, warning: boolean): void {

@@ -1,7 +1,8 @@
 import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
 import { h, render } from 'preact';
 import {
-  devicePowerSetupHint, openGuidedDeviceSetup, readDeviceSetupEntries, readLastResortSetup,
+  devicePowerSetupHint, offersLastResortWithoutMeter, openGuidedDeviceSetup, readDeviceSetupEntries,
+  readLastResortSetup,
   type GuidedDeviceSetupActions,
 } from './devicePowerSetup.ts';
 import { getManagedDisabledReason } from './deviceControlAvailability.ts';
@@ -124,7 +125,11 @@ const setupDeviceHint = (
   }
   const lastResort = readLastResortSetup(device.id);
   if (lastResort) return lastResort.hint;
-  if (needsHomeyEnergySetup(device)) return HOMEY_ENERGY_SETUP_REASON;
+  if (needsHomeyEnergySetup(device)) {
+    return offersLastResortWithoutMeter(device.id)
+      ? 'Choose how to set up power limiting.'
+      : `${HOMEY_ENERGY_SETUP_REASON} if its draw stays steady while on.`;
+  }
   if (manageability.supportsPower) return 'PELS may lower or pause this device.';
   return manageability.supportsTemperature
     ? 'PELS may adjust its temperature.' : 'PELS needs a power reading to limit this device.';

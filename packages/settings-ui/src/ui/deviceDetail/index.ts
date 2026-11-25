@@ -107,7 +107,9 @@ import {
   resolveTargetPowerConfigForControlMode,
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
-import { resolveDeviceDetailControlState, setPowerLimitSwitch, setTemperatureGatedSwitch } from './controlState.ts';
+import {
+  resolveDeviceDetailControlState, setPowerLimitSwitch, setTemperatureGatedSwitch, usesLastResortControls,
+} from './controlState.ts';
 import {
   applyDeviceDetailSectionLayout,
   autoExpandSetupWhenUnmanaged,
@@ -155,6 +157,7 @@ const refreshCurrentDeviceControlStates = () => {
   const activeDeviceId = getCurrentDetailDeviceId();
   if (!activeDeviceId) return;
   const device = findLatestDevice(activeDeviceId);
+  if (device) renderDeviceDetailSectionSummaries(device);
   setDeviceDetailControlStates(activeDeviceId, device);
   updateDeltaSectionVisibility(device);
   updateSurplusSectionVisibility(device);
@@ -226,6 +229,8 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   renderDeviceDetailControlContest(device, controlState.isManaged);
   renderManagedControl(device, controlState);
   renderDeviceDetailBattery(device);
+  const powerLimitRow = document.getElementById('device-detail-controllable-row');
+  if (powerLimitRow && !controlState.isHomeBattery) powerLimitRow.hidden = usesLastResortControls(device);
   setContinuousBatteryPlanDevice(device);
 
   setPowerLimitSwitch(deviceDetailControllable, controlState, deviceId);

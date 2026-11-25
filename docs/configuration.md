@@ -172,7 +172,7 @@ Notes:
 - Set **When the temperature changes outside PELS** to **Keep the new temperature** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and, for a device with power levels such as a compatible water heater, lowering it a level at a time. Saved temperature settings are kept and apply again when you switch back to **Return to mode target**.
 - **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and supported EV chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off: PELS cannot stop a Flow, and the two would override each other. The switch cannot be turned on while that Flow exists, and if it was on, PELS pauses built-in control until the Flow is gone. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, select **Check again**, then turn on **Use built-in device control**. A Flow that only reads the device, turns it on and off, reports battery level, or adjusts an unrelated setting is not a built-in-control conflict. Battery reporting should remain only when no car is selected for that charger; otherwise PELS flags the ignored action separately.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
-- **Power when running** is how much PELS assumes the device draws while it runs, and it decides how much power PELS frees up before resuming it. The field shows the figure PELS is using now and says where it came from — measured by PELS, read from the device, from Homey, or a rough estimate when PELS has no reading yet. Type a value in watts to correct it, or leave it empty to let PELS work it out. It is not shown for stepped loads, which are sized per configured step. If the figure looks wrong and you would rather fix it at the source, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
+- **Power when running** is how much PELS assumes the device draws while it runs, and it decides how much power PELS frees up before resuming it. The field shows the figure PELS is using now and says where it came from — measured by PELS, read from the device, from Homey, or a rough estimate until PELS knows the running draw. Enter watts only if the draw stays steady while the device is on. Leave the estimate automatic if the draw varies. Stepped loads use their configured power per step. Last-resort relays use their configured maximum power draw. If the figure looks wrong and you would rather fix it at the source, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
 - For EV current-control setup, see [Configure an EV Charger](/ev-charger).
 
 ### Leave off until turned on again
@@ -252,7 +252,11 @@ before it has power information. PELS shows a setup warning on its device page
 and Overview, and does not limit its power use until Homey supplies a power value.
 Modes can still adjust a device's temperature target.
 
-Configure the power use in **Homey's device settings**, outside PELS:
+If the draw varies while the device is on, use a [metering socket](#metering-socket)
+when available. Without one, choose [last-resort control](#last-resort) if you
+know the maximum draw and it’s safe for PELS to switch off the device.
+
+If the draw stays steady whenever the device is on, configure it in **Homey’s device settings**:
 
 1. Open the device in the Homey app and open its device settings.
 2. Go to **Advanced settings → Energy**.
@@ -265,11 +269,6 @@ Configure the power use in **Homey's device settings**, outside PELS:
 PELS uses the power value Homey supplies for the device. The setup warning
 clears when Homey has its power information. A device with its own power meter
 uses that reading instead.
-
-Two other ways work inside PELS: let a metering socket measure the device
-([Measure a device with a metering socket](#metering-socket)), or, for a relay
-whose draw nothing can measure, let PELS turn it off only as a last resort
-([Last-resort control for an unmetered relay](#last-resort)).
 
 ### Measure a device with a metering socket {#metering-socket}
 
@@ -287,17 +286,17 @@ Some devices have more than one on/off switch, such as a spa with a main switch 
 
 ### Set up a device that needs a meter or switch {#add-a-device}
 
-In **Devices** and during first-run setup, look for your appliance under **Needs setup**. Use **Find another device** to search by name when it is not shown. Choose **Set up** next to the appliance. For example, select your spa, choose the socket that measures its power, then choose its heating switch under **On/off control**. Select **Review setup**, then **Add to PELS**. If the meter has not reported yet, choose **Check meter** after it reports.
+In **Devices** and during first-run setup, look for your appliance under **Needs setup**. Use **Find another device** to search by name when it is not shown. Choose **Set up** next to the appliance. For example, select your spa, choose the socket that measures its power, then choose its heating switch under **On/off control**. For an unmetered relay, setup offers **Homey Energy** for a steady draw or **Turn off as a last resort** when draw varies while the Homey switch stays on. After setting up **Homey Energy** in Homey, close the setup dialog and choose **Refresh devices**. Select **Review setup**, then **Add to PELS**. If the meter has not reported yet, choose **Check meter** after it reports.
 
 If PELS already manages the socket, **Use only as a meter** turns off PELS management for the socket. The socket can then measure the appliance while PELS limits it through the selected switch. Devices that are ready to manage still have a **Managed by PELS** toggle.
 
 ### Last-resort control for an unmetered relay {#last-resort}
 
-If a relay has no device power reading, choose **Turn off as a last resort** during setup and enter the maximum watts the connected load can draw. For an already listed relay, you can also open its **Power limiting** settings to make this change.
+If a relay has no device power reading, choose **Turn off as a last resort** during setup and enter the highest total draw of everything the switch powers in **Maximum power draw**. For an already listed relay, you can also open its **Power limiting** settings to make this change.
 
 PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
 
-PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after a restart, turn the relay back on to resume control.
+PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after PELS restarts, turn the relay back on to resume control. If you turn off last-resort control while PELS is holding the relay off, turn the relay back on in Homey when there is enough power.
 
 If the relay starts reporting its own power, PELS still turns back on a relay it switched off, then stops last-resort control for it. Turn off **Turn off as a last resort** to let PELS limit it like any other metered device.
 

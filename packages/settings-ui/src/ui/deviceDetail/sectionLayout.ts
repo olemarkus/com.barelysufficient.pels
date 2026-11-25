@@ -140,7 +140,7 @@ const placePowerLimitRows = (kind: DeviceDetailKind): void => {
   const shedField = document.getElementById('device-detail-shed-field');
   placeBefore(startPolicy, shedField);
   placeBefore(controllable, startPolicy);
-  // Last resort refines Power-limit control for a device without a power reading.
+  // Last resort belongs in Power limiting alongside the ordinary controls.
   placeAfter(document.getElementById('device-detail-last-resort'), controllable);
   placeBefore(respectExternalOff, document.getElementById('device-detail-electrical-connection-row'));
 };

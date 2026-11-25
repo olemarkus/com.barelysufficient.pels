@@ -48,7 +48,10 @@ const buildDom = () => {
         <div id="device-detail-power-setup" hidden><div data-setup-host></div></div>
         <div id="device-detail-binary-switch" hidden></div>
         <div id="device-detail-last-resort" hidden></div>
-        <md-switch id="device-detail-controllable"></md-switch>
+        <label id="device-detail-controllable-row"><md-switch id="device-detail-controllable"></md-switch></label>
+        <div id="device-detail-shedding-summary"></div>
+        <div id="device-detail-shed-field"><p id="device-detail-shed-statement"></p></div>
+        <label id="device-detail-respect-external-off-row"><md-switch id="device-detail-respect-external-off"></md-switch></label>
         <md-switch id="device-detail-price-opt"></md-switch>
         <md-switch id="device-detail-budget-exempt"></md-switch>
         <div id="device-detail-soc-row" hidden></div>
@@ -145,7 +148,7 @@ describe('device detail managed state saves', () => {
       targets: [], capabilities: ['onoff', 'measure_power'], powerCapable: true,
     })];
     state.managedMap = { plug: isManaged };
-    state.controllableMap = {};
+    state.controllableMap = { metered: true };
     state.budgetExemptMap = {};
     state.priceOptimizationSettings = {};
     state.capacityPriorities = { Home: { plug: 1, metered: 2 } };
@@ -174,6 +177,8 @@ describe('device detail managed state saves', () => {
     expect(link?.hidden).toBe(true);
     expect(hint?.textContent).not.toBe(HOMEY_ENERGY_SETUP_HINT);
     expect(hint?.dataset.tone).toBe('neutral');
+    expect(document.getElementById('device-detail-shedding-summary')?.textContent).toBe('Off');
+    expect(document.getElementById('device-detail-controllable-row')?.hidden).toBe(false);
   });
 
   it('edits active and dormant last-resort setup on the device page', async () => {
@@ -185,7 +190,13 @@ describe('device detail managed state saves', () => {
     const { state } = await import('../src/ui/state.ts');
     const relay = { deviceClass: 'socket', deviceType: 'onoff' as const, binaryControllable: true,
       targets: [], capabilities: ['onoff'], powerCapable: false };
-    state.latestDevices = [buildDevice('active', 'Active relay', relay), buildDevice('dormant', 'Dormant relay', relay)];
+    state.latestDevices = [
+      buildDevice('active', 'Active relay', relay),
+      buildDevice('dormant', 'Dormant relay', relay),
+      buildDevice('unconfigured', 'Unconfigured relay', relay),
+      buildDevice('metered', 'Now metered relay', { ...relay, powerCapable: true, measuredPowerKw: 0 }),
+    ];
+    state.controllableMap = { dormant: true, metered: true, unconfigured: true };
     const configuration = {
       name: 'Relay', homeId: 'main', configured: true, sourceId: null, sourceReady: false, usedBy: null, sources: [],
       lastResortMaximumW: 4500, lastResortAvailable: true, defaultBinarySwitchAvailable: true,
@@ -193,6 +204,8 @@ describe('device detail managed state saves', () => {
     acceptDevicePowerSetup({ devices: [
       { ...configuration, id: 'active' },
       { ...configuration, id: 'dormant', binarySwitchId: 'onoff.unavailable' },
+      { ...configuration, id: 'unconfigured', lastResortMaximumW: undefined },
+      { ...configuration, id: 'metered', lastResortAvailable: false },
     ] });
 
     initDeviceDetailHandlers();
@@ -205,7 +218,10 @@ describe('device detail managed state saves', () => {
       (HTMLElement & { selected: boolean }) | null;
     const energyLink = document.getElementById('device-detail-homey-energy-setup');
     expect(hint?.textContent).toBe('Turn on Managed by PELS to use last-resort control.');
-    state.managedMap = { active: true };
+    const summary = document.getElementById('device-detail-shedding-summary');
+    const ordinaryRow = document.getElementById('device-detail-controllable-row');
+    expect(summary?.textContent).toBe('Last resort · requires management');
+    state.managedMap = { active: true, unconfigured: true, metered: true };
     openDeviceDetail('active');
     await flushPromises();
     expect(hint?.textContent).toMatch(/^Last resort/);
@@ -214,6 +230,10 @@ describe('device detail managed state saves', () => {
     expect(toggle?.selected).toBe(true);
     expect(maximum?.value).toBe('4500');
     expect(energyLink?.hidden).toBe(true);
+    expect(summary?.textContent).toBe('On · last resort');
+    expect(ordinaryRow?.hidden).toBe(true);
+    expect(document.getElementById('device-detail-shed-field')?.hidden).toBe(true);
+    expect(document.getElementById('device-detail-respect-external-off-row')?.hidden).toBe(false);
 
     openDeviceDetail('dormant');
     await flushPromises();
@@ -224,6 +244,21 @@ describe('device detail managed state saves', () => {
     expect(form?.hidden).toBe(false);
     expect(document.getElementById('device-detail-binary-switch-binary')?.textContent)
       .toContain('Selected switch unavailable');
+    expect(summary?.textContent).toBe('Last resort · check setup');
+    expect(ordinaryRow?.hidden).toBe(true);
+
+    openDeviceDetail('metered');
+    await flushPromises();
+    expect(summary?.textContent).toBe('Last resort · check setup');
+    expect(ordinaryRow?.hidden).toBe(true);
+
+    openDeviceDetail('unconfigured');
+    await flushPromises();
+    expect(summary?.textContent).toBe('Off · no device power reading');
+    expect(hint?.textContent).toContain('If its draw varies while it’s on and you can’t meter it');
+    expect(hint?.textContent).toContain('If its draw stays steady whenever it’s on');
+    expect(ordinaryRow?.hidden).toBe(true);
+    expect(document.getElementById('device-detail-respect-external-off-row')?.hidden).toBe(true);
   });
 
   it('keeps the currently open device panel stable when an earlier managed save resolves late', async () => {

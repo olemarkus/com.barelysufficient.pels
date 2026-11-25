@@ -47,8 +47,7 @@ export const expectedPowerSourceLine = (source: ExpectedPowerSource): string => 
     case 'homey-energy':
       return 'From Homey’s energy information for this device.';
     case 'default':
-      return 'PELS has no reading for this device yet, so it is using a rough estimate. '
-        + 'Enter the figure if you know it.';
+      return 'PELS is using a rough estimate of the running draw.';
     default:
       return noSourceSentence(source);
   }

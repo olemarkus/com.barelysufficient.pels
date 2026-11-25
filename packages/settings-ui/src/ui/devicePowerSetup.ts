@@ -7,6 +7,7 @@ import {
   sourceHelp, sourceOptions, switchOptions, type SetupOption,
 } from './devicePowerSetupChoices.ts';
 import { trackSetupSave } from './setupJourneyState.ts';
+import { HOMEY_ENERGY_SETUP_HINT } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { isLastResortMaximumW } from '../../../shared-domain/src/settings/lastResortDevices.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { createSelectOption } from './materialSelectOption.ts';
@@ -56,17 +57,20 @@ export const devicePowerSetupWarning = (deviceId: string): string | null => {
   return null;
 };
 
-/** What External sensors offers a device that has no power reading yet. */
-export const devicePowerSetupAlternative = (deviceId: string): string | null => {
+/** Help choose a setup for a device without a power reading. */
+export const devicePowerSetupGuidance = (deviceId: string): string | null => {
   const entry = findSetupEntry(deviceId);
   if (!entry || entry.sourceId) return null;
   const socket = entry.sources.some(({ state }) => state === 'selectable');
-  const lastResort = entry.lastResortAvailable === true;
-  if (socket && lastResort) {
-    return 'Or choose a metering socket under External sensors, or turn on last-resort control under Power limiting.';
+  const meter = 'Choose a metering socket under External sensors if you have one.';
+  if (offersLastResortWithoutMeter(deviceId)) {
+    const lastResort = 'If its draw varies while it’s on and you can’t meter it, choose Turn off as a last resort '
+      + 'under Power limiting and enter its maximum draw. PELS can then cut it after other limiting '
+      + 'or during a household meter outage.';
+    const steadyDraw = 'If its draw stays steady whenever it’s on, use “Energy used when on” in Homey.';
+    return [socket ? meter : '', lastResort, steadyDraw].filter(Boolean).join(' ');
   }
-  if (socket) return 'Or choose a metering socket under External sensors.';
-  return lastResort ? 'Or turn on last-resort control under Power limiting.' : null;
+  return socket ? `${HOMEY_ENERGY_SETUP_HINT} ${meter}` : null;
 };
 
 export const LAST_RESORT_NEEDS_MANAGED_HINT = 'Turn on Managed by PELS to use last-resort control.';
@@ -81,6 +85,11 @@ export const resolveLastResortHint = (
 export const isLastResortOffered = (deviceId: string): boolean => (
   findSetupEntry(deviceId)?.lastResortAvailable === true
 );
+
+export const offersLastResortWithoutMeter = (deviceId: string): boolean => {
+  const entry = findSetupEntry(deviceId);
+  return entry?.lastResortAvailable === true && !entry.sourceId && !entry.usedBy;
+};
 
 export function readLastResortSetup(deviceId: string) {
   const entry = findSetupEntry(deviceId);
@@ -161,7 +170,7 @@ const offersLastResort = (entry: DevicePowerSetupEntry | undefined, draft: Setup
 function syncLastResort(
   fields: NonNullable<SetupFields['lastResort']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
 ): boolean {
-  const { section, toggle, maximum, help } = fields;
+  const { section, toggle, maximum, help, maximumHelp } = fields;
   const usableSwitch = hasUsableSwitch(entry, draft.switchId);
   const canEnable = canEnableLastResort(entry, draft.switchId);
   const maximumIsValid = isLastResortMaximumW(Number(draft.maximum));
@@ -170,18 +179,20 @@ function syncLastResort(
   toggle.disabled = !canEnable && !draft.lastResort;
   (maximum.closest<HTMLElement>('.md-field-row') ?? maximum).hidden = !draft.lastResort;
   maximum.disabled = !canEnable;
-  help.textContent = resolveLastResortHelp(usableSwitch, canEnable, draft, maximumIsValid);
+  help.textContent = resolveLastResortHelp(usableSwitch, canEnable);
+  maximumHelp.textContent = draft.maximum !== '' && !maximumIsValid
+    ? 'Enter the maximum power in whole watts.'
+    : 'Enter the highest total draw of everything this switch powers. '
+      + 'PELS makes room for that amount before turning it back on.';
   return displayed && draft.lastResort && (!canEnable || !maximumIsValid);
 }
 
-function resolveLastResortHelp(
-  usableSwitch: boolean, canEnable: boolean, draft: SetupDraft, maximumIsValid: boolean,
-): string {
+function resolveLastResortHelp(usableSwitch: boolean, canEnable: boolean): string {
   if (!usableSwitch) return 'Choose an available on/off control to use last-resort control.';
-  if (!canEnable) return 'Last-resort control is unavailable for this device.';
-  if (draft.lastResort && !maximumIsValid) return 'Enter the maximum power in whole watts.';
-  return 'PELS uses the household meter. If power is still too high after limiting other devices, PELS can turn this '
-    + 'one off. It makes room for the maximum power before turning it back on.';
+  if (!canEnable) return 'Last-resort control is unavailable. If the device now has a power reading, turn this off '
+    + 'to use ordinary power limiting.';
+  return 'For a varying draw you can’t meter. PELS can turn it off if other limiting isn’t enough or the '
+    + 'household meter stops reporting. PELS only resumes a device it turned off.';
 }
 
 function hasUnavailableEdit(entry: DevicePowerSetupEntry, draft: SetupDraft): boolean {
@@ -198,12 +209,12 @@ export const allowLastResortPriorityMove = (dragged: HTMLElement, related: HTMLE
 
 function renderSourcePart(
   part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
-  disabled: boolean, offersHomeyEnergy: boolean,
+  disabled: boolean,
 ): void {
   const { select, help } = part;
   updateOptions(select, sourceOptions(entry, draft.source), draft.source);
   select.disabled = disabled;
-  help.textContent = sourceHelp(entry, draft.source, offersHomeyEnergy);
+  help.textContent = sourceHelp(entry, draft.source);
 }
 
 function renderSwitchPart(
@@ -354,6 +365,7 @@ class DevicePowerSetupForm {
       if (lastResort.maximum.value !== current.maximum) lastResort.maximum.value = current.maximum;
     }
     if (this.guided) {
+      this.renderPowerChoices(entry, current);
       const simulation = guidedActions?.simulation() === true;
       renderGuidedReview(this.guided, entry, current, this.reviewing, simulation, this.status);
       this.guided.dismiss.disabled = this.saving;
@@ -366,12 +378,21 @@ class DevicePowerSetupForm {
     part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
     disabled: boolean,
   ): void {
-    const offersHomeyEnergy = Boolean(this.guided && guidedActions?.offersHomeyEnergy(this.selectedId));
-    renderSourcePart(part, entry, draft, disabled, offersHomeyEnergy);
+    renderSourcePart(part, entry, draft, disabled);
     if (!this.guided) return;
-    const { field } = part;
+    const { field, select } = part;
     field.hidden = entry?.ownPowerW !== undefined && !draft.source;
+    select.hidden = !draft.source && entry?.sources.length === 0;
     renderManagedSockets(part.managedSockets, entry, this.saving, (id) => { void this.releaseSocket(id); });
+  }
+
+  private renderPowerChoices(entry: DevicePowerSetupEntry | undefined, draft: SetupDraft): void {
+    const choices = this.fields.powerChoices;
+    if (!choices) return;
+    const showHomeyEnergy = !draft.source && !draft.lastResort
+      && guidedActions?.offersHomeyEnergy(this.selectedId) === true;
+    choices.homeyEnergy.hidden = !showHomeyEnergy;
+    choices.heading.hidden = !showHomeyEnergy && !offersLastResort(entry, draft);
   }
 
   private primaryActionLabel(): string {
@@ -532,7 +553,7 @@ export function renderDevicePowerSetup(actions: GuidedDeviceSetupActions): void 
 export function openGuidedDeviceSetup(id: string): void {
   const dialog = document.querySelector<MdDialog>('#device-power-setup');
   const guided = dialog && readGuidedControls(dialog);
-  if (guided) formFor(guided.dialog, ['source', 'switch', 'lastResort'], guided)?.open(id);
+  if (guided) formFor(guided.dialog, ['source', 'switch', 'powerChoices', 'lastResort'], guided)?.open(id);
 }
 
 /** Show the setup parts for the device whose page is open, or hide them. */

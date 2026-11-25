@@ -1770,13 +1770,14 @@
                   <md-filled-text-field
                     id="device-detail-expected-power"
                     aria-label="Power when running"
+                    aria-describedby="device-detail-expected-power-help device-detail-expected-power-source"
                     type="number"
                     step="1"
                     min="0"
                     inputmode="numeric"
                     suffix-text="W"
                   ></md-filled-text-field>
-                  <small class="field__hint">How much this device draws while it runs. PELS uses it to work out how much power to free up before resuming it. Leave empty to let PELS work it out.</small>
+                  <small class="field__hint" id="device-detail-expected-power-help">PELS uses this estimate to make room before turning the device back on. Enter watts only if its draw stays steady while on. Clear the field to use an automatic estimate.</small>
                   <small class="field__hint" id="device-detail-expected-power-source"></small>
                 </div>
               </div>

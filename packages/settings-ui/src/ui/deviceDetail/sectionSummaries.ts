@@ -1,4 +1,7 @@
-import { state } from '../state.ts';
+import { resolveManagedState, state } from '../state.ts';
+import { isLastResortConfigured, readLastResortSetup } from '../devicePowerSetup.ts';
+import { usesLastResortControls } from './controlState.ts';
+import { supportsPowerLimiting } from './temperaturePolicy.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 
 /**
@@ -30,10 +33,18 @@ const limitingAction = (deviceId: string): string => {
   return 'turns off';
 };
 
-/** `On · turns off when limiting`, `On · lowers to 16° when limiting`, or `Off`. */
-export const resolvePowerLimitingSummary = (device: SettingsUiDeviceDetailItem): string => (
-  state.controllableMap[device.id] === true ? `On · ${limitingAction(device.id)} when limiting` : 'Off'
-);
+/** The effective limiting setup, including a saved last-resort relay. */
+export const resolvePowerLimitingSummary = (device: SettingsUiDeviceDetailItem): string => {
+  const managed = resolveManagedState(device.id);
+  if (isLastResortConfigured(device.id)) {
+    if (readLastResortSetup(device.id)?.maximumW === undefined) return 'Last resort · check setup';
+    return managed ? 'On · last resort' : 'Last resort · requires management';
+  }
+  if (usesLastResortControls(device)) return 'Off · no device power reading';
+  return managed && supportsPowerLimiting(device) && state.controllableMap[device.id] === true
+    ? `On · ${limitingAction(device.id)} when limiting`
+    : 'Off';
+};
 
 const setText = (id: string, text: string): void => {
   const el = document.getElementById(id);
