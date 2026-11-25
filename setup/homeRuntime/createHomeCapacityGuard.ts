@@ -141,7 +141,7 @@ export const createHomeCapacityGuard = (
     guard.shortfallLog.bindStore({
       get: () => ctx.homey.settings.get(HARD_CAP_SHORTFALLS),
       set: (entries) => ctx.homey.settings.set(HARD_CAP_SHORTFALLS, entries),
-    }, () => scope.getCapacitySettings().limitKw);
+    }, () => scope.getCapacitySettings().configuredLimitKw);
   }
   return { guard, shortfallSideEffectGate };
 };

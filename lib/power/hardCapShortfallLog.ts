@@ -1,7 +1,7 @@
 /**
  * The hard-cap shortfall log: each time PELS had eased off everything it could
  * and the home still went past the hard cap (`CapacityGuard` opening an
- * incident), when it happened, the hard cap it happened under and what the
+ * incident), when it happened, the configured hard cap and what the
  * devices PELS does not control drew then. Kept for a week, like the phase
  * peaks log, so the settings UI can tell a home that meets its cap now and then
  * from one that cannot meet it at all. Runtime-owned; Main home only.
@@ -38,12 +38,12 @@ export class HardCapShortfallLog {
 
   private store: HardCapShortfallStore | null = null;
 
-  private readHardCapKw: () => number = () => 0;
+  private readConfiguredHardCapKw: () => number = () => 0;
 
   /** Until bound, nothing is recorded: only Main keeps the log. */
-  bindStore(store: HardCapShortfallStore, readHardCapKw: () => number): void {
+  bindStore(store: HardCapShortfallStore, readConfiguredHardCapKw: () => number): void {
     this.store = store;
-    this.readHardCapKw = readHardCapKw;
+    this.readConfiguredHardCapKw = readConfiguredHardCapKw;
     this.entries = parseHardCapShortfalls(store.get());
   }
 
@@ -54,7 +54,7 @@ export class HardCapShortfallLog {
   /** An incident opened. Written at once: incidents are minutes apart at the closest. */
   record(atMs: number, uncontrolledW: number): void {
     if (this.store === null) return;
-    const hardCapKw = this.readHardCapKw();
+    const hardCapKw = this.readConfiguredHardCapKw();
     if (!isFiniteNumber(hardCapKw) || hardCapKw <= 0) return;
     this.entries = [...this.recent(atMs), { atMs, hardCapKw, uncontrolledW: Math.max(0, Math.round(uncontrolledW)) }]
       .slice(-MAX_ENTRIES);

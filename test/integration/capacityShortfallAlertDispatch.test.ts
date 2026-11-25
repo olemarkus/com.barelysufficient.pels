@@ -10,7 +10,8 @@ import { requirePlanService } from '../../setup/appInit/contextGuards';
 import type { HomeScope } from '../../setup/homeRuntime/homeScope';
 import type { AppContext } from '../../lib/app/appContext';
 import type { FlowTriggerCard } from '../../lib/ports/homeyRuntime';
-import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
+import { HARD_CAP_SHORTFALLS, MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
+import { resolveHeldPowerLimits } from '../../lib/power/heldCapacityLimit';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
@@ -168,6 +169,37 @@ describe('capacity shortfall alert dispatch', () => {
 
     expect(handleShortfall).toHaveBeenCalledExactlyOnceWith(0.5);
     expect(triggerAlert).toHaveBeenCalledExactlyOnceWith({ home: 'Main home' });
+  });
+
+  it('logs incidents against the configured hard cap while the month peak is held', () => {
+    const storage = new Map<string, unknown>();
+    const ctx = partialDouble<AppContext>({
+      timers: new TimerRegistry(),
+      homey: partialDouble<AppContext['homey']>({
+        settings: partialDouble<AppContext['homey']['settings']>({
+          get: (key: string) => storage.get(key),
+          set: (key: string, value: unknown) => { storage.set(key, value); },
+        }),
+        flow: partialDouble<AppContext['homey']['flow']>({}),
+      }),
+      getStructuredLogger: () => testLogger,
+    });
+    const held = resolveHeldPowerLimits(
+      { capacityEnabled: true, limitKw: 5, gridImportLimitKw: null, marginKw: 0.2,
+        dryRun: false, periodMinutes: 15, followMonthPeak: true },
+      { state: 'recorded', peakKw: 8, source: 'tracked' },
+    );
+    const scope = partialDouble<HomeScope>({
+      homeId: MAIN_HOME_ID, getHomeDisplayName: () => HOMES_MAIN_HOME_NAME, getCapacitySettings: () => held,
+    });
+    const { guard } = createHomeCapacityGuard(
+      ctx, scope, (suffix) => suffix, () => requirePlanService(ctx),
+      () => false, () => false, () => false,
+    );
+    const atMs = Date.now();
+    guard.shortfallLog.record(atMs, 8_600);
+    expect(held.limitKw).toBe(8);
+    expect(storage.get(HARD_CAP_SHORTFALLS)).toEqual([{ atMs, hardCapKw: 5, uncontrolledW: 8_600 }]);
   });
 
   it('emits a sustained crossing on every grid step while the breach lasts', async () => {
