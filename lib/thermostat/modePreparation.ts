@@ -36,7 +36,8 @@ export type ModePreparationReads = {
 type PreparationWindow = {
   occurrence: ModePreparationOccurrence;
   currentMode: string;
-  started: Set<string>;
+  /** The last accepted Smart task state for each device that started preparation. */
+  started: Map<string, 'open' | 'none'>;
 };
 
 export class ModePreparationResolver {
@@ -48,7 +49,7 @@ export class ModePreparationResolver {
     if (occurrence === 'unavailable') {
       const window = this.lastUsableWindow();
       if (!window) return new Map();
-      return this.resolve(devices.filter((device) => window.started.has(device.id)), window.occurrence);
+      return this.resolve(devices.filter((device) => window.started.has(device.id)), window);
     }
     if (!occurrence) {
       this.window = undefined;
@@ -56,9 +57,9 @@ export class ModePreparationResolver {
     }
     const currentMode = this.reads.currentMode();
     const window = this.activeWindow(occurrence, currentMode)
-      ?? { occurrence, currentMode, started: new Set<string>() };
-    const prepared = this.resolve(devices, occurrence);
-    for (const deviceId of prepared.keys()) window.started.add(deviceId);
+      ?? { occurrence, currentMode, started: new Map<string, 'open' | 'none'>() };
+    const prepared = this.resolve(devices, window);
+    for (const deviceId of prepared.keys()) window.started.set(deviceId, 'none');
     this.window = window;
     return prepared;
   };
@@ -73,7 +74,9 @@ export class ModePreparationResolver {
     const device = this.reads.readDevice(deviceId);
     if (!device) return null;
     const targets = this.reads.modeTargets();
-    return this.eligibleTemperatures(device, targets[current]?.[deviceId], targets[occurrence.mode]?.[deviceId])
+    return this.eligibleTemperatures(
+      device, targets[current]?.[deviceId], targets[occurrence.mode]?.[deviceId], window.started,
+    )
       ?.targetC ?? null;
   };
 
@@ -89,7 +92,7 @@ export class ModePreparationResolver {
         targets[occurrence.mode]?.[device.id]);
       if (!temperatures) return [];
       const row = { deviceId: device.id, name: device.name, ...temperatures };
-      const blocker = this.preparationBlocker(device.id);
+      const blocker = this.preparationBlocker(device.id, started);
       if (blocker !== 'none') return [{ ...row, state: blocker }];
       if (started?.has(device.id)) return [{ ...row, state: 'preparing' }];
       const startAtMs = occurrence.atMs - this.reads.leadMs(device, temperatures.fromC, temperatures.targetC);
@@ -112,30 +115,34 @@ export class ModePreparationResolver {
   }
 
   private resolve(
-    devices: readonly PlanInputDevice[], occurrence: ModePreparationOccurrence,
+    devices: readonly PlanInputDevice[], window: PreparationWindow,
   ): Map<string, PreparedModeTarget> {
     const result = new Map<string, PreparedModeTarget>();
-    const current = this.reads.currentMode();
+    const { occurrence, currentMode: current, started } = window;
     if (current === occurrence.mode) return result;
     const targets = this.reads.modeTargets();
     const nextTargets = targets[occurrence.mode];
     if (nextTargets === undefined) return result;
     const remainingMs = occurrence.atMs - this.reads.nowMs();
-    const started = this.activeWindow(occurrence, current)?.started;
     for (const device of devices) {
-      const temperatures = this.eligibleTemperatures(device, targets[current]?.[device.id], nextTargets[device.id]);
+      const temperatures = this.eligibleTemperatures(
+        device, targets[current]?.[device.id], nextTargets[device.id], started,
+      );
       if (!temperatures) continue;
       const { fromC, targetC } = temperatures;
-      if (!started?.has(device.id) && remainingMs > 0
+      if (!started.has(device.id) && remainingMs > 0
         && remainingMs > this.reads.leadMs(device, fromC, targetC)) continue;
       result.set(device.id, { targetC, mode: occurrence.mode, at: occurrence.at });
     }
     return result;
   }
 
-  private eligibleTemperatures(device: PreparationDevice, currentC: number | undefined, nextC: number | undefined) {
+  private eligibleTemperatures(
+    device: PreparationDevice, currentC: number | undefined, nextC: number | undefined,
+    started: PreparationWindow['started'],
+  ) {
     const temperatures = this.candidateTemperatures(device, currentC, nextC);
-    return temperatures && this.preparationBlocker(device.id) === 'none' ? temperatures : undefined;
+    return temperatures && this.preparationBlocker(device.id, started) === 'none' ? temperatures : undefined;
   }
 
   private candidateTemperatures(device: PreparationDevice, currentC: number | undefined, nextC: number | undefined) {
@@ -149,17 +156,22 @@ export class ModePreparationResolver {
     return { fromC, targetC };
   }
 
-  private preparationBlocker(deviceId: string): 'override' | 'smart_task' | 'unavailable' | 'none' {
+  private preparationBlocker(
+    deviceId: string, started: PreparationWindow['started'] | undefined,
+  ): 'override' | 'smart_task' | 'unavailable' | 'none' {
     if (this.reads.temporaryTemperatureC(deviceId) !== null) return 'override';
     const task = this.reads.smartTaskState(deviceId);
-    return task === 'open' ? 'smart_task' : task;
+    // A failed read preserves a started device's last accepted state for this window.
+    const state = task === 'unavailable' ? started?.get(deviceId) ?? task : task;
+    if (task !== 'unavailable' && started?.has(deviceId)) started.set(deviceId, task);
+    return state === 'open' ? 'smart_task' : state;
   }
 
   result(devices: readonly PlanInputDevice[], occurrence: ModePreparationOccurrence): string {
     const window = this.activeWindow(occurrence, this.reads.currentMode());
     if (!window || window.started.size === 0) return '';
     const participants = devices.filter((device) => window.started.has(device.id));
-    const targets = this.resolve(participants, occurrence);
+    const targets = this.resolve(participants, window);
     if (targets.size === 0) return '';
     const ready = participants.filter((device) => {
       const prepared = targets.get(device.id);
