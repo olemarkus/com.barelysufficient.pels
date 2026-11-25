@@ -36,6 +36,7 @@ const fixture = () => {
   let now = 0;
   let mode = 'Night';
   const tasks = new Set<string>();
+  const failedTaskReads = new Set<string>();
   const overrides = new Set<string>();
   const external = new Set<string>();
   let leadScale = 1;
@@ -43,7 +44,7 @@ const fixture = () => {
   let previewDevices: PlanInputDevice[] = [];
   const preparation = new ModePreparationResolver({
     occurrence: () => read,
-    readDevice: () => undefined,
+    readDevice: (id) => previewDevices.find((device) => device.id === id),
     readPreviewDevices: () => previewDevices,
     nowMs: () => now,
     currentMode: () => mode,
@@ -51,7 +52,10 @@ const fixture = () => {
     thermalDirection: (id) => id === 'cooler' ? 'cooling' : 'heating',
     canSetTemperature: (id) => !external.has(id),
     temporaryTemperatureC: (id) => overrides.has(id) ? 19 : null,
-    smartTaskState: (id) => tasks.has(id) ? 'open' : 'none',
+    smartTaskState: (id) => {
+      if (failedTaskReads.has(id)) return 'unavailable';
+      return tasks.has(id) ? 'open' : 'none';
+    },
     leadMs: (device, fromC, targetC) => resolveModePreparationLeadMs(tracker, device, fromC, targetC) * leadScale,
   });
   const setpoints = fixtureTemperatureSetpoints({
@@ -60,7 +64,7 @@ const fixture = () => {
     getPreparedModeTargets: preparation.getPreparedModeTargets,
     getTemporaryTemperatureC: (id) => overrides.has(id) ? 19 : null,
   });
-  return { preparation, setpoints, tasks, overrides, external,
+  return { preparation, setpoints, tasks, failedTaskReads, overrides, external,
     setPreviewDevices: (devices: PlanInputDevice[]) => { previewDevices = devices; },
     setOccurrence: (next: ModePreparationRead) => { read = next; },
     refineLead: (scale: number) => { leadScale = scale; },
@@ -117,6 +121,37 @@ describe('scheduled mode preparation', () => {
     expect(f.setpoints(devices).get('fast')?.keepC).toBe(19);
     f.tasks.clear();
     expect(f.setpoints(devices).get('slow')?.keepC).toBe(21);
+  });
+
+  it('keeps the last accepted Smart task state for an already preparing heater', () => {
+    const f = fixture();
+    const devices = [heater('slow', 17), heater('fast', 17)];
+    f.setPreviewDevices(devices);
+    f.setRemaining(2.5);
+    expect(f.setpoints(devices).get('slow')?.keepC).toBe(21);
+    f.setRemaining(1);
+    f.failedTaskReads.add('slow');
+    f.failedTaskReads.add('fast');
+
+    expect(f.setpoints(devices).get('slow')?.keepC).toBe(21);
+    expect(f.setpoints(devices).get('fast')?.keepC).toBe(17);
+    expect(f.preparation.readPreparedTemperatureC('slow')).toBe(21);
+    expect(f.preparation.preview(occurrence).map(({ state }) => state)).toEqual(['preparing', 'unavailable']);
+
+    f.failedTaskReads.delete('slow');
+    f.tasks.add('slow');
+    expect(f.preparation.preview(occurrence)[0]?.state).toBe('smart_task');
+    f.failedTaskReads.add('slow');
+    expect(f.setpoints(devices).get('slow')?.keepC).toBe(17);
+    expect(f.preparation.readPreparedTemperatureC('slow')).toBeNull();
+
+    f.failedTaskReads.delete('slow');
+    f.tasks.delete('slow');
+    expect(f.setpoints(devices).get('slow')?.keepC).toBe(21);
+    f.failedTaskReads.add('slow');
+    f.overrides.add('slow');
+    expect(f.setpoints(devices).get('slow')?.keepC).toBe(19);
+    expect(f.preparation.preview(occurrence)[0]?.state).toBe('override');
   });
 
   it('shows estimated starts and current precedence without starting preparation', () => {
