@@ -27,8 +27,10 @@
  * timestamped name and a fresh one is started, logged once at error.
  */
 import fs from 'node:fs';
-import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import path from 'node:path';
+import { backup, DatabaseSync, type StatementSync } from 'node:sqlite';
 import { getLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
 
 const storeLogger = getLogger('store');
 
@@ -39,6 +41,14 @@ export type PreparedStatement = StatementSync;
 /** Where Homey bind-mounts the per-app userdata directory, for store installs and `homey app run --remote` alike. */
 const USERDATA_DIR = '/userdata';
 const USERDATA_DATABASE_FILE = 'pels.sqlite';
+const QUARANTINE_SUFFIX = '.corrupt-';
+const PROTECT_BACKUPS_SUFFIX = '.preserve-backups';
+const BACKUP_BOOT_DELAY_MS = 5 * 60 * 1000;
+const BACKUP_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+const BACKUP_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const BACKUP_INTERVAL_MS = 24 * BACKUP_CHECK_INTERVAL_MS;
+const BACKUP_MAX_BYTES = 16 * 1024 * 1024;
+const BACKUP_FREE_RESERVE_BYTES = 64 * 1024 * 1024;
 /** SQLite's in-memory database, for tests and for the harnesses. */
 export const IN_MEMORY_DATABASE = ':memory:';
 
@@ -99,9 +109,15 @@ const openWithPragmas = (location: string): DatabaseSync => {
   }
 };
 
+const backupSlots = (location: string): [string, string] => [`${location}.backup-a`, `${location}.backup-b`];
+
 /** Move a damaged file (and its WAL/SHM sidecars) out of the way, keeping it for a post-mortem. */
 const quarantineDamagedFile = (location: string): string => {
-  const suffix = `.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // Record protection in the quarantined filename itself so it survives restart
+  // and clock changes without a second write that could fail during recovery.
+  const protect = backupSlots(location).some((file) => fs.existsSync(file)) ? PROTECT_BACKUPS_SUFFIX : '';
+  const suffix = `${QUARANTINE_SUFFIX}${timestamp}${protect}`;
   for (const sidecar of ['', '-wal', '-shm']) {
     const from = `${location}${sidecar}`;
     if (fs.existsSync(from)) fs.renameSync(from, `${location}${suffix}${sidecar}`);
@@ -166,7 +182,140 @@ export const openUserdataDatabase = (location: string): UserdataDatabase => {
   };
 };
 
+const cleanupBackupTemp = (temp: string): void => {
+  for (const suffix of ['', '-journal', '-wal', '-shm']) {
+    fs.rmSync(`${temp}${suffix}`, { force: true });
+  }
+};
+
+const verifyBackup = (temp: string): void => {
+  const snapshot = new DatabaseSync(temp);
+  try {
+    // The published snapshot must be a standalone file, even on a WAL source.
+    if (snapshot.prepare('PRAGMA journal_mode = DELETE').get()?.journal_mode !== 'delete'
+      || snapshot.prepare('PRAGMA quick_check(1)').get()?.quick_check !== 'ok') {
+      throw new Error('SQLite snapshot verification failed');
+    }
+  } finally {
+    snapshot.close();
+  }
+};
+
+type BackupSkip =
+  | { reason: 'wal_unavailable' | 'quarantined_database' }
+  | { reason: 'size_limit' | 'insufficient_space'; bytes: number; freeBytes: number };
+
+const writeBackup = async (location: string, dir: string, temp: string): Promise<BackupSkip | undefined> => {
+  const source = new DatabaseSync(location, { readOnly: true });
+  try {
+    if (source.prepare('PRAGMA journal_mode').get()?.journal_mode !== 'wal') {
+      return { reason: 'wal_unavailable' };
+    }
+
+    // Pin the snapshot before sizing it. This read transaction allows live WAL writes
+    // and keeps them from changing which pages the backup reads between steps.
+    source.exec('BEGIN; SELECT 1 FROM sqlite_schema LIMIT 1;');
+    const { bytes } = source.prepare(
+      'SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()',
+    ).get() as { bytes: number };
+    const { bavail, bsize } = fs.statfsSync(dir);
+    const freeBytes = bavail * bsize;
+    if (bytes > BACKUP_MAX_BYTES || freeBytes < bytes + BACKUP_FREE_RESERVE_BYTES) {
+      return {
+        reason: bytes > BACKUP_MAX_BYTES ? 'size_limit' : 'insufficient_space',
+        bytes,
+        freeBytes,
+      };
+    }
+    await backup(source, temp);
+    return undefined;
+  } finally {
+    source.close();
+  }
+};
+
+const hasProtectedQuarantine = (location: string, dir: string): boolean => {
+  const prefix = `${path.basename(location)}${QUARANTINE_SUFFIX}`;
+  return fs.readdirSync(dir).some((name) => name.startsWith(prefix) && name.endsWith(PROTECT_BACKUPS_SUFFIX));
+};
+
+const syncPath = (location: string): void => {
+  const fd = fs.openSync(location, 'r');
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+};
+
+/** Preserve up to two daily snapshots. The app owns the only writer of the backup slots. */
+export const backupUserdataIfDue = async (location: string): Promise<BackupSkip | undefined> => {
+  const dir = path.dirname(location);
+  const temp = `${location}.backup-tmp`;
+  cleanupBackupTemp(temp);
+  const [first, second] = backupSlots(location);
+  const firstMtime = fs.statSync(first, { throwIfNoEntry: false })?.mtimeMs ?? -Infinity;
+  const secondMtime = fs.statSync(second, { throwIfNoEntry: false })?.mtimeMs ?? -Infinity;
+  const newestMtime = Math.max(firstMtime, secondMtime);
+  const ageMs = Date.now() - newestMtime;
+  const clockMovedBack = ageMs < -BACKUP_FUTURE_TOLERANCE_MS;
+  if (!clockMovedBack && ageMs < BACKUP_INTERVAL_MS) return undefined;
+  if (Number.isFinite(newestMtime) && hasProtectedQuarantine(location, dir)) {
+    return { reason: 'quarantined_database' };
+  }
+
+  try {
+    const skip = await writeBackup(location, dir, temp);
+    if (skip) return skip;
+    verifyBackup(temp);
+    const { size } = fs.statSync(temp);
+    syncPath(temp);
+    // Replace a future-dated slot first so it cannot force a write every hour.
+    const replaceFirst = clockMovedBack ? firstMtime >= secondMtime : firstMtime <= secondMtime;
+    fs.renameSync(temp, replaceFirst ? first : second);
+    syncPath(dir);
+    storeLogger.info({ event: 'userdata_backup_created', bytes: size });
+    return undefined;
+  } finally {
+    cleanupBackupTemp(temp);
+  }
+};
+
+const scheduleBackups = (location: string): (() => void) => {
+  let stopped = false;
+  let lastSkip: BackupSkip['reason'] | undefined;
+  let timer: NodeJS.Timeout;
+  const schedule = (delayMs: number): void => {
+    if (stopped) return;
+    timer = setTimeout(() => {
+      void backupUserdataIfDue(location).then((skip) => {
+        if (skip && skip.reason !== lastSkip) {
+          storeLogger.warn({ event: 'userdata_backup_skipped', ...skip });
+        }
+        lastSkip = skip?.reason;
+      }).catch((error: unknown) => {
+        lastSkip = undefined;
+        storeLogger.warn({ event: 'userdata_backup_failed', err: normalizeError(error) });
+      }).finally(() => schedule(BACKUP_CHECK_INTERVAL_MS));
+    }, delayMs);
+    timer.unref();
+  };
+  schedule(BACKUP_BOOT_DELAY_MS);
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
+};
+
 /** The app's one database file, at the production path. */
-export const openAppUserdataDatabase = (): UserdataDatabase => (
-  openUserdataDatabase(`${USERDATA_DIR}/${USERDATA_DATABASE_FILE}`)
-);
+export const openAppUserdataDatabase = (): UserdataDatabase => {
+  const db = openUserdataDatabase(path.join(USERDATA_DIR, USERDATA_DATABASE_FILE));
+  const stopBackups = scheduleBackups(db.location);
+  return {
+    ...db,
+    close: () => {
+      stopBackups();
+      db.close();
+    },
+  };
+};

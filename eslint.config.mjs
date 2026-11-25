@@ -872,7 +872,7 @@ export default tseslint.config(
     files: ['lib/store/**/*.ts'],
     rules: {
       'n/no-unsupported-features/node-builtins': ['error', {
-        version: '>=22.17.0',
+        version: '^22.17.0',
         allowExperimental: true,
         ignores: ['fetch'],
       }],

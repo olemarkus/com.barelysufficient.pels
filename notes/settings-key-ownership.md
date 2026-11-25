@@ -382,6 +382,26 @@ read on the upgrade boot does not leave that whole run without the history.
 The settings UI reaches history through `api.js` endpoints and the store's own
 realtime push, never through a settings key.
 
+### SQLite snapshots
+
+While PELS runs, the database owner keeps up to two daily snapshots in
+`/userdata/pels.sqlite.backup-a` and `/userdata/pels.sqlite.backup-b`. A snapshot
+can be at most 16 MiB. PELS requires room for the new copy plus 64 MiB of free
+space and verifies the copy before replacing a slot. The database, its WAL
+and any existing snapshots already count toward used space.
+
+If startup quarantines the live database while snapshots exist, the
+quarantined filename ends in `.preserve-backups` and PELS leaves both slots
+in place. PELS starts a fresh live database in this case.
+
+An operator with filesystem access can restore a snapshot by stopping PELS,
+moving the live database and any `-wal` and `-shm` files out of `/userdata`, and
+copying the chosen snapshot to `/userdata/pels.sqlite` with the same owner and
+permissions as the live file. Archive the quarantine files, including any
+`.preserve-backups` file and its sidecars, outside `/userdata` to resume
+rotation. Then start PELS. The snapshots live on the same filesystem as the
+database. Stock Homey devices have no PELS restore control.
+
 ### Main fuse
 
 `main_fuse_supply` and `main_fuse_amps` belong to
