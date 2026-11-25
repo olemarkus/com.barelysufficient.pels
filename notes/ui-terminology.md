@@ -1928,7 +1928,7 @@ The live smart-task detail page renders two question-titled chart cards. All str
   - `Idle — {kind verb} starts HH:MM` — idle current period with a later run scheduled (`heating` / `cooling`). Capitalized `Idle` like its sibling segments; the embedded kind verb stays lowercase mid-sentence. Never claims the kind verb as active while the hero says it starts later.
   - `Idle` — idle current period, nothing scheduled.
   - `Not scheduled` — idle non-current period.
-- Secondary line: at rest (no explicit selection) it is always the scrub hint `Drag across the chart to read each period`; once the user actively selects a period (including re-selecting Now) it shows that period's revision-reason sentence (e.g. `Updated as new prices arrived`) when one exists, else the hint.
+- Secondary line: at rest it shows `Drag across the chart to read each period`. Selecting a period shows its revision reason (e.g. `Updated as new prices arrived`) when one exists. A booked period in a run marked by an enabled **Avoid short charging breaks** preference also shows `Part of a run planned to avoid a short charging break`. If the selected period has neither explanation, the scrub hint stays.
 
 **Trajectory stateline** (under the trajectory chart), two variants:
 
