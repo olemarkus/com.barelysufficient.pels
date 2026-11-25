@@ -77,7 +77,7 @@ const MIN_RUNNING_DRAW_KW = 0.05;
 const MIN_STEADY_READINGS = 3;
 /** How far back the meter's cadence is read. */
 const CADENCE_LOOKBACK_MS = 2 * 60 * 1000;
-/** The readings kept: enough for the cadence before a command, its window and its settle period. */
+/** While a watch is open, keep enough history for its cadence, window and settle period. */
 const HISTORY_MS = CADENCE_LOOKBACK_MS + WINDOW_MS + SETTLE_MS;
 /** A write that never settled stops counting as in flight after this. */
 const IN_FLIGHT_EXPIRY_MS = WINDOW_MS;
@@ -320,7 +320,8 @@ export class MeterResponseCapture {
       })),
     };
     this.readings.push(reading);
-    while (this.readings.length > 0 && atMs - this.readings[0]!.atMs > HISTORY_MS) this.readings.shift();
+    const historyMs = this.watch === null ? CADENCE_LOOKBACK_MS : HISTORY_MS;
+    while (this.readings.length > 0 && atMs - this.readings[0]!.atMs > historyMs) this.readings.shift();
     if (this.watch && previous !== undefined) this.follow(this.watch, previous, reading);
   }
 

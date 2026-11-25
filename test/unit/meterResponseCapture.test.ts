@@ -128,6 +128,20 @@ const droppedReason = (outcomes: MeterResponseOutcome[]): string | undefined => 
 };
 
 describe('MeterResponseCapture', () => {
+  it('keeps only the cadence lookback while no command is watched', () => {
+    const capture = new MeterResponseCapture();
+    const meterIntervalMs = 1_000;
+    const quietDurationMs = 15 * 60_000;
+    const devices = datedSurfaces()([{ id: 'heater', measuredPowerKw: 0.3 }], T0);
+    for (let offsetMs = 0; offsetMs <= quietDurationMs; offsetMs += meterIntervalMs) {
+      capture.recordSample({ streamGeneration: STREAM, powerW: 2_000 }, T0 + offsetMs, () => devices);
+    }
+
+    const readings = capture['readings'];
+    expect(readings.at(-1)?.atMs).toBe(T0 + quietDurationMs);
+    expect(readings[0]?.atMs).toBe(T0 + quietDurationMs - 2 * 60_000);
+  });
+
   it('times a lone switch-on from dispatch to the first reading past half the change', () => {
     // Readings fall on whole 5 s steps from T0; the dispatch lands 1 s after one.
     const firstReadingAtNewLevel = DISPATCH_AT - 1_000 + 4 * STEP_MS;
