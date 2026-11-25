@@ -243,3 +243,58 @@ describe('last-resort relay control', () => {
     expect(['high', 'low', 'ordinary'].map(order.getPriority)).toEqual([1, 2, 3]);
   });
 });
+
+describe('last-resort restore priority reproduction', () => {
+  const now = 1_800_000_000_000;
+  const relay = buildPlanDevice({
+    id: 'relay', priority: 1, unmetered: true, control: { managed: true, commandAuthority: true },
+    lastResort: { maximumW: 6000 }, lastResortOwnedOffAtMs: now - 600000,
+    currentOn: false, commandableNow: true,
+  });
+  const smallerLoad = buildPlanDevice({
+    id: 'smaller', priority: 2, currentOn: false, currentDrawKw: 0, expectedPowerKw: 2,
+    control: { managed: true, commandAuthority: true }, commandableNow: true, shedAction: 'turn_off',
+  });
+
+  const plan = (headroomKw: number, relayDevice = relay) => {
+    const state = createPlanEngineState(now - 600000);
+    state.shedDecisions.lastPlannedShedIds = new Set(['smaller']);
+    const result = applyRestorePlanForSpec({
+      planDevices: [relayDevice, smallerLoad], context: buildPlanContextFixture({ nowTs: now }),
+      power: buildMeasuredPower({ headroomKw, capacityHeadroomKw: headroomKw, budgetHeadroomKw: headroomKw }),
+      state,
+      sheddingActive: false,
+      deps: {
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
+        temperatureSetpoints: new Map(),
+        structuredLog: testLogger,
+      },
+    });
+    return new Map(result.planDevices.map((device) => [device.id, buildPlannedBinaryCommand(device)]));
+  };
+
+  it('currently lets a 2 kW load take headroom while the 6 kW relay waits for more', () => {
+    const commands = plan(5);
+    expect(commands.get('relay')).toBeUndefined();
+    expect(commands.get('smaller')).toMatchObject({ deviceId: 'smaller', desiredOn: true });
+  });
+
+  it('starts the 6 kW relay first when 7 kW is free', () => {
+    const commands = plan(7);
+    expect(commands.get('relay')).toMatchObject({ deviceId: 'relay', desiredOn: true });
+    expect(commands.get('smaller')).toBeUndefined();
+  });
+
+  it('currently keeps an unowned OFF relay off even without an external hold', () => {
+    const commands = plan(7, {
+      ...relay, lastResortOwnedOffAtMs: undefined,
+    });
+    expect(commands.get('relay')).toBeUndefined();
+  });
+
+  it('honors an active external hold even when PELS owns the relay shutoff', () => {
+    const commands = plan(7, { ...relay, externalOffHoldActive: true });
+    expect(commands.get('relay')).toBeUndefined();
+  });
+});
