@@ -35,6 +35,7 @@ import { formatStepDisplayLabel } from '../../packages/shared-domain/src/stepped
 import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
 import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/homeyEnergySetup';
+import { formatDisplayDeviceName } from '../../packages/shared-domain/src/displayDeviceName';
 import type { DeviceStatusInput } from './deviceStatusInput';
 
 /** The reason line of a card Homey reports unavailable, as the Tesla adapter words it. */
@@ -263,6 +264,14 @@ function resolveNotControlledReason(
   return device.available ? null : { text: HOMEY_UNAVAILABLE_REASON_TEXT };
 }
 
+function resolveMeteringSocketReason(socketName: string | undefined): DeviceStatus['reason'] {
+  const name = formatDisplayDeviceName(socketName ?? '');
+  const text = name
+    ? `Waiting for a power reading from ${name}. Check the socket in Homey.`
+    : 'Metering socket unavailable. Choose another power source under External sensors.';
+  return { text, tone: 'warning' };
+}
+
 /**
  * Why a Manual card is Manual, named only from a fact that says so. PELS holds
  * authority over a device when the owner granted it, the device has a power
@@ -286,11 +295,14 @@ function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] 
       ? 'Turn on the device manually to resume control'
       : 'Check the last-resort settings in Devices' };
   }
-  if (device.powerSetupRequired) {
+  if (device.powerSetupRequirement?.kind === 'metering_socket') {
+    return resolveMeteringSocketReason(device.powerSetupRequirement.socketName);
+  }
+  if (device.powerSetupRequirement?.kind === 'homey_energy') {
     const lastResortOffered = device.binaryControllable && !device.isEvCharger && !device.temperature
       && !device.steppedLoad;
     const text = lastResortOffered
-      ? `${HOMEY_ENERGY_SETUP_REASON} or set up last-resort control in Devices`
+      ? `${HOMEY_ENERGY_SETUP_REASON} or set up last-resort control under Power limiting`
       : HOMEY_ENERGY_SETUP_REASON;
     return { text, tone: 'warning', offersHomeyEnergySetup: true };
   }
@@ -391,7 +403,7 @@ function resolvePower(
 ): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
   const reportedKw = resolveRunningLastResortReadingKw(device);
   if (reportedKw !== undefined) return { powerText: `${reportedKw.toFixed(1)} kW`, powerVariant: 'live' };
-  if (device.powerSetupRequired || device.lastResort) return { powerText: null, powerVariant: 'expected' };
+  if (device.powerSetupRequirement !== null || device.lastResort) return { powerText: null, powerVariant: 'expected' };
   return resolveStandardPower(device, limited, dryRun, previousPower);
 }
 
@@ -422,7 +434,8 @@ function resolvePowerBeforeSwitchOff(
   device: DeviceStatusInput, kind: DeviceStatus['kind'], dryRun: boolean,
 ): number | undefined {
   if (dryRun || kind !== 'held' || !device.binaryControllable || device.isEvCharger
-    || device.powerSetupRequired || device.temperature || device.steppedLoad || device.execution.physicalState !== 'off'
+    || device.powerSetupRequirement !== null || device.temperature
+    || device.steppedLoad || device.execution.physicalState !== 'off'
     || device.execution.binaryProgress === 'pending'
     || device.reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) return undefined;
   const power = device.powerBeforeSwitchOffKw;
@@ -617,7 +630,7 @@ function resolveCardMarks(
 ): Pick<DeviceStatus, 'heldForPhase' | 'override' | 'needsChargerAppUpdate' | 'powerLimitingNeedsReading'> {
   const powerLimitingNeedsReading = cardKind === 'temperature'
     && device.execution.available && device.execution.targetProgress !== 'undriven'
-    && device.powerLimitControlEnabled && !device.hasPowerReading && !device.powerSetupRequired;
+    && device.powerLimitControlEnabled && !device.hasPowerReading && device.powerSetupRequirement === null;
   return {
     ...(powerLimitingNeedsReading ? { powerLimitingNeedsReading: true as const } : {}),
     ...(device.reason.code === PLAN_REASON_CODES.phaseLimit ? { heldForPhase: device.reason.phase } : {}),

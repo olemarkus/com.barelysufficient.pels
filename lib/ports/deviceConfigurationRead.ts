@@ -1,5 +1,10 @@
 import type { DeviceDescriptorRead, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
+/** The device owner's setup guidance for an unmetered on/off device. */
+export type DevicePowerSetupRequirement =
+  | { kind: 'homey_energy' }
+  | { kind: 'metering_socket'; socketName: string | undefined };
+
 /** Resolved configuration needed by planner and executor runtime inputs. */
 type DeviceConfigurationFields = {
   inverterControl?: DeviceDescriptorRead['inverterControl'];
@@ -14,8 +19,8 @@ type DeviceConfigurationFields = {
   isEvCharger: DeviceDescriptorRead['isEvCharger'];
   /** A thermostat-family class whose "held below target" PELS reports as starvation. */
   starvationSupported: boolean;
-  /** Native on/off control needs Homey Energy power information before power limiting. */
-  powerSetupRequired: boolean;
+  /** Power information is required before this native on/off device can be limited. */
+  powerSetupRequirement: DevicePowerSetupRequirement | null;
   /**
    * The lowest heating limit PELS sheds this device's setpoint to when the
    * setpoint is its only way to shed (no on/off, no steps). The device's

@@ -188,7 +188,7 @@ const createGatedPlanService = async (
     ...planServiceWiring(),
     hasStandingCommandGrant: () => false,
     isCapacityControlEnabled: () => false,
-    getDevicePowerSetupRequired: () => false,
+    getDevicePowerSetupRequirement: () => null,
     getDeviceControlAdapter: () => undefined,
     getUnusedBuiltInControl: () => 'none' as const,
     isTargetPowerControlRefused: () => false,

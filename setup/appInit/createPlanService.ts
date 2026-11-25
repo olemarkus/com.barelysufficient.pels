@@ -47,7 +47,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     observed: ctx.observer,
     hasStandingCommandGrant: (deviceId) => resolveStandingCommandGrant(planInputSource, deviceId),
     isCapacityControlEnabled: planInputSource.isCapacityControlEnabled,
-    getDevicePowerSetupRequired: (deviceId) => ctx.deviceConfiguration.get(deviceId)?.powerSetupRequired === true,
+    getDevicePowerSetupRequirement: (deviceId) => ctx.deviceConfiguration.get(deviceId)?.powerSetupRequirement ?? null,
     // Explicit observer projection: transport capability and Flow bindings must
     // never cross into the plan-owned service merely because structural typing
     // accepts a wider object.

@@ -13,7 +13,12 @@ import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { availableBinarySwitches, hasAcceptedBinarySwitch, supportsBinarySwitchSetup } from './binarySwitchBinding';
 
 type PowerSourceRead = { kind: 'device' }
-  | { kind: 'external'; socketId: string; capability?: HomeyDeviceLike['capabilitiesObj']['measure_power'] };
+  | {
+    kind: 'external';
+    socketId: string;
+    socketName: string | undefined;
+    capability?: HomeyDeviceLike['capabilitiesObj']['measure_power'];
+  };
 
 export type PowerSourceHome = (deviceId: string, zoneId: string | null) => string | undefined;
 
@@ -166,10 +171,12 @@ export class ExternalDevicePower {
     const sourceId = this.sourceForDevice(target.id);
     if (!sourceId) return { kind: 'device' };
     const source = lookup(sourceId);
+    const eligible = source && this.classifySource(target, source) ? source : undefined;
     return {
       kind: 'external',
       socketId: sourceId,
-      capability: source && this.classifySource(target, source) ? readSocketPowerCapability(source) : undefined,
+      socketName: eligible?.name,
+      capability: eligible ? readSocketPowerCapability(eligible) : undefined,
     };
   }
 

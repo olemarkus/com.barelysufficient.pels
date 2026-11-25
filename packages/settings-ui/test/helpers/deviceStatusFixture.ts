@@ -34,7 +34,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
     adapterUnavailableStatus: undefined, chargingInstallation: undefined,
     unusedBuiltInControl: 'none', targetPowerControlRefused: false,
     // A card fixture that is Manual reads Power-limit control off.
-    standingCommandGrant: false, powerLimitControlEnabled: false, hasPowerReading: true, powerSetupRequired: false,
+    standingCommandGrant: false, powerLimitControlEnabled: false, hasPowerReading: true, powerSetupRequirement: null,
     powerBeforeSwitchOffKw: undefined,
     binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,

@@ -8,7 +8,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
   priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, chargingInstallation: undefined, unusedBuiltInControl: 'none', targetPowerControlRefused: false,
-  standingCommandGrant: true, powerLimitControlEnabled: true, hasPowerReading: true, powerSetupRequired: false,
+  standingCommandGrant: true, powerLimitControlEnabled: true, hasPowerReading: true, powerSetupRequirement: null,
   powerBeforeSwitchOffKw: undefined,
   carIdentificationState: 'not_waiting',
   execution: {
@@ -437,11 +437,12 @@ describe('Manual cards', () => {
   }), dryRun, 0);
 
   it.each([false, true])('names Homey Energy setup before command grants, granted=%s', (standingCommandGrant) => {
-    const status = manual({ standingCommandGrant, hasPowerReading: false, powerSetupRequired: true,
+    const status = manual({ standingCommandGrant, hasPowerReading: false, powerSetupRequirement: { kind: 'homey_energy' },
       currentDrawKw: undefined });
     expect(status.kind).toBe('manual');
     expect(status.reason).toMatchObject({ tone: 'warning', offersHomeyEnergySetup: true });
     expect(status.reason?.text).toContain('Advanced settings in Homey');
+    expect(status.reason?.text).toContain('under Power limiting');
     expect(status.powerText).toBeNull();
   });
 

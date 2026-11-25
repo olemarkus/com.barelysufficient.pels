@@ -7,6 +7,7 @@ import type { PreparedModeTarget, PriceTargetShift } from '../../packages/planne
 import type { AdapterUnavailableStatus, DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
 import type { UnusedBuiltInControl } from '../device/builtInControlFlowGate';
 import type { DevicePlanDevice } from './planTypes';
+import type { DevicePowerSetupRequirement } from '../ports/deviceConfigurationRead';
 
 /** The installation context shown alongside a charger's own draw. */
 export type ChargingInstallationCard =
@@ -33,8 +34,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   hasPowerReading: boolean;
   /** The observer's last live device power reading when it predates switch-off. */
   powerBeforeSwitchOffKw: number | undefined;
-  /** The device owner's resolved Homey Energy setup requirement. */
-  powerSetupRequired: boolean;
+  /** The device owner's resolved power setup requirement. */
+  powerSetupRequirement: DevicePowerSetupRequirement | null;
   carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;

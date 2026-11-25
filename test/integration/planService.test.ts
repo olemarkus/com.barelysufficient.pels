@@ -208,7 +208,7 @@ const buildPlan = (
 const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServiceDeps,
   | 'hasStandingCommandGrant'
   | 'isCapacityControlEnabled'
-  | 'getDevicePowerSetupRequired'
+  | 'getDevicePowerSetupRequirement'
   | 'getHomeBatteryCard'
   | 'getDeviceControlAdapter'
   | 'getUnusedBuiltInControl'
@@ -224,7 +224,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   ...planServiceWiring(),
   hasStandingCommandGrant: () => false,
   isCapacityControlEnabled: () => false,
-  getDevicePowerSetupRequired: () => false,
+  getDevicePowerSetupRequirement: () => null,
   getDeviceControlAdapter: () => undefined,
   getUnusedBuiltInControl: () => 'none' as const,
   isTargetPowerControlRefused: () => false,

@@ -52,7 +52,7 @@ export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'getUnusedBuiltInControl' | 'isTargetPowerControlRefused'
   | 'hasStandingCommandGrant'
   | 'isCapacityControlEnabled'
-  | 'getDevicePowerSetupRequired'
+  | 'getDevicePowerSetupRequirement'
   | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
@@ -277,7 +277,7 @@ function buildLoadOverviewDevice(
     standingCommandGrant: deps.hasStandingCommandGrant(device.id),
     powerLimitControlEnabled: deps.isCapacityControlEnabled(device.id),
     hasPowerReading: isMeteredPlanDevice(device),
-    powerSetupRequired: deps.getDevicePowerSetupRequired(device.id),
+    powerSetupRequirement: deps.getDevicePowerSetupRequirement(device.id),
     controllable: device.control.commandAuthority,
     ...temperatureFields,
     steppedLoad,

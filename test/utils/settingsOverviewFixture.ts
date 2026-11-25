@@ -20,7 +20,7 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'isTargetPowerControlRefused'
   | 'hasStandingCommandGrant'
   | 'isCapacityControlEnabled'
-  | 'getDevicePowerSetupRequired'
+  | 'getDevicePowerSetupRequirement'
   | 'readStarvationRescuableDeviceIds'>;
 
 /**
@@ -43,7 +43,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   isTargetPowerControlRefused: () => false,
   hasStandingCommandGrant: () => false,
   isCapacityControlEnabled: () => false,
-  getDevicePowerSetupRequired: () => false,
+  getDevicePowerSetupRequirement: () => null,
   readStarvationRescuableDeviceIds: () => [],
 });
 
