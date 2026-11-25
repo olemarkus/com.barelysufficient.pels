@@ -50,7 +50,7 @@ import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { readActiveRecommendation, dismissSetupRecommendation } from './recommendations.ts';
-import { offersSetupGoals, resolveSetupGoalChoices } from './setupGoals.ts';
+import { resolveSetupGoalChoices } from './setupGoals.ts';
 import { followsPrices, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import {
@@ -129,7 +129,11 @@ const openSetupGoals = (): void => {
 };
 
 // Once the required steps are done, optional choices come before the review.
-const goalsComeNext = (): boolean => !goalsShown && offersSetupGoals();
+const goalsComeNext = (): boolean => {
+  if (goalsShown) return false;
+  const choices = resolveSetupGoalChoices();
+  return choices.state === 'ready' && choices.hasActions;
+};
 
 const prioritiesComeNext = (): boolean => {
   const managed = readMainHomeManagedDevices();
@@ -239,6 +243,7 @@ const paintReview = (): void => {
   if (!root) return;
   const path = readSetupReview();
   const devices = readReviewDevices();
+  const goals = resolveSetupGoalChoices();
   const retryAvailable = state.devicesReadState === 'unavailable'
     || state.deferredObjectiveSettingsReadState === 'unavailable';
   render(h(SetupReview, {
@@ -252,7 +257,8 @@ const paintReview = (): void => {
     onRetry: retryAvailable ? () => { void runAction(retrySetupReview); } : undefined,
     onStart: startManaging,
     onContinue: continueSetup,
-    onChooseGoals: offersSetupGoals() ? openSetupGoals : null,
+    hasGoalActions: goals.state === 'ready' && goals.hasActions,
+    onChooseGoals: goals.state === 'ready' && goals.devices.length > 0 ? openSetupGoals : null,
     onOpenDevice: dispatchOpenDeviceDetail,
   }), root);
 };
@@ -282,6 +288,7 @@ const mountHeader = (panelId: string): HTMLElement | null => {
 // when solar control is still on its way.
 const goalsHeaderDetail = (): string => {
   const choices = resolveSetupGoalChoices();
+  if (choices.state === 'ready' && !choices.hasActions) return 'See what PELS needs for each device.';
   const source = choices.state === 'ready' && choices.priceSource !== null
     ? ` PELS uses your prices from ${choices.priceSource}.` : '';
   const solar = solarPending() ? ` ${solarPendingNote()}` : '';
