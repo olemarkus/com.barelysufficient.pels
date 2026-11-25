@@ -17,6 +17,7 @@ const NEVER = {
 const freshInstall: SetupPathFacts = {
   power: NEVER,
   hardCap: { state: 'unset', runningLimitKw: 10, periodMinutes: 60 },
+  mainFuseOn: false,
   actionableDeviceCount: 0,
   unchosenBesideBatteryCount: 0,
   limitableDeviceCount: 0,
@@ -30,6 +31,7 @@ const freshInstall: SetupPathFacts = {
 const configuredAndSimulating: SetupPathFacts = {
   power: { state: 'received' },
   hardCap: { state: 'saved', limitKw: 8, marginKw: 0.4, periodMinutes: 60 },
+  mainFuseOn: false,
   actionableDeviceCount: 3,
   unchosenBesideBatteryCount: 0,
   limitableDeviceCount: 1,
@@ -43,6 +45,7 @@ const configuredAndSimulating: SetupPathFacts = {
 const priceOnlyOwner: SetupPathFacts = {
   power: { state: 'received' },
   hardCap: { state: 'unset', runningLimitKw: 10, periodMinutes: 60 },
+  mainFuseOn: false,
   actionableDeviceCount: 2,
   unchosenBesideBatteryCount: 0,
   limitableDeviceCount: 0,
@@ -156,6 +159,21 @@ describe('setup path', () => {
     expect(detailOf({ ...facts, hardCap: { state: 'saved', limitKw: 4, marginKw: 0.2, periodMinutes: 60 } },
       'hardCap')).toBe('4 kW hard cap (hourly average), 0.2 kW safety margin');
     expect(statuses({ ...facts, hardCap: { state: 'disabled' } })).toContain('hardCap:done');
+  });
+
+  it('offers Main fuse in Dutch setup without reopening the completed Limits step', () => {
+    const facts: SetupPathFacts = {
+      ...configuredAndSimulating,
+      market: { state: 'resolved', country: 'NL' },
+      hardCap: { state: 'disabled' },
+    };
+    expect(resolveSetupSteps(facts).offersMainFuse).toBe(true);
+    expect(resolveSetupPath(facts)).toEqual({ state: 'complete' });
+    expect(resolveSetupSteps({ ...facts, mainFuseOn: true }).offersMainFuse).toBe(false);
+    expect(resolveSetupSteps({ ...facts, mainFuseOn: null }).offersMainFuse).toBe(false);
+    expect(resolveSetupSteps({ ...facts, limitableDeviceCount: 0 }).offersMainFuse).toBe(false);
+    expect(resolveSetupSteps({ ...facts, simulating: false }).offersMainFuse).toBe(false);
+    expect(resolveSetupSteps({ ...facts, market: { state: 'resolved', country: 'FR' } }).offersMainFuse).toBe(false);
   });
 
   it('offers a French home its subscribed power under Main fuse instead of a measured-peak question', () => {

@@ -83,6 +83,8 @@ export type SetupPrices =
 export type SetupPathFacts = {
   power: SetupPowerReadings;
   hardCap: SetupHardCap;
+  /** The saved fuse setting, or null until it is read. */
+  mainFuseOn: boolean | null;
   /**
    * Managed devices PELS can act on: every managed load, and a home battery
    * only while PELS can drive it. A battery PELS can only watch stays managed
@@ -112,6 +114,7 @@ export type SetupPath = {
   steps: readonly SetupStep[];
   doneCount: number;
   offersEvCharger: boolean;
+  offersMainFuse: boolean;
   lede: string;
   /** Whether the path should name the simulation posture below its steps. */
   simulating: boolean;
@@ -322,6 +325,8 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
   return {
     steps,
     offersEvCharger: facts.unchosenBesideBatteryCount > 0,
+    offersMainFuse: facts.market.state === 'resolved' && facts.market.country === 'NL'
+      && facts.simulating && hardCapApplies && facts.hardCap.state === 'disabled' && facts.mainFuseOn === false,
     doneCount: steps.filter((step) => step.status === 'done').length,
     lede: 'Connect your meter, choose a device, then review your settings.',
     simulating: facts.simulating,

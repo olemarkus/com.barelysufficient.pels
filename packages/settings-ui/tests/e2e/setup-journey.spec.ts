@@ -200,6 +200,17 @@ test('setup offers what PELS can do before the review, and the review names it',
   const devicesHeader = page.locator('#devices-panel .setup-journey');
   await devicesHeader.getByRole('button', { name: 'Continue', exact: true }).click();
 
+  await expect(page).toHaveURL(/setup=hardCap/);
+  const limitsHeader = page.locator('#limits-panel .setup-journey');
+  await expect(limitsHeader).toContainText('Optional. Set your main fuse to protect each phase.');
+  await expect(page.getByRole('switch', { name: 'Main fuse', exact: true })).toBeVisible();
+  for (const width of [320, 480]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`optional-main-fuse-${width}.png`), scale: 'css', fullPage: true });
+  }
+  await limitsHeader.getByRole('button', { name: 'Continue', exact: true }).click();
+
   await expect(page).toHaveURL(/setup=goals/);
   const header = page.locator('#devices-panel .setup-journey');
   await expect(header).toContainText('Choose what PELS does');

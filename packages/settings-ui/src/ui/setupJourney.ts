@@ -67,6 +67,8 @@ let meterLine: string | null = null;
 // back to it. Never persisted.
 let goalsShown = false;
 let prioritiesShown = false;
+// The Dutch main-fuse offer is optional and shown once per visit.
+let limitsShown = false;
 // Whether this visit came from the simulation banner with setup unfinished.
 // Only then is someone looking for the way out of simulation; guided setup
 // itself keeps to its steps. Never persisted.
@@ -135,6 +137,11 @@ const goalsComeNext = (): boolean => {
   return choices.state === 'ready' && choices.hasActions;
 };
 
+const mainFuseComesNext = (path: SetupPath): boolean => {
+  const step = currentStep();
+  return !limitsShown && path.offersMainFuse && (step === 'power' || step === 'devices');
+};
+
 const prioritiesComeNext = (): boolean => {
   const managed = readMainHomeManagedDevices();
   return !prioritiesShown && managed.state === 'ready' && managed.devices.length >= 2;
@@ -146,7 +153,8 @@ const continueSetup = (): void => {
     if (!review) throw new Error('Setup could not be read. Return to setup and try again.');
     if (currentStep() === 'priorities') prioritiesShown = true;
     const next = nextSetupStep(review);
-    if (next) navigateStep(next);
+    if ((!next || next.id === 'prices') && mainFuseComesNext(review)) showTab('limits', 'hardCap');
+    else if (next) navigateStep(next);
     else if (goalsComeNext()) openSetupGoals();
     else if (prioritiesComeNext()) showTab('modes', 'priorities');
     else showTab('setup-review', 'review');
@@ -310,6 +318,9 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
   return fact?.detail ?? null;
 };
 
+const OPTIONAL_MAIN_FUSE_DETAIL = 'Optional. Set your main fuse to protect each phase. '
+  + 'One phase can overload even when solar on another offsets its draw.';
+
 // Dutch and French households pay by connection or subscription size, so the
 // open Limits step offers the way out its detail explains, in one tap. A new
 // install there starts with Capacity limit off; this is for one from before that
@@ -335,7 +346,7 @@ const setupFinished = (path: SetupPath | null): boolean => (
 );
 
 const continueLabel = (path: SetupPath | null): string => (
-  path !== null && !nextSetupStep(path) && !goalsComeNext() && !prioritiesComeNext()
+  path !== null && !nextSetupStep(path) && !mainFuseComesNext(path) && !goalsComeNext() && !prioritiesComeNext()
     ? 'Review setup' : 'Continue'
 );
 
@@ -355,7 +366,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
   return {
     title: headerTitle(step),
     progress: headerProgress(step, path),
-    detail: headerDetail(step, fact),
+    detail: step === 'hardCap' && path?.offersMainFuse ? OPTIONAL_MAIN_FUSE_DETAIL : headerDetail(step, fact),
     busy: actionBusy || setupSavePending(),
     // The optional page never holds the journey back.
     canContinue: canContinueSetup(step, fact),
@@ -394,9 +405,11 @@ const paintJourney = (): void => {
   }
   const root = mountHeader(PANEL_BY_STEP[step]);
   if (!root) return;
+  const path = readSetupReview();
+  if (step === 'hardCap' && path !== null) limitsShown = true;
   root.hidden = false;
   root.parentElement!.dataset.setupJourneyPanel = step;
-  render(h(SetupJourneyHeader, headerProps(step, readSetupReview())), root);
+  render(h(SetupJourneyHeader, headerProps(step, path)), root);
 };
 
 const repaintJourney = (): void => {
