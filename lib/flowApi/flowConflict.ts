@@ -109,3 +109,32 @@ export function classifyFlowConflicts(
     })
     .filter((conflict) => conflict.conflictingCapabilities.length > 0);
 }
+
+export type StandardFlowCapability = 'onoff' | 'target_temperature';
+
+const STANDARD_WRITE_CARDS: Record<StandardFlowCapability, readonly string[]> = {
+  onoff: ['on', 'off', 'toggle', 'onoff'],
+  target_temperature: ['target_temperature_set', 'target_temperature'],
+};
+
+const MAX_CANDIDATE_FLOWS = 8;
+
+/** Enabled Flows with standard write cards for this device and setting. This does not establish that they ran. */
+export function findStandardFlowWriters(
+  writes: FlowCapabilityWrites,
+  deviceId: string,
+  capability: StandardFlowCapability,
+) {
+  const deviceWrites = writes.get(deviceId);
+  const candidates = new Map<string, string>();
+  for (const cardId of STANDARD_WRITE_CARDS[capability]) {
+    for (const [flowId, flowName] of deviceWrites?.get(cardId) ?? []) candidates.set(flowId, flowName);
+  }
+  return {
+    flows: [...candidates].slice(0, MAX_CANDIDATE_FLOWS).map(([flowId, flowName]) => ({
+      flowId,
+      flowName: flowName.slice(0, 160),
+    })),
+    leftOut: Math.max(0, candidates.size - MAX_CANDIDATE_FLOWS),
+  };
+}

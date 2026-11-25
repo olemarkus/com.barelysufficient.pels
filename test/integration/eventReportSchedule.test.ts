@@ -96,6 +96,22 @@ describe('reports on specific events the owner turned on', () => {
     });
   });
 
+  it('gives contest evidence time to arrive and sends on a later check even if evidence is unavailable', async () => {
+    vi.useFakeTimers({ now: NOW });
+    const { events, sendOnEvent, schedule } = setup(true);
+    events.record(['stove'], {
+      component: 'executor', event: 'device_control_contested', deviceId: 'stove',
+      setting: 'on_off', commanded: false, observed: true, count: 4, firstAtMs: NOW - MINUTE_MS,
+    });
+    const eventReports = schedule();
+    await eventReports.check(NOW + 10_000);
+    expect(sendOnEvent).not.toHaveBeenCalled();
+    await eventReports.check(NOW + 5 * MINUTE_MS);
+    expect(sendOnEvent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      subject: { kind: 'device', homeId: 'main', deviceId: 'stove' },
+    }), expect.any(Function));
+  });
+
   it('sends nothing until the owner turns it on, and nothing for an event outside the lookback', async () => {
     vi.useFakeTimers({ now: NOW });
     const { sendOnEvent, schedule, unmatched, values } = setup(undefined);
