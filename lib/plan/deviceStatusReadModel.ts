@@ -278,7 +278,7 @@ function resolveMeteringSocketReason(socketName: string | undefined): DeviceStat
  * reading, and it has something PELS could switch or step
  * (`resolveDeviceControlPosture`).
  *
- * Missing Homey Energy setup names the device setting the owner needs first.
+ * Missing power setup names the setting or assigned socket to check first.
  * Otherwise, without the grant the line names the owner's Power-limit control setting
  * rather than asking for it, because a device left unlimited on purpose (a
  * fridge, a PC) is fine. With the grant but no power reading it says that. Any
@@ -295,10 +295,9 @@ function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] 
       ? 'Turn on the device manually to resume control'
       : 'Check the last-resort settings in Devices' };
   }
-  if (device.powerSetupRequirement?.kind === 'metering_socket') {
-    return resolveMeteringSocketReason(device.powerSetupRequirement.socketName);
-  }
-  if (device.powerSetupRequirement?.kind === 'homey_energy') {
+  const requirement = device.powerSetupRequirement;
+  if (requirement !== null) {
+    if (requirement.kind === 'metering_socket') return resolveMeteringSocketReason(requirement.socketName);
     const lastResortOffered = device.binaryControllable && !device.isEvCharger && !device.temperature
       && !device.steppedLoad;
     const text = lastResortOffered
