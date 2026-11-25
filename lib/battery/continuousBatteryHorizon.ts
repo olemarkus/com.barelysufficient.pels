@@ -52,6 +52,7 @@ export function createContinuousBatteryPlanSource(
 ): ContinuousBatteryPlanSource {
   return {
     getNowMs: () => sources.getNowMs(),
+    isStoredEnergyExportUnsupported: (deviceId) => sources.getControl().isStoredEnergyExportUnsupported(deviceId),
     // The mode catalog's order has unique ranks, so it needs no tiebreak.
     orderByPriority: (deviceIds) => {
       const priorities = sources.getPrioritiesForDevices(deviceIds);

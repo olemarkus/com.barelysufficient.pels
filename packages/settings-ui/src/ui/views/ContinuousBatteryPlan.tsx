@@ -45,9 +45,13 @@ const draftFrom = (config: ContinuousBatteryPlanConfig): Draft => ({
   exportCeiling: config.exportPolicy.kind === 'price_export' ? String(config.exportPolicy.netExportCeilingKW) : '',
 });
 
-export const readBatteryPlanDraft = (draft: Draft, priceUnit: string): ContinuousBatteryPlanConfig | null => {
+export const readBatteryPlanDraft = (
+  draft: Draft,
+  priceUnit: string,
+  savedExportPolicy?: ContinuousBatteryPlanConfig['exportPolicy'],
+): ContinuousBatteryPlanConfig | null => {
   if ([draft.capacity, draft.reserve, draft.efficiency, draft.wear].some(value => value.trim() === '')) return null;
-  if (draft.sell && draft.exportCeiling.trim() === '') return null;
+  if (!savedExportPolicy && draft.sell && draft.exportCeiling.trim() === '') return null;
   const config = {
     enabled: draft.enabled,
     usableCapacityKWh: Number(draft.capacity),
@@ -55,9 +59,9 @@ export const readBatteryPlanDraft = (draft: Draft, priceUnit: string): Continuou
     roundTripEfficiency: Number(draft.efficiency) / 100,
     wearCostPerKWh: Number(draft.wear),
     priceUnit,
-    exportPolicy: draft.sell
+    exportPolicy: savedExportPolicy ?? (draft.sell
       ? { kind: 'price_export', netExportCeilingKW: Number(draft.exportCeiling) }
-      : { kind: 'household_only' },
+      : { kind: 'household_only' }),
   };
   return parseContinuousBatteryPlanConfig(config);
 };
@@ -245,6 +249,28 @@ const canSaveBatteryPlan = (config: ContinuousBatteryPlanConfig | null, enableBl
   !busy && config !== null && (!config.enabled || !enableBlocked)
 );
 
+function BatteryExportFields({ sell, exportCeiling, busy, update }: Pick<Draft, 'sell' | 'exportCeiling'> & {
+  busy: boolean;
+  update: (key: 'sell' | 'exportCeiling', value: boolean | string) => void;
+}) {
+  return <>
+    <label class="md-switch-row">
+      <span class="md-switch-row__content"><span class="md-switch-row__label pels-text-settings-label">Sell stored energy when profitable</span></span>
+      <MdSwitch aria-label="Sell stored energy when profitable" selected={sell} disabled={busy}
+        onChange={(event: Event) => update('sell', readSwitchSelected(event))} />
+    </label>
+    <p class="field__hint">PELS compares selling with keeping the energy for your home, after losses and wear, and sells only when that lowers your electricity cost. Stored solar can then go to the grid in the evening, when export pays more than at midday. Your minimum reserve stays. Selling needs an export price, set under Electricity prices.</p>
+    {sell && <>
+      <div class="form-grid battery-plan-fields">
+        <MdDecimalField id="device-detail-battery-plan-export-ceiling" label="Export limit at your meter (kW)"
+          min={String(EXPORT_CEILING_MIN_KW)} max={String(EXPORT_CEILING_MAX_KW)} step="0.1" value={exportCeiling} disabled={busy}
+          onInput={(event: Event) => update('exportCeiling', (event.currentTarget as HTMLInputElement).value)} />
+      </div>
+      <p class="field__hint">The most power the house may send to the grid while the battery sells, measured at your main meter. Use what your grid connection and contract allow.</p>
+    </>}
+  </>;
+}
+
 export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
   const [form, setForm] = useState(() => ({ savedConfig: props.config, draft: draftFrom(props.config), dirty: false }));
   // A config snapshot and its edits move together. An after-paint effect that
@@ -260,7 +286,9 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     ...current, draft: { ...current.draft, [key]: value }, dirty: true,
   }));
   const unit = props.priceUnit;
-  const config = draft.enabled ? (unit === null ? null : readBatteryPlanDraft(draft, unit))
+  const showExportSettings = draft.enabled && props.read.exportUnsupported !== true;
+  const savedExportPolicy = props.read.exportUnsupported ? props.config.exportPolicy : undefined;
+  const config = draft.enabled ? (unit === null ? null : readBatteryPlanDraft(draft, unit, savedExportPolicy))
     : { ...props.config, enabled: false };
   const changedUnit = draft.enabled && unit !== null && isBatteryPlanUnitSettled(props.config)
     && props.config.priceUnit.trim().toLowerCase() !== unit.trim().toLowerCase();
@@ -286,18 +314,8 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     </div>}
     {draft.enabled && <p class="field__hint">Check usable capacity against your battery’s specification before saving. PELS also respects the battery’s own limits.</p>}
     {draft.enabled && props.otherEnabledPlans > 0 && <p class="field__hint">{BATTERY_PLAN_ORDER_LINE}</p>}
-    {draft.enabled && <label class="md-switch-row">
-      <span class="md-switch-row__content"><span class="md-switch-row__label pels-text-settings-label">Sell stored energy when profitable</span></span>
-      <MdSwitch aria-label="Sell stored energy when profitable" selected={draft.sell} disabled={props.busy}
-        onChange={(event: Event) => update('sell', readSwitchSelected(event))} />
-    </label>}
-    {draft.enabled && <p class="field__hint">PELS compares selling with keeping the energy for your home, after losses and wear, and sells only when that lowers your electricity cost. Stored solar can then go to the grid in the evening, when export pays more than at midday. Your minimum reserve stays. Selling needs an export price, set under Electricity prices.</p>}
-    {draft.enabled && draft.sell && <div class="form-grid battery-plan-fields">
-      <MdDecimalField id="device-detail-battery-plan-export-ceiling" label="Export limit at your meter (kW)"
-        min={String(EXPORT_CEILING_MIN_KW)} max={String(EXPORT_CEILING_MAX_KW)} step="0.1" value={draft.exportCeiling} disabled={props.busy}
-        onInput={(event: Event) => update('exportCeiling', (event.currentTarget as HTMLInputElement).value)} />
-    </div>}
-    {draft.enabled && draft.sell && <p class="field__hint">The most power the house may send to the grid while the battery sells, measured at your main meter. Use what your grid connection and contract allow.</p>}
+    {showExportSettings && <BatteryExportFields sell={draft.sell} exportCeiling={draft.exportCeiling}
+      busy={props.busy} update={update} />}
     {draft.enabled && <details class="battery-plan-advanced"><summary>Losses and battery wear</summary>
       <div class="form-grid battery-plan-fields">
         <MdFilledTextField id="device-detail-battery-plan-efficiency" label="Round-trip efficiency (%)" type="number" min="50" max="100" step="1" value={draft.efficiency} disabled={props.busy}
@@ -309,7 +327,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
         onUse={value => update('efficiency', value)} />
       <p class="field__hint">Wear is an allowance per kWh supplied from the battery, in the same units as your electricity prices. 0 ignores battery wear.</p>
     </details>}
-    {config === null && <p class="field__hint field__hint--alert" role="alert">Enter capacity from 0.1 to 500 kWh, reserve from 0% to 95%, efficiency from 50% to 100%, and wear from 0 to 1000{draft.sell ? `, and an export limit from ${EXPORT_CEILING_MIN_KW} to ${EXPORT_CEILING_MAX_KW} kW` : ''}.</p>}
+    {config === null && <p class="field__hint field__hint--alert" role="alert">Enter capacity from 0.1 to 500 kWh, reserve from 0% to 95%, efficiency from 50% to 100%, and wear from 0 to 1000{showExportSettings && draft.sell ? `, and an export limit from ${EXPORT_CEILING_MIN_KW} to ${EXPORT_CEILING_MAX_KW} kW` : ''}.</p>}
     <div class="form__actions"><MdFilledButton disabled={!canSave || !dirty} onClick={async () => {
       if (config && await props.onSave(config)) setForm(current => ({ ...current, draft: draftFrom(config), dirty: false }));
     }}>{props.busy ? 'Saving…' : 'Save battery plan'}</MdFilledButton>

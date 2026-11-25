@@ -347,6 +347,33 @@ describe('selling stored energy', () => {
     expect(read.plan.periods.some(period => period.reason === 'export_energy')).toBe(false);
   });
 
+  it.each(['ready', 'waiting'] as const)('ignores a meter-following battery’s saved export ceiling (%s horizon)', (standing) => {
+    const groupConfig: ContinuousBatteryPlanConfig = {
+      ...selling, exportPolicy: { kind: 'price_export', netExportCeilingKW: 0.25 },
+    };
+    let exportUnsupported = false;
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { seller: selling, group: groupConfig } });
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
+      getNowMs: () => NOW,
+      isStoredEnergyExportUnsupported: (id) => id === 'group' && exportUnsupported,
+      readHorizon: (id) => id === 'group' && standing === 'waiting'
+        ? { kind: 'waiting', reason: 'battery_unavailable' }
+        : ready(tradingHorizon)(),
+    }));
+
+    expect(decisionOf(owner.read('seller'))).toMatchObject({ kind: 'selling', netExportCeilingKW: 0.25 });
+    exportUnsupported = true;
+    const seller = owner.read('seller');
+    const group = owner.read('group');
+    expect(decisionOf(seller)).toMatchObject({ kind: 'selling', netExportCeilingKW: 2 });
+    expect(group).toMatchObject({ status: standing === 'ready' ? 'planned' : standing, config: groupConfig,
+      exportUnsupported: true });
+    expect(group).not.toHaveProperty('exportDecision');
+    if (group.status === 'planned') expect(group.plan.periods.every(period => period.reason !== 'export_energy')).toBe(true);
+    if (seller.status !== 'planned') throw new Error('Expected the capable battery to plan selling');
+    expect(seller.plan.periods.some(period => period.reason === 'export_energy' && period.gridExportKWh > 0.25)).toBe(true);
+  });
+
   it('waits to sell, keeping a usable household plan, while export quotes are incomplete', () => {
     const read = ownerFor(selling, ready(tradingHorizon, 'incomplete')).owner.read('battery');
     if (read.status !== 'planned') throw new Error('Expected a household plan');

@@ -107,16 +107,10 @@ import { AbsentBatteries } from './absentBatteries';
 import { handBackBeforeKeyRemoval } from './batteryKeyRemoval';
 import { LegacyBatteryRecovery } from './legacyBatteryRecovery';
 import type {
-  BatteryClaimAdmission,
-  BatteryClaimRefusal,
-  BatteryControlOwner,
-  BatteryControlDeviceReads,
-  BatteryControlRead,
-  BatteryHandBackOutcome,
-  BatteryKeyRemovalOutcome,
-  BatteryLeverRead,
-  BatterySetpointOutcome,
-  BatterySetpointWrite,
+  BatteryClaimAdmission, BatteryClaimRefusal,
+  BatteryControlOwner, BatteryControlDeviceReads, BatteryControlRead,
+  BatteryHandBackOutcome, BatteryKeyRemovalOutcome,
+  BatteryLeverRead, BatterySetpointOutcome, BatterySetpointWrite,
   StorageReleaseReason,
 } from '../ports/batteryControlOwner';
 import type { SettingsPort } from '../ports/homeyRuntime';
@@ -295,6 +289,12 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (this.readLegacyRecovery(deviceId)) return 'recovery_required';
     return describeBatteryControl(this.devices.readBatteryControl(deviceId),
       (battery) => this.watchOnly.isWatchOnly(deviceId, battery.surface, Date.now()));
+  }
+
+  isStoredEnergyExportUnsupported(deviceId: string): boolean {
+    const battery = this.devices.readBatteryControl(deviceId);
+    // The meter-mode surface can discharge only to cover household import.
+    return battery.kind === 'setpoint' && battery.surface.response.kind === 'follows_meter';
   }
 
   readDelivery(deviceId: string) {

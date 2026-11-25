@@ -34,9 +34,9 @@ const validExportDecision = (raw: unknown): boolean => {
     && ['export_prices_incomplete', 'evaluation_budget_exceeded'].includes(String(decision.reason));
 };
 
-/** An export decision exactly when the owner authorized selling, and none otherwise. */
+/** An export decision when the owner authorized selling on a capable battery. */
 const validExportOutcome = (read: Record<string, unknown>, config: ContinuousBatteryPlanConfig): boolean => (
-  config.exportPolicy.kind === 'price_export'
+  config.exportPolicy.kind === 'price_export' && read.exportUnsupported !== true
     ? validExportDecision(read.exportDecision)
     : !Object.hasOwn(read, 'exportDecision')
 );
@@ -53,6 +53,14 @@ const validPlannedRead = (read: Record<string, unknown>, config: ContinuousBatte
     ]);
 };
 
+const validBatteryPlanRead = (read: Record<string, unknown>, config: ContinuousBatteryPlanConfig): boolean => (
+  (read.exportUnsupported === undefined || read.exportUnsupported === true)
+  && (read.status === 'disabled' || (read.status === 'waiting' && [
+    'settings_unavailable', 'battery_unavailable', 'prices_unavailable', 'forecast_unavailable', 'solar_scope_shared',
+    'background_unavailable', 'control_unavailable', 'smart_tasks_planning', 'horizon_infeasible', 'price_unit_changed',
+  ].includes(String(read.reason))) || (read.status === 'planned' && validPlannedRead(read, config)))
+);
+
 /** Resolve the network envelope here; an unavailable roster never means a disabled battery. */
 export async function loadContinuousBatteryPlan(deviceId: string): Promise<ContinuousBatteryPlanRead> {
   const payload = asUnknownRecord(await getApiReadModel<unknown>(SETTINGS_UI_DEVICES_PATH));
@@ -62,10 +70,7 @@ export async function loadContinuousBatteryPlan(deviceId: string): Promise<Conti
   if (asUnknownRecord(payload?.homeScope)?.state === 'unavailable' || read === null || config === null) {
     throw new Error('Battery planning is unavailable.');
   }
-  if (read.status === 'disabled' || (read.status === 'waiting' && [
-    'settings_unavailable', 'battery_unavailable', 'prices_unavailable', 'forecast_unavailable', 'solar_scope_shared',
-    'background_unavailable', 'control_unavailable', 'smart_tasks_planning', 'horizon_infeasible', 'price_unit_changed',
-  ].includes(String(read.reason))) || (read.status === 'planned' && validPlannedRead(read, config))) {
+  if (validBatteryPlanRead(read, config)) {
     // The parsed config, never the wire's: it is what the form edits and saves.
     return { ...read, config } as ContinuousBatteryPlanRead;
   }
