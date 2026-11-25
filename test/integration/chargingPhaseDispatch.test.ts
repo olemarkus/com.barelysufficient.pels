@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { ChargingPhaseControlOwner } from '../../lib/chargingPhases/chargingPhaseControlOwner';
 import { CHARGING_PHASE_RECORD_PREFIX } from '../../lib/chargingPhases/phaseClaimStore';
 import { ChargingPhaseExecutor } from '../../lib/executor/chargingPhaseExecutor';
@@ -13,6 +13,7 @@ import type { ChargingPhaseEnvelope } from '../../packages/planner-types/src/cha
 import { CHARGING_PHASE_SETTINGS_KEY } from '../../packages/shared-domain/src/settings/chargingPhases';
 import { partialDouble } from '../helpers/partialDouble';
 import type { ExecutableObservedDeviceState } from '../../lib/executor/executablePlan';
+import { captureLogger } from '../utils/loggerCapture';
 
 const NOW = Date.UTC(2026, 10, 13, 10);
 const ID = 'charger';
@@ -24,12 +25,17 @@ const envelopes: readonly ChargingPhaseEnvelope[] = ([1, 3] as const).map((phase
     { id: '16a', planningCurrentA: 16, planningPowerW: phases * 3680 }] },
 }));
 
-function fixture() {
+function fixture(includeSibling = false) {
   const values = new Map<string, unknown>([[CHARGING_PHASE_SETTINGS_KEY,
     { [ID]: { mode: 'three', installationConfirmed: true } }]]);
+  let keysUnavailable = false;
   const settings: SettingsPort = {
     get: (key) => values.get(key), set: (key, value) => { values.set(key, value); },
-    unset: (key) => { values.delete(key); }, getKeys: () => [...values.keys()],
+    unset: (key) => { values.delete(key); },
+    getKeys: () => {
+      if (keysUnavailable) throw new Error('Settings keys are unavailable.');
+      return [...values.keys()];
+    },
   };
   let device: ChargingPhaseDevice = {
     deviceId: ID, available: true, connected: true, managed: true, controlEnabled: true,
@@ -39,7 +45,8 @@ function fixture() {
     totalPower: { watts: 3680, observedAtMs: NOW }, phaseVoltagesV: [null, null, null],
   };
   const source: ChargingPhaseSource = {
-    readDevices: () => [device], envelopes: () => envelopes, isSimulation: () => false,
+    readDevices: () => includeSibling ? [device, { ...device, deviceId: 'sibling' }] : [device],
+    envelopes: () => envelopes, isSimulation: () => false,
     releasePlanningEnvelope: vi.fn(),
     observedPoint: (read, phases) => ({
       phases, currentA: read.currentLimitA, totalKw: read.totalPower.watts / 1000,
@@ -60,10 +67,10 @@ function fixture() {
   const owner = new ChargingPhaseControlOwner(settings, source, { apply }, contest, {
     forDevice: () => ({ onStarting: vi.fn(), onAccepted: vi.fn(), onFailed: vi.fn() }),
   });
-  return { owner, values, apply };
+  return { owner, values, apply, setKeysUnavailable: (unavailable: boolean) => { keysUnavailable = unavailable; } };
 }
 
-function solarLoweringIntent(): PlannedDeviceCommands & PlannedCommandAxes {
+function solarLoweringIntent(): PlannedDeviceCommands & Required<Pick<PlannedCommandAxes, 'steppedLoad'>> {
   return { id: ID, name: 'Charger', commandAuthority: true, projection: 'decided', steppedLoad: {
     id: ID, name: 'Charger', steppedLoadProfile: envelopes[0].profile, desired: { stepId: '6a' }, stepDirection: 'any',
     transition: { effectiveTransition: 'step_down_while_on', stepPreparationPurpose: null,
@@ -71,7 +78,59 @@ function solarLoweringIntent(): PlannedDeviceCommands & PlannedCommandAxes {
   } };
 }
 
+function stepUpIntent(id: string): PlannedDeviceCommands & PlannedCommandAxes {
+  const lower = solarLoweringIntent();
+  return { ...lower, id, steppedLoad: {
+    ...lower.steppedLoad, id, desired: { stepId: '16a' },
+    transition: { effectiveTransition: 'step_up_while_on', stepPreparationPurpose: null,
+      binaryTarget: null, transitionPhase: 'settled' },
+  } };
+}
+
 describe('phase planning and ordinary dispatch', () => {
+  it('warns once per held device command while the settings keys remain unavailable', async () => {
+    const f = fixture(true);
+    f.values.delete(CHARGING_PHASE_SETTINGS_KEY);
+    f.setKeysUnavailable(true);
+    const executor = new ChargingPhaseExecutor(f.owner);
+    const logs = captureLogger('info', []);
+    onTestFinished(logs.restore);
+    const dispatch = (id: string) =>
+      withChargingPhaseControl(executor, stepUpIntent(id), undefined, undefined, async () => 'ordinary', 'skipped');
+    expect(await dispatch(ID)).toBe('skipped');
+    expect(await dispatch(ID)).toBe('skipped');
+    expect(await dispatch('sibling')).toBe('skipped');
+    expect(logs.findEvents('charging_phase_command_held')).toMatchObject([
+      { deviceId: ID, reason: 'keys_unavailable' }, { deviceId: 'sibling', reason: 'keys_unavailable' },
+    ]);
+    f.setKeysUnavailable(false);
+    expect(await dispatch(ID)).toBe('ordinary');
+    expect(logs.findEvents('charging_phase_command_held')).toHaveLength(2);
+  });
+
+  it('only warns for ordinary commands fenced by an unreadable claim', async () => {
+    const f = fixture(true);
+    f.values.set(RECORD_KEY, null);
+    const executor = new ChargingPhaseExecutor(f.owner);
+    const logs = captureLogger('info', []);
+    onTestFinished(logs.restore);
+    const observed = partialDouble<ExecutableObservedDeviceState>({
+      id: ID, observedEffectiveOn: true, steppedLoad: { on: true, reportedStepId: '16a', currentDrawKw: 3.68 },
+    });
+    const ordinary = async () => 'ordinary';
+    const release = { kind: 'release', deviceId: ID } as const;
+    expect(await withChargingPhaseControl(executor, solarLoweringIntent(), observed, undefined, ordinary, 'skipped'))
+      .toBe('ordinary');
+    expect(await withChargingPhaseControl(executor, stepUpIntent(ID), undefined, release, ordinary, 'skipped'))
+      .toBe('skipped');
+    expect(await withChargingPhaseControl(executor, stepUpIntent('sibling'), undefined, undefined, ordinary, 'skipped'))
+      .toBe('ordinary');
+    expect(logs.findEvents('charging_phase_command_held')).toHaveLength(0);
+    expect(await withChargingPhaseControl(executor, stepUpIntent(ID), undefined, undefined, ordinary, 'skipped'))
+      .toBe('skipped');
+    expect(logs.findEvents('charging_phase_command_held')).toMatchObject([{ deviceId: ID, reason: 'record_unreadable' }]);
+  });
+
   it('keeps PREPARE responsible for the matching solar reduction and reserves its target before lowering', async () => {
     const f = fixture();
     const read = f.owner.readPlanning(NOW);
