@@ -305,10 +305,6 @@ const readCapacityPowerModel = async (): Promise<CapacityPowerRead> => {
   }
 };
 
-// Last readings fact handed to the banner, so a settings load that resolves
-// AFTER the first power read can re-render the copy without refetching power.
-// undefined = the banner has never rendered.
-let lastBannerReadings: PowerReadingsFact | undefined;
 // Newer loads supersede the entire older snapshot. Power-source saves have a
 // narrower generation: they fence stale source-dependent paint without
 // discarding unrelated capacity values read from a realtime refresh.
@@ -335,13 +331,12 @@ const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
   }
 };
 
-const updateStaleDataBanner = (readings: PowerReadingsFact) => {
-  lastBannerReadings = readings;
-  renderPowerReadingsBanner(readings, normalizePowerSource(settingsPowerSourceSelect?.value), hasMeterAreas === false);
-};
+const updateStaleDataBanner = (readings: PowerReadingsFact | null): boolean => (
+  renderPowerReadingsBanner(readings, normalizePowerSource(settingsPowerSourceSelect?.value), hasMeterAreas === false)
+);
 
 export const refreshStaleDataBanner = (): void => {
-  if (lastBannerReadings !== undefined) updateStaleDataBanner(lastBannerReadings);
+  updateStaleDataBanner(null);
 };
 // The plan render reports whether the current plan was measured; a flip
 // re-renders the banner at once rather than on the next refresh tick.
@@ -370,9 +365,7 @@ export const loadStaleDataStatus = async () => {
   // response is untrusted): a junk payload keeps the last-known fact rather
   // than fabricating `never` — and before any render, resolves to `never`.
   const fact = classifyPowerReadingsFact(power.readings);
-  if (fact !== null) updateStaleDataBanner(fact);
-  else if (lastBannerReadings !== undefined) refreshStaleDataBanner();
-  else publishSetupPowerUnavailable();
+  if (!updateStaleDataBanner(fact)) publishSetupPowerUnavailable();
   if (power.hardCapConfiguration.state === 'resolved' && power.capacityScalars.state === 'resolved') {
     publishHardCapRead(power.hardCapConfiguration.configured, power.capacityScalars.scalars);
   } else {
@@ -384,9 +377,7 @@ export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayl
   // The payload may be a realtime push (an untrusted transport): classify the
   // fact once here. A push carrying no valid fact keeps the last-known one —
   // it must never fabricate `never` over a real stamp.
-  const fact = classifyPowerReadingsFact(power?.readings);
-  if (fact !== null) updateStaleDataBanner(fact);
-  else refreshStaleDataBanner();
+  updateStaleDataBanner(classifyPowerReadingsFact(power?.readings));
 };
 
 const syncLoadedPowerSource = (powerSource: unknown): void => {

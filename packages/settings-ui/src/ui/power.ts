@@ -127,9 +127,9 @@ let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () 
 // Whole-home only, deliberately: this reader flattens the payload, so it must
 // never be handed a scoped read (an `unavailable` one would be
 // indistinguishable from a measured idle). Its remaining consumer is the
-// stale-data banner (`capacity.ts`), which is Main's surface. The Usage
-// surface reads through `readUsagePower`, which follows the selected home and
-// keeps the scope discriminated.
+// Main capacity UI (`capacity.ts`). The Usage surface and meter-area banner
+// read through `readUsagePower`, which follows the selected home and keeps
+// the scope discriminated.
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
   if (payload) {

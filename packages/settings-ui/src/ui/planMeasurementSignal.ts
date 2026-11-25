@@ -1,5 +1,5 @@
 /**
- * Whether the plan currently rendered on the Overview was built without a
+ * Whether Main's latest rendered plan was built without a
  * measurement — the silent-meter fail-closed pass (`meta.powerIsMeasured`
  * false). The hero draws nothing for that cycle (owner ruling 2026-09-02), so
  * the no-readings banner carries the consequence line instead.

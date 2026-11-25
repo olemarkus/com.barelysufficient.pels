@@ -2629,6 +2629,10 @@ from tracker fields or persisted-blob fallbacks.
 - Before the first reading, **Check power source** opens the source setting.
   After readings stop, **Check meter** opens the whole-home meter picker for a meter
   source, or the power source setting for a Flow source.
+- On a panel scoped to a meter area, the banner uses that area's readings.
+  It names the area in the instruction to check its meter in Homey Energy, and
+  **Check meter** opens **Multiple meters**. The Main setup stand-down applies
+  to Main's warning.
 - **Timeline notice (owner ruling 2026-11-22):** inside settings the banner
   stays the one surface, but an owner who is not looking at PELS is told on
   Homey's timeline when the fail-closed pass limits their devices, and again

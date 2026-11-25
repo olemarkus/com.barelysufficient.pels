@@ -120,6 +120,11 @@ export const getHomeScope = (): HomeScopeState => ({
   selectedHomeId, areas, ...homeScopeMembership,
 });
 
+/** The home the visible panel actually describes. Main-only panels ignore the retained area selection. */
+export const getShownPanelHomeId = (): string => (
+  SCOPE_AWARE_PANELS.has(state.activePanel) ? selectedHomeId : MAIN_HOME_ID
+);
+
 export { getHomeIdForUiDevice };
 
 export type HomeMembershipRead =

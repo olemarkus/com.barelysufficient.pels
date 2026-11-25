@@ -7,6 +7,7 @@ import { invalidateDeferredObjectiveHistoryRead } from './deferredObjectiveHisto
 import { notifySchedulesSettingChanged } from './schedules.ts';
 import { notifyDeviceOverrideSettingChanged } from './deviceOverrideStore.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
+import { refreshAreaPowerReadingsBanner } from './powerReadingsBanner.ts';
 import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_DEVICES_PATH,
@@ -390,6 +391,7 @@ const refreshAreaPlanStatus = (homeId: string, context: string) => {
   invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
   if (getHomeScope().selectedHomeId !== homeId) return;
+  void refreshAreaPowerReadingsBanner();
   refreshOverviewPlanIfVisible(context);
   notifyHomeLimitsStatusPublished(homeId);
 };
@@ -422,6 +424,7 @@ const refreshAreaPowerTracker = (homeId: string, context: string) => {
   // and the tracker persists on its own — scheduled persistence, the hourly
   // prune, a meter-swap freshness reset — with no status write beside it.
   if (getHomeScope().selectedHomeId !== homeId) return;
+  void refreshAreaPowerReadingsBanner();
   refreshPowerDataIfVisible(context, { force: true });
   refreshOverviewPlanIfVisible(context);
 };
