@@ -205,6 +205,11 @@ type BackupSkip =
   | { reason: 'wal_unavailable' | 'quarantined_database' }
   | { reason: 'size_limit' | 'insufficient_space'; bytes: number; freeBytes: number };
 
+const availableBackupBytes = (dir: string): number => {
+  const { bavail, bsize } = fs.statfsSync(dir);
+  return bavail * bsize;
+};
+
 const writeBackup = async (location: string, dir: string, temp: string): Promise<BackupSkip | undefined> => {
   const source = new DatabaseSync(location, { readOnly: true });
   try {
@@ -218,8 +223,7 @@ const writeBackup = async (location: string, dir: string, temp: string): Promise
     const { bytes } = source.prepare(
       'SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()',
     ).get() as { bytes: number };
-    const { bavail, bsize } = fs.statfsSync(dir);
-    const freeBytes = bavail * bsize;
+    const freeBytes = availableBackupBytes(dir);
     if (bytes > BACKUP_MAX_BYTES || freeBytes < bytes + BACKUP_FREE_RESERVE_BYTES) {
       return {
         reason: bytes > BACKUP_MAX_BYTES ? 'size_limit' : 'insufficient_space',
@@ -270,6 +274,11 @@ export const backupUserdataIfDue = async (location: string): Promise<BackupSkip 
     verifyBackup(temp);
     const { size } = fs.statSync(temp);
     syncPath(temp);
+    // Other writers can consume space while SQLite copies the snapshot.
+    const freeBytes = availableBackupBytes(dir);
+    if (freeBytes < BACKUP_FREE_RESERVE_BYTES) {
+      return { reason: 'insufficient_space', bytes: size, freeBytes };
+    }
     // Replace a future-dated slot first so it cannot force a write every hour.
     const replaceFirst = clockMovedBack ? firstMtime >= secondMtime : firstMtime <= secondMtime;
     fs.renameSync(temp, replaceFirst ? first : second);
