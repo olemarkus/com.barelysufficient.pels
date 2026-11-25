@@ -2,6 +2,7 @@ import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type { ExecutorCommandContext } from './executorCommandContext';
+import type { BinaryControlDecision } from './binaryControlPreflight';
 
 const logger = getLogger('executor/binary');
 /**
@@ -60,12 +61,10 @@ export const canApplyRestoreSnapshot = (
 
 export const applyBinaryRestoreWithSnapshot = async (
   ctx: ExecutorCommandContext,
-  deviceId: string,
-  name: string,
+  decision: BinaryControlDecision,
   snapshot: ExecutorDeviceSnapshot,
-  binarySwitchGeneration?: number,
-  lastResortMaximumW?: number,
 ): Promise<boolean> => {
+  const { deviceId, name } = decision;
   // "Leave off until turned on again", at the FUNNEL: every controlled-restore
   // lane ends here — the plan lane, and the smart-task deferred `binary_restore`
   // — so one guard covers them all and they cannot drift apart. See
@@ -88,11 +87,7 @@ export const applyBinaryRestoreWithSnapshot = async (
   ctx.execution.actuation.beginRestore(deviceId);
   try {
     try {
-      const outcome = await runBinaryControl(
-        ctx,
-        { deviceId, name, desired: true, logContext: 'capacity', binarySwitchGeneration, lastResortMaximumW },
-        snapshot,
-      );
+      const outcome = await runBinaryControl(ctx, decision, snapshot);
       if (!outcome.applied) return false;
       return true;
     } catch (error) {

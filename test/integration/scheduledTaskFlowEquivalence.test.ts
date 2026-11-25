@@ -131,6 +131,7 @@ function fixture(kind: DeferredObjectiveSettingsKind, existing?: DeferredObjecti
     getTimeZone: CLOCK.getTimezone,
     deferredObjectivePlanRevisionBus: createDeferredObjectivePlanRevisionBus(),
     deferredObjectiveEndedBus: createDeferredObjectiveEndedBus(),
+    subscribeSmartTaskDeviceRun: () => {},
     deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
   });
   registerDeadlineObjectiveCards(flowDeps);

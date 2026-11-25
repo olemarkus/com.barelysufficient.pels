@@ -1,4 +1,4 @@
-import type { DeferredObjectivePlanRevisionEvent } from '../lib/objectives/deferredObjectives';
+import { formatDeadlineLocalTime, type DeferredObjectivePlanRevisionEvent } from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveReportedStatus,
   DeferredObjectiveActivePlanV1,
@@ -174,6 +174,7 @@ export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
   registerDeadlineEndedTrigger(deps);
   registerDeadlinePlanChangedTrigger(deps);
   registerSmartTaskHoursRemainingTrigger(deps);
+  registerSmartTaskDeviceRunTriggers(deps);
   registerDeadlineStatusIsCondition(deps);
   registerHasActiveDeadlineCondition(deps);
 }
@@ -263,7 +264,9 @@ type SmartTaskTriggerCardId =
   | 'deadline_status_changed'
   | 'deadline_ended'
   | 'deadline_plan_changed'
-  | 'smart_task_hours_remaining';
+  | 'smart_task_hours_remaining'
+  | 'smart_task_device_started'
+  | 'smart_task_device_finished';
 
 // Every device in the snapshot, matched against the typed query.
 const registerDeviceAutocomplete = (deps: FlowCardDeps, card: FlowCard): void => {
@@ -359,6 +362,26 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
     fireSmartTaskTrigger(deps, card, cardId, event.deviceId, { deviceId: event.deviceId }, () => (
       buildSmartTaskPlanChangedTokens(event, deps.getTimeZone())
     ));
+  });
+}
+
+function registerSmartTaskDeviceRunTriggers(deps: FlowCardDeps): void {
+  const cardIds = { started: 'smart_task_device_started', finished: 'smart_task_device_finished' } as const;
+  const cards = {
+    started: deps.homey.flow.getTriggerCard(cardIds.started),
+    finished: deps.homey.flow.getTriggerCard(cardIds.finished),
+  };
+  for (const card of Object.values(cards)) {
+    card.registerRunListener(matchesTriggeredDevice);
+    registerDeviceAutocomplete(deps, card);
+  }
+  deps.subscribeSmartTaskDeviceRun((event) => {
+    const state = { deviceId: event.deviceId };
+    fireSmartTaskTrigger(deps, cards[event.kind], cardIds[event.kind], event.deviceId, state, () => ({
+      device_name: event.deviceName,
+      target_kwh: event.targetEnergyKWh,
+      ready_by: formatDeadlineLocalTime(event.deadlineAtMs, deps.getTimeZone()),
+    }));
   });
 }
 

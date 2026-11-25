@@ -12,9 +12,9 @@ import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerF
 import { describe, expect, it } from 'vitest';
 import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import {
+  applyBinaryRestore,
   applyUncontrolledBinaryRestore,
 } from '../../lib/executor/binaryExecutor';
-import { applyBinaryRestoreWithSnapshot } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -240,6 +240,7 @@ const uncontrolledRestoreIntent = {
   name: 'Water heater',
   source: 'uncontrolled' as const,
 };
+const controlledRestoreIntent = { ...uncontrolledRestoreIntent, source: 'controlled' as const };
 
 describe('external-off hold — executor carve-outs', () => {
   it('never force-turns-ON a held device when control is switched off', async () => {
@@ -256,7 +257,7 @@ describe('external-off hold — executor carve-outs', () => {
 
   it('blocks the controlled plan lane even against a plan built before the hold', async () => {
     const h = buildExecutorCtx(true);
-    const applied = await applyBinaryRestoreWithSnapshot(h.ctx, HEATER, 'Water heater', offHeaterSnapshot);
+    const applied = await applyBinaryRestore(h.ctx, controlledRestoreIntent, undefined);
     expect(applied).toBe(false);
     expect(h.setCapabilityCalls).toEqual([]);
   });
@@ -269,7 +270,7 @@ describe('external-off hold — executor carve-outs', () => {
     expect(uncontrolled.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);
 
     const controlled = buildExecutorCtx(false);
-    expect(await applyBinaryRestoreWithSnapshot(controlled.ctx, HEATER, 'Water heater', offHeaterSnapshot)).toBe(true);
+    expect(await applyBinaryRestore(controlled.ctx, controlledRestoreIntent, undefined)).toBe(true);
     expect(controlled.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);
   });
 });

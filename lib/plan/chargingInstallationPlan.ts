@@ -175,7 +175,7 @@ export class ChargingInstallationPlan {
     member: PlanInputDevice, groupSwitch: boolean | null, device: DevicePlanDevice,
   ): PlannedBinaryCommand | undefined {
     const ownHold = memberHeld(member) || this.decoration.forceShedSet.has(member.id)
-      || this.decoration.deferredReleaseIntentByDeviceId[member.id] === 'binary_release';
+      || this.decoration.deferredReleaseIntentByDeviceId[member.id]?.kind === 'binary_release';
     const mayStart = !member.waitingForTaskPlan && member.commandableNow
       && device.plannedState === 'keep' && !isRestoreAdmissionHoldReason(device.reason);
     if (!ownHold && (groupSwitch === null || (groupSwitch && !mayStart))) return undefined;

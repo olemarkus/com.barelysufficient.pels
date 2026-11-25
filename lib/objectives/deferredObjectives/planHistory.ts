@@ -52,6 +52,7 @@ import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 import { captureHourStartBooking } from './planHistoryHourStartBookings';
 import { mergeSavedRun, toPersistedMeteredDeliveryState } from './planHistoryMeteredRun';
 import { isBudgetOnlyMiss } from './budgetOnlyMiss';
+import type { TaskDeviceRunEvent, TaskDeviceRunTracker } from './taskDeviceRun';
 
 // The recorder's debug events, on the `deferred_objectives` topic. One
 // `deferred_objective_history_finalized` event per observation entry as it
@@ -128,6 +129,7 @@ export type PlanHistoryPersistDeps = {
   // (`met`/`missed`/`abandoned`) before publishing — backfill and replaced
   // entries never reach the bus.
   endedBus: DeferredObjectiveEndedBus;
+  deviceRuns?: TaskDeviceRunTracker;
   // Native import-price periods overlapping the requested window. Gaps stay
   // absent so delivered energy can be retained without inventing its cost.
   getMeteredPricePeriods: (startMs: number, endMs: number) => MeteredPricePeriod[];
@@ -176,6 +178,10 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.trimEntries();
   }
 
+  onDeviceRun(listener: (event: TaskDeviceRunEvent) => void): void {
+    this.deps.deviceRuns?.subscribe(listener);
+  }
+
   // Live trajectory for an in-flight run, stitched into the active-plans UI
   // payload (`activePlansUiView.ts`) so the
   // smart-tasks widget can draw planned-vs-actual progress while the run is
@@ -220,6 +226,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     }
     for (const diag of diagnostics) this.recordDeliveryTick(diag, nowMs);
     this.finalizeStaleRecords(seenKeys, nowMs);
+    this.deps.deviceRuns?.retainTasks(seenKeys);
   }
 
   private observeDeliveryEvidence(
@@ -242,6 +249,7 @@ export class DeferredObjectivePlanHistoryRecorder {
         }
         this.inProgress.set(key, { ...record, deliveryEvidence, deviceIdleEvidence });
         this.dirty = true;
+        this.deps.deviceRuns?.observe(key, diag, facts, deliveryEvidence.nonDelivery, nowMs);
       }
   }
 

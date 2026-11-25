@@ -309,6 +309,7 @@ export class PlanExecutor {
       selectShedActuationRecorder(pending.lifecycleRelease, this.ctx)(deviceId, liveDevice.name, now);
     }
 
+    this.execution.actuation.observeConfirmedBinaryCommand(deviceId, pending, now);
     this.flushLastControlledPersistence();
   }
 

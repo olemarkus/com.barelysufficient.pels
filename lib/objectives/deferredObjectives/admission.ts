@@ -2,6 +2,7 @@ import type { PlanInputDevice } from '../../../packages/planner-types/src/planIn
 import type {
   DeferredHoldCause, DeferredReleaseIntent,
 } from '../../../packages/planner-types/src/deferredDecoration';
+import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isTaskSatisfied } from './taskCompletion';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveHorizonPlan } from './types';
@@ -443,11 +444,16 @@ export const applyDeferredAdmissionToInput = (
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildDeferredReleaseIntents = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  settings?: DeferredObjectiveRoster,
 ): Record<string, DeferredReleaseIntent> => {
   const intents: Record<string, DeferredReleaseIntent> = {};
   for (const [deviceId, decision] of decisions) {
-    if (!decision.releaseIntent) continue;
-    intents[deviceId] = decision.releaseIntent;
+    const kind = decision.releaseIntent;
+    if (!kind) continue;
+    const task = settings?.objectivesByDeviceId[deviceId];
+    intents[deviceId] = kind === 'binary_restore' && task?.kind === 'energy'
+      ? { kind, energyTask: { deadlineAtMs: task.deadlineAtMs, targetEnergyKWh: task.targetEnergyKWh } }
+      : { kind };
   }
   return intents;
 };

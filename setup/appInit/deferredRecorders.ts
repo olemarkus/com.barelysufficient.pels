@@ -27,6 +27,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import { assembleActivePlansUiView } from '../../lib/objectives/deferredObjectives/activePlansUiView';
 import { emitDeferredObjectiveActivePlansUpdatedForApp } from '../settingsUiAppRuntime';
+import { TaskDeviceRunTracker } from '../../lib/objectives/deferredObjectives/taskDeviceRun';
 
 export { WATERMARK_IDLE_REFRESH_MS } from '../../lib/objectives/deferredObjectives/planHistoryObservation';
 
@@ -81,9 +82,18 @@ export function createDeferredObjectivePlanHistoryRecorder(
   ctx: AppContext,
 ): DeferredObjectivePlanHistoryRecorder {
   const store = createPlanHistoryStoreForApp(ctx);
+  const deviceRuns = new TaskDeviceRunTracker({
+    readSwitchOn: (deviceId) => requirePlanService(ctx).getConfirmedTaskSwitchOn(deviceId),
+    hasStartedDrawing: (deviceId, dispatchedAtMs, nowMs) => (
+      ctx.observer.hasStartedDrawingSince(deviceId, dispatchedAtMs, nowMs)
+    ),
+    hasSwitchedOffSince: (deviceId, confirmedAtMs) => ctx.observer.hasSwitchedOffSince(deviceId, confirmedAtMs),
+    isSimulation: () => ctx.capacityDryRun,
+  });
   const recorder = new DeferredObjectivePlanHistoryRecorder({
     ...createPlanHistoryPersistence(store, ctx.getStructuredLogger('deferred_objectives')),
     endedBus: ctx.deferredObjectiveEndedBus,
+    deviceRuns,
     getMeteredPricePeriods: (startMs, endMs) => requirePriceCoordinator(ctx).getMeteredPricePeriods(startMs, endMs),
     // Read lazily on the lifecycle clock, after the plan service exists.
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),

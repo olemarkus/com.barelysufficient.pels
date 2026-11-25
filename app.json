@@ -1329,6 +1329,100 @@
       },
       {
         "title": {
+          "en": "Smart task device finished working"
+        },
+        "titleFormatted": {
+          "en": "[[device]] finished working for a smart task"
+        },
+        "hint": {
+          "en": "Fires once per energy smart task when an on/off device PELS started takes no power for 15 minutes while the task still allows it to run."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "device_name",
+            "type": "string",
+            "title": {
+              "en": "Device"
+            }
+          },
+          {
+            "name": "target_kwh",
+            "type": "number",
+            "title": {
+              "en": "Energy target (kWh)"
+            }
+          },
+          {
+            "name": "ready_by",
+            "type": "string",
+            "title": {
+              "en": "Ready by"
+            }
+          }
+        ],
+        "id": "smart_task_device_finished"
+      },
+      {
+        "title": {
+          "en": "Smart task device started working"
+        },
+        "titleFormatted": {
+          "en": "[[device]] started working for a smart task"
+        },
+        "hint": {
+          "en": "Fires once per energy smart task when the on/off device starts drawing power after PELS switches it on."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "device_name",
+            "type": "string",
+            "title": {
+              "en": "Device"
+            }
+          },
+          {
+            "name": "target_kwh",
+            "type": "number",
+            "title": {
+              "en": "Energy target (kWh)"
+            }
+          },
+          {
+            "name": "ready_by",
+            "type": "string",
+            "title": {
+              "en": "Ready by"
+            }
+          }
+        ],
+        "id": "smart_task_device_started"
+      },
+      {
+        "title": {
           "en": "Smart task time is running low"
         },
         "titleFormatted": {

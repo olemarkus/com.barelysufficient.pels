@@ -155,6 +155,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
     deferredObjectivePlanRevisionBus: createDeferredObjectivePlanRevisionBus(),
     deferredObjectiveEndedBus: createDeferredObjectiveEndedBus(),
+    subscribeSmartTaskDeviceRun: () => {},
     deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
     deferredObjectiveHoursRemainingTracker: createDeferredObjectiveHoursRemainingTracker(),
     ...overrides,

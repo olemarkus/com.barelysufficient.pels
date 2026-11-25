@@ -221,7 +221,7 @@ const buildIntent = (snapshot: TargetDeviceSnapshot, behavior: ShedBehavior): Ex
     currentTemperature: 22,
     plannedTarget: 22,
   });
-  const devices = attachDeferredReleaseIntents([device], { [device.id]: 'shed_release' }, true, () => behavior);
+  const devices = attachDeferredReleaseIntents([device], { [device.id]: { kind: 'shed_release' } }, true, () => behavior);
   const [intent] = buildExecutablePlan({
     meta: buildPlanMeta(), devices, chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [],
   }).devices;

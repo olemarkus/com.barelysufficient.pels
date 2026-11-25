@@ -204,6 +204,7 @@ function recordPendingForDispatch(
     startedMs: decision.startedAtMs,
     ...(decision.binarySwitchGeneration !== undefined
       ? { binarySwitchGeneration: decision.binarySwitchGeneration } : {}),
+    ...(decision.energyTask ? { energyTask: decision.energyTask } : {}),
     logContext: decision.logContext,
     ...(decision.lastResortMaximumW === undefined ? {} : { lastResortMaximumW: decision.lastResortMaximumW }),
     ...(sameValueOff ? { relayRepeat: true } : {}),

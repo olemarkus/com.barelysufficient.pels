@@ -33,7 +33,7 @@ describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
   it('attaches a binary_restore intent when the cycle has a measurement', () => {
     const result = attachDeferredReleaseIntents(
       [evDevice()],
-      { 'ev-1': 'binary_restore' },
+      { 'ev-1': { kind: 'binary_restore' } },
       true,
       () => ({ action: 'turn_off' }),
     );
@@ -44,7 +44,7 @@ describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
   it('withholds a binary_restore intent when the pass forbids it (the silent-meter pass)', () => {
     const result = attachDeferredReleaseIntents(
       [evDevice()],
-      { 'ev-1': 'binary_restore' },
+      { 'ev-1': { kind: 'binary_restore' } },
       false,
       () => ({ action: 'turn_off' }),
     );
@@ -55,7 +55,7 @@ describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
   it('still attaches the negative binary_release intent when binary_restore is forbidden', () => {
     const result = attachDeferredReleaseIntents(
       [evDevice()],
-      { 'ev-1': 'binary_release' },
+      { 'ev-1': { kind: 'binary_release' } },
       false,
       () => ({ action: 'turn_off' }),
     );
@@ -69,7 +69,7 @@ describe('idle-task release posture', () => {
     const device = buildPlanDevice({ controllable: false, shedAction: 'turn_off' });
     let configuredTarget = 15;
     const [resolved] = attachDeferredReleaseIntents(
-      [device], { [device.id]: 'shed_release' }, true,
+      [device], { [device.id]: { kind: 'shed_release' } }, true,
       () => ({ action: 'set_temperature', temperature: configuredTarget }),
     );
     configuredTarget = 20;
@@ -81,7 +81,7 @@ describe('idle-task release posture', () => {
   it('resolves set_step to binary off when the device has a binary axis', () => {
     const device = buildPlanDevice();
     const [resolved] = attachDeferredReleaseIntents(
-      [device], { [device.id]: 'shed_release' }, true, () => ({ action: 'set_step' }),
+      [device], { [device.id]: { kind: 'shed_release' } }, true, () => ({ action: 'set_step' }),
     );
     expect(resolved.deferredReleaseIntent).toEqual({ kind: 'shed_release', posture: { kind: 'binary_off' } });
   });
@@ -94,7 +94,7 @@ describe('idle-task release posture', () => {
       releaseShedStepId: 'low',
     });
     const [resolved] = attachDeferredReleaseIntents(
-      [device], { [device.id]: 'shed_release' }, measured, () => ({ action: 'set_step' }),
+      [device], { [device.id]: { kind: 'shed_release' } }, measured, () => ({ action: 'set_step' }),
     );
     expect(resolved.deferredReleaseIntent).toEqual({ kind: 'shed_release', posture: { kind: 'step', stepId: 'low' } });
   });
@@ -107,7 +107,7 @@ describe('idle-task release posture', () => {
       releaseShedStepId: null,
     });
     const [resolved] = attachDeferredReleaseIntents(
-      [device], { [device.id]: 'shed_release' }, true, () => ({ action: 'set_step' }),
+      [device], { [device.id]: { kind: 'shed_release' } }, true, () => ({ action: 'set_step' }),
     );
     expect(resolved.deferredReleaseIntent).toBeUndefined();
   });

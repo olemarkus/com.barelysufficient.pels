@@ -337,6 +337,7 @@ const buildDeps = (overrides: {
     deferredObjectiveStatusBus: overrides.bus ?? createDeferredObjectiveStatusBus(),
     deferredObjectivePlanRevisionBus: overrides.planRevisionBus ?? createDeferredObjectivePlanRevisionBus(),
     deferredObjectiveEndedBus: overrides.endedBus ?? createDeferredObjectiveEndedBus(),
+    subscribeSmartTaskDeviceRun: () => {},
     deferredObjectiveHoursRemainingBus: overrides.hoursRemainingBus ?? createDeferredObjectiveHoursRemainingBus(),
     deferredObjectiveHoursRemainingTracker: overrides.hoursRemainingTracker
       ?? createDeferredObjectiveHoursRemainingTracker(),

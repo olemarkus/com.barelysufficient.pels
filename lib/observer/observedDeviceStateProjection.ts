@@ -243,6 +243,8 @@ export type ObservedDeviceReads = {
     getObservedTemperature(deviceId: string): ObservedTemperatureRead;
     /** Last live device draw when its reading predates the observed on/off switch-off. */
     getPowerBeforeSwitchOffKw(deviceId: string): number | undefined;
+    /** Whether accepted binary telemetry shows a switch-off since the confirmed switch-on. */
+    hasSwitchedOffSince(deviceId: string, sinceMs: number): boolean;
     getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead;
     /** Which way this device's setpoint moves demand. */
     getThermalDirection(deviceId: string): ThermalDirection;
@@ -260,7 +262,7 @@ export type ObservedDeviceReads = {
      * draws more never started, so it has no answer here; a reading that falls
      * back to idle or stops being live withdraws the answer.
      */
-    hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean;
+    hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw?: number): boolean;
     /**
      * The live draw this device's reading held at `atMs`: the level of the last
      * live reading received by then. `null` when no live reading in the kept
@@ -318,6 +320,7 @@ type ProjectionEntry = ProjectionCursor & {
     value: ProjectedObservedDeviceState;
     drawLevels?: readonly DrawLevel[];
     switchedOffAtMs?: number;
+    lastSwitchOffAtMs?: number;
     relayMeter?: RelayMeterObservation;
 };
 
@@ -522,6 +525,11 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         return power && power.measuredAtMs < entry.switchedOffAtMs ? power.kw : undefined;
     }
 
+    hasSwitchedOffSince(deviceId: string, sinceMs: number): boolean {
+        const lastOff = this.byId.get(deviceId)?.lastSwitchOffAtMs;
+        return lastOff !== undefined && lastOff > sinceMs;
+    }
+
     getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead {
         return readObservedEvChargingState(this.getObservedRecord(deviceId));
     }
@@ -547,7 +555,9 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         return entry !== undefined && hasLiveMeasuredPower(entry.value);
     }
 
-    hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean {
+    hasStartedDrawingSince(
+        deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw = MIN_ACTIVE_MEASURED_POWER_KW,
+    ): boolean {
         const run = resolveDrawingRun(this.byId.get(deviceId)?.drawLevels ?? []);
         return run !== null
             && run.start.measuredAtMs > sinceMs && run.start.receivedAtMs > sinceMs
@@ -623,6 +633,7 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
             relayMeter: observeRelayMeter(value, observedAtMs, prev?.relayMeter),
             drawLevels: trackDrawLevels(prev, value, observedAtMs),
             switchedOffAtMs: readSwitchOffAtMs(prev, value),
+            lastSwitchOffAtMs: readLastSwitchOffAtMs(prev, value),
         });
         this.revision += 1;
     }
@@ -639,6 +650,15 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         // Equal/absent timestamps → accept (last-writer-wins).
         return false;
     }
+}
+
+function readLastSwitchOffAtMs(
+    previous: ProjectionEntry | undefined,
+    value: ProjectedObservedDeviceState,
+): number | undefined {
+    const offAt = value.available !== false && value.binaryControl?.on === false
+        ? value.binaryControlObservation?.observedAtMs : undefined;
+    return offAt ?? previous?.lastSwitchOffAtMs;
 }
 
 function readSwitchOffAtMs(

@@ -12,10 +12,16 @@ export type ChargingPhaseTaskRequirement = { admissionKw: number; permittedMaxKw
  *
  * Defined here (planner I/O package) so both the producing smart-task controller
  * (`lib/objectives`) and the consuming planner (`lib/plan`) agree on the type
- * without the consumer importing the controller. Mirrors the inline union on
- * `DevicePlanDevice.deferredReleaseIntent`.
+ * without the consumer importing the controller. The planner resolves the
+ * configured posture of a `shed_release` before passing it to the executor.
  */
-export type DeferredReleaseIntent = 'binary_restore' | 'binary_release' | 'shed_release';
+/** The obligation associated with an energy-task switch-on. The device id travels on the command. */
+export type BinaryEnergyTask = { deadlineAtMs: number; targetEnergyKWh: number };
+
+export type DeferredReleaseIntent =
+  | { kind: 'binary_restore'; energyTask?: BinaryEnergyTask }
+  | { kind: 'binary_release' }
+  | { kind: 'shed_release' };
 
 /**
  * Why a smart task holds its device in an hour it released. `cheaper_hours`: the

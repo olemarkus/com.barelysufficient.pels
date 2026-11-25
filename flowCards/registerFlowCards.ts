@@ -18,6 +18,7 @@ import type { ObservedHeadroom } from '../lib/power/lastTotalPower';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/device/flowBackedCapabilityReport';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
+import type { TaskDeviceRunTracker } from '../lib/objectives/deferredObjectives/taskDeviceRun';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import {
@@ -155,6 +156,7 @@ export type FlowCardDeps = SmartTaskCommandPort & {
   deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus;
   deferredObjectiveEndedBus: DeferredObjectiveEndedBus;
+  subscribeSmartTaskDeviceRun: TaskDeviceRunTracker['subscribe'];
   deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
   deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
