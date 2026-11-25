@@ -23,7 +23,7 @@ const stampFor = (devices: DevicePlanDevice[]) => (
 describe('stampSteppedFairnessHolds', () => {
   it('holds a stepped device at its lowest active step while other devices are limited', () => {
     expect(stampFor([charger(), limitedHeater('heater-1'), limitedHeater('heater-2')]))
-      .toEqual({ stepId: 'low', limitedDeviceCount: 2 });
+      .toEqual({ limitedDeviceCount: 2 });
   });
 
   it('holds it whatever reason the cycle wrote for the cut and the wait after it', () => {
@@ -32,7 +32,7 @@ describe('stampSteppedFairnessHolds', () => {
       { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
     ] as const) {
       expect(stampFor([charger({ plannedState: 'shed', reason }), limitedHeater('heater')]))
-        .toEqual({ stepId: 'low', limitedDeviceCount: 1 });
+        .toEqual({ limitedDeviceCount: 1 });
     }
   });
 
@@ -40,7 +40,7 @@ describe('stampSteppedFairnessHolds', () => {
     const refused = charger({ reason: {
       code: PLAN_REASON_CODES.shedInvariant, fromStep: 'low', toStep: 'medium', shedDeviceCount: 3, maxStep: 'low',
     } });
-    expect(stampFor([refused, limitedHeater('heater')])).toEqual({ stepId: 'low', limitedDeviceCount: 3 });
+    expect(stampFor([refused, limitedHeater('heater')])).toEqual({ limitedDeviceCount: 3 });
   });
 
   it('holds a boosted device while a device ranked above it is limited', () => {
@@ -48,7 +48,7 @@ describe('stampSteppedFairnessHolds', () => {
     // the priority-2 thermostat was held. Only the device ranked above it counts.
     expect(stampFor([
       charger({ boostActive: true, priority: 4 }), limitedHeater('thermostat', 2), limitedHeater('heater', 6),
-    ])).toEqual({ stepId: 'low', limitedDeviceCount: 1 });
+    ])).toEqual({ limitedDeviceCount: 1 });
   });
 
   it.each([

@@ -252,6 +252,8 @@ ladder) for the per-device surfaces below.
 Every Overview device card leads with one bold canonical state word in its
 state row. The backend resolves its complete `DeviceStatus` in
 `lib/plan/deviceStatusReadModel.ts`, using executor-owned live execution state.
+Between plan builds, a charger showing Idle reads Running as soon as it reports
+charging with more than 50 W of measured draw. Holds and resume waits keep their own state.
 Cards, device detail, and activity logs consume the same presentation:
 
 | State word | Used when |
@@ -522,7 +524,9 @@ another device is limited, a stepped device at its lowest active step may not
 step up. The plan resolves that hold from state every cycle
 (`steppedFairnessHold`, `lib/plan/planSteppedFairnessHold.ts`), and once the
 device is at that step the card reads `Holding at 6 A — cannot increase while 2
-devices are limited` until the other devices resume. It replaces the cut's kW
+devices are limited` until the other devices resume. The level comes from the
+live report, with `Holding` as the stem while it is unknown or the device is off.
+The fairness line replaces the cut's kW
 line (the device's own way back to its top step, not what the house is over
 by), the shed cooldown's `Waiting after limiting a device`, a meter settle and
 the empty line of a device running at the low step. A held-back device keeps

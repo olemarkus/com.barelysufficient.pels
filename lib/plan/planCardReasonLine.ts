@@ -12,7 +12,6 @@ import {
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { ObservedCurrentState, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { SteppedFairnessHold } from './planTypes';
 
 // The ONE reason line a held device card may show — shared by all three card
 // variants (temperature, stepped, generic), which until 2026-08-02 each
@@ -238,13 +237,14 @@ const formatHeldNeedLine = (
  * so the card still says why it carries the rescue.
  */
 export const formatFairnessHoldCardLine = (
-  hold: SteppedFairnessHold,
+  reportedStepId: string | null,
+  limitedDeviceCount: number,
   starvation?: SettingsUiPlanDeviceStarvation | null,
 ): string => {
   const starvedForMs = resolveStarvedForMs(starvation);
   return starvedForMs === null
-    ? formatSteppedFairnessHoldLine(hold.stepId, hold.limitedDeviceCount)
-    : formatStarvedHoldLine(starvedForMs, formatSteppedFairnessNeed(hold.limitedDeviceCount));
+    ? formatSteppedFairnessHoldLine(reportedStepId, limitedDeviceCount)
+    : formatStarvedHoldLine(starvedForMs, formatSteppedFairnessNeed(limitedDeviceCount));
 };
 
 // A running stepped device denied a step-up says only that it is waiting, with no

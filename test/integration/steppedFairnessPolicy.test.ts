@@ -101,7 +101,7 @@ it.each([30, 1, 60].flatMap((minutesRemaining) => scenarios.map((scenario) => ({
   const hold = stampSteppedFairnessHolds(floorDevices, state.shedDecisions)
     .find((device) => device.id === 'charger')?.steppedFairnessHold;
   expect(hold).toEqual(scenario.fairnessCount === 0
-    ? undefined : { stepId: '6a', limitedDeviceCount: scenario.fairnessCount });
+    ? undefined : { limitedDeviceCount: scenario.fairnessCount });
 });
 
 it('uses the resolved boost release when checking recovery peers', () => {

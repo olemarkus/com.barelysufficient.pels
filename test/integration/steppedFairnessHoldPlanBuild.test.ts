@@ -124,7 +124,7 @@ describe('stepped fairness hold through a plan build', () => {
 
     const cut = cycles.find((planned) => planned.charger?.desiredStepId === '6a');
     expect(cut?.heater?.plannedState).toBe('shed');
-    expect(cut?.charger?.steppedFairnessHold).toEqual({ stepId: '6a', limitedDeviceCount: 1 });
+    expect(cut?.charger?.steppedFairnessHold).toEqual({ limitedDeviceCount: 1 });
     // No cycle before the cut, with the charger above its lowest step, carries it.
     for (const planned of cycles.slice(0, cycles.indexOf(cut!))) {
       expect(planned.charger?.steppedFairnessHold).toBeUndefined();
@@ -206,7 +206,7 @@ describe('stepped fairness hold through a plan build', () => {
     expect(charging).toMatchObject({ plannedState: 'keep', commandableNow: true });
     expect(charging?.boostActive).toBe(false);
     expect(charging?.desiredStepId).toBe('6a');
-    expect(charging?.steppedFairnessHold).toEqual({ stepId: '6a', limitedDeviceCount: 1 });
+    expect(charging?.steppedFairnessHold).toEqual({ limitedDeviceCount: 1 });
     expect(buildExecutionPlan(plan).devices.find((device) => device.commands.id === 'charger')?.commands)
       .toMatchObject({ steppedLoad: { desired: { stepId: '6a', plannedStepId: '6a' },
         transition: { effectiveTransition: 'step_down_while_on' } } });

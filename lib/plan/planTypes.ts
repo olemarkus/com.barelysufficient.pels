@@ -40,12 +40,10 @@ export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type PlannedShedTargetKind = 'binary_off' | 'step' | 'target_value';
 
 /**
- * The stepped fairness rule keeps a device at its lowest active step (`stepId`,
- * which is also its planned `desiredStepId`) until the other devices it waits
- * for resume. The step rides here because the card's snapshot carries the
- * executor's target step, not the plan's.
+ * The other limited devices whose resumption lifts the stepped fairness hold.
+ * The live card names this device's reported level separately.
  */
-export type SteppedFairnessHold = { stepId: string; limitedDeviceCount: number };
+export type SteppedFairnessHold = { limitedDeviceCount: number };
 
 import type { PendingTargetObservationSource, PendingTargetCommandStatus } from '../ports/pendingTargetCommand';
 export type { PendingTargetObservationSource, PendingTargetCommandStatus } from '../ports/pendingTargetCommand';

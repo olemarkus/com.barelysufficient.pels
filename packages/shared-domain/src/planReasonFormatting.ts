@@ -563,12 +563,11 @@ export function formatSteppedFairnessNeed(limitedDeviceCount: number): string {
   return `cannot increase while ${limitedDeviceCount} ${noun} limited`;
 }
 
-// The stepped fairness line, from the `shedInvariant` reason or from the plan's
-// resolved fairness hold (`steppedFairnessHold`), which states the same rule on
-// every cycle it holds, not only on a cycle where a restore was tried.
-export function formatSteppedFairnessHoldLine(stepId: string, limitedDeviceCount: number): string {
+// The stepped fairness line. The live card supplies its reported level and
+// recorded reasons can format the level they carried at decision time.
+export function formatSteppedFairnessHoldLine(stepId: string | null, limitedDeviceCount: number): string {
   const tail = formatSteppedFairnessNeed(limitedDeviceCount);
-  const currentStep = formatStepDisplayLabel(stepId);
+  const currentStep = stepId === null ? '' : formatStepDisplayLabel(stepId);
   return currentStep === '' || stepId === 'unknown'
     ? `Holding — ${tail}`
     : `Holding at ${currentStep} — ${tail}`;

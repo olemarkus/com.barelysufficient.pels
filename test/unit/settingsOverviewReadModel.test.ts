@@ -389,7 +389,7 @@ describe('settingsOverviewReadModel', () => {
     const device = steppedPlanDevice({
       isEvCharger: true, currentState: 'on', currentDrawKw: 1.25, desiredStepId: 'low',
       ...fields,
-      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 2 },
+      steppedFairnessHold: { limitedDeviceCount: 2 },
     });
     const wire = buildDeviceCard(device, absentTemperature);
 
@@ -443,7 +443,7 @@ describe('settingsOverviewReadModel', () => {
       isEvCharger: true, currentState: 'on', currentDrawKw: 3, plannedState: 'shed',
       reportedStepId: 'max', selectedStepId: 'max', desiredStepId: 'low', stepCommandPending: true,
       reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 6 },
-      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 2 },
+      steppedFairnessHold: { limitedDeviceCount: 2 },
     });
 
     expect(buildDeviceCard(device, absentTemperature).status.reason?.text)
@@ -455,7 +455,7 @@ describe('settingsOverviewReadModel', () => {
       currentState: 'on', currentDrawKw: 1.25, plannedState: 'keep',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', lastDesiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
-      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 1 },
+      steppedFairnessHold: { limitedDeviceCount: 1 },
       steppedStepUpHold: true,
     });
     const { status } = buildDeviceCard(device, absentTemperature);
@@ -471,7 +471,7 @@ describe('settingsOverviewReadModel', () => {
       currentState: 'on', currentDrawKw: 1.25, plannedState: 'keep',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
-      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 2 },
+      steppedFairnessHold: { limitedDeviceCount: 2 },
     });
     const wire = buildDeviceCard(device, {
       ...absentTemperature,

@@ -699,11 +699,24 @@ describe('resolveSteppedStatusLine', () => {
           ...baseDevice,
           currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'medium' }),
-          reason: { code: 'shed_invariant', fromStep: 'medium', toStep: 'high', shedDeviceCount: 1, maxStep: 'low' },
+          reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'high', shedDeviceCount: 1, maxStep: 'low' },
         },
         profile,
         NOW_MS,
       )).toBe('Holding at Medium — cannot increase while 1 device is limited');
+    });
+
+    it('does not name the planned starting level when the device never reported a level', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on' as const,
+          steppedLoad: steppedLoad(),
+          reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 1, maxStep: 'low' },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Holding — cannot increase while 1 device is limited');
     });
 
     it('returns shed invariant status with plural device count', () => {
