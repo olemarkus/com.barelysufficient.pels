@@ -196,6 +196,47 @@ describe('charge target status', () => {
 });
 
 describe('charge target saves', () => {
+  it('restores the saved wait-for-level preference after disabling and reloading the target', async () => {
+    const { module } = await load();
+    const homey = createHomeyMock({ settings: {
+      ev_charge_target_settings: { [CHARGER_ID]: { targetPercent: 80, chargeBeforeLevelKnown: false } },
+    } });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(homey);
+    const render = () => module.renderEvChargeTargetSettings(buildCharger(null));
+    module.initEvChargeTargetHandlers({ getCurrentDetailDeviceId: () => CHARGER_ID, refreshOpenDeviceDetail: render });
+    const target = document.getElementById('device-detail-charge-target-enabled') as HTMLElement & { selected: boolean };
+    const preference = document.getElementById('device-detail-charge-target-unknown') as HTMLElement & {
+      selected: boolean;
+      disabled: boolean;
+    };
+    const read = () => homey.__settingsStore.ev_charge_target_settings;
+    await module.loadEvChargeTargetSettings();
+    render();
+    target.selected = false;
+    target.dispatchEvent(new Event('change'));
+    const disabled = { [CHARGER_ID]: { disabled: true, chargeBeforeLevelKnown: false } };
+    await vi.waitFor(() => expect(read()).toEqual(disabled));
+
+    await module.loadEvChargeTargetSettings();
+    render();
+    expect(preference).toMatchObject({ selected: false, disabled: true });
+    const percent = document.getElementById('device-detail-charge-target-percent') as HTMLElement & { value: string };
+    percent.value = '65';
+    percent.dispatchEvent(new Event('change'));
+    preference.selected = true;
+    preference.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(homey.set).toHaveBeenCalledTimes(3));
+    expect(read()).toEqual(disabled);
+    render();
+
+    target.selected = true;
+    target.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(read()).toEqual({
+      [CHARGER_ID]: { targetPercent: 100, chargeBeforeLevelKnown: false },
+    }));
+  });
+
   it('starts a new target charging before the level is known, though the greyed switch reads off', async () => {
     const { module, state } = await load();
     state.evChargeTargetSettings = {};

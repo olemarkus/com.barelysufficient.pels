@@ -248,7 +248,18 @@ describe('normalizeEvChargeTargetSettings', () => {
     });
   });
 
-  it('drops entries with no usable target', () => {
+  it('retains explicit disabled preferences and gives a valid target precedence', () => {
+    expect(normalizeEvChargeTargetSettings({
+      off: { disabled: true, chargeBeforeLevelKnown: false },
+      mixed: { disabled: true, targetPercent: 65, chargeBeforeLevelKnown: false },
+      junk: { disabled: true, chargeBeforeLevelKnown: 'no' },
+    })).toEqual({
+      off: { disabled: true, chargeBeforeLevelKnown: false },
+      mixed: { targetPercent: 65, chargeBeforeLevelKnown: false },
+    });
+  });
+
+  it('drops entries with no usable target or explicit disabled preference', () => {
     expect(normalizeEvChargeTargetSettings({
       zero: { targetPercent: 0 },
       over: { targetPercent: 101 },

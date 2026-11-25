@@ -169,6 +169,19 @@ describe('EV charge target (SDK-boundary e2e)', () => {
     expect(plannedReason(app)).toEqual({ code: PLAN_REASON_CODES.awaitingBatteryLevel });
   });
 
+  it('allows normal charging with a disabled target and a retained wait-for-level preference', async () => {
+    const charger = await boot({ levelPercent: null, chargeBeforeLevelKnown: false });
+    mockHomeyInstance.settings.set(EV_CHARGE_TARGET_SETTINGS, {
+      [CHARGER_ID]: { disabled: true, chargeBeforeLevelKnown: false },
+    });
+    const app = createApp();
+    await app.onInit();
+    await pump(3);
+
+    expect(await charger.getCapabilityValue('evcharger_charging')).toBe(true);
+    expect(plannedReason(app)?.code).not.toBe(PLAN_REASON_CODES.awaitingBatteryLevel);
+  });
+
   it('lets a smart task booked in this hour charge past the target', async () => {
     const charger = await boot({ levelPercent: 50, chargeBeforeLevelKnown: true });
     mockHomeyInstance.settings.set(`deferred_objective.${CHARGER_ID}`, {
