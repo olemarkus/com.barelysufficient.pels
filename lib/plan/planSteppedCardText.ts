@@ -10,6 +10,7 @@ import {
   resolveDisplayStateKind,
   resolveRawPlanStateKind,
   shouldDisplayExternalOffReason,
+  type PlanDisplayStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
@@ -324,7 +325,10 @@ export const resolveSteppedTemperatureText = (device: {
 };
 
 /** Reflect live charging on any EV charger card. */
-export function resolveObservedEvDisplayKind(device: DeviceStatusInput, kind: PlanStateKind): PlanStateKind {
+export function resolveObservedEvDisplayKind(
+  device: DeviceStatusInput,
+  kind: PlanDisplayStateKind,
+): PlanDisplayStateKind {
   // A car can start charging between plan builds. A reported session and draw
   // update the idle label while plan holds and waits keep their labels.
   return kind === 'idle' && device.isEvCharger && !device.execution.externalOffHeld
