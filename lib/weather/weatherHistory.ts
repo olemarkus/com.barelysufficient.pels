@@ -354,36 +354,36 @@ function mergeBackfillMarkers(
   };
 }
 
+type MeterKwhReconciliation = {
+  getDailyKwh: (dateKey: string) => DailyKwhTotals;
+  meterDailyKwh: Record<string, number>;
+  meterPolicy: 'fill_missing' | 'refresh' | 'refresh_and_purge_legacy';
+};
+
 /**
  * Rebuilds every record's kWh layer from the two admissible sources, in trust
  * order: the power tracker (the budget's own metric — always wins where it
- * holds a real total for the day) and the validated meter-Insights backfill.
+ * holds a real total for the day) and the selected meter’s Insights history.
  * Trust rules, in decreasing protection:
  * - A live-rollup day-close snapshot is never overwritten or stripped: the
  *   tracker legitimately forgets old days while the snapshot stays correct.
- * - A meter fill (`quality.kwhBackfilled`) was validated against the tracker
- *   when written, so it is refreshed where the current map covers the day
- *   and KEPT where it does not — history ages out of the Insights windows,
- *   and a bad read must never be able to destroy it.
+ * - A meter fill (`quality.kwhBackfilled`) came from the selected meter.
+ *   A new read refreshes days it covers. Existing fills survive when those
+ *   days age out of Insights or the read is incomplete.
  * - Unflagged kWh riding a reconstructed record (`quality.backfilled`) is
- *   the unvalidated legacy class (the retired Energy-report source is all it
- *   ever was — see `meterKwhBackfill.ts`): overwritten where the meter
+ *   the unvalidated legacy class (the retired Energy-report source
+ *   described in `meterKwhBackfill.ts`): overwritten where the meter
  *   covers it, stripped back to `missingKwh` where it does not. The strip is
  *   a ONE-SHOT migration (`KWH_PURGE_VERSION` stamped by the caller after a
  *   conclusive run): the legacy class cannot regrow once the retired code is
  *   gone, while tracker-joined backfill kWh shares its unflagged signature —
- *   a recurring strip would erase those legitimate values one by one as the
- *   tracker's retention passes them. `allowStrip` additionally requires a
- *   `complete` fetch, so a partially readable Insights day can fill but
- *   never delete.
+ *   a recurring strip would erase those legitimate values as the tracker's
+ *   retention passes them. A partial read only fills missing meter totals.
+ *   Tracker-backed totals take precedence regardless of the meter policy.
  */
 export function reconcileKwhSources(
   state: WeatherHistoryState,
-  params: {
-    getDailyKwh: (dateKey: string) => DailyKwhTotals;
-    meterDailyKwh: Record<string, number>;
-    allowStrip: boolean;
-  },
+  params: MeterKwhReconciliation,
 ): { state: WeatherHistoryState; filledFromMeter: number; strippedDays: number; changedDays: number } {
   let filledFromMeter = 0;
   let strippedDays = 0;
@@ -402,11 +402,7 @@ export function reconcileKwhSources(
 
 function reconcileRecordKwh(
   record: WeatherDailyRecord,
-  params: {
-    getDailyKwh: (dateKey: string) => DailyKwhTotals;
-    meterDailyKwh: Record<string, number>;
-    allowStrip: boolean;
-  },
+  params: MeterKwhReconciliation,
 ): WeatherDailyRecord {
   const tracker = params.getDailyKwh(record.dateKey);
   // A zero total is "no real measurement" (install day, tracker reset), not
@@ -415,9 +411,10 @@ function reconcileRecordKwh(
     const next = trackerWinRecord(record, tracker);
     return recordKwhEquals(record, next) ? record : next;
   }
-  const meterValidated = record.quality.kwhBackfilled === true;
+  if (record.kwhTotal !== undefined && params.meterPolicy === 'fill_missing') return record;
+  const hasMeterFill = record.quality.kwhBackfilled === true;
   const meterKwh = params.meterDailyKwh[record.dateKey];
-  if (meterKwh !== undefined && (record.kwhTotal === undefined || meterValidated || record.quality.backfilled)) {
+  if (meterKwh !== undefined && (record.kwhTotal === undefined || hasMeterFill || record.quality.backfilled)) {
     // The meter is whole-home with no managed/background split — a stale
     // controlled/uncontrolled split paired with a fresh total is incoherent.
     const { kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled,
@@ -429,8 +426,8 @@ function reconcileRecordKwh(
     };
     return recordKwhEquals(record, next) ? record : next;
   }
-  const legacyUnvalidated = !meterValidated && record.quality.backfilled && record.kwhTotal !== undefined;
-  if (params.allowStrip && legacyUnvalidated && meterKwh === undefined) {
+  const legacyUnvalidated = !hasMeterFill && record.quality.backfilled && record.kwhTotal !== undefined;
+  if (params.meterPolicy === 'refresh_and_purge_legacy' && legacyUnvalidated) {
     const {
       kwhTotal: _droppedTotal, kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled,
       kwhBudgetCounted: _droppedCounted, ...rest

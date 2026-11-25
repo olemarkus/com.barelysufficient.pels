@@ -278,7 +278,7 @@ describe('reconcileKwhSources', () => {
     );
     const { state } = reconcileKwhSources(
       { records: [live] },
-      { getDailyKwh: getKwh, meterDailyKwh: {}, allowStrip: true },
+      { getDailyKwh: getKwh, meterDailyKwh: {}, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(state.records[0]).toMatchObject({
       kwhTotal: 44, kwhControlled: 12, kwhUncontrolled: 31, suppression: { targetDeficitMs: 3_600_000 },
@@ -288,16 +288,16 @@ describe('reconcileKwhSources', () => {
   it('recovers counted energy from the power accounting read without inferring it from a meter total', () => {
     const record = liveRecord('2026-03-05', { kwhTotal: 60 });
     const recovered = reconcileKwhSources({ records: [record] }, {
-      getDailyKwh: () => ({ total: 60, budgetCounted: 40 }), meterDailyKwh: {}, allowStrip: true,
+      getDailyKwh: () => ({ total: 60, budgetCounted: 40 }), meterDailyKwh: {}, meterPolicy: 'refresh_and_purge_legacy',
     }).state.records[0];
     expect(recovered).toMatchObject({ kwhTotal: 60, kwhBudgetCounted: 40 });
     const replaced = reconcileKwhSources({ records: [recovered] }, {
-      getDailyKwh: () => ({}), meterDailyKwh: { '2026-03-05': 65 }, allowStrip: true,
+      getDailyKwh: () => ({}), meterDailyKwh: { '2026-03-05': 65 }, meterPolicy: 'refresh_and_purge_legacy',
     }).state.records[0];
     // Live records keep their accepted accounting observation when no tracker read replaces it.
     expect(replaced).toMatchObject({ kwhTotal: 60, kwhBudgetCounted: 40 });
     const refreshed = reconcileKwhSources({ records: [recovered] }, {
-      getDailyKwh: () => ({ total: 65 }), meterDailyKwh: {}, allowStrip: true,
+      getDailyKwh: () => ({ total: 65 }), meterDailyKwh: {}, meterPolicy: 'refresh_and_purge_legacy',
     }).state.records[0];
     expect(refreshed.kwhBudgetCounted).toBeUndefined();
   });
@@ -310,7 +310,7 @@ describe('reconcileKwhSources', () => {
     );
     const { state } = reconcileKwhSources(
       { records: [live] },
-      { getDailyKwh: getKwh, meterDailyKwh: {}, allowStrip: true },
+      { getDailyKwh: getKwh, meterDailyKwh: {}, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(state.records[0].kwhTotal).toBe(44);
     expect(state.records[0].kwhControlled).toBeUndefined();
@@ -334,7 +334,7 @@ describe('reconcileKwhSources', () => {
       {
         getDailyKwh,
         meterDailyKwh: { '2025-02-01': 52.3, '2025-02-03': 41.2, '2026-03-05': 999 },
-        allowStrip: true,
+        meterPolicy: 'refresh_and_purge_legacy',
       },
     );
     expect(state.records[0]).toMatchObject({
@@ -353,18 +353,23 @@ describe('reconcileKwhSources', () => {
     });
   });
 
-  it('fills but never strips on a partial run (allowStrip=false)', () => {
+  it('fills missing meter totals and keeps existing totals and splits on a partial run', () => {
     const missing = backfilledRecord('2025-02-01', {
       kwhTotal: undefined,
       quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
     });
     const contaminated = backfilledRecord('2025-02-02', { kwhTotal: 19.5 });
+    const meterFill = backfilledRecord('2025-02-03', {
+      kwhTotal: 18, kwhControlled: 4, kwhUncontrolled: 14,
+      quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true },
+    });
     const { state, strippedDays } = reconcileKwhSources(
-      { records: [missing, contaminated] },
-      { getDailyKwh, meterDailyKwh: { '2025-02-01': 52.3 }, allowStrip: false },
+      { records: [missing, contaminated, meterFill] },
+      { getDailyKwh, meterDailyKwh: { '2025-02-01': 52.3, '2025-02-03': 20 }, meterPolicy: 'fill_missing' },
     );
     expect(state.records[0].kwhTotal).toBe(52.3);
     expect(state.records[1].kwhTotal).toBe(19.5);
+    expect(state.records[2]).toBe(meterFill);
     expect(strippedDays).toBe(0);
   });
 
@@ -373,7 +378,7 @@ describe('reconcileKwhSources', () => {
     // Even when the meter covers the day: the snapshot WAS the tracker.
     const { state, changedDays } = reconcileKwhSources(
       { records: [agedLive] },
-      { getDailyKwh, meterDailyKwh: { '2024-06-01': 29.5 }, allowStrip: true },
+      { getDailyKwh, meterDailyKwh: { '2024-06-01': 29.5 }, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(changedDays).toBe(0);
     expect(state.records[0].kwhTotal).toBe(31);
@@ -390,14 +395,14 @@ describe('reconcileKwhSources', () => {
     // tracker when written, so it stays (a bad read must never delete it).
     const kept = reconcileKwhSources(
       { records: [meterFilled] },
-      { getDailyKwh, meterDailyKwh: {}, allowStrip: true },
+      { getDailyKwh, meterDailyKwh: {}, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(kept.changedDays).toBe(0);
     expect(kept.state.records[0].kwhTotal).toBe(29.5);
     // Where the current map covers it, the value is re-resolved.
     const refreshed = reconcileKwhSources(
       { records: [meterFilled] },
-      { getDailyKwh, meterDailyKwh: { '2024-06-01': 30.1 }, allowStrip: true },
+      { getDailyKwh, meterDailyKwh: { '2024-06-01': 30.1 }, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(refreshed.state.records[0].kwhTotal).toBe(30.1);
     expect(refreshed.state.records[0].quality.kwhBackfilled).toBe(true);
@@ -413,7 +418,7 @@ describe('reconcileKwhSources', () => {
     const zeroTracker = (dateKey: string): { total?: number } => (dateKey === '2026-03-06' ? { total: 0 } : {});
     const { state, changedDays } = reconcileKwhSources(
       { records: [meterFilled] },
-      { getDailyKwh: zeroTracker, meterDailyKwh: { '2026-03-06': 38 }, allowStrip: true },
+      { getDailyKwh: zeroTracker, meterDailyKwh: { '2026-03-06': 38 }, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(changedDays).toBe(0);
     expect(state.records[0].kwhTotal).toBe(38);
@@ -433,7 +438,7 @@ describe('reconcileKwhSources', () => {
     };
     const { state, changedDays } = reconcileKwhSources(
       original,
-      { getDailyKwh, meterDailyKwh: { '2025-02-01': 52.3 }, allowStrip: true },
+      { getDailyKwh, meterDailyKwh: { '2025-02-01': 52.3 }, meterPolicy: 'refresh_and_purge_legacy' },
     );
     expect(changedDays).toBe(0);
     expect(state).toBe(original);

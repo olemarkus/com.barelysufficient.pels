@@ -40,8 +40,8 @@ const buildFetch = () => vi.fn(async (path: string): Promise<unknown> => {
   throw new Error(`unexpected path ${path}`);
 });
 
-describe('meter kWh election restriction at the Insights boundary', () => {
-  it('confines the election to the admitted meter — a better-matching rival is never probed', async () => {
+describe('selected meter kWh at the Insights boundary', () => {
+  it('reads only the selected meter even when another meter better matches the tracker', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi,
@@ -51,11 +51,15 @@ describe('meter kWh election restriction at the Insights boundary', () => {
       nowMs: NOW_MS,
     });
 
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 0 });
+    expect(result).toMatchObject({
+      outcome: 'resolved',
+      deviceId: 'thermo-1',
+      comparison: { trackerComparison: 'differs', overlapDays: 16 },
+    });
     expect(fetchFromHomeyApi.mock.calls.some(([path]) => path.includes('han-1'))).toBe(false);
   });
 
-  it('resolves normally when the admitted meter validates', async () => {
+  it('reports agreement with the tracker for the selected meter', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi,
