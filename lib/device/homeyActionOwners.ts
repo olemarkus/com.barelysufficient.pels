@@ -57,6 +57,7 @@ export const createHomeyActionOwners = (
       return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
     },
     options.acceptedFlowWrites, options.settings, options.externalPower?.resolveHome,
+    (deviceId) => snapshotStore.getSnapshotByDeviceId(deviceId)?.binaryControllable === true,
   );
   return { access, answerTimes, batteryAppActions, chargingCurrentControl,
     createChargingPhaseTransport: (pause, currentPolicy, writeCapability) => new ChargingPhaseTransport(

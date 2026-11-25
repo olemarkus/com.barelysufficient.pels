@@ -6,7 +6,8 @@ vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApi(...args),
   invalidateApiCacheForAllHomes: vi.fn(),
 }));
-const { setChargingCurrentDevice, requestChargingControlFocus, cancelChargingControlFocus } = await import('../src/ui/deviceDetail/chargingCurrent.tsx');
+const { setChargingCurrentDevice, requestChargingControlFocus, cancelChargingControlFocus, refreshChargingSetupForControlSettings }
+  = await import('../src/ui/deviceDetail/chargingCurrent.tsx');
 const charger: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage',
   setup: { method: 'flow', confirmation: 'single_charger' }, scope: 'installation',
   supportsAppAction: true, capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
@@ -218,6 +219,36 @@ test.each([
   await vi.waitFor(() => expect(document.body.textContent).not.toContain('Loading charging setup…'));
   expect(button('Use a Flow')).toBeDefined();
   expect(document.body.textContent).not.toContain('nothing changes the charging current');
+});
+
+test('opens a shared charger’s start-policy setting and refreshes requirements after a settings change', async () => {
+  let device: ChargingCurrentRead = {
+    ...charger,
+    setup: { method: 'built_in', confirmation: 'none' },
+    sharedInstallation: true,
+    sharedInstallationStartPolicyRequiredBy: [
+      { id: 'charger', name: 'Garage' },
+      { id: 'driveway', name: 'Driveway' },
+    ],
+  };
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [device] : { configured: false, state: 'not_configured' });
+  const openDeviceDetail = vi.fn();
+  document.addEventListener('open-device-detail', openDeviceDetail, { once: true });
+  await act(async () => setChargingCurrentDevice('charger', false, undefined, true));
+  const action = (name: string) => document.querySelector<HTMLElement>(`[aria-label="Open Power limiting for ${name}"]`);
+  await vi.waitFor(() => expect(action('Garage')).toBeTruthy());
+  expect(document.body.textContent).toContain('Built-in current control is paused.');
+  expect(document.body.textContent).not.toContain('A Homey Flow sets the same charging current');
+  await act(async () => action('Driveway')?.click());
+  expect(openDeviceDetail).toHaveBeenCalledWith(expect.objectContaining({
+    detail: { deviceId: 'driveway', focus: 'start-policy' },
+  }));
+
+  device = { ...device, sharedInstallationStartPolicyRequiredBy: [{ id: 'driveway', name: 'Driveway' }] };
+  await act(async () => refreshChargingSetupForControlSettings());
+  await vi.waitFor(() => expect(action('Garage')).toBeNull());
+  expect(action('Driveway')).toBeTruthy();
 });
 
 test('says a selected built-in route is paused while a Flow sets the same current', async () => {

@@ -1,3 +1,4 @@
+import { refreshChargingSetupForControlSettings } from './deviceDetail/chargingCurrent.tsx';
 import { notifyMonthlyCapacitySettingChanged } from './norwayMonthlyCapacityActions.ts';
 import {
   clearEvCarCurrentLimits, loadEvCarCurrentLimits, clearEvChargerCurrentLimits, loadEvChargerCurrentLimits,
@@ -509,6 +510,9 @@ const reloadRecommendationsIfKey = (key: string, context: string): void => {
  * when Managed is turned back on, so that change fetches the list again.
  */
 const refreshDeviceControlSurfaces = (key: string): void => {
+  if (key === DEVICE_START_POLICIES || key === CONTROLLABLE_DEVICES || key === MANAGED_DEVICES) {
+    refreshChargingSetupForControlSettings();
+  }
   if (!DEVICE_CONTROL_KEYS.has(key)) return;
   refreshModeAndDeviceControls();
   if (key === BATTERY_CONTROL_DEVICES) refreshDevicesForUi();

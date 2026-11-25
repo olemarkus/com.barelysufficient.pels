@@ -213,15 +213,15 @@ describe('native target-power device setup', () => {
     expect(getDeviceDetailControlModeOptions(device).map((option) => option.value)).toContain('ev_charger_3_phase');
   });
 
-  it('clears charging-current setup when the native watt ladder takes control', async () => {
+  it('shows only shared setup requirements when the native watt ladder takes control', async () => {
     const { setChargingCurrentDevice } = await import('../src/ui/deviceDetail/chargingCurrent.tsx');
     const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
     const device = nativeDevice({ automaticPowerControl: { mode: 'manual', profile: nativeProfile } });
     setDeviceDetailNativeWiringState(device);
-    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith(device.id, true, undefined);
+    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith(device.id, true, undefined, false);
 
     setDeviceDetailNativeWiringState(nativeDevice());
-    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith('', true, undefined);
+    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith(device.id, false, undefined, true);
   });
 
   it.each(['manual', 'automatic'] as const)('shows the Manual model row only while %s controls the charger', async (mode) => {

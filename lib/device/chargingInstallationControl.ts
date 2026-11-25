@@ -1,8 +1,10 @@
+import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { ChargingInstallation } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { ChargingInstallationMembership, InstallationCurrentAccess } from './deviceAdapter';
 import type { DeviceAdapterSessions } from './deviceAdapterRegistry';
 import type { DeviceControlSettings } from './deviceControlSettings';
+import { hasStandingCommandGrant } from './temperatureControlPosture';
 import type { PowerSourceHome } from './transport/externalDevicePower';
 
 export type InstallationCurrentRoute = 'shared' | 'flow' | 'per_charger' | 'refused' | 'unverified';
@@ -19,7 +21,7 @@ export class ChargingInstallationControl {
     private readonly sessions: Pick<DeviceAdapterSessions, 'chargingInstallationOf' | 'sharedChargingMemberIds'>,
     private readonly findDevice: (deviceId: string) => HomeyDeviceLike | undefined,
     private readonly resolveHome: PowerSourceHome,
-    private readonly settings: Pick<DeviceControlSettings, 'isManaged' | 'isControllable'>,
+    private readonly settings: Pick<DeviceControlSettings, 'isManaged' | 'isControllable' | 'deviceStartPolicies'>,
     private readonly currentRoute: (
       main: HomeyDeviceLike | undefined, memberIds: readonly string[],
     ) => InstallationCurrentRoute,
@@ -62,28 +64,49 @@ export class ChargingInstallationControl {
     return { access, installation };
   }
 
-  /** Setup can offer a current route before it has been enabled. */
-  eligibleMainOf(device: HomeyDeviceLike): HomeyDeviceLike | undefined {
+  /** The installation's candidate route and missing standing grants for setup. */
+  setupCandidate(device: HomeyDeviceLike): {
+    main: HomeyDeviceLike; missingGrants: { id: string; name: string }[];
+  } | undefined {
     const membership = this.sessions.chargingInstallationOf(device);
-    if (!membership || !this.allMembersControlled(membership)) return undefined;
-    return this.mainInSharedHome(membership);
+    if (!membership || !this.allMembersManaged(membership)) return undefined;
+    const main = this.mainInSharedHome(membership);
+    if (!main) return undefined;
+    const route = this.currentRoute(main, membership.memberIds);
+    if (route === 'flow' || route === 'refused' || route === 'unverified') return undefined;
+    const missing = membership.memberIds.flatMap((id) => this.memberHasControl(id) ? [] : this.findDevice(id) ?? []);
+    return { main, missingGrants: missing.map(({ id, name }) => ({ id, name })) };
   }
 
   private resolveAccess(deviceId: string, membership: ChargingInstallationMembership): InstallationCurrentAccess {
     const main = this.mainInSharedHome(membership);
     if (!main) return 'blocked';
     // A Flow on any member owns the current for the entire installation.
-    const allControlled = this.allMembersControlled(membership);
-    const route = this.currentRoute(allControlled ? main : undefined, membership.memberIds);
+    const allManaged = this.allMembersManaged(membership);
+    const route = this.currentRoute(allManaged ? main : undefined, membership.memberIds);
     if (route === 'refused' || route === 'unverified') return 'blocked';
     if (route === 'flow') return 'per_charger';
-    if (!allControlled) return undefined;
+    // A previously claimed watt target still controls the entire installation.
+    // Withdraw native current when an otherwise managed member revokes its grant.
+    if (!this.allMembersControlled(membership)) {
+      return route === 'shared' ? 'blocked' : undefined;
+    }
     if (route === 'per_charger') return route;
     return membership.mainId === deviceId ? 'main' : 'secondary';
   }
 
+  private allMembersManaged(membership: ChargingInstallationMembership): boolean {
+    return membership.memberIds.every((id) => this.settings.isManaged(id));
+  }
+
   private allMembersControlled(membership: ChargingInstallationMembership): boolean {
-    return membership.memberIds.every((id) => this.settings.isManaged(id) && this.settings.isControllable(id));
+    return membership.memberIds.every((id) => this.memberHasControl(id));
+  }
+
+  private memberHasControl(id: string): boolean {
+    return this.settings.isManaged(id) && hasStandingCommandGrant(
+      true, this.settings.isControllable(id), resolveDeviceStartPolicy(this.settings.deviceStartPolicies, id),
+    );
   }
 
   private mainInSharedHome(membership: ChargingInstallationMembership): HomeyDeviceLike | undefined {
@@ -127,7 +150,7 @@ export class ChargingInstallationControl {
     this.logger.structuredLog.info({
       event: 'charging_installation_resolved', installationId: id, control, mainId, memberIds,
       unmanagedIds: memberIds.filter((id) => !this.settings.isManaged(id)),
-      notLimitedIds: memberIds.filter((id) => !this.settings.isControllable(id)),
+      notLimitedIds: memberIds.filter((id) => this.settings.isManaged(id) && !this.memberHasControl(id)),
     });
   }
 }

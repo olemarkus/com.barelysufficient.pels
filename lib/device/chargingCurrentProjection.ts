@@ -18,6 +18,13 @@ export function describeCurrentBinding(adapter: ChargingCurrentBinding | undefin
   };
 }
 
+export function describeCurrentFlowCheck(
+  names: ReadonlyMap<string, string> | undefined,
+): Pick<ChargingCurrentRead, 'flowCheck' | 'flowNames'> {
+  if (!names) return { flowCheck: 'unavailable', flowNames: [] };
+  return { flowCheck: names.size > 0 ? 'conflict' : 'clear', flowNames: [...names.values()] };
+}
+
 export function withChargingInstallation(
   source: TransportDeviceSnapshot, chargingInstallation: ChargingInstallation | undefined,
 ): TransportDeviceSnapshot {

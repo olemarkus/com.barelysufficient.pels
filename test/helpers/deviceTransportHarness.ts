@@ -75,6 +75,7 @@ export type TestTransportInputs = {
 export const testParseSettings = (settings: Partial<DeviceTransportOptions['settings']> = {}): DeviceTransportOptions['settings'] => ({
   isManaged: () => true,
   isControllable: () => true,
+  deviceStartPolicies: {},
   isManagedFilterActive: () => true,
   isBudgetExempt: () => false,
   getDeviceDriverIdOverride: () => undefined,

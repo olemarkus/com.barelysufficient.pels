@@ -108,7 +108,7 @@ After the ready-by time, the device's own settings decide again: the task page's
 | **Power-limit control** off, with **Only PELS starts this device** | PELS keeps the device off until a smart task needs it. If it is started elsewhere, PELS turns it off again. |
 | **Power-limit control** off | At the ready-by time, PELS does what **Power limiting** is set to, such as turning the device off. After that, PELS does not start it, and leaves it running if it is started elsewhere. |
 
-The device page states the same rule under **Power-limit control**, beginning with *When no smart task is running* while a task is in progress. **Change** on the card opens the device page at **Power-limit control**. **Only PELS starts this device** appears there, while **Power-limit control** is off, once the device has had a smart task.
+The device page states the same rule under **Power-limit control**, beginning with *When no smart task is running* while a task is in progress. **Change** on the card opens the device page at **Power-limit control**. **Only PELS starts this device** appears there while **Power-limit control** is off if the device has had a Smart task or needs the setting for shared Zaptec current control.
 
 ## Budget and Task Interaction
 
@@ -279,7 +279,7 @@ Recommended charger setup:
 
 - **Managed by PELS** on
 - **Power-limit control** off by default to prevent ordinary run-when-power-is-available behavior when no active task controls the charger. An active task may still charge in a period it keeps without planned energy; see [Smart Tasks](/smart-tasks#power-limit-control-and-tasks).
-- **Only PELS starts this device** on, if the charger should charge only for a task. A charger that starts a session by itself when the car is plugged in is turned off again, so the car charges only in the periods the task keeps. It appears on the device page, under **Power-limit control**, once the charger has had its first smart task.
+- **Only PELS starts this device** on, if the charger should charge only for a task. A charger that starts a session by itself when the car is plugged in is turned off again, so the car charges only in the periods the task keeps. It appears on the device page, under **Power-limit control**, once the charger has had its first Smart task. For chargers sharing a Zaptec installation, **Charging current** also links to this switch when it’s needed for built-in control.
 - Current control configured as described in [Configure an EV Charger](/ev-charger): built-in control for a supported charger, otherwise a current-control Flow.
 - A battery level for the car: a selected car, the charger's own reading, or a battery-reporting Flow
 

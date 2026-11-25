@@ -20,7 +20,8 @@ import {
 import type { CapabilityWrite, ChargingCurrentBinding, InstallationCurrentAccess } from './deviceAdapter';
 import { currentSettingCapabilities, currentSettingFlows, installationCurrentFlows } from './chargingCurrentFlowRoutes';
 import {
-  describeCurrentBinding, projectedInstallationRole, withChargingInstallation, withCurrentRoute,
+  describeCurrentBinding, describeCurrentFlowCheck, projectedInstallationRole, withChargingInstallation,
+  withCurrentRoute,
 } from './chargingCurrentProjection';
 import {
   ChargingInstallationControl, withholdsInstallationSteps, type InstallationCurrentRoute,
@@ -90,9 +91,10 @@ export class ChargingCurrentControl {
     private readonly flowWritesStore: AcceptedFlowConflictSlice<FlowCapabilityWrites>,
     private readonly deviceSettings: Pick<
       DeviceControlSettings, 'resolveDevicePowerControlMode' | 'getDeviceTargetPowerConfig'
-      | 'isManaged' | 'isControllable'
+      | 'isManaged' | 'isControllable' | 'deviceStartPolicies'
     >,
     resolveHome: PowerSourceHome = () => undefined,
+    private readonly hasBinaryControl: (deviceId: string) => boolean = () => false,
   ) {
     this.sessions = new DeviceAdapterSessions(this.homeLocation, (device) => this.installations.accessOf(device));
     this.installations = new ChargingInstallationControl(
@@ -332,9 +334,9 @@ export class ChargingCurrentControl {
 
   private installationRoute(main: HomeyDeviceLike | undefined, memberIds: readonly string[]): InstallationCurrentRoute {
     if (!this.sharedFlowInventoryReady) return 'unverified';
+    if (this.findInstallationFlows(memberIds, this.flowWrites).size > 0) return 'flow';
     const automatic = main !== undefined && this.automaticWattsOwnRoute(main);
     if (automatic && this.sessions.targetPowerClaims.resolve(main, Date.now()) === 'refused') return 'refused';
-    if (this.findInstallationFlows(memberIds, this.flowWrites).size > 0) return 'flow';
     if (main && (automatic || (this.setup(main.id).method === 'built_in' && this.hasManualInstallationLadder(main)))) {
       return 'shared';
     }
@@ -481,19 +483,16 @@ export class ChargingCurrentControl {
       const adapter = resolveChargingCurrentAdapter(device);
       const memberIds = this.sessions.sharedChargingMemberIds(device);
       const names = flows.status === 'ok' ? this.describeFlows(adapter, memberIds, flows.facts.writes) : undefined;
-      const chargingInstallation = this.describeInstallation(device, memberIds);
-      if (!adapter && !chargingInstallation) return [];
-      let flowCheck: ChargingCurrentRead['flowCheck'] = 'unavailable';
-      if (names) flowCheck = names.size ? 'conflict' : 'clear';
+      const { chargingInstallation, sharedInstallationStartPolicyRequiredBy } = this.describeInstallation(device);
+      if (!adapter && !chargingInstallation && !sharedInstallationStartPolicyRequiredBy) return [];
       return [{
         deviceId: device.id, name: device.name, setup: this.setup(device.id),
         ...describeCurrentBinding(adapter),
         sharedInstallation: chargingInstallation?.role === 'secondary'
           || (!chargingInstallation && (memberIds !== undefined
             || (adapter !== undefined && hasSharedChargingInstallation(adapter, devices)))),
-        chargingInstallation,
-        flowCheck,
-        flowNames: names ? [...names.values()] : [],
+        chargingInstallation, sharedInstallationStartPolicyRequiredBy,
+        ...describeCurrentFlowCheck(names),
         currentRoute: this.routesBuiltIn(device.id) ? 'built_in' : 'flow',
         missingCompanion: this.sessions.missingCompanion(device.id),
       }];
@@ -508,18 +507,17 @@ export class ChargingCurrentControl {
   }
 
   private describeInstallation(
-    device: HomeyDeviceLike, memberIds: readonly string[] | undefined,
-  ): ChargingCurrentRead['chargingInstallation'] {
-    const main = this.installations.eligibleMainOf(device);
-    if (!main || !memberIds) return undefined;
-    const route = this.installationRoute(main, memberIds);
-    if (route === 'flow' || route === 'refused' || route === 'unverified') return undefined;
-    const automatic = this.routesAutomaticWatts(main, this.installations.accessOf(main));
-    if (!automatic && !this.hasManualInstallationLadder(main)) return undefined;
+    device: HomeyDeviceLike,
+  ): Pick<ChargingCurrentRead, 'chargingInstallation' | 'sharedInstallationStartPolicyRequiredBy'> {
+    const candidate = this.installations.setupCandidate(device);
+    if (!candidate) return {};
+    const { main, missingGrants } = candidate;
+    const automatic = this.automaticWattsOwnRoute(main);
+    if (!automatic && !this.hasManualInstallationLadder(main)) return {};
+    if (missingGrants.length > 0) return missingGrants.every(({ id }) => this.hasBinaryControl(id))
+      ? { sharedInstallationStartPolicyRequiredBy: missingGrants } : {};
     const role = device.id === main.id ? 'main' : 'secondary';
-    return {
-      role, mainName: main.name, automaticWatts: role === 'main' && automatic,
-    };
+    return { chargingInstallation: { role, mainName: main.name, automaticWatts: role === 'main' && automatic } };
   }
 
   async save(deviceId: string, body: unknown): Promise<void> {

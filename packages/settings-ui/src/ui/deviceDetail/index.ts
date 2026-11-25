@@ -1,6 +1,6 @@
 import { renderChargerCurrentLimits } from './chargingCurrentLimits.tsx';
 import { CHARGING_SETUP_UPDATED } from '../chargingSetupFacts.ts';
-import { cancelChargingControlFocus } from './chargingCurrent.tsx';
+import { setChargingCurrentDevice } from './chargingCurrent.tsx';
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
 import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
 import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
@@ -122,7 +122,9 @@ import {
 import { initRespectExternalOffHandler } from './respectExternalOff.ts';
 import { initElectricalConnectionHandler, syncElectricalConnectionRow } from './electricalConnection.ts';
 import { renderChargingPhases } from './chargingPhases.tsx';
-import { initStartPolicyHandler, revealDeviceDetailFocus, syncDevicePolicyRows } from './startPolicy.ts';
+import {
+  initStartPolicyHandler, revealDeviceDetailFocus, syncDevicePolicyRows, syncStartPolicyRow,
+} from './startPolicy.ts';
 import {
   initTemperatureControlDisabledHandler,
   syncTemperatureControlDisabledRow,
@@ -365,7 +367,7 @@ export const openDeviceDetail = (deviceId: string) => {
 };
 
 export const closeDeviceDetail = () => {
-  cancelChargingControlFocus();
+  setChargingCurrentDevice('', false);
   setContinuousBatteryPlanDevice(null);
   setBatteryApiKeyDevice(null);
   resetDeviceDetailDiagnosticsRequests();
@@ -444,7 +446,9 @@ export const initDeviceDetailHandlers = () => {
   document.addEventListener(CHARGING_SETUP_UPDATED, () => {
     if (!currentDetailDeviceId) return;
     const device = findLatestDevice(currentDetailDeviceId);
-    if (device) syncDeviceDetailSolarRows(currentDetailDeviceId, device);
+    if (!device) return;
+    syncDeviceDetailSolarRows(currentDetailDeviceId, device);
+    syncStartPolicyRow(currentDetailDeviceId, device);
   });
   initContinuousBatteryPlanRefresh();
   // An owner's toggle shows or hides its on-only hints at once; a save that

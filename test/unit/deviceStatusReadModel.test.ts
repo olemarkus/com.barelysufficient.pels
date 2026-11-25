@@ -544,6 +544,31 @@ describe('charging installation controlled as one load', () => {
     expect(secondary).toMatchObject({ label: 'Running', factText: 'Charging', powerText: '3.2 kW', reason: null });
   });
 
+  it('shows why a task-only primary is off while its sibling charges', () => {
+    const primary = status(card({ role: 'main', totalKw: 3.2 }, {
+      currentState: 'off', currentDrawKw: 0, startPolicyHoldActive: true,
+      execution: { ...runningPowerHold().execution, physicalState: 'off', desiredBinary: 'off', resumeExpected: false },
+    }));
+    expect(primary).toMatchObject({
+      kind: 'off',
+      powerText: '0.0 kW · installation 3.2 kW',
+      reason: { text: 'Waiting for a smart task' },
+    });
+  });
+
+  it.each([
+    [PLAN_REASON_CODES.awaitingPelsStart, 'Waiting for a smart task'],
+    [PLAN_REASON_CODES.deferredObjectiveAvoid, 'Waiting for cheaper hours'],
+    [PLAN_REASON_CODES.deferredObjectiveSatisfied, 'Smart task done, held until its ready-by time'],
+  ] as const)('keeps a secondary charger’s task hold reason (%s)', (code, text) => {
+    const secondary = status(card({ role: 'secondary', mainName: 'Garage' }, {
+      plannedState: 'inactive', currentState: 'off', currentDrawKw: 0,
+      evChargingState: 'plugged_in_paused', reason: { code },
+      execution: { ...runningPowerHold().execution, physicalState: 'off', desiredBinary: 'off' },
+    }));
+    expect(secondary).toMatchObject({ label: 'Off', reason: { text } });
+  });
+
   it.each([
     ['its car draws', 3.2, 'on', 'plugged_in_charging', 'Running', 'Charging', '3.2 kW'],
     ['its car waits in the installation\'s queue', 0, 'on', 'plugged_in_paused', 'Idle', 'Waiting for current', '0.0 kW'],

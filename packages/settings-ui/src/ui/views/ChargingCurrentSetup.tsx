@@ -1,5 +1,6 @@
 import { useLayoutEffect, useState } from 'preact/hooks';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import { dispatchOpenDeviceDetail } from '../cardActivation.ts';
 import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } from '../../../../contracts/src/chargingControl.ts';
 import { MdFilledButton, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 import { hasBuiltInChargingAccess, requiresChargingAppUpdate, usesInstallationCurrentWithoutSetup } from '../chargingSetupFacts.ts';
@@ -68,6 +69,7 @@ function currentControlStatus(device: ChargingCurrentRead): string {
   if (device.setup.method !== 'built_in') {
     return device.flowCheck === 'conflict' ? 'Flow control is selected.' : 'Built-in current control is not enabled.';
   }
+  if (device.sharedInstallationStartPolicyRequiredBy?.length) return 'Built-in current control is paused.';
   if (requiresChargingAppUpdate(device)) return 'Built-in current control needs a charger app update.';
   return device.currentRoute === 'flow' ? 'Built-in current control is paused.' : 'Built-in current control is selected.';
 }
@@ -75,7 +77,8 @@ function currentControlStatus(device: ChargingCurrentRead): string {
 function CurrentControlStatus({ device }: { device: ChargingCurrentRead }) {
   const builtIn = device.setup.method === 'built_in';
   // A selected route can resume after a competing Flow is removed, but not after capability support disappears.
-  const paused = builtIn && device.currentRoute === 'flow' && !requiresChargingAppUpdate(device);
+  const paused = builtIn && device.currentRoute === 'flow'
+    && !device.sharedInstallationStartPolicyRequiredBy?.length && !requiresChargingAppUpdate(device);
   return <div role="status">
     <p><strong>{currentControlStatus(device)}</strong></p>
     {paused && <p class="field__hint">{pausedHint(device.flowNames.filter(Boolean))}</p>}
@@ -83,10 +86,31 @@ function CurrentControlStatus({ device }: { device: ChargingCurrentRead }) {
   </div>;
 }
 
-function currentControlHint(device: ChargingCurrentRead): string {
-  if (device.sharedInstallation) return 'Use a Flow to adjust current for this shared installation. PELS starts and stops each managed charger separately.';
-  if (requiresChargingAppUpdate(device)) return 'Update the charger’s app in Homey to use built-in current control, or use a Flow.';
-  return 'Let PELS adjust charging current directly. No Flow needed.';
+function CurrentControlHint({ device }: { device: ChargingCurrentRead }) {
+  if (device.chargingInstallation) return <ChargingInstallationHint installation={device.chargingInstallation} />;
+  const members = device.sharedInstallationStartPolicyRequiredBy;
+  if (members?.length) return <SharedInstallationStartPolicyHint members={members} />;
+  if (device.sharedInstallation) return <p class="field__hint">Use a Flow to adjust current for this shared installation.
+    PELS starts and stops each managed charger separately.</p>;
+  return <p class="field__hint">{requiresChargingAppUpdate(device)
+    ? 'Update the charger’s app in Homey to use built-in current control, or use a Flow.'
+    : 'Let PELS adjust charging current directly. No Flow needed.'}</p>;
+}
+
+function SharedInstallationStartPolicyHint({ members }: {
+  members: NonNullable<ChargingCurrentRead['sharedInstallationStartPolicyRequiredBy']>;
+}) {
+  return <>
+    <p class="field__hint">For built-in current control, turn on “Only PELS starts this device” for each charger
+      below. With Power-limit control off, these chargers only run for Smart tasks.</p>
+    {members.map(({ id, name }) => {
+      const charger = formatDisplayDeviceName(name);
+      return <MdTextButton key={id} aria-label={`Open Power limiting for ${charger}`}
+        onClick={() => dispatchOpenDeviceDetail(id, 'start-policy')}>
+        {charger}
+      </MdTextButton>;
+    })}
+  </>;
 }
 
 function ChargingInstallationHint({ installation }: { installation: NonNullable<ChargingCurrentRead['chargingInstallation']> }) {
@@ -149,9 +173,7 @@ function SelectableChargingCurrentSetup(props: ChargingCurrentSetupProps) {
   return <section class="charging-current-setup">
     <h3 class="pels-text-settings-label">Charging current</h3>
     {props.error && <p class="field__hint" role="alert">{props.error}</p>}
-    {device.chargingInstallation
-      ? <ChargingInstallationHint installation={device.chargingInstallation} />
-      : <p class="field__hint">{currentControlHint(device)}</p>}
+    <CurrentControlHint device={device} />
     <CurrentControlStatus device={device} />
     {device.scope === 'vehicle' && <div>
       <label class="md-switch-row" id="device-detail-vehicle-control-row">

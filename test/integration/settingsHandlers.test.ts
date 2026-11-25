@@ -210,10 +210,11 @@ describe('createSettingsHandler', () => {
     expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
   });
 
-  it('fans a start-policy change out to sub-home plans, after re-reading it', async () => {
+  it('fans a start-policy change out to sub-home plans, after refreshing the charging installation', async () => {
     const calls: string[] = [];
     const deps = buildDeps({
       loadCapacitySettings: vi.fn(() => { calls.push('load'); }),
+      refreshTargetDevicesSnapshot: vi.fn(async () => { calls.push('snapshot'); }),
       rebuildPlanFromCache: vi.fn(async () => { calls.push('main'); }),
       rebuildAllHomeRuntimePlansForDeviceControlChange: vi.fn(() => { calls.push('areas'); }),
     });
@@ -221,7 +222,7 @@ describe('createSettingsHandler', () => {
 
     await handler(DEVICE_START_POLICIES);
 
-    expect(calls).toEqual(['load', 'main', 'areas']);
+    expect(calls).toEqual(['load', 'snapshot', 'main', 'areas']);
   });
 
   it('publishes the setpoint command fence before a parked settings queue drains', async () => {
