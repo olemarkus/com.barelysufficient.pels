@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createPendingBinaryCommandStore, syncPendingBinaryCommands } from '../../lib/observer/pendingBinaryCommands';
-import { buildPlannedBinaryCommand } from '../../lib/plan/planExecutionProjection';
+import { buildExecutableDeviceIntent, buildPlannedBinaryCommand } from '../../lib/plan/planExecutionProjection';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { buildPlannedSteppedCommand } from '../../lib/plan/planSteppedCommand';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import { selectLastResortCut } from '../../lib/plan/shedding/lastResort';
 import { PENDING_SHED_RELIEF_WINDOW_MS } from '../../lib/plan/shedding/pendingRelief';
@@ -10,7 +12,7 @@ import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/m
 import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
 import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { applyRestorePlanForSpec, buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
+import { applyRestorePlanForSpec, buildPlanDevice, buildPlanInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
@@ -178,11 +180,11 @@ describe('last-resort relay control', () => {
     expect(pending.ownsLastResortOff('relay', now, 2)).toBe(false);
   });
 
-  it('issues ON only for an owned OFF after the full maximum fits every admission axis', () => {
+  it('issues ON only after the full maximum fits every admission axis', () => {
     const now = Date.now();
     const relay = buildPlanDevice({
       id: 'relay', unmetered: true, control: { managed: true, commandAuthority: true },
-      lastResort: { maximumW: 4000 }, lastResortOwnedOffAtMs: 1, currentOn: false, commandableNow: true,
+      lastResort: { maximumW: 4000, observedOffAtMs: 1 }, currentOn: false, commandableNow: true,
     });
     const restore = (budgetHeadroomKw: number) => applyRestorePlanForSpec({
       planDevices: [relay], context: buildPlanContextFixture({ nowTs: now }),
@@ -199,7 +201,7 @@ describe('last-resort relay control', () => {
       },
     }).planDevices[0];
 
-    expect(buildPlannedBinaryCommand({ ...relay, lastResortOwnedOffAtMs: undefined })).toBeUndefined();
+    expect(buildPlannedBinaryCommand(relay)).toBeUndefined();
     expect(buildPlannedBinaryCommand(restore(3.9))).toBeUndefined();
     expect(buildPlannedBinaryCommand(restore(5))).toMatchObject({
       deviceId: 'relay', desiredOn: true, lastResortMaximumW: 4000,
@@ -210,7 +212,7 @@ describe('last-resort relay control', () => {
     const now = Date.now();
     const target = buildPlanDevice({
       id: 'target', priority: 1, unmetered: true, control: { managed: true, commandAuthority: true },
-      lastResort: { maximumW: 4000 }, lastResortOwnedOffAtMs: 1, currentOn: false, commandableNow: true,
+      lastResort: { maximumW: 4000, observedOffAtMs: 1 }, currentOn: false, commandableNow: true,
     });
     const otherRelay = buildPlanDevice({
       id: 'relay', priority: 2, unmetered: true, control: { managed: true, commandAuthority: true },
@@ -244,11 +246,11 @@ describe('last-resort relay control', () => {
   });
 });
 
-describe('last-resort restore priority reproduction', () => {
+describe('last-resort restore priority', () => {
   const now = 1_800_000_000_000;
   const relay = buildPlanDevice({
     id: 'relay', priority: 1, unmetered: true, control: { managed: true, commandAuthority: true },
-    lastResort: { maximumW: 6000 }, lastResortOwnedOffAtMs: now - 600000,
+    lastResort: { maximumW: 6000, observedOffAtMs: now - 600000 }, lastResortOwnedOffAtMs: now - 600000,
     currentOn: false, commandableNow: true,
   });
   const smallerLoad = buildPlanDevice({
@@ -256,17 +258,22 @@ describe('last-resort restore priority reproduction', () => {
     control: { managed: true, commandAuthority: true }, commandableNow: true, shedAction: 'turn_off',
   });
 
-  const plan = (headroomKw: number, relayDevice = relay) => {
-    const state = createPlanEngineState(now - 600000);
-    state.shedDecisions.lastPlannedShedIds = new Set(['smaller']);
+  const plan = (headroomKw: number, options: {
+    relayDevice?: DevicePlanDevice;
+    otherDevice?: DevicePlanDevice;
+    state?: ReturnType<typeof createPlanEngineState>;
+    measurementTs?: number;
+  } = {}) => {
+    const { relayDevice = relay, otherDevice = smallerLoad, measurementTs = now } = options;
+    const state = options.state ?? createPlanEngineState(now - 600000);
     const result = applyRestorePlanForSpec({
-      planDevices: [relayDevice, smallerLoad], context: buildPlanContextFixture({ nowTs: now }),
+      planDevices: [otherDevice, relayDevice], context: buildPlanContextFixture({ nowTs: now }),
       power: buildMeasuredPower({ headroomKw, capacityHeadroomKw: headroomKw, budgetHeadroomKw: headroomKw }),
       state,
       sheddingActive: false,
       deps: {
         getShedBehavior: () => ({ action: 'turn_off' }),
-        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
+        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: measurementTs }),
         temperatureSetpoints: new Map(),
         structuredLog: testLogger,
       },
@@ -274,10 +281,13 @@ describe('last-resort restore priority reproduction', () => {
     return new Map(result.planDevices.map((device) => [device.id, buildPlannedBinaryCommand(device)]));
   };
 
-  it('currently lets a 2 kW load take headroom while the 6 kW relay waits for more', () => {
-    const commands = plan(5);
+  it.each([false, true])('holds the 2 kW load with 5 kW free (previously kept: %s)', (previouslyKept) => {
+    const state = createPlanEngineState(now - 600000);
+    if (previouslyKept) state.shedDecisions.lastPlannedKeptIds = new Set(['smaller']);
+    else state.shedDecisions.lastPlannedShedIds = new Set(['smaller']);
+    const commands = plan(5, { state });
     expect(commands.get('relay')).toBeUndefined();
-    expect(commands.get('smaller')).toMatchObject({ deviceId: 'smaller', desiredOn: true });
+    expect(commands.get('smaller')).toBeUndefined();
   });
 
   it('starts the 6 kW relay first when 7 kW is free', () => {
@@ -286,15 +296,83 @@ describe('last-resort restore priority reproduction', () => {
     expect(commands.get('smaller')).toBeUndefined();
   });
 
-  it('currently keeps an unowned OFF relay off even without an external hold', () => {
-    const commands = plan(7, {
-      ...relay, lastResortOwnedOffAtMs: undefined,
-    });
-    expect(commands.get('relay')).toBeUndefined();
+  it('starts an unowned OFF relay with no external hold', () => {
+    const commands = plan(7, { relayDevice: { ...relay, lastResortOwnedOffAtMs: undefined } });
+    expect(commands.get('relay')).toMatchObject({ deviceId: 'relay', desiredOn: true });
   });
 
-  it('honors an active external hold even when PELS owns the relay shutoff', () => {
-    const commands = plan(7, { ...relay, externalOffHoldActive: true });
+  it('lets the smaller device start while the relay is held off externally', () => {
+    const commands = plan(7, { relayDevice: {
+      ...relay, lastResortOwnedOffAtMs: undefined, externalOffHoldActive: true,
+    } });
     expect(commands.get('relay')).toBeUndefined();
+    expect(commands.get('smaller')).toMatchObject({ deviceId: 'smaller', desiredOn: true });
+  });
+
+  it('only undoes a PELS shutoff after the relay gains its own power reading', () => {
+    const metered = buildPlanDevice({
+      id: 'relay', priority: 1, currentOn: false, currentDrawKw: 0, commandableNow: true,
+      control: { managed: true, commandAuthority: true },
+      lastResort: { maximumW: 6000, observedOffAtMs: now - 600000, metered: true },
+      lastResortOwnedOffAtMs: now - 600000,
+    });
+    const ownedCommands = plan(7, { relayDevice: metered });
+    expect(ownedCommands.get('relay')).toMatchObject({ desiredOn: true });
+    expect(ownedCommands.get('smaller')).toBeUndefined();
+    const commands = plan(7, { relayDevice: { ...metered, lastResortOwnedOffAtMs: undefined } });
+    expect(commands.get('relay')).toBeUndefined();
+    expect(commands.get('smaller')).toMatchObject({ desiredOn: true });
+  });
+
+  it('holds a lower-ranked relay that fits while the higher-ranked relay waits', () => {
+    const otherDevice = buildPlanDevice({
+      id: 'lower', priority: 2, currentOn: false, unmetered: true, commandableNow: true,
+      control: { managed: true, commandAuthority: true },
+      lastResort: { maximumW: 2000, observedOffAtMs: now - 600000 },
+    });
+    const commands = plan(5, { otherDevice });
+    expect(commands.get('relay')).toBeUndefined();
+    expect(commands.get('lower')).toBeUndefined();
+  });
+
+  it('keeps the smaller load off until the meter has read after the confirmed relay start', () => {
+    const state = createPlanEngineState(now - 600000);
+    const confirmedAt = now - 360000;
+    state.actuation.markConfirmedBinaryRestore('relay', confirmedAt - 1000, confirmedAt);
+    state.actuation.reserveLastResortRestore('relay', 6000, now - 60000);
+    const relayDevice = { ...relay, currentOn: true, currentState: 'on' as const };
+    expect(plan(5, { state, relayDevice, measurementTs: confirmedAt }).get('smaller')).toBeUndefined();
+    expect(plan(5, { state, relayDevice }).get('smaller')).toMatchObject({ desiredOn: true });
+  });
+
+  it('keeps ordinary starts blocked during the uncertainty window after an unconfirmed ON', () => {
+    const state = createPlanEngineState(now - 600000);
+    state.actuation.noteUnconfirmedLastResortStart(now + 1000);
+    const relayDevice = { ...relay, currentOn: true, currentState: 'on' as const };
+    expect(plan(5, { state, relayDevice }).get('smaller')).toBeUndefined();
+    expect(state.actuation.lastRestoreMs).toBeNull();
+  });
+
+  it('projects no ordinary keep-on command that could restart a device after the build', () => {
+    const running = { ...smallerLoad, currentOn: true, currentState: 'on' as const };
+    expect(buildExecutableDeviceIntent(running)).toMatchObject({ binary: { desiredOn: true } });
+    expect(buildExecutableDeviceIntent(running, undefined, true)).not.toHaveProperty('binary');
+  });
+
+  it('waits for an ordinary start that was already in flight before the relay became eligible', () => {
+    const commands = plan(7, { otherDevice: { ...smallerLoad, binaryCommandPending: true } });
+    expect(commands.get('relay')).toBeUndefined();
+    expect(commands.get('smaller')).toBeUndefined();
+  });
+
+  it('holds a stepped increase and keeps a step-down executable', () => {
+    const stepped = steppedPlanDevice({
+      selectedStepId: 'low', desiredStepId: 'max', currentOn: true, plannedState: 'keep',
+    });
+    expect(buildPlannedSteppedCommand(stepped, true)).toBeUndefined();
+    const down = steppedPlanDevice({ ...stepped, selectedStepId: 'max', desiredStepId: 'low' });
+    const command = buildPlannedSteppedCommand(down, true);
+    expect(command).toMatchObject({ desired: { stepId: 'low' }, stepDirection: 'down_only' });
+    expect(command).not.toHaveProperty('desiredOn');
   });
 });

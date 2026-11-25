@@ -67,7 +67,7 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
 }
 
 function hasDeviceControl(device: DeviceStatusInput): boolean {
-  if (device.lastResort && device.currentState === 'off'
+  if (device.lastResort?.metered && device.currentState === 'off'
     && device.lastResortOwnedOffAtMs === undefined && device.plannedState !== 'shed') return false;
   return device.controllable || (device.temperature !== undefined && device.execution.targetProgress !== 'undriven');
 }

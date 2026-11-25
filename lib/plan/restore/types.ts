@@ -9,6 +9,7 @@ import type { SwapLedger } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { RestoreTiming } from './timing';
+import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
@@ -137,6 +138,7 @@ export type RestorePlanResult = {
   // binary/stepped lanes honour — without this, the hold lane gave the promised
   // block away to any set_temperature restore.
   headroomReserves: readonly HeadroomReserve[];
+  lastResortPriorityHold: DeviceReason | null;
   restoredOneThisCycle: boolean;
   /**
    * This cycle's EFFECTIVE timing — the one the pass decided from, with the

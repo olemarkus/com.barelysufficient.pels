@@ -3,6 +3,7 @@ import {
   isBinaryObservedOff,
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
@@ -21,6 +22,7 @@ import type {
 } from './executablePlan';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type { ExecutorCommandContext } from './executorCommandContext';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 import type { BinaryControlDecision } from './binaryControlPreflight';
 import {
   applyBinaryRestoreWithSnapshot,
@@ -37,21 +39,27 @@ const logger = getLogger('executor/binary');
  */
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
+function canRestoreLastResortRelay(
+  ctx: ExecutorCommandContext, intent: ExecutableBinaryIntent, live: ExecutorDeviceRead | undefined,
+): boolean {
+  const off = live?.binaryControlObservation;
+  if (!live || !off || off.observedValue !== false) return false;
+  return !hasObservedMeasuredPower(live) || ctx.pendingBinaryCommandStore.ownsLastResortOff(
+    intent.deviceId, off.observedAtMs, intent.binarySwitchGeneration,
+  );
+}
+
 export const applyBinaryRestore = async (
   ctx: ExecutorCommandContext,
   intent: ExecutableBinaryIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent || !intent.desiredOn || intent.source !== 'controlled') return false;
-  const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
+  const live = ctx.readDevice(intent.deviceId);
+  const snapshot = live ?? observed?.snapshot;
   if (snapshot && isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity') || !snapshot) return false;
-  if (intent.lastResortMaximumW !== undefined) {
-    const off = snapshot.binaryControlObservation;
-    if (!off || off.observedValue !== false || !ctx.pendingBinaryCommandStore.ownsLastResortOff(
-      intent.deviceId, off.observedAtMs, intent.binarySwitchGeneration,
-    )) return false;
-  }
+  if (intent.lastResortMaximumW !== undefined && !canRestoreLastResortRelay(ctx, intent, live)) return false;
   return applyBinaryRestoreWithSnapshot(
     ctx, intent.deviceId, intent.name, snapshot, intent.binarySwitchGeneration, intent.lastResortMaximumW,
   );

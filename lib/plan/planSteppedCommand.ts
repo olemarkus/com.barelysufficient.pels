@@ -30,7 +30,9 @@ const isIdleTaskReleaseWithoutAuthority = (dev: PlanDevice): boolean => (
   !dev.control.commandAuthority && dev.deferredReleaseIntent?.kind === 'shed_release'
 );
 
-export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedCommand | undefined {
+export function buildPlannedSteppedCommand(
+  dev: PlanDevice, ordinaryStartsHeld = false,
+): PlannedSteppedCommand | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   // A restore hold may allow lowering a controlled device; lack of authority
   // never does. Lifecycle release has its own explicit grant and dispatch path.
@@ -40,9 +42,9 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
     stepForShed: resolveCurrentStepForShed(dev),
     stepIsOffStep: isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId),
   };
-  const unknownLimitPreparation = resolveUnknownLimitPreparation(dev);
+  const unknownLimitPreparation = resolveUnknownLimitPreparation(dev, ordinaryStartsHeld);
   const plannedStepId = unknownLimitPreparation?.commandStepId ?? resolveSteppedKeepDesiredStepId(dev);
-  const held = blocksSteppedIncrease(dev);
+  const held = blocksSteppedIncrease(dev, ordinaryStartsHeld);
   // The step-only lifecycle release needs the ladder even when the ordinary
   // plan leaves the rung alone. Its dispatcher resolves the release step.
   if (held && !unknownLimitPreparation
@@ -105,10 +107,12 @@ function withBinaryDrive(
  * that limit: the meter can still show a higher draw. Decide a downward limit
  * preparation from that draw without publishing a reported rung or starting it.
  */
-function resolveUnknownLimitPreparation(dev: SteppedPlanDevice): SteppedLoadTransition | null {
+function resolveUnknownLimitPreparation(
+  dev: SteppedPlanDevice, ordinaryStartsHeld: boolean,
+): SteppedLoadTransition | null {
   // Only a hold or a decided step shed needs the lower limit. An unheld keep
   // initializes its unknown step through the ordinary planned step.
-  const heldKeep = dev.plannedState === 'keep' && isHeldByPlanReason(dev);
+  const heldKeep = dev.plannedState === 'keep' && (ordinaryStartsHeld || isHeldByPlanReason(dev));
   if (!dev.control.commandAuthority || (!heldKeep && dev.plannedShedTargetKind !== 'step')
     || dev.controlAdapter?.activationOrder !== 'current_before_start'
     || !isPlanDeviceObservedOn(dev) || dev.reportedStepId !== undefined || !isMeteredPlanDevice(dev)) return null;
@@ -246,8 +250,9 @@ const isHeldByPlanReason = (dev: PlanDevice): boolean => (
     && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
 );
 
-const blocksSteppedIncrease = (dev: PlanDevice): boolean => (
-  isHeldByPlanReason(dev) || (dev.waitingForTaskPlan === true && dev.plannedState === 'keep')
+const blocksSteppedIncrease = (dev: PlanDevice, ordinaryStartsHeld: boolean): boolean => (
+  isHeldByPlanReason(dev)
+  || (dev.plannedState === 'keep' && (ordinaryStartsHeld || dev.waitingForTaskPlan === true))
 );
 
 /**

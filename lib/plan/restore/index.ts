@@ -1,4 +1,7 @@
-import { markUnrestoredLastResort } from './lastResort';
+import {
+  applyLastResortRestorePass, getNextLastResortRestore, markUnrestoredLastResort, type LastResortRestoreCandidate,
+} from './lastResort';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
@@ -13,13 +16,14 @@ import { markSteppedDevicesStayAtCurrentLevel } from './helpers';
 import type { RestoreTiming } from './timing';
 import {
   buildRestoreTiming,
+  hasUnsettledLastResortStart,
   buildRestoreCooldownReason,
   resolveMeterSettlingReason,
   shouldPlanBudgetExemptRestores,
   shouldPlanRestores,
 } from './timing';
 import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
-import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
+import { buildReservedForStartReason, resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { resolvePhaseRoomAxis } from '../phase/phaseRoom';
 import { withChargingPhaseOffCandidates } from './chargingPhaseRestore';
@@ -45,9 +49,48 @@ import type {
 
 export type { RestoreDeps, RestorePlanResult } from './types';
 
-const canStartRestore = (lastResortPending: boolean, guardInShortfall: boolean): boolean => (
-  !lastResortPending && !guardInShortfall
-);
+type RestorePass =
+  | { kind: 'last_resort'; target: LastResortRestoreCandidate; hold: DeviceReason }
+  | { kind: 'last_resort_wait'; hold: DeviceReason; useOrdinaryWaitReasons: boolean }
+  | { kind: 'shortfall' | 'full' | 'budget_exempt' | 'waiting' };
+
+function resolveRestorePass(
+  devices: DevicePlanDevice[],
+  context: PlanContext,
+  power: MeasuredPower,
+  state: PlanEngineState,
+  timing: RestoreTiming,
+  effectiveTiming: RestoreTiming,
+  shedding: SheddingPlan,
+): RestorePass {
+  if (shedding.guardInShortfall) return { kind: 'shortfall' };
+  const plannable = shouldPlanRestores(shedding.sheddingActive, effectiveTiming, state.capacityPeriodSpentFor(context));
+  // The budget-exempt lane keeps the raw startup stabilization.
+  const exemptPlannable = shouldPlanBudgetExemptRestores(context, power, state, timing, shedding.sheddingActive);
+  const useOrdinaryWaitReasons = !plannable && !exemptPlannable;
+  const pending = devices.some((device) => device.lastResort && device.binaryCommandPending);
+  if (pending || hasUnsettledLastResortStart(state.actuation, timing)) {
+    return { kind: 'last_resort_wait', useOrdinaryWaitReasons, hold: { code: PLAN_REASON_CODES.meterSettling } };
+  }
+  const target = getNextLastResortRestore(devices);
+  if (target !== undefined) {
+    const hold = buildReservedForStartReason(target.name);
+    if (plannable) return { kind: 'last_resort', target, hold };
+    return { kind: 'last_resort_wait', useOrdinaryWaitReasons, hold };
+  }
+  if (plannable) return { kind: 'full' };
+  if (exemptPlannable) return { kind: 'budget_exempt' };
+  return { kind: 'waiting' };
+}
+
+function restorePassServes(pass: RestorePass, target: DevicePlanDevice): boolean {
+  switch (pass.kind) {
+    case 'full': return true;
+    case 'budget_exempt': return target.budgetExempt;
+    case 'last_resort': return pass.target.id === target.id;
+    default: return false;
+  }
+}
 
 export function applyRestorePlan(
   planDevices: DevicePlanDevice[],
@@ -64,33 +107,11 @@ export function applyRestorePlan(
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const timing = buildRestoreTiming(state, power.headroom, deps, planDevices, context.nowTs);
   const effectiveTiming = resolveEffectiveTiming(timing, context);
-  // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
-  // one thing that decides whether restores happen this cycle also decides
-  // whether a waiting swap reservation is charged for it. Ordering used to
-  // carry that relationship implicitly: cleanup ran here and the gate was
-  // re-evaluated thirty lines down, with nothing connecting them.
-  const lastResortPending = planDevices.some((device) => device.lastResort && device.binaryCommandPending);
-  const newRestoresAllowed = canStartRestore(lastResortPending, guardInShortfall);
-  const restoresPlannable = newRestoresAllowed
-    && shouldPlanRestores(sheddingActive, effectiveTiming, state.capacityPeriodSpentFor(context));
-  // The exempt lane admits restores too, and reaches `blockingTarget` through
-  // `applyRestoreCandidates` — so a cycle it runs in is serviceable for a
-  // reservation whose target that lane can actually consider.
-  // Raw timing keeps startup stabilization while the budget-shedding latch is active.
-  const exemptRestoresPlannable = newRestoresAllowed
-    && shouldPlanBudgetExemptRestores(context, power, state, timing, sheddingActive);
-  // Per target, not once per cycle: the exempt lane filters its candidates to
-  // budget-exempt devices (`exemptRestoreLane.ts`), so counting it as
-  // serviceable for a NON-exempt reservation would burn that reservation's
-  // window against a lane that could never consider its target.
-  const laneServes = (target: DevicePlanDevice): boolean => (
-    restoresPlannable || (exemptRestoresPlannable && target.budgetExempt)
-  );
-  state.swapLedger.reconcile(deviceMap, timing.nowTs, laneServes, deps.structuredLog);
-  // A startup reservation's window counts only cycles in which a restore lane runs: one with no
-  // restore holds nobody back.
+  const pass = resolveRestorePass(planDevices, context, power, state, timing, effectiveTiming, sheddingPlan);
+  // Only the lane that can actually consider a target spends its reservation window.
+  state.swapLedger.reconcile(deviceMap, timing.nowTs, (target) => restorePassServes(pass, target), deps.structuredLog);
   const headroomReserves = resolveHeadroomReserves(
-    planDevices, state, context, restoresPlannable || exemptRestoresPlannable,
+    planDevices, state, context, pass.kind === 'full' || pass.kind === 'budget_exempt',
   );
 
   const restoredThisCycle = new Set<string>();
@@ -99,7 +120,6 @@ export function applyRestorePlan(
   reservePendingChargingPhases(ledger, state, deviceMap);
   reserveAuthorizedPower(ledger, planDevices);
   const availablePowerDevices = accountForAvailablePowerDevices(deviceMap, ledger, drawIncludedInMeter(deps));
-  let restoredOneThisCycle = false;
   const batchState = context.grid.kind === 'on' ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
     availableHeadroom: ledger.summaryAvailableKw(),
@@ -124,27 +144,7 @@ export function applyRestorePlan(
     readPhaseExportRoomKw: (phaseName) => phaseExportRoomKw(power.phase, phaseName),
   };
 
-  if (guardInShortfall) {
-    markRestoreCandidatesStayShedForShortfall(deviceMap);
-  } else if (restoresPlannable) {
-    ({ restoredOneThisCycle } = applyFullRestorePass(cycle, ledger, restoredOneThisCycle));
-  } else if (exemptRestoresPlannable) {
-    ({ restoredOneThisCycle } = applyBudgetExemptRestorePass(cycle, ledger, restoredOneThisCycle));
-  } else if (
-    sheddingActive
-    // A deficit too small to latch shedding is still an overshoot: nothing
-    // resumes against it (`shedding/AGENTS.md` § "Declining to shed is not
-    // deciding there is no overshoot").
-    || effectiveTiming.activeOvershoot
-    || timing.inCooldown
-    || effectiveTiming.inStartupStabilization
-  ) {
-    markOffDevicesStayOff(cycle);
-    markSteppedDevicesStayAtCurrentLevel(cycle);
-  } else if (effectiveTiming.inRestoreCooldown || lastResortPending) {
-    applyRestorePlanInCooldown(cycle);
-  }
-
+  const restoredOneThisCycle = applyResolvedRestorePass(pass, cycle, ledger, sheddingActive);
   markUnrestoredLastResort(cycle, guardInShortfall || sheddingActive);
   yieldAvailablePower(deviceMap, availablePowerDevices, ledger);
   return {
@@ -154,9 +154,54 @@ export function applyRestorePlan(
     availableHeadroom: ledger.summaryAvailableKw(),
     headroomAxes: ledger.axes(),
     headroomReserves,
+    lastResortPriorityHold: 'hold' in pass ? pass.hold : null,
     restoredOneThisCycle,
     timing: effectiveTiming,
   };
+}
+
+function applyResolvedRestorePass(
+  pass: RestorePass, cycle: RestoreCycle, ledger: RestoreHeadroomLedger, sheddingActive: boolean,
+): boolean {
+  switch (pass.kind) {
+    case 'shortfall':
+      markRestoreCandidatesStayShedForShortfall(cycle.deviceMap);
+      return false;
+    case 'last_resort': {
+      const restored = applyLastResortRestorePass(cycle, ledger, pass.target);
+      markRestoreCandidatesHeld(cycle.deviceMap, cycle.swapLedger, pass.hold);
+      return restored;
+    }
+    case 'last_resort_wait':
+      if (!pass.useOrdinaryWaitReasons || !markRestoreLanesWaiting(cycle, sheddingActive)) {
+        markRestoreCandidatesHeld(cycle.deviceMap, cycle.swapLedger, pass.hold);
+      }
+      return false;
+    case 'full':
+      return applyFullRestorePass(cycle, ledger, false).restoredOneThisCycle;
+    case 'budget_exempt':
+      return applyBudgetExemptRestorePass(cycle, ledger, false).restoredOneThisCycle;
+    case 'waiting':
+      markRestoreLanesWaiting(cycle, sheddingActive);
+      return false;
+    default:
+      return false;
+  }
+}
+
+function markRestoreLanesWaiting(cycle: RestoreCycle, sheddingActive: boolean): boolean {
+  const { timing } = cycle;
+  // A deficit too small to latch shedding is still an overshoot: nothing resumes against it.
+  if (sheddingActive || timing.activeOvershoot || timing.inCooldown || timing.inStartupStabilization) {
+    markOffDevicesStayOff(cycle);
+    markSteppedDevicesStayAtCurrentLevel(cycle);
+    return true;
+  }
+  if (timing.inRestoreCooldown) {
+    applyRestorePlanInCooldown(cycle);
+    return true;
+  }
+  return false;
 }
 
 /**

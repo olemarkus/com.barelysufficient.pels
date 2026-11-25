@@ -21,7 +21,7 @@ import { fixtureControlPosture, buildPlanDevice, steppedPlanDevice, withFixtureR
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { type DevicePlanDevice, type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { testLogger } from '../utils/testLogger';
@@ -87,7 +87,7 @@ const stateWithPreviouslyShed = (...deviceIds: string[]) => {
 };
 
 const runLane = (params: {
-  devices: ReturnType<typeof buildPlanDevice>[];
+  devices: DevicePlanDevice[];
   context?: PlanCycleSpec;
   measurementTs?: number;
   state?: ReturnType<typeof createPlanEngineState>;
@@ -130,6 +130,22 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
     expect(heater?.plannedState).not.toBe('shed');
     expect(thermostat?.plannedState).toBe('shed');
     expect(thermostat?.reason?.code).toBe(PLAN_REASON_CODES.dailyBudget);
+  });
+
+  it('holds exempt starts behind a last-resort relay waiting for the budget', () => {
+    const relay = buildPlanDevice({
+      id: 'relay', name: 'Relay', priority: 1, unmetered: true, currentOn: false, commandableNow: true,
+      control: fixtureControlPosture({ controllable: true }),
+      lastResort: { maximumW: 6000, observedOffAtMs: Date.now() - 600000 },
+    });
+    const result = runLane({
+      devices: [offExemptHeater(), relay],
+      state: stateWithPreviouslyShed('exempt-heater'),
+    });
+    expect(result.restoredThisCycle.size).toBe(0);
+    expect(result.planDevices.find(({ id }) => id === 'exempt-heater')).toMatchObject({
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.reservedForStart, targetName: 'Relay' },
+    });
   });
 
   it.each([-1, 0, 1])('requires a post-restore reading even during daily-budget overshoot (%i ms)', (sampleOffsetMs) => {

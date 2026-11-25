@@ -550,7 +550,7 @@ export type PlanInputDeviceBase = {
   /** Passed through unchanged to binary execution when a binding can be reconfigured. */
   binarySwitchGeneration?: number;
   /** Explicit unmetered relay control. The maximum is a restore requirement only. */
-  lastResort?: { maximumW: number; observedOffAtMs?: number };
+  lastResort?: { maximumW: number; observedOffAtMs?: number; metered?: true };
   /**
    * What the device draws while running, as the producer resolved it. REQUIRED —
    * never null, never undefined, never absent. The twin of `currentDrawKw` below:

@@ -114,6 +114,7 @@ const emptyRestoreResult: RestorePlanResult = {
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
   headroomReserves: [],
+  lastResortPriorityHold: null,
   availableHeadroom: 1,
   restoredOneThisCycle: false,
   timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, restoreCooldownMs: 60 * 1000 }),

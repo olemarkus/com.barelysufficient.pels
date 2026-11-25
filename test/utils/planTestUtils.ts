@@ -1518,6 +1518,7 @@ export const applyShedTemperatureHoldForSpec = (params: {
     availableHeadroom: params.ledger.summaryAvailableKw(),
     headroomAxes: params.ledger.axes(),
     headroomReserves: params.headroomReserves,
+    lastResortPriorityHold: null,
     restoredOneThisCycle: params.restoredOneThisCycle,
     timing: params.timing,
   },
