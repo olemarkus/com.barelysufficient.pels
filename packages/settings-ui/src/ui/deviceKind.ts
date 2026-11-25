@@ -75,6 +75,11 @@ export const isSteppedLoadControlModel = (device: SettingsUiDeviceDetailItem | n
   Boolean(device && resolveDeviceDetailControlMode(device) === 'stepped_load')
 );
 
+/** Whether the charger's effective control model can lower its charging level. */
+export const evLowersChargingLevelFirst = (device: SettingsUiDeviceDetailItem): boolean => (
+  hasEvTargetPowerPreset(device) || isSteppedLoadControlModel(device)
+);
+
 // Kind precedence: a home battery is its own page (no load sections at all).
 // An EV charger stays an EV charger even when its preset is
 // cleared (`isEvCharger`), or when only its config marks it as one (preset /
