@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ContestedSetting } from '../../packages/contracts/src/controlContest';
 import type { ControlValue } from '../../lib/ports/controlContest';
 import { CONTEST_WINDOW_MS } from '../../lib/executor/controlContest';
@@ -39,6 +39,21 @@ describe('ControlContestRecord', () => {
         commanded: 5, observed: 22, count: 4, firstAtMs: 10 * MINUTE_MS,
       }),
     });
+  });
+
+  it('keeps the original contest and dispatches evidence once when the collector throws', () => {
+    const collectEvidence = vi.fn(() => { throw new Error('collector unavailable'); });
+    const { contests, journalled } = controlContestsForTest(collectEvidence);
+    contests.commandSent(sent(0, 5));
+    for (let round = 1; round <= 5; round += 1) {
+      contests.controlReported(reported(round * MINUTE_MS - 1_000, 22));
+      contests.commandSent(sent(round * MINUTE_MS, 5));
+    }
+    expect(journalled).toHaveLength(1);
+    expect(collectEvidence).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      deviceId: DEVICE, setting: 'temperature', firstAtMs: MINUTE_MS, lastAtMs: 4 * MINUTE_MS,
+    }));
+    expect(contests.contestedControl(DEVICE, 5 * MINUTE_MS)).toMatchObject({ count: 5 });
   });
 
   it('counts a device that never takes the value as the rounds it reports another value', () => {

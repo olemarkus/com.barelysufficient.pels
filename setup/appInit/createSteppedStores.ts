@@ -7,8 +7,11 @@ import {
   type SteppedReportedStepStore,
 } from '../../lib/observer/steppedReportedStep';
 import { ControlContestRecord } from '../../lib/executor/controlContest';
+import { ControlContestEvidence } from '../../lib/diagnostics/controlContestEvidence';
 import { createDeferredDeviceJournal } from '../../lib/diagnostics/deviceEventStore';
 import type { UserdataDatabase } from '../../lib/store/userdataDatabase';
+import type { ShutdownLatch } from '../../lib/utils/shutdownLatch';
+import { createHomeyWebApiGet } from '../homeyWebApi';
 
 export type SteppedStores = {
   /** What PELS commanded: the executor's axis. */
@@ -31,10 +34,15 @@ export type SteppedStores = {
  * it from construction: which step commands the device confirmed, and which
  * command sessions ended. Every home's execution state shares it too.
  */
-export const createSteppedStores = (getUserdataDatabase: () => UserdataDatabase): SteppedStores => {
+export const createSteppedStores = (
+  getUserdataDatabase: () => UserdataDatabase,
+  shutdown: ShutdownLatch,
+): SteppedStores => {
   const reportedStore = createSteppedReportedStepStore();
   // Built with the app, before the userdata database opens.
-  const controlContests = new ControlContestRecord(createDeferredDeviceJournal(getUserdataDatabase));
+  const journal = createDeferredDeviceJournal(getUserdataDatabase);
+  const evidence = new ControlContestEvidence(createHomeyWebApiGet(), journal, shutdown);
+  const controlContests = new ControlContestRecord(journal, evidence.collect);
   return {
     commandStore: createSteppedCommandStore(reportedStore, controlContests),
     reportedStore,

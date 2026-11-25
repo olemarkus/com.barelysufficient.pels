@@ -526,7 +526,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
    * all. It is handed to the wiring that drives it and to the plan engine that
    * owns it — `lib/executor/steppedCommandStore.ts`.
    */
-  private readonly steppedStores: SteppedStores = createSteppedStores(() => this.getUserdataDatabase());
+  private readonly steppedStores: SteppedStores = createSteppedStores(() => this.getUserdataDatabase(), this.shutdown);
 
   public readonly steppedCommandStore = this.steppedStores.commandStore;
 

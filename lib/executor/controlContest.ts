@@ -5,6 +5,7 @@ import type {
 import { getLogger } from '../logging/logger';
 import type {
   ControlCommandSent,
+  ControlContestOccurrence,
   ControlContestReading,
   ControlContestRecording,
   ControlReported,
@@ -95,7 +96,10 @@ export class ControlContestRecord implements ControlContestRecording, ControlCon
   private readonly contestSinceMs = new Map<string, number>();
   private readonly reportedAtMs = new Map<string, number>();
 
-  constructor(private readonly journal: DeviceJournal) {}
+  constructor(
+    private readonly journal: DeviceJournal,
+    private readonly collectEvidence: (contest: ControlContestOccurrence) => void,
+  ) {}
 
   controlReported(report: ControlReported): void {
     const key = settingKey(report.deviceId, report.setting);
@@ -185,9 +189,17 @@ export class ControlContestRecord implements ControlContestRecording, ControlCon
       windowMs: CONTEST_WINDOW_MS,
       count: rounds.length,
       firstAtMs,
+      lastAtMs: sent.atMs,
       rounds: rounds.slice(-CONTEST_EVENT_MAX_ROUNDS),
     };
     logger.info(event);
     this.journal.record([sent.deviceId], event);
+    try {
+      this.collectEvidence(event);
+    } catch {
+      logger.warn({
+        event: 'control_contest_evidence_dispatch_failed', deviceId: sent.deviceId, setting: sent.setting,
+      });
+    }
   }
 }

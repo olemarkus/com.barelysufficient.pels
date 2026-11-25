@@ -32,6 +32,7 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { EVENT_DIAGNOSTICS_REPORTS } from '../utils/settingsKeys';
 import type { DeviceEventStore } from './deviceEventStore';
+import { CONTROL_CONTEST_REPORT_GRACE_MS, hasControlContestEvidence } from './controlContestEvidence';
 
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -199,6 +200,9 @@ export class EventReportSchedule {
       this.state.forgetBefore(nowMs - DAY_MS);
       if (this.state.countSentSince(nowMs - DAY_MS) >= EVENT_REPORTS_MAX_PER_DAY) return;
       const due = this.events.read('all', nowMs - EVENT_REPORT_LOOKBACK_MS, nowMs)
+        .filter((event) => event.event !== 'device_control_contested'
+          || !hasControlContestEvidence(event.details.setting)
+          || nowMs - event.atMs >= CONTROL_CONTEST_REPORT_GRACE_MS)
         .flatMap((event) => REPORTED_EVENTS.get(event.event)?.(event) ?? [])
         .find((report) => !this.state.hasSent(report.key));
       if (!due) return;

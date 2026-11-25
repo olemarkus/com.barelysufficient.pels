@@ -47,6 +47,14 @@ export type ControlContestRecording = {
   retainPlanned(homeId: HomeId, planned: ReadonlyMap<string, PlannedControls>): void;
 };
 
+/** A contest reported by the executor, with the time span of its counted rounds. */
+export type ControlContestOccurrence = {
+  deviceId: string;
+  setting: ContestedSetting;
+  firstAtMs: number;
+  lastAtMs: number;
+};
+
 /** The record's answer for one device, as the settings UI reads it. */
 export type ControlContestReading = {
   contestedControl(deviceId: string, nowMs: number): ContestedControl | undefined;
