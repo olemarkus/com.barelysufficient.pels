@@ -118,10 +118,15 @@ describe('userdata backups', () => {
     await backupUserdataIfDue(location);
     makeDue(second);
     db.exec('UPDATE data SET v = 3');
-    const statfs = vi.spyOn(fs, 'statfsSync').mockReturnValue({
-      bavail: 1, bsize: 4096, blocks: 1000, bfree: 2, type: 0, files: 100, frsize: 4096, ffree: 90,
-    });
+    const lowSpace = {
+      bavail: 1, bsize: 4096, blocks: 65536, bfree: 2, type: 0, files: 100, frsize: 4096, ffree: 90,
+    };
+    const statfs = vi.spyOn(fs, 'statfsSync').mockReturnValue(lowSpace);
     await expect(backupUserdataIfDue(location)).resolves.toMatchObject({ reason: 'insufficient_space' });
+    statfs.mockReturnValueOnce({ ...lowSpace, bavail: 32768, bfree: 32768 });
+    await expect(backupUserdataIfDue(location)).resolves.toMatchObject({ reason: 'insufficient_space' });
+    expect(statfs).toHaveBeenCalledTimes(3);
+    expect(fs.existsSync(`${location}.backup-tmp`)).toBe(false);
     expect(readBackup(first)).toBe(1);
     expect(readBackup(second)).toBe(2);
     statfs.mockRestore();
