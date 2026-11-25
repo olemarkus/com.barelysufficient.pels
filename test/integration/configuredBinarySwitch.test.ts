@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import { availableBinarySwitches } from '../../lib/device/transport/binarySwitchBinding';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
 import { DEVICE_BINARY_SWITCHES, LAST_RESORT_DEVICES, MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
@@ -69,6 +70,26 @@ afterEach(() => {
 });
 
 describe('configured binary switch', () => {
+  it('offers and honors a Heatit relay switch alongside temperature control', async () => {
+    const relay = 'onoff.relay';
+    configure(relay);
+    const thermostat = homeyDevice({
+      id: ID, name: 'Floor heating', class: 'thermostat',
+      ownerUri: 'homey:app:no.thermofloor', driverId: 'homey:app:no.thermofloor:Z-TRM6',
+    }, {
+      [relay]: setable(true),
+      measure_temperature: celsius(20),
+      target_temperature: celsius(22),
+      measure_power: 2000,
+    }, new Date(BASE).toISOString());
+
+    expect(availableBinarySwitches(thermostat)).toEqual([{ id: relay, name: 'Relay' }]);
+    await seedTransportDevices(transport, [thermostat]);
+    expect(transport.getSnapshotByDeviceId(ID)).toMatchObject({
+      binaryCapabilityId: relay, binaryControllable: true,
+    });
+  });
+
   it('admits an alternate-only load and writes the selected switch using its generation', async () => {
     configure(HEATING);
     const heater = homeyDevice({ id: ID, name: 'Heater', class: 'other' }, switchFields(), new Date(BASE).toISOString());

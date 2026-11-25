@@ -1,6 +1,5 @@
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { readInstalledAppVersions } from '../../lib/diagnostics/supportReportHomeyApps';
-import { readHomeyDeviceForSupport } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import { HomeyReportTransport, type HomeyReportRuntime } from '../../lib/diagnostics/homeyReportTransport';
 import {
   SupportReportEvidenceSource, type SupportReportHomey, type SupportReportReads,
@@ -43,8 +42,6 @@ export const createSupportReportReads = (
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
   getEvChargingCurrentDiagnostics: (deviceId, nowMs) => (
     requireDeviceManager(app).getEvChargingCurrentDiagnostics(deviceId, nowMs)),
-  describeHomeyDeviceForSupport: (deviceId) => readHomeyDeviceForSupport(
-    () => requireDeviceManager(app).getDevicesForDebug(), deviceId),
   listHomeyDevices: () => requireDeviceManager(app).getDevicesForDebug(),
   readInstalledAppVersions: readAppVersions,
   getHomeMembership: () => requireHomeMembership(app),

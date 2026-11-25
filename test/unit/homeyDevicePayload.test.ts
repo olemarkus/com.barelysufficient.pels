@@ -29,6 +29,17 @@ describe('parseHomeyDevicePayload', () => {
     expect(payload).not.toHaveProperty('flags');
   });
 
+  it('distinguishes unreadable settings from an empty object and ignores an injected read status', () => {
+    for (const settings of [undefined, null, [], 'malformed']) {
+      expect(parseHomeyDevicePayload({ ...device, settings })).toMatchObject({
+        settings: {}, settingsUnavailable: true,
+      });
+    }
+    const parsed = parseHomeyDevicePayload({ ...device, settings: {}, settingsUnavailable: true });
+    expect(parsed?.settings).toEqual({});
+    expect(parsed).not.toHaveProperty('settingsUnavailable');
+  });
+
   it('reads the older shape as the owner and qualified driver id', () => {
     expect(parseHomeyDevicePayload(olderShape)).toMatchObject({
       ownerUri: 'homey:app:com.tesla.car',

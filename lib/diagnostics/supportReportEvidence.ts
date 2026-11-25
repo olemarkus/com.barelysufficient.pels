@@ -20,7 +20,7 @@ import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 import type { DeviceObjectiveProfile } from '../../packages/contracts/src/objectiveProfileTypes';
 import {
-  readHomeyDeviceInventory, reportHomeyDevices, type HomeyDeviceInventoryRead, type HomeyDeviceSupportDescription,
+  describeHomeyDeviceForSupport, readHomeyDeviceInventory, reportHomeyDevices, type HomeyDeviceInventoryRead,
 } from './homeyDeviceSupportSection';
 import {
   INSTALLED_APP_VERSIONS_TITLE, readAppMemorySection, reportInstalledAppVersions, type InstalledAppVersions,
@@ -69,12 +69,6 @@ export type SupportReportReads = {
   getDeviceSnapshot(deviceId: string): SupportReportDeviceSnapshot | undefined;
   /** No section for devices without current-based EV control; throws when the owner cannot be read. */
   getEvChargingCurrentDiagnostics(deviceId: string, nowMs: number): EvChargingCurrentDiagnostics | undefined;
-  /**
-   * A Homey device as a device support request describes it, whether or not
-   * PELS lists it; `undefined` when Homey has no such device. Rejects when
-   * Homey cannot be read.
-   */
-  describeHomeyDeviceForSupport(deviceId: string): Promise<HomeyDeviceSupportDescription | undefined>;
   /** Every device on the Homey, whether or not PELS lists it. Rejects when Homey cannot be read. */
   listHomeyDevices(): Promise<readonly HomeyDeviceLike[]>;
   /** Installed versions from Homey's app manager. Rejects when Homey cannot be read. */
@@ -139,7 +133,7 @@ const readSection = (title: string, read: () => SupportReportSection | null): Se
   return section ? { state: 'available', section } : { state: 'unavailable', reason: `${title} is unavailable.` };
 };
 
-type DeviceSupportSubject = { name: string; sections: readonly SupportReportSection[] };
+type DeviceSupportSubject = { name: string; section: SupportReportSection };
 
 /**
  * A device support request is about a device PELS may not list, so it reads
@@ -147,19 +141,14 @@ type DeviceSupportSubject = { name: string; sections: readonly SupportReportSect
  * nothing to request support for: a failed read asks for another try, and a
  * device Homey no longer has is an invalid subject.
  */
-const resolveDeviceSupportSubject = async (
-  host: SupportReportReads,
-  subject: SupportReportSubject,
-): Promise<DeviceSupportSubject | null> => {
-  if (subject.kind !== 'device_support') return null;
-  let description: Awaited<ReturnType<SupportReportReads['describeHomeyDeviceForSupport']>>;
-  try {
-    description = await host.describeHomeyDeviceForSupport(subject.deviceId);
-  } catch {
-    throw new SupportReportInputError('capture_failed');
-  }
-  if (!description) throw new SupportReportInputError('invalid_subject');
-  return { name: description.name, sections: [description.section] };
+const resolveDeviceSupportSubject = (
+  deviceId: string,
+  inventory: HomeyDeviceInventoryRead,
+): DeviceSupportSubject => {
+  if (inventory.state === 'unavailable') throw new SupportReportInputError('capture_failed');
+  const device = inventory.devices.find((entry) => entry.id === deviceId);
+  if (!device) throw new SupportReportInputError('invalid_subject');
+  return { name: device.name, section: describeHomeyDeviceForSupport(device) };
 };
 
 const readInventoryConfiguration = (
@@ -562,7 +551,9 @@ export class SupportReportEvidenceSource {
     const { host } = this;
     const history = request.subject.homeId === MAIN_HOME_ID
       ? readOptional(() => host.getDeviceLogUiPayload()) : undefined;
-    const supportSubject = await resolveDeviceSupportSubject(host, request.subject);
+    const inventoryRead = readHomeyDeviceInventory(() => host.listHomeyDevices());
+    const supportSubject = request.subject.kind === 'device_support'
+      ? resolveDeviceSupportSubject(request.subject.deviceId, await inventoryRead) : null;
     const subject = resolveSubject(host, request.subject, history, capturedAtMs, supportSubject);
     const area = readArea(host, request.subject.homeId);
     const plan = request.subject.homeId === MAIN_HOME_ID
@@ -573,13 +564,13 @@ export class SupportReportEvidenceSource {
     // Read before the log, which gives up the room these take.
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
     const [inventory, installedVersions, appMemory] = await Promise.all([
-      readHomeyDeviceInventory(() => host.listHomeyDevices()),
+      inventoryRead,
       readInstalledVersions(host),
       readAppMemorySection(() => host.readAppMemory()),
     ]);
     const at = capturedAtMs;
     const sectionReads: SectionRead[] = [
-      ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
+      ...(supportSubject ? [{ state: 'available' as const, section: supportSubject.section }] : []),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
       ...readAppSmartTaskSections(host, request, deviceNames(host, history, capturedAtMs), capturedAtMs),
       ...readCarLinkSection(carLink),
