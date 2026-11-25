@@ -20,7 +20,7 @@ const configuration = (id: string): DeviceConfigurationRead => ({
   isBatteryOrSolar: false,
   isEvCharger: false,
   starvationSupported: false,
-  powerSetupRequired: false,
+  powerSetupRequirement: null,
   setpointShedFloorC: 10,
   expectedPowerKw: 2,
   expectedPowerSource: 'manual',

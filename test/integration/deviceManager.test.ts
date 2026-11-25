@@ -137,7 +137,9 @@ describe('DeviceTransport', () => {
         );
     });
 
-    it('attributes a metering-only socket to an explicitly added device through realtime and refresh', async () => {
+    it.each([false, true])('attributes a metering-only socket through realtime and refresh (Homey Energy estimate: %s)', async (
+        hasHomeyEnergy,
+    ) => {
         deviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
             settings: { isManaged: (id) => id === 'appliance', isControllable: (id) => id === 'appliance' },
         }, undefined, {
@@ -152,7 +154,9 @@ describe('DeviceTransport', () => {
             },
         });
         const rawDevices = {
-            appliance: homeyDevice({ id: 'appliance', name: 'Appliance', class: 'other', energyObj: { W: 900 } }, {
+            appliance: homeyDevice({
+                id: 'appliance', name: 'Appliance', class: 'other', ...(hasHomeyEnergy ? { energyObj: { W: 900 } } : {}),
+            }, {
                 onoff: setable(true),
                 measure_power: 5,
                 measure_temperature: 19,
@@ -171,7 +175,10 @@ describe('DeviceTransport', () => {
             measuredPowerKw: 1.8,
             measuredPowerSource: 'measure_power',
             externalPowerSocketId: 'socket',
+            externalPowerSocketName: 'Metering socket',
         });
+        const powerSetup = () => deviceManager.deviceConfigurationStore.get('appliance')?.powerSetupRequirement;
+        expect(powerSetup()).toBeNull();
         expect(deviceManager.getSnapshot().map(({ id }) => id)).toEqual(['appliance']);
 
         const originalPowerTimestamp = appliance()?.measuredPowerObservedAtMs;
@@ -180,13 +187,17 @@ describe('DeviceTransport', () => {
 
         await emitCapability('socket', 'measure_power', 0);
         expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
+        expect(powerSetup()).toBeNull();
         await emitCapability('appliance', 'measure_power', 300);
         expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
         await emitCapability('socket', 'onoff', false);
         expect(appliance()?.measuredPowerKw).toBeUndefined();
+        const missingPowerSetup = hasHomeyEnergy ? null : { kind: 'metering_socket', socketName: 'Metering socket' };
+        expect(powerSetup()).toEqual(missingPowerSetup);
         await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
         expect(appliance()?.measuredPowerKw).toBeUndefined();
         expect(appliance()?.capabilities).not.toContain('measure_power');
+        expect(powerSetup()).toEqual(missingPowerSetup);
         await deviceManager.setCapability('appliance', 'target_temperature', 16);
         expect(mockApiPut).toHaveBeenCalledWith(
             'manager/devices/device/appliance/capability/target_temperature',

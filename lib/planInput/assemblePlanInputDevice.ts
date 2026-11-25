@@ -43,7 +43,7 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     manualFlowSteppedLoad: _manualFlowSteppedLoad,
     carCurrentRangeUnavailable: _carCurrentRangeUnavailable,
     // Setup guidance belongs to the device status read, not planner decisions.
-    powerSetupRequired: _powerSetupRequired,
+    powerSetupRequirement: _powerSetupRequirement,
     nativeRelayMeter: _nativeRelayMeter,
     measuredPowerKw: _measuredPowerKw,
     measuredPowerIsDirectMeasurement: _measuredPowerIsDirectMeasurement,

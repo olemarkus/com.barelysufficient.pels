@@ -568,7 +568,7 @@ describe('settingsOverviewReadModel', () => {
     expect(buildDeviceCard(zeroWatts, deps).status.powerLimitingNeedsReading).toBeUndefined();
     expect(buildDeviceCard(unmetered, { ...deps, isCapacityControlEnabled: () => false })
       .status.powerLimitingNeedsReading).toBeUndefined();
-    expect(buildDeviceCard(unmetered, { ...deps, getDevicePowerSetupRequired: () => true })
+    expect(buildDeviceCard(unmetered, { ...deps, getDevicePowerSetupRequirement: () => ({ kind: 'homey_energy' }) })
       .status.powerLimitingNeedsReading).toBeUndefined();
     expect(buildDeviceCard({ ...unmetered, available: false }, deps)
       .status.powerLimitingNeedsReading).toBeUndefined();
@@ -577,10 +577,22 @@ describe('settingsOverviewReadModel', () => {
   it('publishes the device owner’s Homey Energy setup requirement without a command grant', () => {
     const device = buildPlanDevice({ controllable: false, unmetered: true });
     const card = buildDeviceCard(device, {
-      ...absentTemperature, getDevicePowerSetupRequired: () => true,
+      ...absentTemperature, getDevicePowerSetupRequirement: () => ({ kind: 'homey_energy' }),
     });
     expect(card.status).toMatchObject({ kind: 'manual', powerText: null,
       reason: { tone: 'warning', offersHomeyEnergySetup: true } });
+  });
+
+  it.each([
+    [' Metering socket ', 'Waiting for a power reading from Metering socket. Check the socket in Homey.'],
+    [undefined, 'Metering socket unavailable. Choose another power source under External sensors.'],
+  ] as const)('guides a Manual card to its assigned socket (%s)', (socketName, text) => {
+    const device = buildPlanDevice({ controllable: false, unmetered: true });
+    const { status } = buildDeviceCard(device, {
+      ...absentTemperature, getDevicePowerSetupRequirement: () => ({ kind: 'metering_socket', socketName }),
+    });
+    expect(status).toMatchObject({ kind: 'manual', powerText: null });
+    expect(status.reason).toEqual({ text, tone: 'warning' });
   });
 
   it('calls a charger a charger before it has reported any plug-state', () => {

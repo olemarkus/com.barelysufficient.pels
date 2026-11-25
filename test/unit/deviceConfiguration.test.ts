@@ -97,9 +97,21 @@ describe('DeviceConfigurationStore identity resolution', () => {
       powerCapable: false,
     });
     store.set(snapshot);
-    expect(store.get(snapshot.id)?.powerSetupRequired).toBe(true);
+    expect(store.get(snapshot.id)?.powerSetupRequirement).toEqual({ kind: 'homey_energy' });
     store.set({ ...snapshot, powerCapable: true });
-    expect(store.get(snapshot.id)?.powerSetupRequired).toBe(false);
+    expect(store.get(snapshot.id)?.powerSetupRequirement).toBeNull();
+  });
+
+  it.each(['Metering socket', undefined])('requires the assigned socket when power is unavailable (%s)', (socketName) => {
+    const snapshot = {
+      ...snapshotFor('heater', 'onoff'),
+      capabilities: ['onoff'],
+      powerCapable: false,
+      externalPowerSocketId: 'socket',
+      externalPowerSocketName: socketName,
+    };
+    expect(resolve(snapshot)?.powerSetupRequirement).toEqual({ kind: 'metering_socket', socketName });
+    expect(resolve({ ...snapshot, powerCapable: true, measuredPowerKw: 0 })?.powerSetupRequirement).toBeNull();
   });
 
   it.each([

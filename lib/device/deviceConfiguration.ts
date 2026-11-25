@@ -4,7 +4,7 @@
  * It is refreshed from DeviceTransport's accepted snapshot so runtime
  * consumers do not use the inventory API to assemble their inputs.
  */
-import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+import type { DeviceConfigurationRead, DevicePowerSetupRequirement } from '../ports/deviceConfigurationRead';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveSetpointShedFloorC } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import type { EvChargingCurrentLimitPolicy } from './evChargingCurrentLimitPolicy';
@@ -37,6 +37,13 @@ export const isStarvationSupportedDeviceClass = (deviceClass: string): boolean =
   STARVATION_SUPPORTED_DEVICE_CLASSES.has(deviceClass.trim().toLowerCase())
 );
 
+const resolvePowerSetupRequirement = (snapshot: TransportDeviceSnapshot): DevicePowerSetupRequirement | null => {
+  if (!needsHomeyEnergySetup(snapshot)) return null;
+  return snapshot.externalPowerSocketId === undefined
+    ? { kind: 'homey_energy' }
+    : { kind: 'metering_socket', socketName: snapshot.externalPowerSocketName };
+};
+
 const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigurationRead => {
   const fields = {
     inverterControl: snapshot.inverterControl,
@@ -47,7 +54,7 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     isBatteryOrSolar: snapshot.isBatteryOrSolar,
     isEvCharger: snapshot.isEvCharger,
     starvationSupported: isStarvationSupportedDeviceClass(snapshot.deviceClass),
-    powerSetupRequired: needsHomeyEnergySetup(snapshot),
+    powerSetupRequirement: resolvePowerSetupRequirement(snapshot),
     setpointShedFloorC: resolveSetpointShedFloorC(snapshot),
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,

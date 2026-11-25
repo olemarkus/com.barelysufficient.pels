@@ -21,6 +21,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
 import type { HomeId } from '../utils/settingsKeys';
+import type { DevicePowerSetupRequirement } from '../ports/deviceConfigurationRead';
 
 type PlanServicePlanEngine = Pick<
   PlanEngine,
@@ -95,8 +96,8 @@ export type PlanServiceDeps = {
   hasStandingCommandGrant: (deviceId: string) => boolean;
   /** Whether the owner enabled Power-limit control for this managed device. */
   isCapacityControlEnabled: (deviceId: string) => boolean;
-  /** The device owner requires Homey Energy setup before this device can be limited. */
-  getDevicePowerSetupRequired: (deviceId: string) => boolean;
+  /** The device owner's power setup requirement, for the Overview only. */
+  getDevicePowerSetupRequirement: (deviceId: string) => DevicePowerSetupRequirement | null;
   // Minimal observer projection for binary confirmation; never raw transport
   // snapshots or plan devices.
   getSettleDevices: () => PendingBinaryLiveDevice[];

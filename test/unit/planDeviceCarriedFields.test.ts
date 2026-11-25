@@ -30,8 +30,8 @@ type _CarriedKeysAreDeclared = Assert<KeySetsEqual<
 >>;
 
 type _SetupRequirementIsStripped = Assert<KeySetsEqual<
-  [Extract<PlanDeviceStrippedKey, 'powerSetupRequired'>, Extract<PlanDeviceCarriedKey, 'powerSetupRequired'>],
-  ['powerSetupRequired', never]
+  [Extract<PlanDeviceStrippedKey, 'powerSetupRequirement'>, Extract<PlanDeviceCarriedKey, 'powerSetupRequirement'>],
+  ['powerSetupRequirement', never]
 >>;
 
 describe('plan device carried fields', () => {

@@ -202,8 +202,12 @@ function resolveDeviceSnapshotControl(params: {
     };
 }
 
-function resolveExternalPowerSocketId(power: DeviceTransportParseDeps['externalPower']): string | undefined {
-    return power?.kind === 'external' ? power.socketId : undefined;
+function resolveExternalPowerSocket(
+    power: DeviceTransportParseDeps['externalPower'],
+): Pick<TransportDeviceSnapshot, 'externalPowerSocketId' | 'externalPowerSocketName'> {
+    return power?.kind === 'external'
+        ? { externalPowerSocketId: power.socketId, externalPowerSocketName: power.socketName }
+        : {};
 }
 
 function resolveSameSourceRetainedReading(
@@ -329,7 +333,7 @@ export function assembleDeviceSnapshot(params: {
         measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
         measuredPowerReading: resolvedMeasuredPower.reading,
         measuredPowerSource: resolvedMeasuredPower.source,
-        externalPowerSocketId: resolveExternalPowerSocketId(deps.externalPower),
+        ...resolveExternalPowerSocket(deps.externalPower),
         zone: resolveZoneLabel(effectiveDevice),
         zoneId: resolveZoneId(effectiveDevice),
         capabilities: overlay.capabilities,

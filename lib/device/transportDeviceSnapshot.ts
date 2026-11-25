@@ -90,6 +90,7 @@ export type TransportDeviceSnapshot =
     /** Written with every `measuredPowerKw`, by the same seams. */
     measuredPowerSource?: MeasuredPowerSource;
     externalPowerSocketId?: string;
+    externalPowerSocketName?: string;
   } & EvObservedProbe & TemperatureObservedProbe & ThermostatModeObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
