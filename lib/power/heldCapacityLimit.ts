@@ -80,11 +80,14 @@ export function resolveScheduledPowerLimits(
   };
 }
 
-export function powerLimitsAt(limits: ScheduledPowerLimits, atMs: number): PowerLimitSettings {
-  const { monthPeak } = limits;
+export function powerLimitsAt(
+  limits: ScheduledPowerLimits,
+  atMs: number,
+): Omit<PowerLimitSettings, 'monthlyCapacityChoice'> {
+  const { monthPeak, monthlyCapacityChoice, ...settings } = limits;
   // An explicit monthly capacity choice (hourly periods only) and a held month peak (15-minute only) never coincide.
-  if (limits.monthlyCapacityChoice) return { ...limits, limitKw: capacityLimitKwAt(limits, atMs) };
-  return monthPeak && atMs < monthPeak.endsAtMs ? { ...limits, limitKw: monthPeak.limitKw } : limits;
+  if (monthlyCapacityChoice) return { ...settings, limitKw: capacityLimitKwAt(limits, atMs) };
+  return monthPeak && atMs < monthPeak.endsAtMs ? { ...settings, limitKw: monthPeak.limitKw } : settings;
 }
 
 /** A ceiling read with the boundary that can split a price interval. */
@@ -94,7 +97,7 @@ export function planningCeilingSchedule(limits: ScheduledPowerLimits): {
 } {
   const { monthPeak, monthlyCapacityChoice: choice } = limits;
   if (choice) {
-    return { changesAtMs: choice.endsAtMs, at: (atMs) => resolvePlanningCeilingKw(powerLimitsAt(limits, atMs), atMs) };
+    return { changesAtMs: choice.endsAtMs, at: (atMs) => resolvePlanningCeilingKw(powerLimitsAt(limits, atMs)) };
   }
   const configuredKw = resolvePlanningCeilingKw(limits);
   if (!monthPeak) return { changesAtMs: null, at: () => configuredKw };

@@ -26,8 +26,7 @@ import {
 } from './stepSelection';
 import type { DeferredObjectiveStep } from './types';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
-import { powerLimitsAt, type ScheduledPowerLimits } from '../../power/heldCapacityLimit';
-import { resolvePlanningCeilingKw } from '../../power/capacityModel';
+import { planningCeilingSchedule, type ScheduledPowerLimits } from '../../power/heldCapacityLimit';
 import { isTaskSatisfied } from './taskCompletion';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -275,27 +274,30 @@ const reservationsFromHours = (
   powerLimits: ScheduledPowerLimits,
   exemptFromBudget: boolean,
   deadlineAtMs: number,
-): DeferredObjectivePriorityReservation[] => hours.flatMap((hour) => {
-  if (hour.plannedKWh <= 0) return [];
-  return [{
-    deviceId,
-    topologyKey: `legacy:${hour.startsAtMs}:${hour.energySegments.map((segment) => (
-      `${segment.startMs}-${segment.endMs}`
-    )).join(',')}`,
-    startsAtMs: hour.startsAtMs,
-    plannedKWh: hour.plannedKWh,
-    admissionPowerKw: resolveLegacyAdmissionPowerKw(
-      hour,
-      device,
-      // A legacy booking may occupy any part of its span. The higher cap
-      // can only expire within it, so its start supplies the conservative cap.
-      resolvePlanningCeilingKw(powerLimitsAt(powerLimits, hour.coversFromMs ?? hour.startsAtMs)),
-      deadlineAtMs,
-    ),
-    exemptFromBudget,
-    energySegments: hour.energySegments,
-  }];
-});
+): DeferredObjectivePriorityReservation[] => {
+  const { at: ceilingAt } = planningCeilingSchedule(powerLimits);
+  return hours.flatMap((hour) => {
+    if (hour.plannedKWh <= 0) return [];
+    const startsAtMs = hour.coversFromMs ?? hour.startsAtMs;
+    return [{
+      deviceId,
+      topologyKey: `legacy:${hour.startsAtMs}:${hour.energySegments.map((segment) => (
+        `${segment.startMs}-${segment.endMs}`
+      )).join(',')}`,
+      startsAtMs: hour.startsAtMs,
+      plannedKWh: hour.plannedKWh,
+      admissionPowerKw: resolveLegacyAdmissionPowerKw(
+        hour,
+        device,
+        // The booking may occupy any part of its span, so use the ceiling at the start of its coverage.
+        ceilingAt(startsAtMs),
+        deadlineAtMs,
+      ),
+      exemptFromBudget,
+      energySegments: hour.energySegments,
+    }];
+  });
+};
 
 const reservationsFromSegments = (
   deviceId: string,
