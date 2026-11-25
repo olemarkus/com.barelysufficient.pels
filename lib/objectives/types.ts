@@ -77,7 +77,7 @@ export const resolveObjectiveProgressDirectionRead = (params: {
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
 export type ObjectiveDeviceInput = {
-  /** Future permission for phase-controlled charging; never the observed physical step ladder. */
+  /** Future permissions set admission geometry. A sole matching live rung supplies learned delivery. */
   permittedChargingEnvelopes?: readonly ChargingPhaseEnvelope[];
   id: string;
   name: string;

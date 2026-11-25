@@ -1,6 +1,7 @@
 import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
+import type { ChargingPhaseEnvelope } from '../../../packages/planner-types/src/chargingPhases';
 import { drawWhenActivelyDrawingKw, resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import type { DeferredObjectiveStep } from './types';
 
@@ -58,6 +59,33 @@ const buildSyntheticChargeStep = (
   admissionPowerKw: resolveAdmissionPowerKw(nameplateKw),
 });
 
+function resolveEnvelopeObjectiveSteps(
+  device: ObjectiveDeviceInput,
+  envelopes: readonly ChargingPhaseEnvelope[],
+): DeferredObjectiveStep[] {
+  // A fixed envelope can reuse a reading from its matching live rung. With
+  // multiple alternatives, the learner cannot retain separate rates across
+  // phase changes, so keep sizing each alternative from its own nameplate.
+  const observedStepPowerW = envelopes.length === 1 && device.steppedLoadProfile
+    ? new Map(device.steppedLoadProfile.steps.map((step) => [step.id, step.planningPowerW]))
+    : undefined;
+  const steps = envelopes.flatMap((envelope) => (
+    withResolvedAdmission(sortSteppedLoadSteps(envelope.profile.steps).map((step) => {
+      // This is a horizon alternative, not an executable step ID.
+      const id = `${envelope.phases}p:${step.id}`;
+      const calibrationStepId = observedStepPowerW?.get(step.id) === step.planningPowerW ? step.id : id;
+      const nameplateKw = step.planningPowerW / 1000;
+      return {
+        id,
+        usefulPowerKw: resolveStepDeliveryUsefulKw(device, calibrationStepId, nameplateKw),
+        admissionPowerKw: resolveAdmissionPowerKw(nameplateKw),
+      };
+    }))
+  ));
+  // eslint-disable-next-line functional/immutable-data -- Orders newly created horizon alternatives.
+  return steps.sort((left, right) => left.admissionPowerKw - right.admissionPowerKw);
+}
+
 // Resolves the per-objective step list the horizon planner consumes. Stepped
 // devices expose their full ladder via `steppedLoadProfile`; EV chargers and
 // thermal devices without stepped controls route through the same calibrated
@@ -68,18 +96,7 @@ const buildSyntheticChargeStep = (
 // nor a usable planning/expected/measured power.
 export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObjectiveStep[] => {
   if (device.permittedChargingEnvelopes) {
-    const steps = device.permittedChargingEnvelopes.flatMap((envelope) => (
-      withResolvedAdmission(sortSteppedLoadSteps(envelope.profile.steps).map((step) => ({
-        // These are horizon operating alternatives, never executable step IDs.
-        id: `${envelope.phases}p:${step.id}`,
-        usefulPowerKw: resolveStepDeliveryUsefulKw(
-          device, `${envelope.phases}p:${step.id}`, step.planningPowerW / 1000,
-        ),
-        admissionPowerKw: resolveAdmissionPowerKw(step.planningPowerW / 1000),
-      })))
-    ));
-    // eslint-disable-next-line functional/immutable-data -- Orders newly created horizon alternatives.
-    return steps.sort((left, right) => left.admissionPowerKw - right.admissionPowerKw);
+    return resolveEnvelopeObjectiveSteps(device, device.permittedChargingEnvelopes);
   }
   const profile = device.steppedLoadProfile;
   if (profile) {

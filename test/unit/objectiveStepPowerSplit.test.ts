@@ -69,6 +69,49 @@ describe('smart-task step power: learned for energy, nameplate for room', () => 
     expect(device.stepPowerCalibration).toEqual({ '6a': 0.7878 });
   });
 
+  it.each([
+    { hourCount: 6, shortfallKWh: 0 },
+    { hourCount: 2, shortfallKWh: 5.52 },
+  ])('books at the learned rate under fixed three-phase permission with $hourCount hours', ({
+    hourCount, shortfallKWh,
+  }) => {
+    const threePhaseProfile = { steps: [{ id: '6a', planningPowerW: 4140, planningCurrentA: 6 }] };
+    const enabled: ObjectiveDeviceInput = {
+      ...elbillader,
+      steppedLoadProfile: threePhaseProfile,
+      stepPowerCalibration: { '6a': 1.38 },
+      permittedChargingEnvelopes: [
+        { phases: 3, footprint: { kind: 'all_three' }, profile: threePhaseProfile },
+      ],
+    };
+    const [step] = resolveObjectiveSteps(enabled);
+    expect(step).toEqual({ id: '3p:6a', usefulPowerKw: 1.38, admissionPowerKw: 4.14 });
+    expect(resolvePlanningSpeedKw(enabled)).toBe(1.38);
+    if (!step) throw new Error('Expected the fixed charging envelope to offer a step.');
+
+    const buckets = normalizeHorizonBuckets(NOW, NOW + hourCount * HOUR_MS, 0,
+      Array.from({ length: hourCount }, (_, index) => ({
+        id: `hour-${index}`, startMs: NOW + index * HOUR_MS, endMs: NOW + (index + 1) * HOUR_MS,
+        price: hourCount - index, reservedHeadroomKw: 4.14,
+      })));
+    const allocated = allocateEnergyToBuckets(buckets, () => step, 8.28, 0.001);
+    const planned = allocated.plannedBuckets.filter((bucket) => bucket.plannedUsefulEnergyKWh > 0);
+    expect(planned).toHaveLength(hourCount);
+    expect(planned.every((bucket) => bucket.plannedAdmissionPowerKw === 4.14)).toBe(true);
+    expect(allocated.unplannedUsefulEnergyKWh).toBeCloseTo(shortfallKWh);
+  });
+
+  it('uses the new phase envelope nameplate until the matching ladder is observed', () => {
+    const [step] = resolveObjectiveSteps({
+      ...elbillader,
+      permittedChargingEnvelopes: [{
+        phases: 3, footprint: { kind: 'all_three' },
+        profile: { steps: [{ id: '6a', planningPowerW: 4140, planningCurrentA: 6 }] },
+      }],
+    });
+    expect(step).toEqual({ id: '3p:6a', usefulPowerKw: 4.14, admissionPowerKw: 4.14 });
+  });
+
   it.each<[string, Partial<ObjectiveDeviceInput>, number | null]>([
     ['EV planning rate', { steppedLoadProfile: undefined, planningPowerKw: 2.3 }, 2.3],
     ['EV expected rate', { steppedLoadProfile: undefined }, 1.38],
