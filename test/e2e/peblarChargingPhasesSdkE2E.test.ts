@@ -7,6 +7,7 @@ import {
   MAIN_FUSE_SUPPLY, MAIN_FUSE_AMPS, MAIN_FUSE_PHASE_CAPABILITIES, MAIN_FUSE_PHASE_METER_DEVICE_ID,
 } from '../../lib/utils/settingsKeys';
 import { CHARGING_PHASE_SETTINGS_KEY } from '../../packages/shared-domain/src/settings/chargingPhases';
+import { CHARGING_PHASE_RECORD_PREFIX } from '../../lib/chargingPhases/phaseClaimStore';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { connectLiveFeed } from '../helpers/liveFeedSocketHarness';
@@ -34,6 +35,7 @@ async function modelPeblar(voltageV = 230, initialCurrentA = 6) {
   let phases: PhaseCount = 3;
   let currentA = initialCurrentA;
   let forceSingle = false;
+  let pluggedIn = true;
   let backgroundW = -2500;
   let transitionDelayMs = 20_000;
   let ignoreSwitches = false;
@@ -44,7 +46,8 @@ async function modelPeblar(voltageV = 230, initialCurrentA = 6) {
   const phaseRequests: { atMs: number; forceSingle: boolean }[] = [];
   const currentWrites: number[] = [];
   const pauses: number[] = [];
-  const watts = () => currentA >= 6 && !(transitionActive && idleDuringTransition) ? currentA * phases * voltageV : 0;
+  const watts = () => pluggedIn && currentA >= 6 && !(transitionActive && idleDuringTransition)
+    ? currentA * phases * voltageV : 0;
   const publishOn = (device: MockDevice, capability: string, value: unknown): void => {
     // Shipped integrations may publish only changed values; quiet zeros are not fresh samples.
     if (device.getActualCapabilityValue(capability) !== value) device.setActualCapabilityValue(capability, value);
@@ -60,7 +63,8 @@ async function modelPeblar(voltageV = 230, initialCurrentA = 6) {
     publish('peblar_power_l3', phases === 3 ? phaseW : 0);
     publish('measure_power', watts());
     publish('evcharger_charging', watts() > 0);
-    publish('evcharger_charging_state', watts() > 0 ? 'plugged_in_charging' : 'plugged_in_paused');
+    const attachedState = watts() > 0 ? 'plugged_in_charging' : 'plugged_in_paused';
+    publish('evcharger_charging_state', pluggedIn ? attachedState : 'plugged_out');
     const base = phaseBaseW ?? [backgroundW / 3, backgroundW / 3, backgroundW / 3];
     publishOn(meter, 'measure_power', backgroundW + watts());
     for (const [index, name] of ['l1', 'l2', 'l3'].entries()) {
@@ -117,6 +121,8 @@ async function modelPeblar(voltageV = 230, initialCurrentA = 6) {
     setPhaseBackground: (wattsByPhase: readonly [number, number, number]) => { phaseBaseW = wattsByPhase; },
     ignoreSwitches: () => { ignoreSwitches = true; },
     suspendMeter: () => { meterAvailable = false; },
+    unplug: () => { pluggedIn = false; poll(); },
+    stopCurrent: () => { currentA = 0; poll(); },
   };
 }
 
@@ -278,17 +284,36 @@ describe('Peblar physical phase control at the SDK boundary', () => {
     expect(model.put.mock.calls).toHaveLength(before);
   });
 
-  it.each(['unmanaged', 'simulation'] as const)('hands back the original phase setting safely when %s', async (change) => {
+  it.each(['unmanaged', 'simulation'] as const)('lets a live session finish before handing back when %s', async (change) => {
     const model = await modelPeblar();
     configure('single');
     await createApp().onInit();
     await advance(300_000);
     expect(model.phases()).toBe(1);
-    if (change === 'unmanaged') mockHomeyInstance.settings.set(MANAGED_DEVICES, { [ID]: false });
-    else mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
+    const activeCurrentA = model.currentA();
+    const writes = model.currentWrites.length;
+    const phaseRequests = model.phaseRequests.length;
+    const pauses = model.pauses.length;
+    expect(model.watts()).toBeGreaterThan(0);
+    const settings = mockHomeyInstance.settings;
+    const claimKey = `${CHARGING_PHASE_RECORD_PREFIX}${ID}`;
+    if (change === 'unmanaged') settings.set(MANAGED_DEVICES, { [ID]: false });
+    else settings.set(CAPACITY_DRY_RUN, true);
     await advance(120_000);
-    expect(model.phaseRequests.some((request) => !request.forceSingle)).toBe(true);
-    expect(model.currentA()).toBe(0);
+    expect(model.phaseRequests).toHaveLength(phaseRequests);
+    expect(model.currentA()).toBe(activeCurrentA);
+    expect(model.watts()).toBeGreaterThan(0);
+    expect(model.pauses).toHaveLength(pauses);
+    expect(settings.get(claimKey)).toMatchObject({ kind: 'held', originalForceSingle: false });
+
+    if (change === 'unmanaged') model.unplug();
+    else model.stopCurrent();
+    await advance(120_000);
+    expect(model.phaseRequests.slice(phaseRequests).map((request) => request.forceSingle)).toEqual([false]);
+    expect(model.pauses).toHaveLength(pauses);
+    expect(model.currentWrites).toHaveLength(writes);
+    expect(model.currentA()).toBe(change === 'unmanaged' ? activeCurrentA : 0);
+    expect(settings.get(claimKey)).toMatchObject({ kind: 'free' });
   });
 
   it('recovers a durable claim after restart by handing back before another switch', async () => {

@@ -54,7 +54,10 @@ preserves the pre-PELS force-single setting across restart.
 
 Unmanage, disabled control, simulation, unsuccessful transitions and restart
 recovery produce explicit hand-back work. Returning to a setting that permits
-more phases first pauses charging. Completion invalidates old single-phase
+more phases requires a zero-current limit or an observed unplug with negligible
+draw. Unmanage and simulation defer this expansion while an otherwise healthy
+claimed session still has current on offer. Managed control and recovery may
+pause first to reach a zero-current limit. Completion invalidates old single-phase
 planning geometry before ordinary control resumes. A failed hand-back retains
 its durable obligation.
 
