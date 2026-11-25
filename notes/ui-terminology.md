@@ -1060,6 +1060,9 @@ own **Save**, which stays off until something changes:
 Every select names its default choice; none renders empty. Hints name the
 section, for example `Metering socket unavailable. Choose another power source
 under External sensors.` or `Review last-resort control under Power limiting.`
+When a running last-resort relay gains a power reading, its Overview card shows
+the measured power and says `Has its own power reading. Turn off last-resort
+control under Power limiting.`
 For an on/off device without power information, the Managed hint points to a
 metering socket when available. It recommends last-resort setup for variable
 draw without a meter, or Homey Energy for a steady draw while the device is on.
