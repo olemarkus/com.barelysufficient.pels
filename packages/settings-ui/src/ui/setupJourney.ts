@@ -288,11 +288,13 @@ const mountHeader = (panelId: string): HTMLElement | null => {
 // when solar control is still on its way.
 const goalsHeaderDetail = (): string => {
   const choices = resolveSetupGoalChoices();
-  if (choices.state === 'ready' && !choices.hasActions) return 'See what PELS needs for each device.';
-  const source = choices.state === 'ready' && choices.priceSource !== null
+  const intro = choices.state === 'ready' && !choices.hasActions
+    ? 'See what PELS needs for each device.'
+    : 'Optional. You can change each choice later on its device page.';
+  const source = choices.state === 'ready' && choices.hasActions && choices.priceSource !== null
     ? ` PELS uses your prices from ${choices.priceSource}.` : '';
   const solar = solarPending() ? ` ${solarPendingNote()}` : '';
-  return `Optional. You can change each choice later on its device page.${source}${solar}`;
+  return `${intro}${source}${solar}`;
 };
 
 const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): string | null => {
