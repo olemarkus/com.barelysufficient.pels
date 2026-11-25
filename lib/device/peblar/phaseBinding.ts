@@ -6,14 +6,26 @@ import type { ChargingPhasePower } from '../../ports/chargingPhases';
 const APP_URI = 'homey:app:com.KyleMichiels.Peblar';
 const CURRENT = 'peblar_charge_limit';
 export const PEBLAR_PHASE_POWER_IDS = ['peblar_power_l1', 'peblar_power_l2', 'peblar_power_l3'] as const;
+export const PEBLAR_PHASE_VOLTAGE_IDS = ['peblar_voltage_l1', 'peblar_voltage_l2', 'peblar_voltage_l3'] as const;
+// Peblar's default overvoltage threshold is 110% of its 230 V phase rating.
+const MAX_PHASE_VOLTAGE_V = 253;
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+export const isPeblarPhaseVoltage = (value: unknown): value is number => (
+  finite(value) && value >= 0 && value <= MAX_PHASE_VOLTAGE_V
+);
 
 function power(device: HomeyDeviceLike, id: string): ChargingPhasePower | undefined {
   const reading = device.capabilitiesObj[id];
   const stamp = toCapabilityTimestampMs(reading?.lastUpdated);
   return finite(reading?.value) && reading.value >= 0 && stamp !== undefined
     ? { watts: reading.value, observedAtMs: stamp } : undefined;
+}
+
+function voltage(device: HomeyDeviceLike, id: string): number | null {
+  const reading = device.capabilitiesObj[id];
+  return isPeblarPhaseVoltage(reading?.value) && toCapabilityTimestampMs(reading.lastUpdated) !== undefined
+    ? reading.value : null;
 }
 
 /** These published settings acknowledge a command. Only the per-phase watts describe physical draw. */
@@ -32,8 +44,10 @@ export const peblarPhaseBinding: ChargingPhaseBinding = {
     if (typeof forceSinglePhase !== 'boolean' || forceSinglePhaseObservedAtMs === undefined
       || !finite(currentLimitA) || currentLimitA < 0
       || !finite(maximumCurrentA) || maximumCurrentA < 6 || !a || !b || !c || !totalPower) return undefined;
+    const [l1, l2, l3] = PEBLAR_PHASE_VOLTAGE_IDS;
     return { forceSinglePhase, forceSinglePhaseObservedAtMs, currentLimitA, minimumCurrentA: 6,
-      maximumCurrentA: Math.floor(maximumCurrentA), powers: [a, b, c], totalPower };
+      maximumCurrentA: Math.floor(maximumCurrentA), powers: [a, b, c],
+      phaseVoltagesV: [voltage(device, l1), voltage(device, l2), voltage(device, l3)], totalPower };
   },
   profile(device, phases) {
     const current = device.capabilitiesObj[CURRENT];

@@ -25,7 +25,7 @@ export type ChargingPhaseBinding = {
   appUri: string;
   read(device: HomeyDeviceLike): Pick<ChargingPhaseDevice,
     'forceSinglePhase' | 'forceSinglePhaseObservedAtMs' | 'currentLimitA' | 'minimumCurrentA'
-    | 'maximumCurrentA' | 'powers' | 'totalPower'> | undefined;
+    | 'maximumCurrentA' | 'powers' | 'phaseVoltagesV' | 'totalPower'> | undefined;
   profile(device: HomeyDeviceLike, phases: ChargingPhaseCount): SteppedLoadProfile | undefined;
   command(device: HomeyDeviceLike, command: ChargingPhaseCommand): ChargingPhaseDelivery;
 };

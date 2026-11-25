@@ -36,7 +36,7 @@ function fixture() {
     forceSinglePhase: true, forceSinglePhaseObservedAtMs: NOW,
     currentLimitA: 16, minimumCurrentA: 6, maximumCurrentA: 16, configuredPhases: 3, planningPhases: 1, drawingPhases: 1,
     powers: [{ watts: 3680, observedAtMs: NOW }, { watts: 0, observedAtMs: NOW }, { watts: 0, observedAtMs: NOW }],
-    totalPower: { watts: 3680, observedAtMs: NOW },
+    totalPower: { watts: 3680, observedAtMs: NOW }, phaseVoltagesV: [null, null, null],
   };
   const source: ChargingPhaseSource = {
     readDevices: () => [device], envelopes: () => envelopes, isSimulation: () => false,

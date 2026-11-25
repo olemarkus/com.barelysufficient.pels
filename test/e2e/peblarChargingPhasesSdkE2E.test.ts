@@ -17,7 +17,7 @@ const pathFor = (capability: string) => `manager/devices/device/${ID}/capability
 type PhaseCount = 1 | 3;
 
 /** The public capability contract: setting echoes precede independently polled physical power. */
-async function modelPeblar() {
+async function modelPeblar(voltageV = 230, initialCurrentA = 6) {
   const charger = new MockDevice(ID, 'Peblar Home', [
     'measure_power', 'meter_power.charged', 'evcharger_charging', 'evcharger_charging_state',
     'peblar_charge_limit', 'peblar_force_1_phase', 'peblar_phase_mode',
@@ -32,7 +32,7 @@ async function modelPeblar() {
     'measure_power', 'measure_power.l1', 'measure_power.l2', 'measure_power.l3',
   ], 'sensor');
   let phases: PhaseCount = 3;
-  let currentA = 6;
+  let currentA = initialCurrentA;
   let forceSingle = false;
   let backgroundW = -2500;
   let transitionDelayMs = 20_000;
@@ -44,7 +44,7 @@ async function modelPeblar() {
   const phaseRequests: { atMs: number; forceSingle: boolean }[] = [];
   const currentWrites: number[] = [];
   const pauses: number[] = [];
-  const watts = () => currentA >= 6 && !(transitionActive && idleDuringTransition) ? currentA * phases * 230 : 0;
+  const watts = () => currentA >= 6 && !(transitionActive && idleDuringTransition) ? currentA * phases * voltageV : 0;
   const publishOn = (device: MockDevice, capability: string, value: unknown): void => {
     // Shipped integrations may publish only changed values; quiet zeros are not fresh samples.
     if (device.getActualCapabilityValue(capability) !== value) device.setActualCapabilityValue(capability, value);
@@ -70,7 +70,7 @@ async function modelPeblar() {
   await charger.setCapabilityValue('peblar_charge_limit', currentA);
   await charger.setCapabilityValue('peblar_force_1_phase', forceSingle);
   await charger.setCapabilityValue('peblar_phase_mode', '3F');
-  for (const phase of [1, 2, 3]) await charger.setCapabilityValue(`peblar_voltage_l${phase}`, 230);
+  for (const phase of [1, 2, 3]) await charger.setCapabilityValue(`peblar_voltage_l${phase}`, voltageV);
   await charger.setCapabilityValue('meter_power.charged', 10);
   poll();
   setInterval(poll, 10_000);
@@ -200,6 +200,16 @@ describe('Peblar physical phase control at the SDK boundary', () => {
     expect(model.phases()).toBe(1);
     expect((await chargerRead()).automaticPowerControl?.profile.steps.find((step) => step.id === '6a')?.planningPowerW)
       .toBe(1380);
+  });
+
+  it('switches to one phase after reaching 6 A at 240 V', async () => {
+    const model = await modelPeblar(240, 10);
+    configure('single');
+    await createApp().onInit();
+    for (let cycle = 0; cycle < 60 && model.phases() !== 1; cycle += 1) await advance(10_000);
+    expect(model.currentWrites).toContain(6);
+    expect(model.phaseRequests.map((request) => request.forceSingle)).toEqual([true]);
+    expect(model.phases()).toBe(1);
   });
 
   it('locks an ignored phase request for this connection instead of repeating it', async () => {

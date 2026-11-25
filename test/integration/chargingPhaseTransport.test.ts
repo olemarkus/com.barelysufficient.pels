@@ -150,6 +150,18 @@ describe('charging phase transport', () => {
     expect(transport.profile(raw)?.steps.find((step) => step.id === '6a')?.planningPowerW).toBe(4140);
   });
 
+  it('does not restore revoked drawing evidence on a voltage-only update after reconnect', () => {
+    const { raw, transport } = harness();
+    expect(transport.readDevices()[0]?.drawingPhases).toBe(3);
+    raw.capabilitiesObj.evcharger_charging_state = cap('plugged_out', stamp + 1000);
+    expect(transport.readDevices()[0]?.drawingPhases).toBeUndefined();
+    raw.capabilitiesObj.evcharger_charging_state = cap('plugged_in_charging', stamp + 2000);
+    raw.capabilitiesObj.peblar_voltage_l1 = cap(240, stamp + 2000);
+    const connected = transport.readDevices()[0];
+    expect(connected?.phaseVoltagesV).toEqual([240, null, null]);
+    expect(connected?.drawingPhases).toBeUndefined();
+  });
+
   it('sends a coupled safe current and phase request without separate start/stop commands', async () => {
     const { transport, runAction, pause } = harness();
     await transport.request({ kind: 'charging_phase', authority, deviceId: 'charger', phases: 1, currentA: 6 });

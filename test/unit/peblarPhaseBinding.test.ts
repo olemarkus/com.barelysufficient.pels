@@ -1,5 +1,8 @@
 import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import { measuredChargingPhases } from '../../lib/device/chargingPhaseTransport';
+import {
+  withAcceptedCapabilityReport, withholdInvalidModelCapabilities,
+} from '../../lib/device/transport/deviceReadContract';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
@@ -42,6 +45,21 @@ describe('Peblar phase binding', () => {
     expect(binding.read(raw)).toBeUndefined();
     raw.capabilitiesObj.peblar_power_l2 = { value: 0 };
     expect(binding.read(raw)).toBeUndefined();
+  });
+
+  it('keeps accepted phase voltage through bad fetches and accepts a valid realtime report', () => {
+    const raw = device();
+    raw.capabilities.push('peblar_voltage_l1');
+    raw.capabilitiesObj.peblar_voltage_l1 = cap(240);
+    const binding = getDeviceAdapter(raw).phaseBindings(raw)[0]!;
+    const reportAt = stamp + 1000;
+    for (const voltage of [Number.NaN, -1, 400]) {
+      const bad = { ...raw, capabilitiesObj: { ...raw.capabilitiesObj, peblar_voltage_l1: cap(voltage, reportAt) } };
+      expect(binding.read(withholdInvalidModelCapabilities(bad, raw).device)?.phaseVoltagesV).toEqual([240, null, null]);
+      expect(withAcceptedCapabilityReport(raw, 'peblar_voltage_l1', voltage, reportAt)).toBe(raw);
+    }
+    const live = withAcceptedCapabilityReport(raw, 'peblar_voltage_l1', 0, reportAt);
+    expect(binding.read(live)?.phaseVoltagesV).toEqual([0, null, null]);
   });
 
   it('uses one combined current-and-phase action and a phase-only hand-back', () => {

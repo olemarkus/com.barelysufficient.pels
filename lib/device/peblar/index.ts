@@ -11,7 +11,9 @@
 import type { DeviceCapabilityMap } from '../managerControl';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { createCurrentSwitchChargerAdapter } from '../currentSwitchCharger';
-import { peblarPhaseBinding, PEBLAR_PHASE_POWER_IDS } from './phaseBinding';
+import {
+  isPeblarPhaseVoltage, peblarPhaseBinding, PEBLAR_PHASE_POWER_IDS, PEBLAR_PHASE_VOLTAGE_IDS,
+} from './phaseBinding';
 
 const CURRENT_CAPABILITY_ID = 'peblar_charge_limit';
 const CURRENT_FLOW_CARD_ID = 'peblar_set_charge_current';
@@ -27,7 +29,7 @@ function isPeblarCharger(device: HomeyDeviceLike): boolean {
 
 function readVolts(values: DeviceCapabilityMap | undefined, capabilityId: string): number | undefined {
   const volts = values?.[capabilityId]?.value;
-  return typeof volts === 'number' && Number.isFinite(volts) ? volts : undefined;
+  return isPeblarPhaseVoltage(volts) ? volts : undefined;
 }
 
 /**
@@ -60,6 +62,7 @@ export const peblarAdapter = {
       peblar_force_1_phase: 'boolean' as const,
       ...Object.fromEntries(PEBLAR_PHASE_POWER_IDS.map((id) => [id,
         (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0])),
+      ...Object.fromEntries(PEBLAR_PHASE_VOLTAGE_IDS.map((id) => [id, isPeblarPhaseVoltage])),
     } : {}),
   }),
 };
