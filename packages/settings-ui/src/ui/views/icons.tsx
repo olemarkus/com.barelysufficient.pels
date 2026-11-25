@@ -25,6 +25,17 @@ export const ArrowBackIcon = (props: IconProps) => (
   </svg>
 );
 
+export const InformationIcon = (props: IconProps) => (
+  <svg {...baseSvgProps({
+    fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...props,
+  })}>
+    <circle cx="12" cy="12" r="9" />
+    <line x1="12" y1="11" x2="12" y2="16" />
+    <circle cx="12" cy="8" r="0.5" fill="currentColor" />
+  </svg>
+);
+
 export const ChevronRightIcon = (props: IconProps) => (
   <svg {...baseSvgProps(props)}>
     <path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" />

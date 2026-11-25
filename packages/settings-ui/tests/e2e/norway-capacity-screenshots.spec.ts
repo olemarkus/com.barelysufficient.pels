@@ -120,7 +120,7 @@ for (const width of [320, 480]) {
             const gaps = await overview.evaluate((card) => {
               const bounds = card.getBoundingClientRect();
               const hero = document.querySelector('#plan-redesign-surface .plan-hero')!.getBoundingClientRect();
-              const next = document.querySelector('#plan-smart-task-row')!.getBoundingClientRect();
+              const next = document.querySelector('#plan-smart-task-status')!.getBoundingClientRect();
               return [bounds.top - hero.bottom, next.top - bounds.bottom];
             });
             expect(gaps).toEqual([8, 8]);

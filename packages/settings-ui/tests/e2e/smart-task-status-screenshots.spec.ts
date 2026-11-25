@@ -27,7 +27,7 @@ for (const width of [320, 480] as const) {
         await page.clock.setFixedTime(FIXED_NOW_MS);
         await seedSecondOverviewTask(page);
         await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await expect(page.locator('#plan-smart-task-row')).toHaveAttribute('data-variant', 'steady');
+        await expect(page.locator('#plan-smart-task-status')).toContainText('Next scheduled period starts at');
         await pushOverviewTasks(page, [
           { deviceId: 'dev_connected300', deviceName: 'Connected 300', state: 'awaiting_prices' },
           { deviceId: 'dev_heatpump', deviceName: 'Living Room Heat Pump', state: 'price_off' },

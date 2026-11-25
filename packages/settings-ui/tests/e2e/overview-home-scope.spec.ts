@@ -112,7 +112,7 @@ test.describe('Overview follows the shown home', () => {
     // change). The smart-task row is the Main home's.
     await expect(heroPowerValue(page)).toHaveText('1.5');
     await expect(page.locator('#home-scope-chip')).toBeVisible();
-    await expect(page.locator('#plan-smart-task-row')).toBeVisible();
+    await expect(page.locator('#plan-smart-task-status')).toBeVisible();
 
     // Pick the area: its OWN plan renders — hero, cards — never Main's under
     // a badge, and the Main-only smart-task row is omitted as not-applicable.
@@ -120,7 +120,7 @@ test.describe('Overview follows the shown home', () => {
     await expect(heroPowerValue(page)).toHaveText('0.7');
     await expect(page.locator('#plan-cards [data-device-id="dev_bedroom"]')).toBeVisible();
     await expect(page.locator('#plan-cards [data-device-id="dev_heatpump"]')).toHaveCount(0);
-    await expect(page.locator('#plan-smart-task-row')).toHaveCount(0);
+    await expect(page.locator('#plan-smart-task-status')).toHaveCount(0);
 
     // The area's `plan_status_published` push is its only realtime plan
     // freshness signal (`plan_updated` stays Main's); it must repaint the
@@ -148,7 +148,7 @@ test.describe('Overview follows the shown home', () => {
     await expect(heroPowerValue(page)).toHaveText('1.5');
     await expect(page.locator('#plan-cards [data-device-id="dev_heatpump"]')).toBeVisible();
     await expect(page.locator('#plan-cards [data-device-id="dev_bedroom"]')).toHaveCount(0);
-    await expect(page.locator('#plan-smart-task-row')).toBeVisible();
+    await expect(page.locator('#plan-smart-task-status')).toBeVisible();
   });
 
   test('an area the runtime cannot serve shows the honest notice, not fabricated numbers', async ({ page }) => {

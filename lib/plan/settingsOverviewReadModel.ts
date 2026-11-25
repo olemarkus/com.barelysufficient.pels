@@ -22,6 +22,7 @@ import {
 } from './planOverviewTemperatureState';
 import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
+import { resolveChargingStartChecks } from './chargingStartChecks';
 import { buildDeviceStatus } from './deviceStatusReadModel';
 import type { ChargingInstallationCard } from './deviceStatusInput';
 import { withChargingInstallation } from './chargingInstallationCardText';
@@ -296,9 +297,14 @@ function buildLoadOverviewDevice(
   const presentation = withChargingInstallation(
     overviewShape, buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs),
   );
-  const status = presentation.reason?.countdown ? { ...presentation, reason: { ...presentation.reason,
-    text: formatDeviceStatusReason(presentation, deps.nowMs)!,
-  } } : presentation;
+  const chargingStartChecks = deps.dryRun || overviewShape.chargingInstallation?.role === 'secondary'
+    ? undefined : resolveChargingStartChecks(device, presentation, overviewShape.evChargingState);
+  const reason = presentation.reason;
+  const status = reason !== null && (reason.countdown || chargingStartChecks)
+    ? { ...presentation, reason: { ...reason,
+      text: formatDeviceStatusReason(presentation, deps.nowMs)!,
+      ...(chargingStartChecks && { chargingStartChecks }),
+    } } : presentation;
   return {
     id: device.id,
     name: device.name,

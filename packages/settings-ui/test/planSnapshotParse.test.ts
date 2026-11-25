@@ -23,6 +23,13 @@ describe('parsePlanSnapshot resolved status boundary', () => {
     }
   });
 
+  it('drops a malformed optional checklist and keeps the device reason', () => {
+    const charger = { ...device(), isEvCharger: true };
+    const reason = { text: 'Waiting for available power', chargingStartChecks: [{ label: 'Enough power', state: 'new_state' }] };
+    const parsed = parsePlanSnapshot({ devices: [{ ...charger, status: { ...charger.status, reason } }] });
+    expect(parsed?.devices?.[0]?.status.reason).toEqual({ text: 'Waiting for available power' });
+  });
+
   it('carries the status reading as numbers beside the fact line', () => {
     const heater = uiDeviceFixture({
       currentState: 'on', plannedState: 'keep',

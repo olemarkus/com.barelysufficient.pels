@@ -48,6 +48,7 @@ import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts
 import { countMainHomeJobs } from './mainHomeDevices.ts';
 import { resolveOverviewSmartTaskStatuses, type OverviewSmartTaskStatus } from './overviewSmartTaskStatus.ts';
 import { followDeadlineHref } from './deadlineUrls.ts';
+import { resolveOverviewMissedTask, type OverviewMissedTask } from './overviewMissedTask.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import { resolveOverviewControlWarnings } from './overviewControlWarnings.ts';
 
@@ -84,6 +85,7 @@ const priceReads = createLatestReadOrder();
 // variant rather than blocking the overview. Pre-resolved here — not in
 // `resolveSmartTaskRow` — because `doRender` can run on a 1 s live tick and
 // re-flattening/sorting the whole archive per tick is avoidable work.
+let cachedMissedTask: OverviewMissedTask | null = null;
 let cachedMissStreaks: ReturnType<typeof resolveMissStreakBadges> = [];
 let currentPlan: PlanSnapshot | null = null;
 let liveTickInterval: ReturnType<typeof setInterval> | null = null;
@@ -235,6 +237,19 @@ const monthlyCapacityForScope = (): NorwayMonthlyCapacityRead => (
   overviewScope.kind === 'main' ? cachedMonthlyCapacity : { state: 'hidden' }
 );
 
+const resolveOverviewTaskRows = (now: number) => {
+  if (overviewScope.kind !== 'main') {
+    return { smartTaskStatuses: [], missedTask: null, smartTaskRow: null };
+  }
+  const smartTaskStatuses = resolveOverviewSmartTaskStatuses(
+    state.deferredObjectiveSettings, state.deferredObjectiveActivePlans, state.latestDevices, cachedPrices, now,
+  );
+  const missedTask = cachedMissedTask && now < cachedMissedTask.expiresAtMs ? cachedMissedTask : null;
+  const detailedTaskIds = new Set(smartTaskStatuses.map((status) => status.deviceId));
+  const smartTaskRow = resolveSmartTaskRow(resolveRowStatuses(now, detailedTaskIds), missedTask);
+  return { smartTaskStatuses, missedTask, smartTaskRow };
+};
+
 const doRender = () => {
   const surface = getPlanSurface();
   if (!surface) return;
@@ -250,12 +265,7 @@ const doRender = () => {
   }
   const now = Date.now();
   const setup = resolveOverviewSetupPath();
-  const smartTaskStatuses = overviewScope.kind === 'main'
-    ? resolveOverviewSmartTaskStatuses(
-      state.deferredObjectiveSettings, state.deferredObjectiveActivePlans, state.latestDevices, cachedPrices, now,
-    ) : [];
-  const smartTaskRow = overviewScope.kind === 'main'
-    ? resolveSmartTaskRow(smartTaskStatuses.length > 0 ? [] : resolveRowStatuses(now)) : null;
+  const smartTaskRows = resolveOverviewTaskRows(now);
   const devices = overviewDeviceRows();
   renderPlanOverview(surface, {
     // Membership and order come from the DEVICE list; the decision comes from
@@ -271,10 +281,9 @@ const doRender = () => {
     // under a meter area the row is OMITTED as not-applicable — rendering
     // Main's task states under the area's name would break the scope bar's
     // honesty claim.
-    // A detailed current status replaces the slim current-task summary. Recent
-    // misses remain a separate history signal when today's task needs attention.
-    smartTaskRow,
-    smartTaskStatuses,
+    // The slim summary covers tasks without a detailed status above it.
+    // A recent miss remains visible alongside the current tasks.
+    ...smartTaskRows,
     onSmartTaskAction: activateSmartTaskStatus,
     phaseLoad: overviewScope.kind === 'main' ? cachedPhaseLoad : { state: 'none' },
     monthlyCapacity: monthlyCapacityForScope(),
@@ -469,8 +478,11 @@ export const refreshPlanHistory = (): void => {
     if (sequence !== historyRefreshSequence) return;
     // A live alert reads the strip's window: misses from weeks ago are history,
     // not something to act on now.
+    const entries = flattenPlanHistoryEntries(payload);
+    const now = Date.now();
+    cachedMissedTask = resolveOverviewMissedTask(entries, now);
     cachedMissStreaks = resolveMissStreakBadges(
-      filterSevenDayWindowEntries(flattenPlanHistoryEntries(payload), Date.now(), resolveBrowserTimeZone()),
+      filterSevenDayWindowEntries(entries, now, resolveBrowserTimeZone()),
     );
     doRender();
   })();
@@ -501,10 +513,11 @@ const toRowStatus = (
   };
 };
 
-const resolveRowStatuses = (nowMs: number): OverviewSmartTaskStatusInput[] => {
+const resolveRowStatuses = (nowMs: number, detailedTaskIds: ReadonlySet<string>): OverviewSmartTaskStatusInput[] => {
   const plans = state.deferredObjectiveActivePlans?.plansByDeviceId ?? {};
   const statuses: OverviewSmartTaskStatusInput[] = [];
   for (const [deviceId, plan] of Object.entries(plans)) {
+    if (detailedTaskIds.has(deviceId)) continue;
     const objective = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
     if (!objective?.enabled) continue;
     if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) continue;
@@ -513,10 +526,14 @@ const resolveRowStatuses = (nowMs: number): OverviewSmartTaskStatusInput[] => {
   return statuses;
 };
 
-const resolveSmartTaskRow = (statuses: readonly OverviewSmartTaskStatusInput[]): OverviewSmartTaskRow | null => (
+const resolveSmartTaskRow = (
+  statuses: readonly OverviewSmartTaskStatusInput[],
+  missedTask: OverviewMissedTask | null,
+): OverviewSmartTaskRow | null => (
   resolveOverviewSmartTaskRow({
     statuses,
-    missStreaks: cachedMissStreaks,
+    missStreaks: missedTask === null ? cachedMissStreaks
+      : cachedMissStreaks.filter((badge) => badge.deviceId !== missedTask.deviceId),
     formatTime: formatRowTime,
   })
 );

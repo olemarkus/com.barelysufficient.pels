@@ -10,16 +10,22 @@ import { renderTest as test } from './fixtures/test';
 
 const ROW = '#plan-smart-task-row';
 
-test('steady variant: the default fixture (one healthy task) renders the muted aggregate', async ({ page }) => {
+test('a scheduled task explains its waiting period and the checks that have not run', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  const row = page.locator(ROW);
-  await expect(row).toHaveText(/1 smart task · on track/);
-  await expect(row).toHaveAttribute('data-variant', 'steady');
+  const section = page.locator('#plan-smart-task-status');
+  await expect(section).toContainText('Next scheduled period starts at');
+  await section.getByRole('button', { name: 'What is this task waiting for? (Connected 300)' }).click();
+  const dialog = page.locator('md-dialog[open]');
+  await expect(dialog).toContainText('Run time scheduled');
+  await expect(dialog).toContainText('Not checked yet');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(ROW)).toHaveCount(0);
 });
 
-test('cannot-finish replaces the steady summary with a detailed actionable status', async ({ page }) => {
+test('cannot-finish replaces the scheduled status with an actionable status', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator(ROW)).toHaveAttribute('data-variant', 'steady');
+  await expect(page.locator('#plan-smart-task-status')).toContainText('Next scheduled period starts at');
   await page.evaluate(() => {
     const homey = (window as unknown as {
       Homey: {
@@ -56,8 +62,8 @@ test('cannot-finish replaces the steady summary with a detailed actionable statu
   await expect(page.locator(ROW)).toHaveCount(0);
 });
 
-// The rollup reads only runs inside the `Last 7 days` window, so the fixture
-// runs finished hours ago.
+// Keep the rollup fixture inside the seven-day window and outside the first
+// day, when the recent-miss notice takes the place of this device's rollup.
 test('miss-streak rollup renders for the failing-recovering visitor and taps through to Smart tasks', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as {
@@ -71,6 +77,7 @@ test('miss-streak rollup renders for the failing-recovering visitor and taps thr
       outcome,
       finalizedAtMs,
       deadlineAtMs: finalizedAtMs,
+      startedAtMs: finalizedAtMs - 3_600_000,
       targetValue: 65,
     });
     w.__PELS_HOMEY_STUB__ = {
@@ -80,10 +87,10 @@ test('miss-streak rollup renders for the failing-recovering visitor and taps thr
           version: 1,
           entriesByDeviceId: {
             dev_waterheater: [
-              entry('h4', 'missed', Date.now() - 1 * 3_600_000),
-              entry('h3', 'missed', Date.now() - 2 * 3_600_000),
-              entry('h2', 'missed', Date.now() - 3 * 3_600_000),
-              entry('h1', 'met', Date.now() - 4 * 3_600_000),
+              entry('h4', 'missed', Date.now() - 25 * 3_600_000),
+              entry('h3', 'missed', Date.now() - 26 * 3_600_000),
+              entry('h2', 'missed', Date.now() - 27 * 3_600_000),
+              entry('h1', 'met', Date.now() - 28 * 3_600_000),
             ],
           },
         }),
@@ -131,6 +138,7 @@ test('the miss rollup refreshes when new history finalizes (no stale cached read
       outcome,
       finalizedAtMs,
       deadlineAtMs: finalizedAtMs,
+      startedAtMs: finalizedAtMs - 3_600_000,
       targetValue: 65,
     });
     w.__PELS_HOMEY_STUB__ = {
@@ -143,10 +151,10 @@ test('the miss rollup refreshes when new history finalizes (no stale cached read
           entriesByDeviceId: w.__historyBroken
             ? {
               dev_waterheater: [
-                entry('h4', 'missed', Date.now() - 1 * 3_600_000),
-                entry('h3', 'missed', Date.now() - 2 * 3_600_000),
-                entry('h2', 'missed', Date.now() - 3 * 3_600_000),
-                entry('h1', 'met', Date.now() - 4 * 3_600_000),
+                entry('h4', 'missed', Date.now() - 25 * 3_600_000),
+                entry('h3', 'missed', Date.now() - 26 * 3_600_000),
+                entry('h2', 'missed', Date.now() - 27 * 3_600_000),
+                entry('h1', 'met', Date.now() - 28 * 3_600_000),
               ],
             }
             : {},
@@ -156,7 +164,7 @@ test('the miss rollup refreshes when new history finalizes (no stale cached read
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const row = page.locator('#plan-smart-task-row');
-  await expect(row).toHaveAttribute('data-variant', 'steady');
+  await expect(page.locator('#plan-smart-task-status')).toContainText('Next scheduled period starts at');
 
   await page.evaluate(() => {
     (window as unknown as { __historyBroken?: boolean }).__historyBroken = true;

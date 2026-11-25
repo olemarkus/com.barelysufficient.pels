@@ -37,6 +37,7 @@ import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
 import { OverviewControlWarningIcon } from './OverviewControlWarning.tsx';
 import { OverviewDeviceWarningIcon } from './OverviewDeviceWarning.tsx';
 import { openContextualProblemReport } from '../problemReportAction.ts';
+import { OverviewDecisionInfo } from './OverviewDecisionInfo.tsx';
 
 const stopActivation = (event: Event): void => {
   event.stopPropagation();
@@ -330,6 +331,26 @@ type PlanCardShellProps = {
   children: ComponentChildren;
 };
 
+const resolvePlanCardTitle = (dev: PlanDeviceSnapshot, displayName: string) => {
+  const activation = cardActivationProps(dev.id);
+  const label = `Open device details for ${displayName}`;
+  if (dev.status.reason?.chargingStartChecks === undefined) {
+    return {
+      activation: { ...activation, tabIndex: 0, role: 'button' as const, 'aria-label': label },
+      content: displayName,
+    };
+  }
+  // The ⓘ and the title are separate controls when there is a checklist.
+  return {
+    activation: { onClick: activation.onClick },
+    content: (
+      <button type="button" class="hy-nostyle plan-card__title-action" aria-label={label}>
+        {displayName}
+      </button>
+    ),
+  };
+};
+
 // The frame every plan card shares: the surface that opens device details and
 // the header with the title, the status chip and the smart-task chip.
 export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, children }: PlanCardShellProps) => {
@@ -339,22 +360,20 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, 
     isDimmedDisplayStateKind(stateKind) ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
   const displayName = formatDisplayDeviceName(dev.name);
+  const title = resolvePlanCardTitle(dev, displayName);
   return (
     <div
       class={cardClasses}
       data-device-id={dev.id}
       data-state-kind={stateKind}
-      tabIndex={0}
-      role="button"
-      aria-label={`Open device details for ${displayName}`}
-      {...cardActivationProps(dev.id)}
+      {...title.activation}
     >
       <MdElevation aria-hidden="true" />
       <MdRipple aria-hidden="true" />
 
       <div class="plan-card__header">
         <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{displayName}</h3>
+          <h3 class="plan-card__title">{title.content}</h3>
         </div>
         <div class="plan-card__chips">
           {warning && <OverviewControlWarningIcon key={warning.recommendation.version} warning={warning} />}
@@ -443,14 +462,29 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, warning, 
 
 // ─── Generic plan card ────────────────────────────────────────────────────────
 
-const GenericReasonLine = ({ reason, evStateLine }: {
+type PlanDeviceReasonLineProps = {
   reason: PlanDeviceSnapshot['status']['reason'];
-  evStateLine: string | null;
-}) => {
-  // The device's own reason wins; a charger's EV smart-task line fills the
-  // slot only when the device has no reason.
-  const text = reason?.text ?? evStateLine ?? '';
-  return text === '' ? null : <p class="plan-card__reason" data-tone={reason?.tone}>{text}</p>;
+  fallback?: string | null;
+  subject: string;
+  className: string;
+};
+
+export const PlanDeviceReasonLine = ({ reason, fallback, subject, className }: PlanDeviceReasonLineProps) => {
+  const content = reason?.text ?? fallback;
+  if (!content) return null;
+  const line = <p class={className} data-tone={reason?.tone}>{content}</p>;
+  const checks = reason?.chargingStartChecks;
+  if (checks === undefined) return line;
+  return (
+    <div class="plan-card__reason-with-info">
+      {line}
+      <OverviewDecisionInfo
+        subject={formatDisplayDeviceName(subject)}
+        title="What needs to happen before charging starts?"
+        items={checks}
+      />
+    </div>
+  );
 };
 
 export const PlanGenericCard = ({
@@ -520,7 +554,8 @@ export const PlanGenericCard = ({
       {/* The device's own facts, between the state row and the reason: a
           home battery's charge level (and, in its own mode, its direction). */}
       {presentation.factText !== null && <span class="plan-card__secondary-line">{presentation.factText}</span>}
-      <GenericReasonLine reason={presentation.reason} evStateLine={evStateLine} />
+      <PlanDeviceReasonLine reason={presentation.reason} fallback={evStateLine}
+        subject={displayDev.name} className="plan-card__reason" />
     </PlanCardShell>
   );
 };

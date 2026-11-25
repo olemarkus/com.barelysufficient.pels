@@ -65,6 +65,53 @@ const adapterWithStatus = (status: AdapterUnavailableStatus): DeviceControlAdapt
 });
 
 describe('settingsOverviewReadModel', () => {
+  it('explains the recorded EV power check for both charger card variants', () => {
+    const observed = { ...noPlanServiceObservedReads,
+      getObservedEvChargingState: () => ({ kind: 'observed' as const, value: 'plugged_in_paused' as const }),
+    };
+    for (const build of [buildPlanDevice, steppedPlanDevice]) {
+      const device = build({ isEvCharger: true, currentState: 'off',
+        plannedState: 'shed', commandableNow: true,
+        reason: insufficientHeadroomFixtureReason({ needKw: 1.4, availableKw: 0.9 }),
+      });
+      const checks = buildDeviceCard(device, { ...absentTemperature, observed }).status.reason?.chargingStartChecks;
+      expect(checks).toMatchObject([
+        { label: 'Car connected', state: 'met' },
+        { label: 'Charging allowed by PELS', state: 'met' },
+        { label: 'Enough power to start', state: 'waiting',
+          detail: 'Needed 1.4 kW, with 0.9 kW available at the last check.' },
+      ]);
+    }
+  });
+
+  it.each([
+    [{ code: PLAN_REASON_CODES.deferredObjectiveAvoid }, 'not_checked'],
+    [{ code: PLAN_REASON_CODES.meterSilent }, 'unverified'],
+  ] as const)('handles unavailable power-check evidence for %j', (reason, state) => {
+    const device = buildPlanDevice({ isEvCharger: true, currentState: 'off',
+      plannedState: 'shed', commandableNow: true, reason,
+    });
+    const checks = buildDeviceCard(device, absentTemperature).status.reason?.chargingStartChecks;
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Car connected', state: 'unverified' }),
+      expect.objectContaining({ label: 'Enough power to start', state }),
+    ]));
+    expect(checks).not.toContainEqual({ label: 'Charging allowed by PELS', state: 'met' });
+  });
+
+  it('keeps a recorded power comparison distinct from an unchecked start', () => {
+    const build = (reason: NonNullable<Parameters<typeof buildPlanDevice>[0]>['reason']) => buildDeviceCard(buildPlanDevice({
+      isEvCharger: true, currentState: 'off', plannedState: 'shed', commandableNow: true, reason,
+    }), absentTemperature).status.reason?.chargingStartChecks;
+    expect(build(insufficientHeadroomFixtureReason({ needKw: 1.4, availableKw: 1.395 })))
+      .toContainEqual({ label: 'Enough power to start', state: 'waiting' });
+    const reserved = build({ code: PLAN_REASON_CODES.reservedForStart, targetName: 'Water heater' });
+    expect(reserved).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Power free of other reservations', state: 'waiting' }),
+    ]));
+    expect(reserved).not.toContainEqual({ label: 'Enough power to start', state: 'not_checked' });
+  });
+
   it('publishes the simulated mode target without claiming power-control authority', () => {
     const device = buildPlanDevice({ id: 'mode-heater', deviceType: 'temperature', controllable: false,
       binaryCapabilityId: undefined, currentState: 'not_applicable', plannedState: 'keep',

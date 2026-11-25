@@ -3638,6 +3638,11 @@ md-filled-tonal-button.is-busy {
   background: var(--accent);
 }
 
+.plan-smart-task-row--missed .plan-smart-task-row__dot {
+  align-self: start;
+  margin-block-start: var(--spacing-2);
+}
+
 .plan-smart-task-row[data-tone="warn"] .plan-smart-task-row__dot {
   background: var(--pels-status-warning);
 }
@@ -3653,6 +3658,13 @@ md-filled-tonal-button.is-busy {
   align-items: baseline;
   min-inline-size: 0;
   white-space: nowrap;
+}
+
+.plan-smart-task-row--missed .plan-smart-task-row__text {
+  display: grid;
+  gap: var(--spacing-1);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .plan-smart-task-row__device {
@@ -3688,6 +3700,55 @@ md-filled-tonal-button.is-busy {
   font-size: var(--font-size-lg);
   line-height: var(--font-line-height-flat);
   flex-shrink: 0;
+}
+
+.pels-surface-card.plan-smart-task-row--missed {
+  cursor: default;
+}
+
+.plan-smart-task-row__text p,
+.plan-smart-task-row--missed .plan-smart-task-row__missed-title {
+  margin: 0;
+}
+
+.plan-smart-task-row--missed .plan-smart-task-row__missed-title {
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  color: var(--pels-status-on-warning);
+}
+
+.plan-smart-task-row__missed-action {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--pels-touch-target-min);
+  justify-self: start;
+  color: var(--text);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: underline;
+}
+
+.overview-decision-line {
+  display: flex;
+  align-items: center;
+}
+
+.overview-decision-info {
+  display: inline-flex;
+  flex: none;
+}
+
+.overview-decision-info__button {
+  inline-size: var(--pels-touch-target-min);
+  block-size: var(--pels-touch-target-min);
+}
+
+.overview-decision-info__checks {
+  display: grid;
+  gap: var(--spacing-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--text);
 }
 
 .plan-cards {
@@ -4003,6 +4064,31 @@ label.pels-text-settings-label {
   color: var(--pels-text-card-supporting-color);
   font-size: var(--pels-text-card-supporting-font-size);
   line-height: var(--pels-text-card-supporting-font-line-height);
+}
+
+.overview-decision-info__checks .pels-card-supporting {
+  color: inherit;
+}
+
+.plan-card__title-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.plan-card__reason-with-info {
+  display: flex;
+  align-items: center;
+  column-gap: var(--spacing-2);
+  min-inline-size: 0;
+}
+
+.plan-card__reason-with-info > p {
+  min-inline-size: 0;
 }
 
 .plan-card__title-wrap {

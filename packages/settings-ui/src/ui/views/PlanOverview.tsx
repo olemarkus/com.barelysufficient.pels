@@ -22,9 +22,11 @@ import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow
 import { SetupPathCard } from './SetupPathCard.tsx';
 import { isSetupStepOpen } from '../setupPathModel.ts';
 import type { SetupPathRead } from '../setupPathFacts.ts';
+import type { OverviewMissedTask } from '../overviewMissedTask.ts';
 import type { OverviewSmartTaskStatus } from '../overviewSmartTaskStatus.ts';
 import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
 import { OverviewControlWarningIcon } from './OverviewControlWarning.tsx';
+import { OverviewDecisionInfo } from './OverviewDecisionInfo.tsx';
 
 type OverviewProps = {
   // One row per device PELS manages, from the DEVICE list joined to this
@@ -51,6 +53,7 @@ type OverviewProps = {
   // nothing — no active tasks and no recent misses). Resolved in the
   // orchestrator (`planRedesign.ts`) so this view stays props-in.
   smartTaskRow: OverviewSmartTaskRow | null;
+  missedTask: OverviewMissedTask | null;
   smartTaskStatuses: readonly OverviewSmartTaskStatus[];
   onSmartTaskAction: (action: OverviewSmartTaskStatus['action']) => void;
   phaseLoad: SettingsUiPhaseLoad;
@@ -97,6 +100,22 @@ const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
   </button>
 );
 
+const MissedTaskRow = ({ notice }: { notice: OverviewMissedTask | null }) => notice === null ? null : (
+  <section class="pels-surface-card plan-smart-task-row plan-smart-task-row--missed" data-tone="warn">
+    <MdElevation aria-hidden="true" />
+    <span class="plan-smart-task-row__dot" aria-hidden="true" />
+    <div class="plan-smart-task-row__text">
+      <h2 class="plan-smart-task-row__missed-title">{notice.title}</h2>
+      {notice.result !== null && <p>{notice.result}</p>}
+      <div class="overview-decision-line">
+        <p>{notice.reason}</p>
+        <OverviewDecisionInfo title="What held this task back?" subject={notice.deviceName} items={notice.checks} />
+      </div>
+      <a class="plan-smart-task-row__missed-action" href={notice.href}>View missed task</a>
+    </div>
+  </section>
+);
+
 const SmartTaskStatuses = ({ rows, onAction }: {
   rows: readonly OverviewSmartTaskStatus[];
   onAction: OverviewProps['onSmartTaskAction'];
@@ -111,7 +130,14 @@ const SmartTaskStatuses = ({ rows, onAction }: {
           <li key={row.deviceId} class="plan-task-status__item" data-tone={row.tone} data-task-device-id={row.deviceId}>
             <h3 class="pels-text-card-title">{row.deviceName}</h3>
             <p class="plan-task-status__headline">{row.headline}</p>
-            <p class="pels-card-supporting">{row.body}</p>
+            <div class="overview-decision-line">
+              <p class="pels-card-supporting">{row.body}</p>
+              <OverviewDecisionInfo
+                title="What is this task waiting for?"
+                subject={row.deviceName}
+                items={row.checks}
+              />
+            </div>
             <div class="form__actions">
               <MdOutlinedButton
                 type="button"
@@ -201,7 +227,7 @@ const ScopeUnavailableNotice = () => (
 
 const PlanOverviewRoot = ({
   devices, controlWarnings, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, monthlyCapacity, evStateLines, setupPath,
-  context, nowMs, smartTaskStatuses, onSmartTaskAction,
+  context, nowMs, missedTask, smartTaskStatuses, onSmartTaskAction,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
@@ -260,8 +286,9 @@ const PlanOverviewRoot = ({
       <MonthlyCapacityOverview read={monthlyCapacity} />
       {showHero && <PhaseLoadRow load={phaseLoad} />}
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
-      {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
       <SmartTaskStatuses rows={smartTaskStatuses} onAction={onSmartTaskAction} />
+      <MissedTaskRow notice={missedTask} />
+      {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
       {devices.state === 'unavailable' && (
         <section class="pels-surface-card" id="plan-devices-unavailable">
           <MdElevation aria-hidden="true" />

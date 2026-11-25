@@ -151,7 +151,7 @@ describe('Overview current smart-task status', () => {
     expect(resolve(plan({ latest: { ...currentPlan.latest, planStatus: 'satisfied' } }))).toEqual([]);
     expect(resolve(plan({ latest: {
       ...currentPlan.latest, hours: [{ startsAtMs: nowMs + 1000, endsAtMs: deadlineAtMs, plannedKWh: 4 }],
-    } }))).toEqual([]);
+    } }))).toEqual([expect.objectContaining({ tone: 'muted', headline: 'On track' })]);
     expect(resolve(plan({ pending: true, latest: null, pendingReason: 'not_yet_planned' }))).toEqual([]);
   });
 
@@ -179,5 +179,40 @@ describe('Overview current smart-task status', () => {
     } }, devices, prices(true), nowMs);
     expect(rows.map((row) => row.tone)).toEqual(['warn', 'muted']);
     expect(rows[0].deviceName).toBe('Device');
+  });
+});
+
+describe('Overview Smart task decision details', () => {
+  it('shows a confirmed future booking without claiming power has been checked', () => {
+    const current = plan();
+    const startsAtMs = nowMs + 3_600_000;
+    if (current.latest === null) throw new Error('fixture needs a revision');
+    const latest = {
+      ...current.latest,
+      hours: [{ startsAtMs, endsAtMs: startsAtMs + 3_600_000, plannedKWh: 4 }],
+    };
+
+    const [row] = resolve({ ...current, latest });
+    expect(row.checks).toEqual([
+      { label: 'Run time scheduled', state: 'met' },
+      { label: expect.stringMatching(/^Scheduled period starts at /), state: 'waiting' },
+      { label: 'Power available when that period starts', state: 'not_checked' },
+    ]);
+    expect(resolve({ ...current, latest, targetValue: 70 })).toEqual([]);
+  });
+
+  it('does not call a task waiting when an active zero-energy booking can use spare power', () => {
+    const current = plan();
+    if (current.latest === null) throw new Error('fixture needs a revision');
+    expect(resolve({
+      ...current,
+      latest: {
+        ...current.latest,
+        hours: [
+          { startsAtMs: nowMs - 3_600_000, endsAtMs: nowMs + 1, plannedKWh: 0 },
+          { startsAtMs: nowMs + 1, endsAtMs: nowMs + 3_600_000, plannedKWh: 4 },
+        ],
+      },
+    })).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
-import { PlanCardShell } from './PlanDeviceCards.tsx';
+import { PlanCardShell, PlanDeviceReasonLine } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 import type { OverviewControlWarning } from '../overviewControlWarnings.ts';
 
@@ -62,7 +62,6 @@ export const PlanSteppedCard = ({
   const status = displayDev.status;
   const powerText = status.powerText;
   const factText = status.factText;
-  const statusText = status.reason?.text ?? null;
 
   return (
     <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="stepped" leadingChip={null} warning={warning}>
@@ -79,9 +78,8 @@ export const PlanSteppedCard = ({
         {factText !== null && (
           <span class="plan-card__secondary-line">{factText}</span>
         )}
-        {statusText !== null && (
-          <p class="plan-card__status-line pels-text-status-line">{statusText}</p>
-        )}
+        <PlanDeviceReasonLine reason={status.reason} subject={displayDev.name}
+          className="plan-card__status-line pels-text-status-line" />
 
         {status.rail && <StepRail dev={displayDev} />}
       </div>
