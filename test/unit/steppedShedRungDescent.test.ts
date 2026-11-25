@@ -92,6 +92,31 @@ const ladderFor = (
 ) => resolveSteppedShedLadder(device, profile, initialTargetFor(device, shedAction), shedAction);
 
 describe('stepped shed ladder pricing', () => {
+  it.each([
+    { currentDrawKw: 3.5, target: '10a', reliefKw: 1.2, deficitKw: 1 },
+    { currentDrawKw: 4.4, target: '16a', reliefKw: 0.72, deficitKw: 0.6 },
+  ])('credits only rungs below the observed $currentDrawKw kW draw', ({
+    currentDrawKw, target, reliefKw, deficitKw,
+  }) => {
+    const profile = {
+      steps: [
+        ...chargerProfile.steps.map((step) => ({ ...step, planningCurrentA: step.planningPowerW / 230 })),
+        { id: '32a', planningPowerW: 7360, planningCurrentA: 32 },
+      ],
+    };
+    const device = charger({
+      isEvCharger: true, steppedLoadProfile: profile, selectedStepId: '32a', currentDrawKw,
+    });
+    const result = ladderFor(device, profile, 'set_step');
+
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.rungs.some((rung) => rung.toStepId === '20a')).toBe(false);
+    expect(chooseShedRung(result.rungs, deficitKw)).toEqual({
+      toStepId: target, reliefKw: expect.closeTo(reliefKw, 6),
+    });
+  });
+
   it('offers useful active rungs for a single-phase car on a three-phase charger ladder', () => {
     const profile = {
       steps: chargerProfile.steps.map((step) => ({ ...step, planningPowerW: step.planningPowerW * 3 })),
