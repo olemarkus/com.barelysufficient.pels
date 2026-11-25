@@ -901,5 +901,8 @@
   },
   "3.52.0": {
     "en": "You can now start, change or end a temperature override from the Device insight widget, and temperature override Flows can run for up to seven days. New Flow cards fire when PELS limits or resumes a device, and Prepare operating mode heats eligible devices early so a mode is ready at the time you choose. The resume card covers devices limited since PELS last started.\n\nAn energy smart task whose device stops taking power while it is allowed to run is now Tentatively met. Smart task Flows report this as device_idle instead of missed or at_risk, so add device_idle to any filter that should include it. A home battery left in PELS control by an earlier version now asks you to confirm the hand-back on its device page. Dismissed recommendations stay dismissed across settings sessions."
+  },
+  "3.52.1": {
+    "en": "Zaptec chargers that share one installation can now charge only for Smart tasks: leave Power-limit control off and turn on Only PELS starts this device on that charger. Setup > Charging current links to the switch when a charger still needs it, and the chargers in one installation can use different start settings.\n\nWeather insight now fills earlier history from the main meter you selected. Setting up power for an on/off relay without a power reading is clearer. Changing Managed by PELS on several devices in a row is applied together. PELS uses less memory after it starts. Support reports now include installed Homey app versions, device firmware and what Homey recorded when something else changed a device PELS controls."
   }
 }
