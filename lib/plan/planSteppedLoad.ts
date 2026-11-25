@@ -23,6 +23,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import { resolveOperatingChargingPhases } from '../phaseFootprint/chargingPhaseFootprints';
 import type {
   DevicePlanDevice,
   MeteredKind,
@@ -586,9 +587,9 @@ const NO_STEP_CHANGE: StepChange = { direction: 'none', deltaKw: 0 };
  * learned 0.79 kW from trickle readings while it drew 1.13-1.36 kW, and a resume
  * from off was admitted at 0.79 kW into room the rung did not fit. Nameplate on a
  * climb's after-side commits what the rung may draw. On a descent's after-side it
- * remains unchanged for ordinary loads. EV descents scale the target by the
- * current measured-to-nameplate ratio (capped at one): the car may use fewer
- * phases than its charger's preset. Relief remains bounded by measured draw,
+ * stays at nameplate for ordinary loads and single-phase EV profiles. On an
+ * EV profile that may supply more phases than the car uses, descents scale the
+ * target by the measured-to-nameplate ratio. Relief remains bounded by observed draw,
  * and the device's telemetry qualifies delivery of the selected reduction.
  * Learned step power answers how fast a smart task delivers energy
  * (`lib/objectives`), not how much room a rung needs.
@@ -623,12 +624,14 @@ export function resolveStepChangeKw(
     ? 0
     : resolveStepChangeBeforeKw(device, effectiveFromStepId, direction);
   const targetNameplateKw = resolveSteppedLoadPlanningKw(device, toStepId);
-  // An EV preset describes the charger's phases, but the connected car may
-  // use fewer. Scale descent only: admission must still cover full nameplate.
-  // Cap the ratio so a stale step report cannot amplify the target estimate.
+  // An EV preset can describe more phases than the connected car uses.
+  // Admission still needs the full nameplate.
   const afterKw = device.isEvCharger && direction === 'down'
     ? scaleSteppedDescentTargetKw(
-      targetNameplateKw, beforeKw, resolveSteppedLoadPlanningKw(device, effectiveFromStepId),
+      device.steppedLoadProfile,
+      targetNameplateKw,
+      beforeKw,
+      resolveSteppedLoadPlanningKw(device, effectiveFromStepId),
     )
     : targetNameplateKw;
   const deltaKw = direction === 'down'
@@ -637,12 +640,15 @@ export function resolveStepChangeKw(
   return { direction, deltaKw };
 }
 
-/** Scale an EV descent from its reference rung; later holds retain that decision-time reference. */
+/** Price an EV descent from its reference rung; later holds retain that decision-time reference. */
 export function scaleSteppedDescentTargetKw(
+  profile: SteppedLoadProfile,
   targetNameplateKw: number,
   referenceDrawKw: number,
   referenceNameplateKw: number,
 ): number {
+  // A one-phase car drawing below its amp cap can keep drawing as much after a cap reduction.
+  if (resolveOperatingChargingPhases(profile) === 1) return targetNameplateKw;
   const scale = referenceNameplateKw > 0 && referenceDrawKw > 0
     ? Math.min(1, referenceDrawKw / referenceNameplateKw)
     : 1;

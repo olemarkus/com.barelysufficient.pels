@@ -617,6 +617,7 @@ function withReliefBelowHeldStep(
       toStepId: rung.toStepId,
       reliefKw: candidate.isEvCharger
         ? Math.min(candidate.currentDrawKw, target.expectedDrawKw) - scaleSteppedDescentTargetKw(
+          candidate.steppedLoadProfile,
           resolveSteppedLoadPlanningKw(candidate, rung.toStepId),
           target.expectedDrawKw,
           resolveSteppedLoadPlanningKw(candidate, target.stepId),
@@ -722,6 +723,7 @@ function latchSteppedShedTargets(
     const targetNameplateKw = resolveSteppedLoadPlanningKw(device, stepId);
     const expectedDrawKw = device.isEvCharger
       ? scaleSteppedDescentTargetKw(
+        device.steppedLoadProfile,
         targetNameplateKw,
         previous?.expectedDrawKw ?? device.currentDrawKw,
         resolveSteppedLoadPlanningKw(device, previous?.stepId ?? device.selectedStepId),

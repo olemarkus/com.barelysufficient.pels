@@ -119,6 +119,31 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
   });
 });
 
+it('prices further cuts from a held single-phase cap at the lower rung’s rated power', () => {
+  const steppedLoadProfile = {
+    steps: chargerProfile.steps.map((step) => ({ ...step, planningCurrentA: step.planningPowerW / 230 })),
+  };
+  const device = charger({
+    selectedStepId: '20a',
+    currentDrawKw: 4.4,
+    steppedLoadProfile,
+  });
+  const chosen = selectShedDevices([phaseCandidate(device)], 0.6, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity' });
+  const latch = latchShedDecision(chosen, null, 6000, NOW - 3000, [device]);
+  expect(latch.stepTargets.get('ev')).toEqual({ stepId: '16a', expectedDrawKw: 3.68 });
+
+  const echoed = charger({
+    selectedStepId: '16a',
+    currentDrawKw: 4.4,
+    steppedLoadProfile,
+  });
+  const pending = pendingFor(latch, [echoed], 6000);
+  const deeper = candidatesBeyondPendingRelief([phaseCandidate(echoed)], pending);
+  expect(deeper[0]?.kind === 'stepped' && deeper[0].rungs[0]).toEqual({
+    toStepId: '14a', reliefKw: expect.closeTo(0.46),
+  });
+});
+
 describe('resolvePendingShedRelief', () => {
   it('withdraws only the credited dispatch named by the relay failure', () => {
     const relay = buildPlanInputDevice({ id: 'relay', currentDrawKw: 2, binaryControl: { on: true } });
