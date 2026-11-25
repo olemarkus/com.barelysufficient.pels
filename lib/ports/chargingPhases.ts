@@ -30,6 +30,8 @@ export type ChargingPhaseDevice = {
   /** Latest coherent nonrevoked drawing; idle has no current drawing mode. */
   drawingPhases: ChargingPhaseCount | undefined;
   powers: readonly [ChargingPhasePower, ChargingPhasePower, ChargingPhasePower];
+  /** Accepted voltage on each charger phase, or null when there is no usable reading. */
+  phaseVoltagesV: readonly [number | null, number | null, number | null];
   totalPower: ChargingPhasePower;
 };
 
