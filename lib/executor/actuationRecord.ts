@@ -30,6 +30,8 @@ export class ActuationRecord {
   private readonly binaryRestoreDrawEvidenceFromMs: Record<string, number> = {};
   private readonly lastResortRestoreReserve = new Map<string, { maximumW: number; untilMs: number }>();
 
+  private lastResortStartUncertainUntilMs: number | null = null;
+
   /** The last restore of any device — the restore cooldown's anchor. */
   lastRestoreMs: number | null = null;
 
@@ -117,7 +119,17 @@ export class ActuationRecord {
     this.binaryRestoreDrawEvidenceFromMs[deviceId] = evidenceFromMs;
   }
 
+  /** A dispatched ON can still land after its observer confirmation window. */
+  noteUnconfirmedLastResortStart(untilMs: number): void {
+    this.lastResortStartUncertainUntilMs = untilMs;
+  }
+
+  hasUnconfirmedLastResortStart(nowMs: number): boolean {
+    return this.lastResortStartUncertainUntilMs !== null && nowMs < this.lastResortStartUncertainUntilMs;
+  }
+
   reserveLastResortRestore(deviceId: string, maximumW: number, untilMs: number): void {
+    this.lastResortStartUncertainUntilMs = null;
     this.lastResortRestoreReserve.set(deviceId, { maximumW, untilMs });
   }
 

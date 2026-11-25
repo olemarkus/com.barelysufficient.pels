@@ -380,6 +380,39 @@ describe('restore cooldown early release', () => {
   });
 });
 
+describe('setpoint restore behind a last-resort relay', () => {
+  it.each([16, 19])('keeps the limit at 16 °C when the current setpoint is %s °C', (currentTarget) => {
+    const nowTs = 1_000_000;
+    const state = createPlanEngineState(nowTs - 600000);
+    state.shedDecisions.lastPlannedShedIds = new Set(['thermostat']);
+    const temperatureSetpoints = fixtureLimitedSetpoints({ thermostat: 16 });
+    const thermostat = buildPlanDevice({
+      id: 'thermostat', priority: 2, currentState: 'on', currentDrawKw: 0,
+      currentTarget, currentTemperature: 18, plannedTarget: 21, expectedPowerKw: 1, shedAction: 'set_temperature',
+    });
+    const relay = buildPlanDevice({
+      id: 'relay', name: 'Relay', priority: 1, unmetered: true, currentOn: false, commandableNow: true,
+      control: { managed: true, commandAuthority: true },
+      lastResort: { maximumW: 6000, observedOffAtMs: nowTs - 600000 },
+    });
+    const restore = applyRestorePlanForSpec({
+      planDevices: [thermostat, relay], state, sheddingActive: false,
+      deps: {
+        powerTracker: homeReading(null, nowTs),
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+        temperatureSetpoints,
+        structuredLog: testLogger,
+      },
+      ...buildPlanCycle({ nowTs, headroom: 5, capacitySoftLimit: 10, softLimit: 10 }),
+    });
+    const held = applyShedTemperatureHold(state, restore, sheddingPlanFixture(), temperatureSetpoints);
+    expect(held.planDevices.find(({ id }) => id === 'thermostat')).toMatchObject({
+      plannedTarget: 16,
+      reason: currentTarget === 16 ? { code: 'reserved_for_start', targetName: 'Relay' } : { code: 'capacity' },
+    });
+  });
+});
+
 // A charger running at 3.7 kW (received 500) stepped up at 1000 to a 4.6 kW step; its draw
 // reached 4.6 kW at 2000 (received 2100), and the home reading changed at 2300, after the
 // draw arrived, and again at 2500. Landing needs 3.7 + max(0.3, (4.6 - 3.7) / 2) = 4.15 kW.

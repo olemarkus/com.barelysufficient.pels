@@ -253,6 +253,7 @@ export class DeviceControlSettings {
   get controllableDevices(): BooleanMap { return this.maps.controllable; }
   get devicePowerSources(): DevicePowerSources { return this.maps.powerSources; }
   get lastResortDevices(): LastResortDevices { return this.maps.lastResortDevices; }
+  isLastResortConfigured(deviceId: string): boolean { return Object.hasOwn(this.maps.lastResortDevices, deviceId); }
   isMainFusePhaseMeter(deviceId: string): boolean {
     return this.settings.get(MAIN_FUSE_PHASE_METER_DEVICE_ID) === deviceId;
   }

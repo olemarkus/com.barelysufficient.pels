@@ -138,6 +138,11 @@ confirmations to the current binding generation.
 
 `last_resort_devices` is the device-control owner's map of device IDs to positive maximum watts. The Settings UI writes it from device setup. It grants a managed unmetered relay last-resort control and supplies the restore reservation, never measured equipment draw. Adding or removing the setting advances the switch binding revision, so stale commands and OFF ownership cannot survive it. A new maximum keeps the binding and PELS's own OFF; transport refuses a command that carries the old maximum.
 
+`last_resort_external_off_migrated` belongs to the external-off settings owner.
+It marks the one-time opt-in and per-device hold migration for existing
+last-resort relays. Accepted ON observations clear the seeded holds through the
+ordinary external-off sweep.
+
 The three device setup maps (`device_power_sources`, `last_resort_devices`,
 `device_binary_switches`) are also pruned by DeviceControlSettings: an entry
 keyed by a device missing from Homey's full device list is removed, so a

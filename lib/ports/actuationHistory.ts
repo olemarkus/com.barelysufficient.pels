@@ -12,6 +12,7 @@ export type ActuationHistoryRead = {
   readonly lastDeviceShedMs: Readonly<Record<string, number>>;
   readonly lastDeviceRestoreMs: Readonly<Record<string, number>>;
   readRestoreDrawEvidence(): readonly RestoreDrawEvidence[];
+  hasUnconfirmedLastResortStart(nowMs: number): boolean;
   readonly lastRestoreMs: number | null;
   hasInFlight(): boolean;
 };

@@ -294,9 +294,11 @@ If PELS already manages the socket, **Use only as a meter** turns off PELS manag
 
 If a relay has no device power reading, choose **Turn off as a last resort** during setup and enter the highest total draw of everything the switch powers in **Maximum power draw**. For an already listed relay, you can also open its **Power limiting** settings to make this change.
 
-PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before it turns the relay back on, it needs room for the full configured maximum. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first.
+PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before PELS turns the relay on, it needs room for the full configured maximum plus extra room for the start. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first. While the next relay waits for available power, PELS holds other devices that would otherwise resume or increase their draw.
 
-PELS resumes only a switch-off it can still identify as its own. If the device shows **Manual** after PELS restarts, turn the relay back on to resume control. If you turn off last-resort control while PELS is holding the relay off, turn the relay back on in Homey when there is enough power.
+**Leave off until turned on again** works here as it does for other switches. With it off, PELS can start the relay when power allows. With it on, a shutoff from Homey, the device itself, or a Flow keeps the relay off until it is turned on again. A relay turned off by PELS still resumes on its own. Existing last-resort setups get the toggle switched on during upgrade, and relays that are already off stay off.
+
+If you turn off last-resort control while PELS is holding the relay off, turn the relay back on in Homey when there is enough power.
 
 If the relay starts reporting its own power, PELS still turns back on a relay it switched off, then stops last-resort control for it. Turn off **Turn off as a last resort** to let PELS limit it like any other metered device.
 

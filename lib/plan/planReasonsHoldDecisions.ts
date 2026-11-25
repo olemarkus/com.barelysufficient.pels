@@ -221,6 +221,24 @@ function resolveHoldGating(
   return { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan };
 }
 
+function holdTemperatureBehindLastResort(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  gating: ReturnType<typeof resolveHoldGating>,
+  observedAtShedFloor: boolean,
+): HoldDecision | null {
+  const { lastResortPriorityHold } = pass.restoreResult;
+  if (lastResortPriorityHold === null || gating.shouldAbortRestoreForShortfall || gating.shouldHold
+    || !(observedAtShedFloor || gating.wasShedLastPlan)
+    || !isTemperaturePlanDevice(dev) || !unlimitedSetpointAddsDemand(pass.temperatureSetpoints, dev)) return null;
+  const shedReason = getProducerShedReason({ dev, shedReasons: pass.sheddingPlan.shedReasons });
+  return {
+    type: 'hold',
+    reason: shedReason ?? (observedAtShedFloor
+      ? { code: 'existing', reason: lastResortPriorityHold } : CAPACITY_FALLBACK_REASON),
+  };
+}
+
 function resolveHoldDecision(
   pass: HoldPass,
   dev: DevicePlanDevice,
@@ -243,9 +261,12 @@ function resolveHoldDecision(
   // ONE floor per device per build: every comparison below reads the
   // capability-normalized floor (`normalizedShedFloor.ts`), never raw config.
   const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
-  const { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan } = resolveHoldGating(pass, dev, floorC);
+  const gating = resolveHoldGating(pass, dev, floorC);
+  const { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan } = gating;
 
   const observedAtShedFloor = isObservedAtShedFloor(dev, floorC);
+  const lastResortHold = holdTemperatureBehindLastResort(pass, dev, gating, observedAtShedFloor);
+  if (lastResortHold) return lastResortHold;
   const meterSettlingHold = resolveMeterSettlingHold(pass, wasShedLastPlan, observedAtShedFloor);
   if (meterSettlingHold) return meterSettlingHold;
 

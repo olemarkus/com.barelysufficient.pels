@@ -10,6 +10,8 @@ import {
   EXTERNAL_OFF_HOLDS,
   EXTERNAL_OFF_HOLDS_INITIALIZED,
   EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED,
+  LAST_RESORT_DEVICES,
+  LAST_RESORT_EXTERNAL_OFF_MIGRATED,
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
@@ -539,5 +541,108 @@ describe('external-off hold policy — only a stored hold keeps a released devic
     store.failKeys.current = true;
     store.set = () => { throw new Error('settings write failed'); };
     expect(policy.holdOnRelease('a')).toBe('unavailable');
+  });
+});
+
+
+describe('the last-resort upgrade', () => {
+  it('preserves existing relays without changing the default for later setups', () => {
+    const store = fakeStore({
+      [LAST_RESORT_DEVICES]: { relay: 6000 },
+      [RESPECT_EXTERNAL_OFF_DEVICES]: { other: true },
+    });
+    const policy = createSettingsExternalOffHoldPolicy(store);
+    expect(policy.isHeld('relay')).toBe(true);
+    expect(store.get(RESPECT_EXTERNAL_OFF_DEVICES)).toEqual({ relay: true, other: true });
+
+    policy.clearHold('relay');
+    store.set(LAST_RESORT_DEVICES, { relay: 6000, later: 2000 });
+    const afterRestart = createSettingsExternalOffHoldPolicy(store);
+    expect(afterRestart.isHeld('relay')).toBe(false);
+    expect(afterRestart.isEnabledForDevice('later')).toBe(false);
+    expect(afterRestart.isHeld('later')).toBe(false);
+  });
+
+  it('keeps last-resort starts gated until a partial migration can finish', () => {
+    const store = fakeStore({ [LAST_RESORT_DEVICES]: { relay: 6000 } });
+    const set = store.set;
+    const writes = vi.spyOn(store, 'set').mockImplementation((key, value) => {
+      if (key === holdKey('relay')) throw new Error('hold temporarily unwritable');
+      set(key, value);
+    });
+    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    expect(policy.isHeld('relay')).toBe(true);
+    expect(policy.isHeld('other')).toBe(false);
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBeNull();
+
+    writes.mockRestore();
+    expect(policy.heldDeviceIds()).toEqual(['relay']);
+    expect(store.get(holdKey('relay'))).toBe(true);
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBe(true);
+  });
+
+  it('does not re-seed a cleared hold when only its completion marker failed to write', () => {
+    const store = fakeStore({ [LAST_RESORT_DEVICES]: { relay: 6000 } });
+    const set = store.set;
+    const writes = vi.spyOn(store, 'set').mockImplementation((key, value) => {
+      if (key === LAST_RESORT_EXTERNAL_OFF_MIGRATED) throw new Error('marker temporarily unwritable');
+      set(key, value);
+    });
+    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    expect(policy.heldDeviceIds()).toEqual(['relay']);
+    policy.clearHold('relay'); // The observation sweep saw the relay turned on.
+    expect(store.get(holdKey('relay'))).toBeNull();
+
+    writes.mockRestore();
+    // The relay can now be off again due to a cut by PELS.
+    expect(policy.heldDeviceIds()).toEqual([]);
+    expect(policy.isHeld('relay')).toBe(false);
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBe(true);
+  });
+
+  it('does not repeat a completed migration while the listed completion marker is unreadable', () => {
+    const store = fakeStore({
+      [LAST_RESORT_DEVICES]: { relay: 6000 },
+      [RESPECT_EXTERNAL_OFF_DEVICES]: { relay: false },
+      [LAST_RESORT_EXTERNAL_OFF_MIGRATED]: true,
+    });
+    const get = store.get;
+    const reads = vi.spyOn(store, 'get').mockImplementation((key) => (
+      key === LAST_RESORT_EXTERNAL_OFF_MIGRATED ? null : get(key)
+    ));
+    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    expect(policy.heldDeviceIds()).toEqual([]);
+    expect(store.get(RESPECT_EXTERNAL_OFF_DEVICES)).toEqual({ relay: false });
+
+    reads.mockRestore();
+    expect(policy.heldDeviceIds()).toEqual([]);
+    expect(policy.isHeld('relay')).toBe(false);
+  });
+
+  it('keeps seeded holds when the opt-in read fails after a migration retry', () => {
+    const store = fakeStore({
+      [LAST_RESORT_DEVICES]: { relay: 6000 },
+      [RESPECT_EXTERNAL_OFF_DEVICES]: { other: true },
+      [holdKey('other')]: true,
+    });
+    const get = store.get;
+    let failSetupRead = true;
+    let failOptInRead = false;
+    vi.spyOn(store, 'get').mockImplementation((key) => {
+      if (key === LAST_RESORT_DEVICES && failSetupRead) throw new Error('setup temporarily unreadable');
+      if (key === RESPECT_EXTERNAL_OFF_DEVICES && failOptInRead) throw new Error('opt-in temporarily unreadable');
+      return get(key);
+    });
+    const set = store.set;
+    vi.spyOn(store, 'set').mockImplementation((key, value) => {
+      set(key, value);
+      if (key === LAST_RESORT_EXTERNAL_OFF_MIGRATED) failOptInRead = true;
+    });
+    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    expect(policy.isHeld('other')).toBe(true);
+
+    failSetupRead = false;
+    expect(policy.heldDeviceIds()).toEqual(expect.arrayContaining(['other', 'relay']));
+    expect(policy.isHeld('relay')).toBe(true);
   });
 });

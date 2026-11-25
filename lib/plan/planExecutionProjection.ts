@@ -19,17 +19,21 @@ type PlanMeta = DevicePlan['meta'];
 type PlannedCommandPlan = { devices: PlannedDeviceCommands[] };
 export function buildExecutablePlan(plan: DevicePlan): PlannedCommandPlan {
   return {
-    devices: plan.devices.map((device) => buildExecutableDeviceIntentSafe(device, plan.meta)),
+    devices: plan.devices.map((device) => (
+      buildExecutableDeviceIntentSafe(device, plan.meta, plan.ordinaryStartsHeld === true)
+    )),
   };
 }
 
-export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
+export function buildExecutableDeviceIntent(
+  planDevice: PlanDevice, planMeta?: PlanMeta, ordinaryStartsHeld = false,
+): PlannedDeviceCommands {
   const target = planDevice.targetCommand;
   const installation = planDevice.controlAdapter?.chargingInstallation;
-  const binary = installation ? planDevice.chargingInstallationSwitch : buildPlannedBinaryCommand(planDevice);
-  const release = buildPlannedReleaseCommand(planDevice, planMeta);
+  const binary = resolveDeviceBinaryIntent(planDevice, ordinaryStartsHeld);
+  const release = buildPlannedReleaseCommand(planDevice, planMeta, ordinaryStartsHeld);
   const step = installation && installation.mainId !== planDevice.id
-    ? undefined : buildPlannedSteppedCommand(planDevice);
+    ? undefined : buildPlannedSteppedCommand(planDevice, ordinaryStartsHeld);
   const steppedLoad = installation && step ? installationStepOnly(step) : step;
   // The claim follows from PELS's authority over the device this cycle, a
   // smart task's included, and not from this cycle's step: a device the plan
@@ -51,6 +55,14 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     ...(targetPowerClaim ? { targetPowerClaim } : {}),
   };
   return commands;
+}
+
+function resolveDeviceBinaryIntent(device: PlanDevice, ordinaryStartsHeld: boolean): PlannedBinaryCommand | undefined {
+  const command = device.controlAdapter?.chargingInstallation
+    ? device.chargingInstallationSwitch : buildPlannedBinaryCommand(device);
+  // A keep intent can turn a device back on if it switches OFF after the
+  // build, and an installation member can start on a kept shared limit.
+  return ordinaryStartsHeld && !device.lastResort && command?.desiredOn ? undefined : command;
 }
 
 function installationStepOnly(
@@ -95,9 +107,11 @@ function resolveDeviceLimitReason(device: PlanDevice): DeviceLimitReason | undef
   }
 }
 
-function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
+function buildExecutableDeviceIntentSafe(
+  planDevice: PlanDevice, planMeta: PlanMeta, ordinaryStartsHeld: boolean,
+): PlannedDeviceCommands {
   try {
-    return buildExecutableDeviceIntent(planDevice, planMeta);
+    return buildExecutableDeviceIntent(planDevice, planMeta, ordinaryStartsHeld);
   } catch (error) {
     return {
       id: planDevice.id,
@@ -200,7 +214,7 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
 
 function buildLastResortBinaryCommand(dev: PlanDevice): PlannedBinaryCommand | undefined {
   if (!dev.lastResort || !dev.control.commandAuthority || !dev.lastResortCommand) return undefined;
-  if (dev.lastResortCommand === 'on' && (dev.lastResortOwnedOffAtMs === undefined || dev.plannedState !== 'keep'
+  if (dev.lastResortCommand === 'on' && (dev.plannedState !== 'keep'
     || isRestoreAdmissionHoldReason(dev.reason) || isSwapTargetPendingReason(dev.reason))) return undefined;
   if (dev.lastResortCommand === 'off' && dev.plannedState !== 'shed') return undefined;
   return {
@@ -253,7 +267,8 @@ const buildExecutableBinaryShedIntent = (dev: PlanDevice): PlannedBinaryCommand 
 
 const buildPlannedReleaseCommand = (
   dev: PlanDevice,
-  planMeta?: PlanMeta,
+  planMeta: PlanMeta | undefined,
+  ordinaryStartsHeld: boolean,
 ): PlannedReleaseCommand | undefined => {
   const release = dev.deferredReleaseIntent;
   if (!release || dev.lastResort) return undefined;
@@ -274,7 +289,7 @@ const buildPlannedReleaseCommand = (
   // the label here answered it differently (a fresh timestamp with no total counted as
   // fresh). `undefined` on an older persisted plan means "do not block" — unchanged
   // from the previous optional-chained read.
-  if (planMeta?.powerIsMeasured === false) return undefined;
+  if (ordinaryStartsHeld || planMeta?.powerIsMeasured === false) return undefined;
   if (dev.plannedState !== 'keep') return undefined;
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return undefined;

@@ -94,6 +94,9 @@ export const applyBinaryRestoreWithSnapshot = async (
         snapshot,
       );
       if (!outcome.applied) return false;
+      if (lastResortMaximumW !== undefined && ctx.pendingBinaryCommandStore.hasActiveTurnOn(deviceId)) {
+        ctx.execution.actuation.noteUnconfirmedLastResortStart(Date.now() + ctx.feedback.getRestoreCooldownMs());
+      }
       return true;
     } catch (error) {
       logger.error({

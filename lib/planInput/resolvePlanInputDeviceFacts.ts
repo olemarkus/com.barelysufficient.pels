@@ -140,6 +140,7 @@ function resolveLastResortSetup(source: PlanInputProjectionSource, device: ToPla
   const observation = device.binaryControlObservation;
   return {
     maximumW,
+    ...(hasObservedMeasuredPower(device) ? { metered: true as const } : {}),
     ...(observation?.observedValue === false ? { observedOffAtMs: observation.observedAtMs } : {}),
   };
 }

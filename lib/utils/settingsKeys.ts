@@ -176,6 +176,8 @@ export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX = 'external_off_hold.';
 // Set once the blob above has been copied into per-device keys and consumed.
 export const EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED = 'external_off_holds_perkey_migrated';
+// Compatibility migration for existing last-resort relay settings.
+export const LAST_RESORT_EXTERNAL_OFF_MIGRATED = 'last_resort_external_off_migrated';
 // Runtime state PELS owes a battery: one key per battery PELS has claimed,
 // `battery_control_claim.<deviceId>`, holding the claim value to hand it back
 // to. Owned by `lib/battery/batteryClaimStore.ts`, which says why it is a

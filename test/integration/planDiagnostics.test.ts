@@ -71,6 +71,7 @@ const buildRestoreResult = ({ timing, ...overrides }: RestoreResultOverrides = {
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
   headroomReserves: [],
+  lastResortPriorityHold: null,
   availableHeadroom: 1,
   restoredOneThisCycle: false,
   timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, ...timing }),

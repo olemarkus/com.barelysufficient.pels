@@ -21,7 +21,6 @@ import {
   holdPendingSwapTargetUntilSourcesAreOff,
   holdSteppedSwapDonor,
 } from './swap';
-import { planLastResortRestore } from './lastResort';
 import { planRestoreForDevice } from './gating';
 import { isBehindWaitingHandBack, planStorageHandBack } from './storageHandBack';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
@@ -139,7 +138,6 @@ function applyRestoreCandidate(
     return battery === undefined ? loop : planStorageHandBack(cycle, battery, candidate.lever, loop);
   }
   const dev = cycle.deviceMap.get(candidate.device.id);
-  if (candidate.kind === 'last_resort') return applyLastResortCandidate(cycle, lane, dev, loop);
   // The candidate was chosen with a power axis (`isRestoreLiveEligibleDevice`);
   // the map entry is the same device this cycle, re-read for its latest updates.
   if (!dev || !isMeteredPlanDevice(dev)) return loop;
@@ -165,13 +163,6 @@ function applyRestoreCandidate(
     return planSteppedRestoreThroughSourceHold(cycle, lane, dev, loop);
   }
   return loop;
-}
-
-function applyLastResortCandidate(
-  cycle: RestoreCycle, lane: RestoreLane, dev: DevicePlanDevice | undefined, loop: RestoreLoopState,
-): RestoreLoopState {
-  if (!dev || holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
-  return planLastResortRestore(cycle, lane, dev, loop);
 }
 
 /** A setpoint demand raise ends batch continuation at its place in the priority walk. */

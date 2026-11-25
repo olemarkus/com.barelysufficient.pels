@@ -53,6 +53,13 @@ const canEndRestoreCooldownEarly = (
 ): boolean => cooldownMs === RESTORE_COOLDOWN_MS && !actuation.readRestoreDrawEvidence()
   .some(({ lastResortReserve }) => lastResortReserve !== undefined && nowTs < lastResortReserve.untilMs);
 
+export function hasUnsettledLastResortStart(actuation: ActuationHistoryRead, timing: RestoreTiming): boolean {
+  return actuation.hasUnconfirmedLastResortStart(timing.nowTs) || actuation.readRestoreDrawEvidence().some(
+    ({ restoredAtMs, lastResortReserve }) => lastResortReserve !== undefined
+      && resolveMeterSettlingReason(timing, restoredAtMs) !== null,
+  );
+}
+
 const ceilSecondsOrNull = (ms: number | null): number | null =>
   (ms !== null ? Math.ceil(ms / 1000) : null);
 

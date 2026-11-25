@@ -23,7 +23,6 @@ export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_COD
 
 export type RestoreCandidate =
   | { kind: 'binary' | 'stepped' | 'charging_phase'; device: MeteredDevicePlanDevice }
-  | { kind: 'last_resort'; device: DevicePlanDevice }
   | { kind: 'storage'; device: DevicePlanDevice; lever: StorageLeverState };
 
 function isEligibleForLivePowerControl(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
@@ -31,7 +30,7 @@ function isEligibleForLivePowerControl(device: DevicePlanDevice): device is Mete
   // device with a power reading can be priced for. A temperature device planned
   // without one keeps its setpoint logic and is never a restore, swap or
   // reservation candidate — this is the gate all of those funnel through.
-  return isMeteredPlanDevice(device)
+  return isMeteredPlanDevice(device) && !device.lastResort
     && device.control.commandAuthority
     && device.plannedState !== 'shed'
     && device.plannedState !== 'inactive'
@@ -217,9 +216,6 @@ export function getRestoreCandidates(
   shedDecisions: ShedDecisions,
 ): RestoreCandidate[] {
   const candidates: RestoreCandidate[] = [
-    ...planDevices.filter((device) => device.lastResortOwnedOffAtMs !== undefined && device.currentState === 'off'
-      && device.control.commandAuthority && !device.externalOffHoldActive && device.plannedState === 'keep')
-      .map((device) => ({ kind: 'last_resort' as const, device })),
     ...planDevices
       .filter((device): device is MeteredDevicePlanDevice => (
         !isSteppedLoadDevice(device) && isShedPostureBinaryRestoreCandidate(device, shedDecisions)
