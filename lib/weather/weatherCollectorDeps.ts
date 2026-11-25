@@ -60,28 +60,17 @@ export type WeatherCollectorDeps = {
   /**
    * Main's meter selection, resolved by the setup layer
    * (`setup/mainMeterSettings.ts`) — the same read the scope fingerprint is
-   * composed from; `lib/weather` must not read settings itself. Constrains the
-   * historical-kWh election (`resolveMeterDailyKwh`): only the selected
-   * meter may win — an open probe would re-admit a still-installed previous
-   * meter whose pre-switch days match the retained power-tracker history
-   * strongest, re-vouching old-scope kWh right after a scope invalidation.
-   * `unavailable` defers the election — a failed read must not widen it back
-   * to every installed meter.
+   * composed from. Only that meter supplies historical kWh. An unavailable
+   * selection defers the backfill.
    */
   readMainMeterSelection: () => MainMeterSelection;
   /**
    * The configured whole-home power source, resolved by the setup layer from
    * the same adapter the scope fingerprint's source arm is composed from
-   * (`setup/powerSourceSettings.ts`). Gates the historical-kWh election: the
-   * election exists only for the Homey Energy producer — Flow samples come
-   * from the user's own wiring, not an id-bearing meter, so no installed
-   * meter is that scope's producer, and probing one anyway would let it
-   * validate against the retained pre-switch tracker buckets and re-vouch
-   * old-scope kWh right after a source-switch invalidation. `suspect` (a
-   * transiently unreadable setting) defers the launch, like an unavailable
-   * Main selection. The source union is declared structurally because
-   * `lib/weather` must not import `lib/power` (`no-weather-to-peer`); it
-   * mirrors `PowerSource` in `lib/power/powerSource.ts`.
+   * (`setup/powerSourceSettings.ts`). Meter backfill requires a Homey Energy
+   * producer with a known device identity. Flow readings supply no device
+   * identity. An unread source defers the backfill. The source union mirrors
+   * `PowerSource` in `lib/power/powerSource.ts` across the peer boundary.
    */
   readPowerSource: () => { state: 'resolved'; value: 'homey_energy' | 'flow' } | { state: 'suspect' };
   getNowMs: () => number;

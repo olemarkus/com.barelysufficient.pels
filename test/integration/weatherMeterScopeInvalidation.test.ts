@@ -34,7 +34,7 @@ const START_MS = Date.UTC(2026, 0, 10, 10, 0, 0);
 const MAIN_METER = 'meter-main-1';
 const AREA_METER = 'meter-area-1';
 // The harness runs on Homey Energy: the meter-scope fingerprint (and the
-// meter election it re-arms) is that producer's concern; the Flow arm is
+// meter backfill it re-arms) is that producer's concern; the Flow arm is
 // exercised by the source-switch spec below.
 const STAMPED_SIGNATURE = `source:homey_energy|main:${MAIN_METER}`;
 const AUTOMATIC_ACTIVE_SIGNATURE = 'source:homey_energy|main:automatic|areas:active';
@@ -252,12 +252,9 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     harness.stop();
   });
 
-  it('forgets on a switch to Flow and never re-runs the meter election against the stored Main meter', async () => {
-    // The still-stored (and still-installed) Homey meter could satisfy the
-    // overlap validation entirely from the retained pre-switch tracker
-    // buckets. On the Flow producer the election must not run at all — not
-    // even restricted to that meter — or it would re-vouch old-scope days
-    // under the new `source:flow` stamp before any Flow evidence exists.
+  it('forgets on a switch to Flow and skips backfill from the stored Main meter', async () => {
+    // The stored Homey meter belongs to the previous scope. Its insights
+    // would refill old-scope days under the new Flow stamp.
     const insightsPaths: string[] = [];
     const harness = buildHarness(learnedHistory(), {
       fetchInsights: async (path: string) => {
@@ -296,8 +293,7 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
       previousSignature: STAMPED_SIGNATURE,
       currentSignature: expectedSignature,
     }));
-    // The re-armed backfill concluded synchronously as a no-source election:
-    // no device listing, no candidate probe, nothing in flight.
+    // The Flow source needs no Insights reads.
     expect(insightsPaths).toHaveLength(0);
     expect(harness.collector.isBackfillRunning()).toBe(false);
     expect(harness.weatherLogger.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -348,10 +344,7 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     harness.stop();
   });
 
-  it('binds the re-armed kWh election to the newly selected Main meter — the old meter is never probed', async () => {
-    // Both meters remain installed; the OLD one would win an open election
-    // (its pre-switch days match the retained tracker history strongest) and
-    // re-vouch old-scope kWh under the new stamp.
+  it('reads Insights only from the newly selected Main meter', async () => {
     const insightsPaths: string[] = [];
     const harness = buildHarness(learnedHistory(), {
       fetchInsights: async (path: string) => {
@@ -371,12 +364,73 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     await harness.handle(HOMEY_ENERGY_METER_DEVICE_ID);
     await vi.advanceTimersByTimeAsync(0);
 
-    const probed = insightsPaths.filter((path) => path.includes('homey:device:'));
-    expect(probed.some((path) => path.includes('homey:device:meter-main-2'))).toBe(true);
-    expect(probed.some((path) => path.includes(`homey:device:${MAIN_METER}`))).toBe(false);
-    // The empty-history candidate cannot validate: the election concludes
-    // without re-latching the marker instead of resolving to the old meter.
+    const counterPaths = insightsPaths.filter((path) => path.includes('homey:device:'));
+    expect(counterPaths.some((path) => path.includes('homey:device:meter-main-2'))).toBe(true);
+    expect(counterPaths.some((path) => path.includes(`homey:device:${MAIN_METER}`))).toBe(false);
+    // The selected meter's empty history stays retryable.
     expect(harness.collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBeUndefined();
+    harness.stop();
+  });
+
+  it.each([
+    ['before the pending reload', true],
+    ['after the collector reload', false],
+  ])('discards an old counter read that completes %s', async (_label, releaseBeforeReload) => {
+    const nextMeter = 'meter-main-2';
+    const step = 6 * 60 * 60 * 1000;
+    const midnight = Date.UTC(2026, 0, 4, 23);
+    const counterWindow = (dailyKwh: number) => ({
+      step,
+      values: Array.from({ length: 5 }, (_, index) => ({
+        t: new Date(midnight + index * step).toISOString(),
+        v: 200 + index * dailyKwh / 4,
+      })),
+    });
+    let releaseOldFetch: (() => void) | undefined;
+    const harness = buildHarness(learnedHistory({ meterKwhBackfillDone: undefined }), {
+      fetchInsights: async (path: string) => {
+        if (path === 'manager/devices/device') {
+          return {
+            [MAIN_METER]: { id: MAIN_METER, capabilities: ['meter_power.imported'] },
+            [nextMeter]: { id: nextMeter, capabilities: ['meter_power.imported'] },
+          };
+        }
+        if (path.includes('resolution=lastYear') || path.includes('resolution=last3Months')) {
+          return { step, values: [] };
+        }
+        if (path.includes(`homey:device:${nextMeter}`)) return counterWindow(24);
+        if (path.includes('resolution=thisYear')) {
+          await new Promise<void>((resolve) => { releaseOldFetch = resolve; });
+        }
+        return counterWindow(60);
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(releaseOldFetch).toBeDefined();
+
+    harness.homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, nextMeter);
+    if (releaseBeforeReload) {
+      releaseOldFetch?.();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(harness.collector.getHistoryStateSnapshot().meterScopeSignature).toBe(STAMPED_SIGNATURE);
+      expect(harness.collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBeUndefined();
+    }
+    await harness.handle(HOMEY_ENERGY_METER_DEVICE_ID);
+    releaseOldFetch?.();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const memory = harness.collector.getHistoryStateSnapshot();
+    expect(memory).toMatchObject({
+      meterScopeSignature: `source:homey_energy|main:${nextMeter}`,
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: nextMeter,
+    });
+    expect(memory.records[0].kwhTotal).toBe(24);
+    expect(persistedState(harness).records[0].kwhTotal).toBe(24);
+    expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'weather_meter_backfill_completed',
+      deviceId: MAIN_METER,
+    }));
     harness.stop();
   });
 

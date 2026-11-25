@@ -7,41 +7,19 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 
 /**
- * One-shot reconstruction of historical daily whole-home kWh from a cumulative
- * energy-meter device's Insights log (`meter_power.imported` / `meter_power`),
- * validated against the power tracker before a single day is trusted.
- *
- * Why not the Homey Energy monthly reports: their `consumedPeriod` is the sum
- * of individually-metered devices, NOT the home total, on any Homey without a
- * home meter configured in Homey Energy (`importedPeriod` null is the tell).
- * On the first production install that subset ran at ~0.42× of the tracker's
- * whole-home measurement and silently flattened the energy-signature fit.
- * A historical source is only admissible when its daily values match what the
- * tracker measured on the days both cover — that overlap check is the gate,
- * regardless of which source the kWh comes from.
- *
- * Candidate meters are auto-detected: every device exposing a cumulative
- * meter capability is probed with a recent Insights window, its
- * local-midnight counter diffs are compared with the tracker's daily totals,
- * and the best candidate whose median ratio sits in [0.9, 1.1] over ≥ 14
- * overlap days wins. Device-level meters (thermostats, EV chargers) fail the
- * gate by an order of magnitude, so being liberal in discovery is safe — but
- * when the caller knows the admitted meter identity (`restrictToDeviceId`,
- * Main's explicit selection), the election is confined to it: the overlap
- * gate alone cannot reject a previously-selected meter whose old days still
- * match the retained tracker history. On a fresh install the tracker has
- * fewer than 14 days for a while — the caller retries every start until the
- * overlap exists, then latches its done-marker.
+ * The configured Main meter supplies historical whole-home kWh. Its Insights
+ * counters can recover days even when the tracker has no history to compare.
+ * Homey Energy reports can instead mix individually metered devices into a
+ * partial total, so those reports are not a backfill source.
  */
-
 const CANDIDATE_CAPABILITIES = ['meter_power.imported', 'meter_power'] as const;
-const PROBE_RESOLUTION = 'last3Months';
 /**
  * Stitched broadest-first; `lastYear` is the previous CALENDAR year and
  * `thisYear` covers Jan 1 → now, so together they reach back a full year+
  * at 6-hour step. Finer recent windows sharpen the day boundaries.
  */
 const FULL_RESOLUTIONS = ['lastYear', 'thisYear', 'last3Months', 'last31Days'] as const;
+type YearWindow = 'lastYear' | 'thisYear';
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_USABLE_STEP_MS = 6 * HOUR_MS;
 /**
@@ -49,21 +27,20 @@ const MAX_USABLE_STEP_MS = 6 * HOUR_MS;
  * midnight; beyond that the boundary is a guess, not a measurement.
  */
 const BOUNDARY_TOLERANCE_MS = 3.5 * HOUR_MS;
-const MIN_OVERLAP_DAYS = 14;
+const MIN_COMPARISON_DAYS = 14;
 const RATIO_MIN = 0.9;
 const RATIO_MAX = 1.1;
-/**
- * The median alone has a blind spot: a meter that misses an intermittent
- * large load (EV on its own feed) matches on quiet days and reads ~0.5 on
- * charge days — median still ≈ 1. The quartiles catch that bimodal shape.
- * Asymmetric upper bound: partial tracker days (install day, outages) skew
- * ratios HIGH, and they are artifacts of the comparison, not the meter.
- */
+// Quartiles expose intermittent differences a median can hide. Partial tracker
+// days tend to skew the ratio high, so the upper bound is more generous.
 const RATIO_Q25_MIN = 0.8;
 const RATIO_Q75_MAX = 1.25;
 /** A lived-in home plausibly uses (0, 1000) kWh on a real day. */
 const MAX_PLAUSIBLE_DAY_KWH = 1000;
 const MAX_PLAUSIBLE_COUNTER_KWH = 10_000_000;
+
+type TrackerComparison =
+  | { trackerComparison: 'insufficient_overlap' }
+  | { trackerComparison: 'matches' | 'differs'; overlapDays: number; medianRatio: number };
 
 export type MeterKwhBackfillOutcome =
   | {
@@ -71,42 +48,18 @@ export type MeterKwhBackfillOutcome =
     deviceId: string;
     capability: string;
     dailyKwh: Record<string, number>;
-    overlapDays: number;
-    medianRatio: number;
-    /**
-     * True only when every resolution window was fetched without error. The
-     * caller must not latch its one-shot done-marker on a partial run — e.g.
-     * `lastYear` (the deepest window) failing while the recent windows
-     * succeed would otherwise permanently forfeit a year of history.
-     */
+    comparison: TrackerComparison;
+    /** Only a complete read with usable days can settle the backfill. */
     complete: boolean;
   }
-  | { outcome: 'no_candidates' }
-  | {
-    outcome: 'no_comparable_source';
-    candidatesChecked: number;
-    /**
-     * Candidates whose probe fetch failed outright. When > 0 the verdict
-     * rests on unread evidence — the caller must not take destructive
-     * action (e.g. purging legacy kWh) on the strength of it.
-     */
-    probeFailures: number;
-  };
+  | { outcome: 'no_candidates' | 'no_usable_history' | 'unreadable_history' };
 
 export type MeterKwhBackfillDeps = {
   /** Read-only GET against the Homey Web API (path without leading slash). */
   fetchFromHomeyApi: (path: string) => Promise<unknown>;
-  /** Flat daily totals from the power tracker — the comparison ground truth. */
-  getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
-  /**
-   * When set, only this device may stand for election (the caller's admitted
-   * meter identity — Main's explicit selection). The tracker-overlap gate
-   * cannot provide this constraint itself: after an explicit meter switch the
-   * PREVIOUS meter's pre-switch days still match the retained tracker history
-   * strongest, so an open election would re-admit it and re-vouch old-scope
-   * kWh. REQUIRED: the open election died with the Automatic selection — a
-   * caller with no admitted identity has no election to run.
-   */
+  /** Daily tracker totals for diagnostic comparison when the two series overlap. */
+  getDailyKwh: (dateKey: string) => { total?: number };
+  /** Main's resolved meter identity is the authority for the Insights read. */
   restrictToDeviceId: string;
   timeZone: string;
   nowMs: number;
@@ -114,42 +67,21 @@ export type MeterKwhBackfillDeps = {
 
 export async function resolveMeterDailyKwh(deps: MeterKwhBackfillDeps): Promise<MeterKwhBackfillOutcome> {
   const devices = await deps.fetchFromHomeyApi('manager/devices/device');
-  const installed = listMeterCandidates(devices);
-  const candidates = installed.filter((candidate) => candidate.deviceId === deps.restrictToDeviceId);
-  if (candidates.length === 0) return { outcome: 'no_candidates' };
+  const meter = selectMeter(devices, deps.restrictToDeviceId);
+  if (meter === undefined) return { outcome: 'no_candidates' };
   const todayKey = getDateKeyInTimeZone(new Date(deps.nowMs), deps.timeZone);
-  const probe = await probeCandidates(candidates, todayKey, deps);
-  if (!probe.best) {
-    return { outcome: 'no_comparable_source', candidatesChecked: candidates.length, probeFailures: probe.failures };
-  }
-  const best = probe.best;
-
-  const { collection, failures: failureCount } = await collectCandidatePoints(
-    best, FULL_RESOLUTIONS, deps.fetchFromHomeyApi,
-  );
+  const { collection, complete } = await collectMeterPoints(meter, deps.fetchFromHomeyApi, todayKey, deps.timeZone);
   const dailyKwh = dailyKwhFromCounterPoints(collection, deps.timeZone, todayKey);
-  // Re-validated on the full span: the deep windows must agree with the
-  // tracker as well as the probe window did. Counted as a probe failure for
-  // the caller: a winner whose full history disagrees is unread-evidence
-  // territory, not a conclusive no-source verdict.
-  const validation = validateAgainstTracker(dailyKwh, deps.getDailyKwh);
-  if (!validation.passed) {
-    return {
-      outcome: 'no_comparable_source',
-      candidatesChecked: candidates.length,
-      probeFailures: probe.failures + 1,
-    };
+  if (Object.keys(dailyKwh).length === 0) {
+    return { outcome: complete ? 'no_usable_history' : 'unreadable_history' };
   }
   return {
     outcome: 'resolved',
-    deviceId: best.deviceId,
-    capability: best.capability,
+    deviceId: meter.deviceId,
+    capability: meter.capability,
     dailyKwh,
-    overlapDays: validation.overlapDays,
-    medianRatio: validation.medianRatio,
-    // A failed candidate probe also blocks the latch: the winner of an
-    // election some candidates could not enter must stand for re-election.
-    complete: failureCount === 0 && probe.failures === 0,
+    comparison: compareWithTracker(dailyKwh, deps.getDailyKwh),
+    complete,
   };
 }
 
@@ -173,13 +105,11 @@ export async function fetchDeviceDailyKwh(params: {
   timeZone: string;
   nowMs: number;
 }): Promise<{ dailyKwh: Record<string, number>; complete: boolean }> {
-  const { collection, failures } = await collectCandidatePoints(
-    { deviceId: params.deviceId, capability: params.capability },
-    FULL_RESOLUTIONS,
-    params.fetchFromHomeyApi,
-  );
   const todayKey = getDateKeyInTimeZone(new Date(params.nowMs), params.timeZone);
-  return { dailyKwh: dailyKwhFromCounterPoints(collection, params.timeZone, todayKey), complete: failures === 0 };
+  const { collection, complete } = await collectMeterPoints(
+    { deviceId: params.deviceId, capability: params.capability }, params.fetchFromHomeyApi, todayKey, params.timeZone,
+  );
+  return { dailyKwh: dailyKwhFromCounterPoints(collection, params.timeZone, todayKey), complete };
 }
 
 /**
@@ -191,91 +121,86 @@ export async function fetchDeviceDailyKwh(params: {
  */
 type CounterCollection = { imported: Map<number, number>; exported?: Map<number, number> };
 
-type CandidateValidation = { passed: boolean; overlapDays: number; medianRatio: number };
-
-function listMeterCandidates(devicesResponse: unknown): MeterCandidate[] {
-  if (!isUnknownRecord(devicesResponse)) return [];
-  return Object.values(devicesResponse).flatMap((device) => {
-    if (!isUnknownRecord(device)) return [];
-    const deviceId = device.id;
-    if (typeof deviceId !== 'string' || deviceId.length === 0) return [];
-    const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
-    const capability = meterCapabilityOf(capabilities);
-    if (capability === undefined) return [];
-    // Any device that ALSO meters export is bidirectional gear — net it,
-    // whether its import counter is `.imported` or generic `meter_power`.
-    const exportedCapability = capabilities.includes('meter_power.exported')
-      ? 'meter_power.exported'
-      : undefined;
-    return [{ deviceId, capability, ...(exportedCapability === undefined ? {} : { exportedCapability }) }];
-  });
-}
-
-async function collectCandidatePoints(
-  candidate: MeterCandidate,
-  resolutions: readonly string[],
-  fetchFromHomeyApi: (path: string) => Promise<unknown>,
-): Promise<{ collection: CounterCollection; failures: number }> {
-  const imported = new Map<number, number>();
-  const exported = candidate.exportedCapability === undefined ? undefined : new Map<number, number>();
-  const fetchWindows = async (capability: string, points: Map<number, number>): Promise<number> => {
-    let windowFailures = 0;
-    for (const resolution of resolutions) {
-      try {
-        // A malformed or too-coarse 200 is a failure (the window's data was
-        // not readable), unlike a well-formed empty window (a young meter
-        // simply has no older history — failing that would retry forever).
-        const path = entryPath(candidate.deviceId, capability, resolution);
-        if (!ingestCounterResponse(await fetchFromHomeyApi(path), points)) {
-          windowFailures += 1;
-        }
-      } catch {
-        windowFailures += 1;
-      }
-    }
-    return windowFailures;
-  };
-  const importedFailures = await fetchWindows(candidate.capability, imported);
-  const exportedFailures = exported === undefined || candidate.exportedCapability === undefined
-    ? 0
-    : await fetchWindows(candidate.exportedCapability, exported);
-  // A conclusively EMPTY export log (every export window read fine, zero
-  // samples) means the device never recorded export — net equals gross
-  // import, so the import counter stands alone even when an IMPORT window
-  // failed (those days simply stay unfilled). An empty map left by failed
-  // export reads is kept instead: netting against it yields no days, so
-  // nothing wrong is written.
-  const exportedConclusiveEmpty = exported !== undefined && exported.size === 0 && exportedFailures === 0;
-  return {
-    collection: { imported, ...(exported === undefined || exportedConclusiveEmpty ? {} : { exported }) },
-    failures: importedFailures + exportedFailures,
-  };
-}
-
-async function probeCandidates(
-  candidates: MeterCandidate[],
-  todayKey: string,
-  deps: MeterKwhBackfillDeps,
-): Promise<{ best: MeterCandidate | undefined; failures: number }> {
-  let best: { candidate: MeterCandidate; validation: CandidateValidation } | undefined;
-  let failures = 0;
-  for (const candidate of candidates) {
-    const probe = await collectCandidatePoints(candidate, [PROBE_RESOLUTION], deps.fetchFromHomeyApi);
-    if (probe.failures > 0) {
-      failures += 1;
-      continue;
-    }
-    const dailyKwh = dailyKwhFromCounterPoints(probe.collection, deps.timeZone, todayKey);
-    const validation = validateAgainstTracker(dailyKwh, deps.getDailyKwh);
-    if (!validation.passed) continue;
-    if (!best || isBetterValidation(validation, best.validation)) best = { candidate, validation };
+function selectMeter(devices: unknown, deviceId: string): MeterCandidate | undefined {
+  if (!isUnknownRecord(devices) || Object.keys(devices).length === 0) {
+    throw new Error('Unreadable Homey device list');
   }
-  return { best: best?.candidate, failures };
+  const listed = Object.values(devices);
+  const meter = listed.find((device) => isUnknownRecord(device) && device.id === deviceId);
+  if (!isUnknownRecord(meter)) {
+    if (listed.some((device) => !isUnknownRecord(device) || typeof device.id !== 'string' || device.id === '')) {
+      throw new Error('Unreadable Homey device list');
+    }
+    return undefined;
+  }
+  const capabilities = meter.capabilities;
+  if (!Array.isArray(capabilities) || !capabilities.every((capability) => typeof capability === 'string')) {
+    throw new Error('Unreadable selected meter capabilities');
+  }
+  const capability = meterCapabilityOf(capabilities);
+  if (capability === undefined) return undefined;
+  return capabilities.includes('meter_power.exported')
+    ? { deviceId, capability, exportedCapability: 'meter_power.exported' }
+    : { deviceId, capability };
 }
 
-function isBetterValidation(next: CandidateValidation, current: CandidateValidation): boolean {
-  if (next.overlapDays !== current.overlapDays) return next.overlapDays > current.overlapDays;
-  return Math.abs(next.medianRatio - 1) < Math.abs(current.medianRatio - 1);
+async function collectMeterPoints(
+  meter: MeterCandidate,
+  fetchFromHomeyApi: MeterKwhBackfillDeps['fetchFromHomeyApi'],
+  todayKey: string,
+  timeZone: string,
+): Promise<{ collection: CounterCollection; complete: boolean }> {
+  const imported = await collectCounterPoints(meter.deviceId, meter.capability, fetchFromHomeyApi, todayKey, timeZone);
+  if (meter.exportedCapability === undefined) {
+    return { collection: { imported: imported.points }, complete: imported.complete };
+  }
+  const exported = await collectCounterPoints(
+    meter.deviceId, meter.exportedCapability, fetchFromHomeyApi, todayKey, timeZone,
+  );
+  // A conclusively empty export history makes gross import the net total.
+  // Keep an unreadable export series in the collection so it cannot fall back to gross.
+  const collection = exported.complete && exported.points.size === 0
+    ? { imported: imported.points }
+    : { imported: imported.points, exported: exported.points };
+  return { collection, complete: imported.complete && exported.complete };
+}
+
+async function collectCounterPoints(
+  deviceId: string,
+  capability: string,
+  fetchFromHomeyApi: MeterKwhBackfillDeps['fetchFromHomeyApi'],
+  todayKey: string,
+  timeZone: string,
+): Promise<{ points: Map<number, number>; complete: boolean }> {
+  const points = new Map<number, number>();
+  const emptyYearWindows = new Set<YearWindow>();
+  let complete = true;
+  for (const resolution of FULL_RESOLUTIONS) {
+    try {
+      const response = await fetchFromHomeyApi(entryPath(deviceId, capability, resolution));
+      const result = ingestCounterResponse(response, points);
+      if (result === 'unreadable') complete = false;
+      if (result === 'empty' && (resolution === 'lastYear' || resolution === 'thisYear')) {
+        emptyYearWindows.add(resolution);
+      }
+    } catch {
+      complete = false;
+    }
+  }
+  // A finer view can prove that an ostensibly empty calendar window was unread.
+  const contradicted = [...emptyYearWindows].some((window) => hasPointsInCalendarYear(
+    points, Number(todayKey.slice(0, 4)) - (window === 'lastYear' ? 1 : 0), timeZone,
+  ));
+  return { points, complete: complete && !contradicted };
+}
+
+function hasPointsInCalendarYear(points: Map<number, number>, year: number, timeZone: string): boolean {
+  const start = getDateKeyStartMs(`${year}-01-01`, timeZone);
+  const end = getDateKeyStartMs(`${year + 1}-01-01`, timeZone);
+  // A bucket near midnight can be labeled on the other side of the year.
+  return [...points.keys()].some((timestamp) => (
+    timestamp >= start + MAX_USABLE_STEP_MS && timestamp < end - MAX_USABLE_STEP_MS
+  ));
 }
 
 function entryPath(deviceId: string, capability: string, resolution: string): string {
@@ -283,21 +208,21 @@ function entryPath(deviceId: string, capability: string, resolution: string): st
   return `manager/insights/log/${ownerUri}/${ownerUri}:${capability}/entry?resolution=${resolution}`;
 }
 
-function validateAgainstTracker(
+function compareWithTracker(
   dailyKwh: Record<string, number>,
   getDailyKwh: MeterKwhBackfillDeps['getDailyKwh'],
-): CandidateValidation {
+): TrackerComparison {
   const ratios = Object.entries(dailyKwh).flatMap(([dateKey, meterKwh]) => {
     const trackerKwh = getDailyKwh(dateKey).total;
     if (trackerKwh === undefined || trackerKwh <= 0) return [];
     return [meterKwh / trackerKwh];
   });
-  if (ratios.length < MIN_OVERLAP_DAYS) return { passed: false, overlapDays: ratios.length, medianRatio: 0 };
+  if (ratios.length < MIN_COMPARISON_DAYS) return { trackerComparison: 'insufficient_overlap' };
   const sorted = [...ratios].sort((a, b) => a - b);
   const medianRatio = quantileSorted(sorted, 0.5);
   const centered = medianRatio >= RATIO_MIN && medianRatio <= RATIO_MAX;
   const tight = quantileSorted(sorted, 0.25) >= RATIO_Q25_MIN && quantileSorted(sorted, 0.75) <= RATIO_Q75_MAX;
-  return { passed: centered && tight, overlapDays: ratios.length, medianRatio };
+  return { trackerComparison: centered && tight ? 'matches' : 'differs', overlapDays: ratios.length, medianRatio };
 }
 
 /**
@@ -393,32 +318,42 @@ function nearestIndex(sortedTimestamps: number[], targetMs: number): number {
   return targetMs - beforeMs <= atMs - targetMs ? low - 1 : low;
 }
 
-/**
- * False when the response is malformed or too coarse to use — the window's
- * data exists but was not readable, which must count as a fetch failure. A
- * well-formed response with an empty `values` array returns true: a young
- * meter legitimately has no older history, and that is a final answer.
- */
-function ingestCounterResponse(response: unknown, points: Map<number, number>): boolean {
-  if (!isUnknownRecord(response)) return false;
+/** An empty log is affirmative; an unreadable log cannot settle a backfill. */
+function ingestCounterResponse(
+  response: unknown,
+  points: Map<number, number>,
+): 'read' | 'empty' | 'unreadable' {
+  if (!isUnknownRecord(response)) return 'unreadable';
   const step = response.step;
-  if (typeof step !== 'number' || step <= 0 || step > MAX_USABLE_STEP_MS) return false;
-  if (!Array.isArray(response.values)) return false;
+  if (typeof step !== 'number' || !Number.isFinite(step) || step <= 0 || step > MAX_USABLE_STEP_MS) return 'unreadable';
+  if (!Array.isArray(response.values)) return 'unreadable';
+  let read = false;
+  let malformed = false;
   for (const entry of response.values) {
-    const point = parseCounterPoint(entry);
-    if (point) points.set(point.timestampMs, point.counterKwh);
+    const bucket = parseCounterBucket(entry);
+    if (bucket === undefined) {
+      malformed = true;
+      continue;
+    }
+    if (bucket.value === null) continue;
+    read = true;
+    if (bucket.value >= 0 && bucket.value <= MAX_PLAUSIBLE_COUNTER_KWH) {
+      points.set(bucket.timestampMs, bucket.value);
+    }
   }
-  return true;
+  // Keep valid points for a partial recovery. Finite out-of-range samples
+  // are readable data and are excluded without forcing the window to retry.
+  if (malformed) return 'unreadable';
+  return read ? 'read' : 'empty';
 }
 
-function parseCounterPoint(entry: unknown): { timestampMs: number; counterKwh: number } | undefined {
+function parseCounterBucket(entry: unknown): { timestampMs: number; value: number | null } | undefined {
   if (!isUnknownRecord(entry)) return undefined;
   const value = entry.v;
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  if (value < 0 || value > MAX_PLAUSIBLE_COUNTER_KWH) return undefined;
+  if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) return undefined;
   const timestampMs = parseInsightsTimestamp(entry.t);
   if (timestampMs === undefined) return undefined;
-  return { timestampMs, counterKwh: value };
+  return { timestampMs, value };
 }
 
 /** Linear-interpolated quantile over an ascending-sorted sample. */

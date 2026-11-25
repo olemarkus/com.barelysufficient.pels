@@ -276,7 +276,8 @@ Tomorrow slot); detail view unreachable.
 > `ready` card. With no fit yet, S2 (not S3 learning) shows for the whole chain;
 > when a prior fit exists (a redeploy re-running the chain) the card stays on
 > that good fit. The first `ready` only appears once the meter pass fills the
-> historical kWh (or, on a no-meter home, once the meter election concludes).
+> historical kWh or confirms there is no usable meter history. The selected
+> whole-home meter supplies historical usage, including on a fresh tracker.
 
 **S3 — learning (< 21 usable days).**
 > Budget card: title `Learning your home`, body `PELS has 9 days of usage and temperature so far. The first estimate appears after about 21 days.` Button: `Weather details`.

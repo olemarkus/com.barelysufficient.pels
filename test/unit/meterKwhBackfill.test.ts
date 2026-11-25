@@ -59,7 +59,7 @@ const buildFetch = (overrides: FetchOverrides = {}) => vi.fn(async (path: string
 });
 
 describe('resolveMeterDailyKwh', () => {
-  it('adopts the meter whose daily diffs match the tracker and reconstructs pre-tracker days', async () => {
+  it('reconstructs pre-tracker days and reports agreement on overlapping days', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
@@ -69,25 +69,31 @@ describe('resolveMeterDailyKwh', () => {
     expect(result.deviceId).toBe('han-1');
     expect(result.capability).toBe('meter_power.imported');
     expect(result.complete).toBe(true);
-    expect(result.overlapDays).toBe(20);
-    expect(result.medianRatio).toBeCloseTo(1, 6);
+    expect(result.comparison).toMatchObject({ trackerComparison: 'matches', overlapDays: 20 });
+    expect(result.comparison).toHaveProperty('medianRatio', 1);
+    expect(fetchFromHomeyApi.mock.calls.filter(([path]) => path.includes('resolution=last3Months'))).toHaveLength(2);
     expect(Object.keys(result.dailyKwh)).toHaveLength(DAY_COUNT);
     // The first ten days exist nowhere in the tracker — the point of the backfill.
     expect(result.dailyKwh[dateKeyOf(0)]).toBeCloseTo(dailyVals[0], 6);
     expect(result.dailyKwh['2026-01-31']).toBeUndefined();
   });
 
-  it('rejects a device-subset meter and reports no comparable source', async () => {
+  it('reports a discrepancy without rejecting the selected meter', async () => {
     const fetchFromHomeyApi = buildFetch({
       'manager/devices/device': () => ({ 'thermo-1': DEVICES['thermo-1'] }),
     });
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'thermo-1', timeZone: OSLO, nowMs: NOW_MS,
     });
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 0 });
+    expect(result).toMatchObject({
+      outcome: 'resolved',
+      deviceId: 'thermo-1',
+      complete: true,
+      comparison: { trackerComparison: 'differs', overlapDays: 20 },
+    });
   });
 
-  it('reports probe failures so the caller knows the verdict rests on unread evidence', async () => {
+  it('reports unreadable history when no usable days survive failed reads', async () => {
     const fetchFromHomeyApi = buildFetch({
       'meter_power': () => {
         throw new Error('insights down');
@@ -96,7 +102,7 @@ describe('resolveMeterDailyKwh', () => {
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 1 });
+    expect(result).toEqual({ outcome: 'unreadable_history' });
   });
 
   it('reports no_candidates when no device exposes a cumulative meter', async () => {
@@ -109,15 +115,55 @@ describe('resolveMeterDailyKwh', () => {
     expect(result).toEqual({ outcome: 'no_candidates' });
   });
 
-  it('refuses validation when the tracker overlap is too thin', async () => {
-    const fetchFromHomeyApi = buildFetch();
-    const fiveDayTracker = (dateKey: string): { total?: number } => (
-      dateKey >= dateKeyOf(25) ? trackerKwh(dateKey) : {}
-    );
-    const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: fiveDayTracker, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+  it('recovers meter history with an empty tracker and an empty three-month window', async () => {
+    const fetchFromHomeyApi = buildFetch({
+      'resolution=last3Months': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 0 });
+    const result = await resolveMeterDailyKwh({
+      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+    });
+    expect(result.outcome).toBe('resolved');
+    if (result.outcome !== 'resolved') return;
+    expect(result.complete).toBe(true);
+    expect(result.comparison).toEqual({ trackerComparison: 'insufficient_overlap' });
+    expect(Object.keys(result.dailyKwh)).toHaveLength(DAY_COUNT);
+  });
+
+  it.each([
+    ['has a malformed row', { t: '2026-01-01T07:00:00.000Z', v: 'invalid' }, false],
+    ['has an out-of-range sample', { t: '2026-01-01T07:00:00.000Z', v: -1 }, true],
+  ])('keeps usable days when a window %s', async (_label, row, complete) => {
+    const fetchFromHomeyApi = buildFetch({
+      'meter_power.imported/entry?resolution=thisYear': () => ({
+        step: 6 * HOUR_MS, values: [...counterValues(), row],
+      }),
+    });
+    const result = await resolveMeterDailyKwh({
+      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+    });
+    expect(result).toMatchObject({ outcome: 'resolved', complete });
+    if (result.outcome === 'resolved') expect(Object.keys(result.dailyKwh)).toHaveLength(DAY_COUNT);
+  });
+
+  it('keeps a conclusively empty meter history retryable', async () => {
+    const fetchFromHomeyApi = buildFetch({
+      'meter_power': () => ({ step: 6 * HOUR_MS, values: [] }),
+    });
+    const result = await resolveMeterDailyKwh({
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+    });
+    expect(result).toEqual({ outcome: 'no_usable_history' });
+  });
+
+  it.each([
+    ['device list', []],
+    ['empty device list', {}],
+    ['selected device capabilities', { 'han-1': { id: 'han-1', capabilities: null } }],
+  ])('treats malformed %s as a failed read', async (_label, devices) => {
+    const fetchFromHomeyApi = buildFetch({ 'manager/devices/device': () => devices });
+    await expect(resolveMeterDailyKwh({
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+    })).rejects.toThrow('Unreadable');
   });
 
   it('drops only the reset day on a counter swap and the surrounding days on a sample gap', async () => {
@@ -181,10 +227,34 @@ describe('resolveMeterDailyKwh', () => {
     if (empty.outcome === 'resolved') expect(empty.complete).toBe(true);
   });
 
-  it('never probes outside the restricted meter — other devices cannot fail the election', async () => {
-    // The open election died with Automatic: a sibling device's broken insight
-    // log is simply never read, so it can neither fail nor incomplete-flag the
-    // selected meter's round.
+  it('keeps the read incomplete when another window contradicts an empty calendar year', async () => {
+    const fetchFromHomeyApi = buildFetch({
+      'resolution=thisYear': () => ({ step: 6 * HOUR_MS, values: [] }),
+    });
+    const result = await resolveMeterDailyKwh({
+      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+    });
+    expect(result.outcome).toBe('resolved');
+    if (result.outcome !== 'resolved') return;
+    expect(result.complete).toBe(false);
+    expect(Object.keys(result.dailyKwh)).toHaveLength(DAY_COUNT);
+  });
+
+  it('accepts an empty prior year when a current-year bucket straddles New Year', async () => {
+    const fetchFromHomeyApi = buildFetch({
+      'resolution=lastYear': () => ({ step: 6 * HOUR_MS, values: [] }),
+      'meter_power.imported/entry?resolution=thisYear': () => ({
+        step: 6 * HOUR_MS,
+        values: [{ t: '2025-12-31T18:00:00.000Z', v: 1000 }, ...counterValues()],
+      }),
+    });
+    const result = await resolveMeterDailyKwh({
+      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+    });
+    expect(result).toMatchObject({ outcome: 'resolved', complete: true });
+  });
+
+  it('reads only the selected meter even when other devices have unreadable Insights', async () => {
     const fetchFromHomeyApi = buildFetch({
       'thermo-1:meter_power': () => {
         throw new Error('probe timeout');
@@ -199,9 +269,12 @@ describe('resolveMeterDailyKwh', () => {
     expect(result.complete).toBe(true);
   });
 
-  it('adopts an import meter whose export log is conclusively empty (gross = net)', async () => {
+  it.each([
+    ['empty entries', []],
+    ['timestamped null buckets', [{ t: '2026-01-01T05:00:00.000Z', v: null }]],
+  ])('treats an export log with %s as empty', async (_label, values) => {
     const fetchFromHomeyApi = buildFetch({
-      'han-1:meter_power.exported': () => ({ step: 6 * HOUR_MS, values: [] }),
+      'han-1:meter_power.exported': () => ({ step: 6 * HOUR_MS, values }),
     });
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
@@ -212,18 +285,15 @@ describe('resolveMeterDailyKwh', () => {
     expect(result.dailyKwh[dateKeyOf(0)]).toBeCloseTo(dailyVals[0], 6);
   });
 
-  it('writes nothing when only the export side of the winner is unreadable', async () => {
-    const fetchFromHomeyApi = buildFetch({
-      'han-1:meter_power.exported': () => {
-        throw new Error('insights down');
-      },
-    });
+  it.each([
+    ['unreadable', () => { throw new Error('insights down'); }],
+    ['malformed', () => ({ step: 6 * HOUR_MS, values: [null] })],
+  ])('writes nothing when the export series is %s', async (_label, readExport) => {
+    const fetchFromHomeyApi = buildFetch({ 'han-1:meter_power.exported': readExport });
     const result = await resolveMeterDailyKwh({
       fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
-    // The probe cannot net without the export counter: the candidate is
-    // skipped and the verdict is flagged as resting on unread evidence.
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 1 });
+    expect(result).toEqual({ outcome: 'unreadable_history' });
   });
 
   it('falls back to gross import when an import window fails but the export log is conclusively empty', async () => {
@@ -293,7 +363,7 @@ describe('resolveMeterDailyKwh', () => {
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
-    expect(result.medianRatio).toBeCloseTo(1, 6);
+    expect(result.comparison).toHaveProperty('medianRatio', 1);
     expect(result.dailyKwh[dateKeyOf(0)]).toBeCloseTo(dailyVals[0] - EXPORT_PER_DAY, 6);
   });
 });
