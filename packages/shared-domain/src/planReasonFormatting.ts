@@ -585,9 +585,9 @@ export function formatLastResortAboveLimitStatus(
 ): string {
   const limitKw = reason.limitKw.toFixed(1);
   const limit = reason.limit === 'grid'
-    ? `your grid import limit (${limitKw} kW)`
+    ? `your grid import limit, which PELS keeps at ${limitKw} kW`
     : `your hard cap (${limitKw} kW after the safety margin)`;
-  return `Maximum power draw ${reason.maximumKw.toFixed(1)} kW is too high to start under ${limit}. `
+  return `Maximum power draw ${reason.maximumKw.toFixed(1)} kW plus room for its start does not fit under ${limit}. `
     + 'Lower it under Power limiting.';
 }
 

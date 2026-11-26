@@ -111,7 +111,7 @@ export function applyRestorePlan(
   const effectiveTiming = resolveEffectiveTiming(timing, context);
   const lastResort: LastResortRestoreState = {
     pending: planDevices.some((device) => device.lastResort && device.binaryCommandPending),
-    target: getNextLastResortRestore(planDevices, deps.planningCeiling),
+    target: getNextLastResortRestore(planDevices, deps.admissionCeiling),
   };
   const pass = resolveRestorePass(lastResort, context, power, state, timing, effectiveTiming, sheddingPlan);
   // Only the lane that can actually consider a target spends its reservation window.
