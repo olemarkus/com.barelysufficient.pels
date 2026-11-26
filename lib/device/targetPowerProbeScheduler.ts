@@ -12,6 +12,8 @@ export type DueTargetPowerProbe = {
 /** Owns the independent retry and settlement clocks for target-power probes. */
 export class TargetPowerProbeScheduler {
   private probeTimer?: ReturnType<typeof setTimeout>;
+  private runningProbe?: ReturnType<typeof setTimeout>;
+  private lastAttempt?: { probe: DueTargetPowerProbe; retryAtMs?: number };
   private settlementTimer?: ReturnType<typeof setTimeout>;
   private readonly settlementDueAtMs = new Set<number>();
   private stopped = true;
@@ -36,6 +38,8 @@ export class TargetPowerProbeScheduler {
     if (this.probeTimer) this.deps.timers.clear('targetPowerProbe');
     if (this.settlementTimer) this.deps.timers.clear('targetPowerProbeSettlement');
     this.probeTimer = undefined;
+    this.runningProbe = undefined;
+    this.lastAttempt = undefined;
     this.settlementTimer = undefined;
     this.settlementDueAtMs.clear();
   }
@@ -46,16 +50,23 @@ export class TargetPowerProbeScheduler {
     this.scheduleNextSettlement();
   }
 
-  scheduleProbe(minimumDelayMs = 0): void {
-    if (this.stopped) return;
+  scheduleProbe(): void {
+    if (this.stopped || this.runningProbe !== undefined) return;
     if (this.probeTimer) this.deps.timers.clear('targetPowerProbe');
     this.probeTimer = undefined;
     const dueProbe = this.deps.getNextProbe();
     if (dueProbe === undefined) return;
+    const previous = this.lastAttempt;
+    const sameProbe = previous?.probe.deviceId === dueProbe.deviceId
+      && previous.probe.dueAtMs === dueProbe.dueAtMs;
+    if (sameProbe && this.deps.hasPendingProbe()) return;
+    // A snapshot can re-arm the same overdue probe. Keep its original retry time.
+    const retryAtMs = sameProbe ? previous.retryAtMs ?? dueProbe.dueAtMs : dueProbe.dueAtMs;
     const timer = setTimeout(async () => {
       if (this.probeTimer !== timer) return;
       this.deps.timers.clear('targetPowerProbe');
       this.probeTimer = undefined;
+      this.runningProbe = timer;
       try {
         await this.deps.rebuildForDueProbe(dueProbe.deviceId);
       } catch (error) {
@@ -64,11 +75,16 @@ export class TargetPowerProbeScheduler {
           err: normalizeError(error),
         });
       } finally {
-        if (!this.stopped && !this.deps.hasPendingProbe()) {
-          this.scheduleProbe(DEFERRED_PROBE_RECHECK_MS);
+        // stop() discards this timer's ownership even if start() has since run.
+        if (this.runningProbe === timer) {
+          this.runningProbe = undefined;
+          this.lastAttempt = this.deps.hasPendingProbe()
+            ? { probe: dueProbe }
+            : { probe: dueProbe, retryAtMs: this.deps.getNowMs() + DEFERRED_PROBE_RECHECK_MS };
+          this.scheduleProbe();
         }
       }
-    }, Math.max(minimumDelayMs, dueProbe.dueAtMs - this.deps.getNowMs(), 0));
+    }, Math.max(retryAtMs - this.deps.getNowMs(), 0));
     this.probeTimer = this.deps.timers.registerTimeout('targetPowerProbe', timer);
   }
 
