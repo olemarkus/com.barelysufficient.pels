@@ -102,7 +102,7 @@ describe('Last-resort relay (SDK boundary)', () => {
     expect(put).toHaveBeenCalledWith(endpoint, pelsCapabilityWrite(true));
   });
 
-  it('lets other devices resume when the relay maximum can never fit a 15-minute hard cap', async () => {
+  it('lets other devices resume past a relay above a 15-minute hard cap, and starts it on export', async () => {
     const { settings, api } = mockHomeyInstance;
     settings.set('power_source', 'homey_energy');
     settings.set('homey_energy_meter_device_id', 'meter-main');
@@ -143,6 +143,12 @@ describe('Last-resort relay (SDK boundary)', () => {
     await drainUntilCalledWith(put, heaterEndpoint, pelsCapabilityWrite(true));
     expect(put).toHaveBeenCalledWith(heaterEndpoint, pelsCapabilityWrite(true));
     expect(put).not.toHaveBeenCalledWith(relayEndpoint, pelsCapabilityWrite(true));
+
+    // Export makes room the grid alone never can.
+    householdW = -4000;
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await drainUntilCalledWith(put, relayEndpoint, pelsCapabilityWrite(true));
+    expect(put).toHaveBeenCalledWith(relayEndpoint, pelsCapabilityWrite(true));
   });
 
   it('still restarts a relay above the hard cap minus margin once an hourly period leaves room', async () => {

@@ -26,9 +26,11 @@ function isLastResortRestoreCandidate(device: DevicePlanDevice): device is LastR
 
 /**
  * A relay whose maximum, plus the room PELS keeps for its start, is above the
- * highest rate admission can ever offer can never be admitted. Giving it the priority turn would hold
- * every other start behind a relay that can never run, so it gets none and its
- * card asks the owner to correct the setup instead.
+ * highest rate admission can offer from the grid fits only while solar export or
+ * a discharging battery makes the difference. Giving it the priority turn would
+ * hold every other start behind it, so it gets none: it starts when measured
+ * room covers it (`applyOpportunisticLastResortRestore`), and its card asks the
+ * owner to correct the setup.
  */
 export function resolveLastResortAboveLimitReason(
   device: DevicePlanDevice, ceiling: PowerLimitCeiling | null,
@@ -39,20 +41,40 @@ export function resolveLastResortAboveLimitReason(
   return { code: PLAN_REASON_CODES.lastResortAboveLimit, maximumKw, limitKw: ceiling.kw, limit: ceiling.limit };
 }
 
-export function getNextLastResortRestore(
+/** The next relay due its priority turn, and the next relay above the ceiling, each in Modes order. */
+export function getNextLastResortRestores(
   devices: DevicePlanDevice[], ceiling: PowerLimitCeiling | null,
-): LastResortRestoreCandidate | undefined {
-  const candidates = devices.filter(isLastResortRestoreCandidate)
-    .filter((device) => resolveLastResortAboveLimitReason(device, ceiling) === null);
-  return sortByPriorityAsc(candidates)[0];
+): { target: LastResortRestoreCandidate | undefined; aboveLimit: LastResortRestoreCandidate | undefined } {
+  const candidates = sortByPriorityAsc(devices.filter(isLastResortRestoreCandidate));
+  return {
+    target: candidates.find((device) => resolveLastResortAboveLimitReason(device, ceiling) === null),
+    aboveLimit: candidates.find((device) => resolveLastResortAboveLimitReason(device, ceiling) !== null),
+  };
 }
 
 export function applyLastResortRestorePass(
   cycle: RestoreCycle, ledger: RestoreHeadroomLedger, device: LastResortRestoreCandidate,
 ): boolean {
+  return applyLastResortRestore(cycle, ledger, device, true);
+}
+
+/**
+ * Start a relay above the ceiling only when measured room already covers it. It
+ * takes no device's power by a swap and holds nothing; left off, it keeps its
+ * above-limit reason.
+ */
+export function applyOpportunisticLastResortRestore(
+  cycle: RestoreCycle, ledger: RestoreHeadroomLedger, device: LastResortRestoreCandidate,
+): boolean {
+  return applyLastResortRestore(cycle, ledger, device, false);
+}
+
+function applyLastResortRestore(
+  cycle: RestoreCycle, ledger: RestoreHeadroomLedger, device: LastResortRestoreCandidate, allowSwap: boolean,
+): boolean {
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, device, cycle.deviceMap)) return false;
   const availableHeadroom = ledger.availableFor(device);
-  const result = planLastResortRestore(cycle, device, { availableHeadroom, restoredOneThisCycle: false });
+  const result = planLastResortRestore(cycle, device, { availableHeadroom, restoredOneThisCycle: false }, allowSwap);
   if (availableHeadroom !== null && result.availableHeadroom !== null) {
     ledger.commit(device, availableHeadroom - result.availableHeadroom);
   }
@@ -60,7 +82,7 @@ export function applyLastResortRestorePass(
 }
 
 function planLastResortRestore(
-  cycle: RestoreCycle, device: LastResortRestoreCandidate, loop: RestoreLoopState,
+  cycle: RestoreCycle, device: LastResortRestoreCandidate, loop: RestoreLoopState, allowSwap: boolean,
 ): RestoreLoopState {
   const { lastResort } = device;
   const afterLastChange = Math.max(
@@ -68,18 +90,12 @@ function planLastResortRestore(
   );
   const waitingForReading = resolveMeterSettlingReason(cycle.timing, afterLastChange);
   if (waitingForReading || shouldWaitForOtherRecovery(cycle.deviceMap, device.id, false)) {
-    setRestorePlanDevice(cycle.deviceMap, device.id, {
-      plannedState: 'shed', reason: waitingForReading ?? { code: PLAN_REASON_CODES.waitingForOtherDevices },
-    });
-    return loop;
+    return keepRelayOff(cycle, device, waitingForReading ?? { code: PLAN_REASON_CODES.waitingForOtherDevices }, loop);
   }
   const { state, timing } = cycle;
   const blockingTarget = cycle.swapLedger.blockingTarget(device, cycle.deviceMap);
   if (blockingTarget !== undefined) {
-    setRestorePlanDevice(cycle.deviceMap, device.id, {
-      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.swapPending, targetName: blockingTarget.name },
-    });
-    return loop;
+    return keepRelayOff(cycle, device, { code: PLAN_REASON_CODES.swapPending, targetName: blockingTarget.name }, loop);
   }
 
   const devPower = lastResort.maximumW / 1000;
@@ -97,11 +113,10 @@ function planLastResortRestore(
     };
   }
   if (reserved.kind === 'blocked_by_reserve') {
-    setRestorePlanDevice(cycle.deviceMap, device.id, {
-      plannedState: 'shed', reason: buildReservedForStartReason(reserved.holderName),
-    });
-    return loop;
+    return keepRelayOff(cycle, device, buildReservedForStartReason(reserved.holderName), loop);
   }
+  const aboveLimit = allowSwap ? null : resolveLastResortAboveLimitReason(device, cycle.deps.admissionCeiling);
+  if (aboveLimit !== null) return keepRelayOff(cycle, device, aboveLimit, loop);
   const rejected = buildInsufficientHeadroomUpdate(
     needed, reserved.availableKw, reserved.admission.marginKw, null, null, null,
   );
@@ -115,6 +130,13 @@ function planLastResortRestore(
   );
   if (swap.kind === 'decided') return swap;
   setRestorePlanDevice(cycle.deviceMap, device.id, rejected);
+  return loop;
+}
+
+function keepRelayOff(
+  cycle: RestoreCycle, device: LastResortRestoreCandidate, reason: DeviceReason, loop: RestoreLoopState,
+): RestoreLoopState {
+  setRestorePlanDevice(cycle.deviceMap, device.id, { plannedState: 'shed', reason });
   return loop;
 }
 
