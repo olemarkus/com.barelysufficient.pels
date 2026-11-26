@@ -185,15 +185,23 @@ describe('DeviceTransport', () => {
         await emitCapability('socket', 'measure_power', -100);
         expect(appliance()).toMatchObject({ measuredPowerKw: 1.8, measuredPowerObservedAtMs: originalPowerTimestamp });
 
+        await emitCapability('socket', 'onoff', false);
+        expect(appliance()).toMatchObject({ measuredPowerKw: 1.8, measuredPowerObservedAtMs: originalPowerTimestamp });
+
         await emitCapability('socket', 'measure_power', 0);
         expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
+        const zeroPowerTimestamp = appliance()?.measuredPowerObservedAtMs;
         expect(powerSetup()).toBeNull();
         await emitCapability('appliance', 'measure_power', 300);
         expect(appliance()).toMatchObject({ measuredPowerKw: 0 });
+        await emitCapability('socket', 'onoff', true);
         await emitCapability('socket', 'onoff', false);
-        expect(appliance()?.measuredPowerKw).toBeUndefined();
+        expect(appliance()).toMatchObject({ measuredPowerKw: 0, measuredPowerObservedAtMs: zeroPowerTimestamp });
+        await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
+        expect(appliance()).toMatchObject({ measuredPowerKw: 0, measuredPowerObservedAtMs: zeroPowerTimestamp });
+
+        mockApiGet.mockResolvedValue({ ...rawDevices, socket: { ...rawDevices.socket, available: false } });
         const missingPowerSetup = hasHomeyEnergy ? null : { kind: 'metering_socket', socketName: 'Metering socket' };
-        expect(powerSetup()).toEqual(missingPowerSetup);
         await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
         expect(appliance()?.measuredPowerKw).toBeUndefined();
         expect(appliance()?.capabilities).not.toContain('measure_power');

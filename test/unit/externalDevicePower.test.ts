@@ -97,10 +97,21 @@ describe('external device power', () => {
     expect(entries.find(({ id }) => id === 'heater')).not.toHaveProperty('ownPowerW');
   });
 
-  it('withdraws the power capability if the socket turns off, is moved or is removed', () => {
+  it.each([
+    { watts: 500, offAtMs: 3000 },
+    { watts: 0, offAtMs: 3000 },
+    { watts: 0, offAtMs: 2000 },
+  ])('uses $watts W independently of an off report at $offAtMs', ({ watts, offAtMs }) => {
+    const { inventory, external } = setup();
+    const source = socket(watts, false);
+    source.capabilitiesObj.onoff = { value: false, lastUpdated: offAtMs, setable: true };
+    inventory.replaceLatestRawDevices([target, source], [target, source]);
+    expect(external.read(target)).toMatchObject({ capability: { value: watts, lastUpdated: 2000 } });
+  });
+
+  it('withdraws the power capability if the socket becomes unavailable, moves or is removed', () => {
     const { inventory, external } = setup();
     for (const [source, socketName] of [
-      [socket(500, false), 'Metering socket'],
       [{ ...socket(500), available: false }, 'Metering socket'],
       [{ ...socket(500), zone: 'garage' }, undefined],
       [undefined, undefined],

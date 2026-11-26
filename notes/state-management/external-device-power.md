@@ -20,9 +20,11 @@ capability onto the controlled device and resolves it through the same path
 as a native power reading. If the socket becomes unavailable or the
 assignment is no longer eligible, the projected capability disappears and
 the device's remaining capabilities follow their normal control rules.
-An off report withdraws earlier watts. A fresh zero reported after the
-switch is an observation. Removing the assignment restores the device's
-own power source. Running-power estimates only use learned peaks from the
+The socket's switch state and its power reading are independent observations.
+PELS attributes the accepted watts, including zero, with their original
+observation time. Removing the assignment restores the device's own power source.
+
+Running-power estimates only use learned peaks from the
 selected source. On a meter change, the new source needs its own readings
 before PELS can learn a peak from it. With **Import from meter history**, the owner can
 use the previous hour in Homey Insights once they confirm the socket measured
