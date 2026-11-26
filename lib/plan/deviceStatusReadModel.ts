@@ -35,11 +35,11 @@ import { formatStepDisplayLabel } from '../../packages/shared-domain/src/stepped
 import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
 import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/homeyEnergySetup';
-import { formatDisplayDeviceName } from '../../packages/shared-domain/src/displayDeviceName';
 import type { DeviceStatusInput } from './deviceStatusInput';
 import {
   resolveCarConfirmationOffer, resolveOwnerActionTone, resolvePhaseSettingOffer,
 } from './deviceStatusReasonOffers';
+import { resolveMeteringSocketReason } from './meteringSocketReason';
 
 /** The reason line of a card Homey reports unavailable, as the Tesla adapter words it. */
 export const HOMEY_UNAVAILABLE_REASON_TEXT = 'Homey reports this device unavailable';
@@ -262,13 +262,6 @@ function resolveNotControlledReason(
   return device.available ? null : { text: HOMEY_UNAVAILABLE_REASON_TEXT };
 }
 
-function resolveMeteringSocketReason(socketName: string | undefined): DeviceStatus['reason'] {
-  const name = formatDisplayDeviceName(socketName ?? '');
-  const text = name
-    ? `Waiting for a power reading from ${name}. Check the socket in Homey.`
-    : 'Metering socket unavailable. Choose another power source under External sensors.';
-  return { text, tone: 'warning' };
-}
 
 /**
  * Why a Manual card is Manual, named only from a fact that says so. PELS holds
@@ -295,7 +288,7 @@ function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] 
   }
   const requirement = device.powerSetupRequirement;
   if (requirement !== null) {
-    if (requirement.kind === 'metering_socket') return resolveMeteringSocketReason(requirement.socketName);
+    if (requirement.kind !== 'homey_energy') return resolveMeteringSocketReason(requirement);
     const lastResortOffered = device.binaryControllable && !device.isEvCharger && !device.temperature
       && !device.steppedLoad;
     const text = lastResortOffered

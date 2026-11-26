@@ -141,7 +141,10 @@ confirmations to the current binding generation.
 `last_resort_external_off_migrated` belongs to the external-off settings owner.
 It marks the one-time opt-in and per-device hold migration for existing
 last-resort relays. Accepted ON observations clear the seeded holds through the
-ordinary external-off sweep.
+ordinary external-off sweep. The migration never reads `last_resort_devices`
+itself: it takes the configured relays from DeviceControlSettings
+(`readConfiguredLastResortDevices`), so a malformed write cannot hide relays the
+owner still holds, and it waits while that owner has accepted no read yet.
 
 The three device setup maps (`device_power_sources`, `last_resort_devices`,
 `device_binary_switches`) are also pruned by DeviceControlSettings: an entry

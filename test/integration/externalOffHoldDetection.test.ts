@@ -17,7 +17,9 @@ import {
   syncExternalOffHoldForDevice,
   toExternalOffHoldObservedDevice,
 } from '../../setup/externalOffHoldDetection';
-import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { configuredLastResortFrom } from '../utils/configuredLastResortFixture';
+import type { ExternalOffHoldSettingsStore } from '../../lib/observer/externalOffHold';
 import type { ExternalOffHoldSyncDeps } from '../../setup/externalOffHoldDetection';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -42,6 +44,10 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { syncExternalOffHoldForObservation } from '../../setup/appObservedControlStateRuntime';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+
+const createExternalOffHoldPolicy = (store: ExternalOffHoldSettingsStore) => (
+  createSettingsExternalOffHoldPolicy(store, configuredLastResortFrom(store))
+);
 
 const NOW = new Date('2026-07-25T12:00:00Z').getTime();
 const DEVICE_ID = 'heater-1';

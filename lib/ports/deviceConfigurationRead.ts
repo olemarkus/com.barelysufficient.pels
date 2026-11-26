@@ -3,7 +3,10 @@ import type { DeviceDescriptorRead, SteppedLoadProfile } from '../../packages/co
 /** The device owner's setup guidance for an unmetered on/off device. */
 export type DevicePowerSetupRequirement =
   | { kind: 'homey_energy' }
-  | { kind: 'metering_socket'; socketName: string | undefined };
+  /** The assigned socket is listed and eligible; its Homey name, which may be blank. */
+  | { kind: 'metering_socket'; socketName: string }
+  /** The assigned socket is missing from Homey or can no longer measure this device. */
+  | { kind: 'metering_socket_unavailable' };
 
 /** Resolved configuration needed by planner and executor runtime inputs. */
 type DeviceConfigurationFields = {

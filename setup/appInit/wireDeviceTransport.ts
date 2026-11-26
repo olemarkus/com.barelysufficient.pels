@@ -79,9 +79,10 @@ export function buildDeviceTransport(
   // and it heals itself if the SDK was failing at boot. Assigned onto ctx (the
   // wiring-assigns-ctx-members house pattern).
   // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
-  ctx.externalOffHold = createExternalOffHoldPolicy(
-    ctx.homey.settings, (id) => ctx.deviceControlSettings.isLastResortConfigured(id),
-  );
+  ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings, {
+    isConfigured: (id) => ctx.deviceControlSettings.isLastResortConfigured(id),
+    read: () => ctx.deviceControlSettings.readConfiguredLastResortDevices(),
+  });
   const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook(ctx.getPowerCalibrationStore());
   return new DeviceTransport(homeyApp, {
     log: ctx.log.bind(ctx),

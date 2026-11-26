@@ -5,12 +5,11 @@ import {
   type ExternalOffHoldSettingsStore,
 } from './externalOffHold';
 import {
-  LAST_RESORT_DEVICES,
   LAST_RESORT_EXTERNAL_OFF_MIGRATED,
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../utils/settingsKeys';
-import { readLastResortDevices } from '../../packages/shared-domain/src/settings/lastResortDevices';
+import type { ConfiguredLastResortDevices } from '../ports/configuredLastResortDevices';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { isBooleanMap } from '../utils/appTypeGuards';
 
@@ -46,8 +45,10 @@ const readOptInMap = (
 // Existing last-resort setups could only undo PELS's own OFF. Seed the
 // standard hold for each one before allowing auto-start. The next accepted ON
 // clears that hold in the ordinary observation sweep, including at startup.
+// The relays come from the device-control owner, which keeps its last accepted
+// map through a malformed write; the migration waits while it has no answer.
 function migrateLastResortExternalOff(
-  store: ExternalOffHoldSettingsStore, observedOn: ReadonlySet<string>,
+  store: ExternalOffHoldSettingsStore, lastResort: ConfiguredLastResortDevices, observedOn: ReadonlySet<string>,
 ): boolean {
   try {
     if (store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED) === true) return true;
@@ -55,9 +56,9 @@ function migrateLastResortExternalOff(
     if (list.status !== 'resolved') return false;
     const keys = new Set(list.keys);
     if (keys.has(LAST_RESORT_EXTERNAL_OFF_MIGRATED)) return false;
-    const devices = keys.has(LAST_RESORT_DEVICES) ? readLastResortDevices(store.get(LAST_RESORT_DEVICES)) : {};
-    if (devices === undefined) return false;
-    const ids = Object.keys(devices);
+    const configured = lastResort.read();
+    if (configured.status !== 'resolved') return false;
+    const ids = configured.deviceIds;
     if (ids.length > 0 && !preserveLastResortHolds(store, ids, keys, observedOn)) return false;
     store.set(LAST_RESORT_EXTERNAL_OFF_MIGRATED, true);
     return true;
@@ -85,12 +86,12 @@ function preserveLastResortHolds(
 /** Build the external-off hold policy over Homey settings. */
 export function createExternalOffHoldPolicy(
   store: ExternalOffHoldSettingsStore,
-  isConfiguredLastResort: (id: string) => boolean = () => false,
+  lastResort: ConfiguredLastResortDevices,
 ): ExternalOffHoldPolicy {
   // `null` until a read succeeds — an unresolved map must not masquerade as empty.
   let lastGoodOptIn: Record<string, boolean> | null = null;
   const observedOnDuringMigration = new Set<string>();
-  let migrated = migrateLastResortExternalOff(store, observedOnDuringMigration);
+  let migrated = migrateLastResortExternalOff(store, lastResort, observedOnDuringMigration);
   const policy = createPolicy({
     store,
     readOptIn: () => {
@@ -101,11 +102,11 @@ export function createExternalOffHoldPolicy(
   });
   return {
     ...policy,
-    isHeld: (id) => (!migrated && isConfiguredLastResort(id)) || policy.isHeld(id),
+    isHeld: (id) => (!migrated && lastResort.isConfigured(id)) || policy.isHeld(id),
     clearHold: (id) => {
       // A later retry must not re-seed the hold after an accepted ON. PELS
       // may itself switch the relay off between the observation and retry.
-      if (!migrated && isConfiguredLastResort(id)) observedOnDuringMigration.add(id);
+      if (!migrated && lastResort.isConfigured(id)) observedOnDuringMigration.add(id);
       return policy.clearHold(id);
     },
     heldDeviceIds: () => {
@@ -114,7 +115,7 @@ export function createExternalOffHoldPolicy(
       if (!migrated) {
         // A retry can change the persisted opt-ins before the next read succeeds.
         lastGoodOptIn = null;
-        migrated = migrateLastResortExternalOff(store, observedOnDuringMigration);
+        migrated = migrateLastResortExternalOff(store, lastResort, observedOnDuringMigration);
         if (migrated) observedOnDuringMigration.clear();
       }
       return policy.heldDeviceIds();
