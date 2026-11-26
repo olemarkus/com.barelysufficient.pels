@@ -299,6 +299,9 @@ export function formatDeviceReason(reason: DeviceReason): string {
         + `(${reason.shedDeviceCount} device(s) shed, max step: ${reason.maxStep})`;
     case PLAN_REASON_CODES.chargeTargetReached:
       return `reached its battery target (${reason.targetPercent}%)`;
+    case PLAN_REASON_CODES.lastResortAboveLimit:
+      return `last-resort maximum ${reason.maximumKw.toFixed(1)} kW above the ${reason.limitKw.toFixed(1)} kW `
+        + `${reason.limit} ceiling`;
     case PLAN_REASON_CODES.phaseLimit:
       return `shed due to main fuse on ${reason.phase}`;
     default: {
@@ -573,6 +576,21 @@ export function formatSteppedFairnessHoldLine(stepId: string | null, limitedDevi
     : `Holding at ${currentStep} — ${tail}`;
 }
 
+/**
+ * The relay's configured maximum cannot fit under the home's limit, so PELS can
+ * never turn it back on. Names the two numbers and the setting to change.
+ */
+export function formatLastResortAboveLimitStatus(
+  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.lastResortAboveLimit }>,
+): string {
+  const limitKw = reason.limitKw.toFixed(1);
+  const limit = reason.limit === 'grid'
+    ? `your grid import limit (${limitKw} kW)`
+    : `your hard cap (${limitKw} kW after the safety margin)`;
+  return `Maximum power draw ${reason.maximumKw.toFixed(1)} kW is too high to start under ${limit}. `
+    + 'Lower it under Power limiting.';
+}
+
 export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
   if (isStaticReason(reason)) return formatStaticReasonUserFacing(reason);
   if (isDetailReason(reason)) return formatDetailReasonUserFacing(reason);
@@ -588,6 +606,8 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
       return formatShedInvariantUserFacing(reason);
     case PLAN_REASON_CODES.chargeTargetReached:
       return formatChargeTargetReachedStatus(reason.targetPercent);
+    case PLAN_REASON_CODES.lastResortAboveLimit:
+      return formatLastResortAboveLimitStatus(reason);
     case PLAN_REASON_CODES.phaseLimit:
       return formatPhaseLimitStatus(reason.phase);
     default: {

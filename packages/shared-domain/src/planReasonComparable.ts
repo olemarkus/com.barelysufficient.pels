@@ -50,6 +50,8 @@ export type ComparablePlanReason =
   // The charge target the owner set: configuration, so it changes only on a real
   // transition (the owner editing it), and is folded in like a holder's name.
   | (ComparablePlanReasonBase & { targetPercent: number })
+  // The relay's maximum and the ceiling it does not fit: configuration only.
+  | (ComparablePlanReasonBase & { maximumW: number; limitW: number; limit: 'capacity' | 'grid' })
   | (ComparablePlanReasonBase & {
     fromStep: string;
     toStep: string;
@@ -211,6 +213,13 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
       return withReserveHolder({ code: reason.code, targetName: reason.targetName }, reason);
     case PLAN_REASON_CODES.chargeTargetReached:
       return { code: reason.code, targetPercent: reason.targetPercent };
+    case PLAN_REASON_CODES.lastResortAboveLimit:
+      return {
+        code: reason.code,
+        maximumW: quantizeKwToW(reason.maximumKw),
+        limitW: quantizeKwToW(reason.limitKw),
+        limit: reason.limit,
+      };
     case PLAN_REASON_CODES.phaseLimit:
       return { code: reason.code, phase: reason.phase };
     case PLAN_REASON_CODES.restoreNeed:

@@ -85,6 +85,8 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.swapPending },
   { code: PLAN_REASON_CODES.swappedOut },
   { code: PLAN_REASON_CODES.reservedForStart },
+  // A last-resort relay whose maximum never fits the limit stays off.
+  { code: PLAN_REASON_CODES.lastResortAboveLimit },
   { code: PLAN_REASON_CODES.startupStabilization },
 ] as const;
 

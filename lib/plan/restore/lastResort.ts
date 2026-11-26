@@ -1,6 +1,7 @@
-import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { PowerLimitCeiling } from '../../../packages/contracts/src/capacitySettings';
 import type { DevicePlanDevice } from '../planTypes';
-import { buildInsufficientHeadroomUpdate, computeRestoreRequirementKw } from './accounting';
+import { buildInsufficientHeadroomUpdate, computeRestoreBufferKw, computeRestoreRequirementKw } from './accounting';
 import { resolveReserveAdmission, isReserveAdmitted, buildReservedForStartReason } from '../admission';
 import { spendPowerHeadroom } from '../powerLimitMath';
 import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
@@ -23,8 +24,27 @@ function isLastResortRestoreCandidate(device: DevicePlanDevice): device is LastR
     && device.currentState === 'off' && device.plannedState === 'keep' && !device.externalOffHoldActive;
 }
 
-export function getNextLastResortRestore(devices: DevicePlanDevice[]): LastResortRestoreCandidate | undefined {
-  return sortByPriorityAsc(devices.filter(isLastResortRestoreCandidate))[0];
+/**
+ * A relay whose maximum, plus the room PELS keeps for its start, is above the
+ * planning ceiling can never be admitted. Giving it the priority turn would hold
+ * every other start behind a relay that can never run, so it gets none and its
+ * card asks the owner to correct the setup instead.
+ */
+export function resolveLastResortAboveLimitReason(
+  device: DevicePlanDevice, ceiling: PowerLimitCeiling | null,
+): DeviceReason | null {
+  if (ceiling === null || device.lastResort === undefined) return null;
+  const maximumKw = device.lastResort.maximumW / 1000;
+  if (maximumKw + computeRestoreBufferKw(maximumKw) <= ceiling.kw) return null;
+  return { code: PLAN_REASON_CODES.lastResortAboveLimit, maximumKw, limitKw: ceiling.kw, limit: ceiling.limit };
+}
+
+export function getNextLastResortRestore(
+  devices: DevicePlanDevice[], ceiling: PowerLimitCeiling | null,
+): LastResortRestoreCandidate | undefined {
+  const candidates = devices.filter(isLastResortRestoreCandidate)
+    .filter((device) => resolveLastResortAboveLimitReason(device, ceiling) === null);
+  return sortByPriorityAsc(candidates)[0];
 }
 
 export function applyLastResortRestorePass(
@@ -111,7 +131,8 @@ export function markUnrestoredLastResort(cycle: RestoreCycle, limiting: boolean)
     const inactive = resolveInactiveRestoreUpdate(device);
     if (inactive) setRestorePlanDevice(deviceMap, id, inactive);
     else if (isLastResortRestoreCandidate(device)) {
-      setRestorePlanDevice(deviceMap, id, { plannedState: 'shed', reason });
+      const aboveLimit = resolveLastResortAboveLimitReason(device, cycle.deps.planningCeiling);
+      setRestorePlanDevice(deviceMap, id, { plannedState: 'shed', reason: aboveLimit ?? reason });
     }
   }
 }

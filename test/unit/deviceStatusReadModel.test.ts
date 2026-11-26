@@ -50,6 +50,30 @@ describe('last-resort relay reporting its own power', () => {
   });
 });
 
+describe('last-resort relay whose maximum can never fit', () => {
+  const offRelay = (limit: 'capacity' | 'grid'): DeviceStatusInput => runningPowerHold({
+    currentState: 'off', plannedState: 'shed', currentDrawKw: undefined, expectedPowerKw: 6, hasPowerReading: false,
+    lastResort: { maximumW: 6_000, observedOffAtMs: 0 }, lastResortOwnedOffAtMs: 0,
+    reason: { code: PLAN_REASON_CODES.lastResortAboveLimit, maximumKw: 6, limitKw: 4.8, limit },
+    execution: {
+      available: true, physicalState: 'off', observedStepId: null,
+      desiredBinary: 'off', desiredStepId: null, binaryProgress: 'settled',
+      stepProgress: 'undriven', targetProgress: 'undriven', resumeExpected: false,
+      steppedTransitionPending: false, stepCommandUnanswered: false, externalOffHeld: false,
+    },
+  });
+
+  it.each([
+    ['capacity', 'your hard cap (4.8 kW after the safety margin)'],
+    ['grid', 'your grid import limit (4.8 kW)'],
+  ] as const)('warns on the card and names the %s limit', (limit, named) => {
+    expect(buildDeviceStatus(offRelay(limit), false, 0).reason).toEqual({
+      text: `Maximum power draw 6.0 kW is too high to start under ${named}. Lower it under Power limiting.`,
+      tone: 'warning',
+    });
+  });
+});
+
 describe('simulation action previews', () => {
   const modeTemperature = (plannedTarget: number, controllable: boolean): DeviceStatusInput => {
     const device = runningPowerHold();

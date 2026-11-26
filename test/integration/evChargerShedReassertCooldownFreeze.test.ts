@@ -383,7 +383,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     const timing = buildRestoreTiming(state, { kind: 'on', kw: 6.5 }, {
       powerTracker, drawEvidence: noDrawEvidence,
       getShedBehavior: () => ({ action: 'turn_off' }),
-      temperatureSetpoints: new Map(), structuredLog: testLogger,
+      temperatureSetpoints: new Map(), structuredLog: testLogger, planningCeiling: null,
     }, [], Date.now());
     expect(timing.inCooldown).toBe(false);
     expect(shouldPlanRestores(false, timing, false)).toBe(true);

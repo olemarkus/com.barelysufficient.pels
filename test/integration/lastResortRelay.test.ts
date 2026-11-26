@@ -290,6 +290,48 @@ describe('last-resort restore priority', () => {
     expect(commands.get('smaller')).toBeUndefined();
   });
 
+  it('lets the smaller load start when the relay maximum can never fit the planning ceiling', () => {
+    const result = applyRestorePlanForSpec({
+      planDevices: [smallerLoad, relay], context: buildPlanContextFixture({ nowTs: now }),
+      power: buildMeasuredPower({ headroomKw: 5, capacityHeadroomKw: 5, budgetHeadroomKw: 5 }),
+      state: createPlanEngineState(now - 600000),
+      sheddingActive: false,
+      deps: {
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
+        temperatureSetpoints: new Map(),
+        structuredLog: testLogger,
+        planningCeiling: { limit: 'capacity', kw: 5 },
+      },
+    });
+    const devices = new Map(result.planDevices.map((device) => [device.id, device]));
+    expect(result.lastResortPriorityHold).toBeNull();
+    expect(buildPlannedBinaryCommand(devices.get('smaller')!)).toMatchObject({ deviceId: 'smaller', desiredOn: true });
+    expect(buildPlannedBinaryCommand(devices.get('relay')!)).toBeUndefined();
+    expect(devices.get('relay')?.reason).toEqual({
+      code: 'last_resort_above_limit', maximumKw: 6, limitKw: 5, limit: 'capacity',
+    });
+  });
+
+  it('keeps the priority turn for a relay whose maximum fits the planning ceiling', () => {
+    const result = applyRestorePlanForSpec({
+      planDevices: [smallerLoad, relay], context: buildPlanContextFixture({ nowTs: now }),
+      power: buildMeasuredPower({ headroomKw: 5, capacityHeadroomKw: 5, budgetHeadroomKw: 5 }),
+      state: createPlanEngineState(now - 600000),
+      sheddingActive: false,
+      deps: {
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
+        temperatureSetpoints: new Map(),
+        structuredLog: testLogger,
+        planningCeiling: { limit: 'grid', kw: 6.6 },
+      },
+    });
+    expect(result.lastResortPriorityHold).not.toBeNull();
+    const smaller = result.planDevices.find((device) => device.id === 'smaller');
+    expect(buildPlannedBinaryCommand(smaller!)).toBeUndefined();
+  });
+
   it('starts the 6 kW relay first when 7 kW is free', () => {
     const commands = plan(7);
     expect(commands.get('relay')).toMatchObject({ deviceId: 'relay', desiredOn: true });

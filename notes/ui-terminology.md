@@ -1067,6 +1067,11 @@ under External sensors.` or `Review last-resort control under Power limiting.`
 When a running last-resort relay gains a power reading, its Overview card shows
 the measured power and says `Has its own power reading. Turn off last-resort
 control under Power limiting.`
+When a relay's maximum plus its start room is above the planning ceiling, PELS
+can never turn it back on. Its card then shows a warning that names the limit,
+for example `Maximum power draw 6.0 kW is too high to start under your hard cap
+(4.8 kW after the safety margin). Lower it under Power limiting.`, or `… under
+your grid import limit (4.8 kW). …` (`lastResortAboveLimit`).
 For an on/off device without power information, the Managed hint points to a
 metering socket when available. It recommends last-resort setup for variable
 draw without a meter, or Homey Energy for a steady draw while the device is on.
