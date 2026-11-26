@@ -91,7 +91,7 @@ for (const width of [320, 360, 480]) {
       await expect(page.getByRole('switch', { name: 'Manage Thuisbatterij', exact: true })).toBeChecked();
       await expect(header.getByRole('button', { name: /^(Continue|Review setup)$/ })).toBeEnabled();
       // No limit is in force, so the battery's hint names the solar job only.
-      await expect(page.locator('#device-card-list')).toContainText('PELS shares spare solar between it and your devices');
+      await expect(page.locator('#device-card-list')).toContainText('PELS controls charging to store spare solar in priority order.');
       await expectNoSideScroll(page);
       await shoot(page, width, 'devices-step-battery-only');
     });
