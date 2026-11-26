@@ -38,6 +38,7 @@ import {
 } from './planReasons';
 import { rankRestoreCooldownCohort } from './planRestoreCooldownCohort';
 import { syncHeadroomCardState } from './planHeadroomDevice';
+import { resolvePlanningPowerCeiling } from '../power/capacityModel';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { getOnDevices } from './restore/devices';
 import { stampSteppedFairnessHolds } from './planSteppedFairnessHold';
@@ -86,6 +87,7 @@ export class PlanMaterializationStages {
         drawEvidence: this.deps.drawEvidence,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         temperatureSetpoints: context.temperatureSetpoints,
+        planningCeiling: resolvePlanningPowerCeiling(this.deps.getCapacitySettings(), context.nowTs),
         deviceDiagnostics: this.deps.deviceDiagnostics,
         structuredLog: this.deps.structuredLog,
       });

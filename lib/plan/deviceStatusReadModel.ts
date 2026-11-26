@@ -37,6 +37,9 @@ import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
 import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/homeyEnergySetup';
 import { formatDisplayDeviceName } from '../../packages/shared-domain/src/displayDeviceName';
 import type { DeviceStatusInput } from './deviceStatusInput';
+import {
+  resolveCarConfirmationOffer, resolveOwnerActionTone, resolvePhaseSettingOffer,
+} from './deviceStatusReasonOffers';
 
 /** The reason line of a card Homey reports unavailable, as the Tesla adapter words it. */
 export const HOMEY_UNAVAILABLE_REASON_TEXT = 'Homey reports this device unavailable';
@@ -232,11 +235,6 @@ function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: numbe
   return { kind: 'in_text', endsAtMs, totalSec, prefix: prefix ?? '', suffix: suffix ?? '' };
 }
 
-const resolvePhaseSettingOffer = (device: DeviceStatusInput): { offersPhaseSetting?: true } => (
-  device.reason.code === PLAN_REASON_CODES.phaseLimit && device.phaseFootprint?.kind === 'unknown'
-    ? { offersPhaseSetting: true } : {}
-);
-
 function buildReason(
   device: DeviceStatusInput, dryRun: boolean, nowMs: number, powerPredatesSwitchOff: boolean,
 ): DeviceStatus['reason'] {
@@ -352,6 +350,7 @@ function buildOrdinaryReason(
   return {
     text,
     ...(idle ? { tone: idle.tone, detail: idle.detail } : {}),
+    ...resolveOwnerActionTone(device),
     ...(countdown ? { countdown } : {}),
     ...resolvePhaseSettingOffer(device),
     ...resolveCarConfirmationOffer(device),
@@ -379,11 +378,6 @@ function resolveCarIdentificationReason(
 // A charger whose car PELS will not identify by itself offers the confirmation
 // even when another reason holds the line: a hold for power does not end the
 // wait for the car, and the reason line has room for one cause only.
-const resolveCarConfirmationOffer = (device: DeviceStatusInput): { offersCarConfirmation?: true } => (
-  device.carIdentificationState === 'timed_out' || device.carIdentificationState === 'selected_cars_unplugged'
-    ? { offersCarConfirmation: true } : {}
-);
-
 // The observed rung a held stepped device's state word names, if any.
 function resolvePhysicalStepId(device: DeviceStatusInput): string | null {
   if (!device.execution.available || device.execution.physicalState === 'off' || !device.steppedLoad) return null;

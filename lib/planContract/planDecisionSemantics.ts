@@ -31,6 +31,8 @@ const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
   // swallows. A kept stepped device under it can still be stepped down: a hold never blocks
   // lowering a running device (`lib/executor/executableSteppedLoadProjection.ts`).
   PLAN_REASON_CODES.reservedForStart,
+  // Same class: the relay's maximum does not fit the limit, so the planner keeps it off.
+  PLAN_REASON_CODES.lastResortAboveLimit,
 ]);
 
 // Reasons under which a producer-resolved deferred-objective resume (binary_restore)
@@ -89,6 +91,7 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // reserving device is higher priority by construction, so resuming here would take exactly
   // the block the reservation exists to protect.
   PLAN_REASON_CODES.reservedForStart,
+  PLAN_REASON_CODES.lastResortAboveLimit,
 ]);
 
 const STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES = new Set<PlanReasonCode>([

@@ -18,6 +18,8 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   end_of_hour_drain: { kind: 'restricted', cause: 'capacity_limited' },
   insufficient_headroom: { kind: 'restricted', cause: 'capacity_limited' },
   reserved_for_start: { kind: 'restricted', cause: 'priority_limited' },
+  // The relay's own setup keeps it off: its maximum does not fit the limit.
+  last_resort_above_limit: { kind: 'restricted', cause: 'device_limit' },
   swap_pending: { kind: 'restricted', cause: 'priority_limited' },
   swapped_out: { kind: 'restricted', cause: 'priority_limited' },
   activation_backoff: { kind: 'failed' },

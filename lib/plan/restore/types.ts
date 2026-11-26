@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../../packages/contracts/src/capacitySettings';
 import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 import type { PhaseRoomAxis } from '../phase/phaseRoom';
 import type { RestoreHeadroomAxes } from './headroomLedger';
@@ -21,6 +22,12 @@ export type RestoreDeps = {
   /** This build's resolved setpoints per temperature device (`PlanContext.temperatureSetpoints`);
    * the swap lane reads whether limiting a device still releases demand from it. */
   temperatureSetpoints: TemperatureSetpointsByDevice;
+  /**
+   * The home's planning ceiling this build (`resolvePlanningPowerCeiling`), or
+   * `null` with no power limit on. A last-resort relay whose buffered maximum is
+   * above it can never be admitted, so it gets no priority turn.
+   */
+  planningCeiling: PowerLimitCeiling | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog: PinoLogger;
 };

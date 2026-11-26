@@ -54,8 +54,11 @@ type RestorePass =
   | { kind: 'last_resort_wait'; hold: DeviceReason; useOrdinaryWaitReasons: boolean }
   | { kind: 'shortfall' | 'full' | 'budget_exempt' | 'waiting' };
 
+/** The last-resort facts the pass is chosen from: a relay start in flight, and the relay due its turn. */
+type LastResortRestoreState = { pending: boolean; target: LastResortRestoreCandidate | undefined };
+
 function resolveRestorePass(
-  devices: DevicePlanDevice[],
+  lastResort: LastResortRestoreState,
   context: PlanContext,
   power: MeasuredPower,
   state: PlanEngineState,
@@ -68,11 +71,10 @@ function resolveRestorePass(
   // The budget-exempt lane keeps the raw startup stabilization.
   const exemptPlannable = shouldPlanBudgetExemptRestores(context, power, state, timing, shedding.sheddingActive);
   const useOrdinaryWaitReasons = !plannable && !exemptPlannable;
-  const pending = devices.some((device) => device.lastResort && device.binaryCommandPending);
-  if (pending || hasUnsettledLastResortStart(state.actuation, timing)) {
+  if (lastResort.pending || hasUnsettledLastResortStart(state.actuation, timing)) {
     return { kind: 'last_resort_wait', useOrdinaryWaitReasons, hold: { code: PLAN_REASON_CODES.meterSettling } };
   }
-  const target = getNextLastResortRestore(devices);
+  const { target } = lastResort;
   if (target !== undefined) {
     const hold = buildReservedForStartReason(target.name);
     if (plannable) return { kind: 'last_resort', target, hold };
@@ -107,7 +109,11 @@ export function applyRestorePlan(
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const timing = buildRestoreTiming(state, power.headroom, deps, planDevices, context.nowTs);
   const effectiveTiming = resolveEffectiveTiming(timing, context);
-  const pass = resolveRestorePass(planDevices, context, power, state, timing, effectiveTiming, sheddingPlan);
+  const lastResort: LastResortRestoreState = {
+    pending: planDevices.some((device) => device.lastResort && device.binaryCommandPending),
+    target: getNextLastResortRestore(planDevices, deps.planningCeiling),
+  };
+  const pass = resolveRestorePass(lastResort, context, power, state, timing, effectiveTiming, sheddingPlan);
   // Only the lane that can actually consider a target spends its reservation window.
   state.swapLedger.reconcile(deviceMap, timing.nowTs, (target) => restorePassServes(pass, target), deps.structuredLog);
   const headroomReserves = resolveHeadroomReserves(

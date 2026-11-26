@@ -82,6 +82,11 @@ export const PLAN_REASON_CODES = {
   // nothing was turned off to create the reservation. Lands on a device that is off and waiting to
   // resume, and on an active stepped device denied a step-up.
   reservedForStart: 'reserved_for_start',
+  // A last-resort relay whose configured maximum, plus the room PELS keeps for
+  // its start, is above the home's planning ceiling: PELS can never admit its
+  // start, so it gives the relay no priority turn and asks the owner to fix the
+  // setup. Carries configuration only, so it stays byte-stable across cycles.
+  lastResortAboveLimit: 'last_resort_above_limit',
 } as const;
 
 export type PlanReasonCode = typeof PLAN_REASON_CODES[keyof typeof PLAN_REASON_CODES];
@@ -277,6 +282,14 @@ export type DeviceReason =
   // built only from a `blocked_by_reserve` admission, which is reached only with
   // a live claiming reserve, and `HeadroomReserve.deviceName` is a required
   // `string`.
-  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string };
+  | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string }
+  // `limit` names which enabled limit sets the planning ceiling, so the card can
+  // name it (`notes/ui-terminology.md`: never blame a limit that is off).
+  | {
+    code: typeof PLAN_REASON_CODES.lastResortAboveLimit;
+    maximumKw: number;
+    limitKw: number;
+    limit: 'capacity' | 'grid';
+  };
 
 
