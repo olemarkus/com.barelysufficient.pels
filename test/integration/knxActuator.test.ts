@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import type Homey from 'homey';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import { getLogger } from '../../lib/logging/logger';
@@ -30,7 +31,10 @@ test.each([false, true])('requires explicit management when another device is ma
     [MANAGED_DEVICES, otherManaged ? { other: true } : {}],
     [CONTROLLABLE_DEVICES, {}],
   ]);
-  const owner = new DeviceControlSettings({ get: (key) => saved.get(key), getKeys: () => [...saved.keys()] });
+  const owner = new DeviceControlSettings({
+    get: (key) => saved.get(key),
+    getKeys: () => [...saved.keys()],
+  }, ignoredDeviceJournal);
   owner.reload();
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
     settings: {

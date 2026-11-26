@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import type Homey from 'homey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
@@ -44,7 +45,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(BASE);
   mockHomeyInstance.settings.set(MANAGED_DEVICES, { [ID]: true });
-  settings = new DeviceControlSettings(mockHomeyInstance.settings);
+  settings = new DeviceControlSettings(mockHomeyInstance.settings, ignoredDeviceJournal);
   lastResortDevices = {};
   transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, {
     log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test/configured-binary-switch'),

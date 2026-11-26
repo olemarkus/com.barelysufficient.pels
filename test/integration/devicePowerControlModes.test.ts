@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import {
   DEVICE_POWER_CONTROL_MODES, DEVICE_TARGET_POWER_CONFIGS, DEVICE_CONTROL_PROFILES, NATIVE_EV_WIRING_DEVICES,
@@ -8,7 +9,7 @@ function fixture(entries: [string, unknown][] = []) {
   const settings = new DeviceControlSettings({
     get: (key) => values.get(key) ?? null,
     getKeys: () => [...values.keys()],
-  });
+  }, ignoredDeviceJournal);
   settings.reload();
   return { settings, values };
 }

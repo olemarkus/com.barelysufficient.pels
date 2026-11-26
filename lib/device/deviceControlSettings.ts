@@ -9,12 +9,9 @@ import { readEvChargingSessionSmoothingSettings } from './evChargingSessionSmoot
 import type { ChargingPhaseSettings, ChargingPhaseSettingsMap } from '../../packages/contracts/src/chargingPhases';
 import { CHARGING_PHASE_SETTINGS_KEY, isChargingPhaseSettingsMap }
   from '../../packages/shared-domain/src/settings/chargingPhases';
-import {
-  isShedBehaviorsSetting,
-  readShedBehaviors,
-  resolveShedBehavior,
-  type ConfiguredShedBehavior,
-} from '../../packages/shared-domain/src/settings/shedBehaviors';
+import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
+import type { DeviceJournal } from '../ports/deviceJournal';
+import { DevicePowerLimitSettings } from './devicePowerLimitSettings';
 import type {
   DeviceControlProfile,
   DeviceControlProfiles,
@@ -61,7 +58,6 @@ import {
 } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
 import {
   BUDGET_EXEMPT_DEVICES,
-  CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_POWER_SOURCES,
   DEVICE_DRIVER_OVERRIDES,
@@ -78,7 +74,6 @@ import {
   MAIN_FUSE_PHASE_METER_DEVICE_ID,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
-  OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
 } from '../utils/settingsKeys';
 import {
@@ -103,7 +98,6 @@ type BooleanMap = Readonly<Record<string, boolean>>;
 
 /** One generation of the maps, adopted as a whole. */
 type DeviceControlMaps = {
-  readonly controllable: BooleanMap;
   readonly managed: BooleanMap;
   readonly powerSources: DevicePowerSources;
   readonly managedFilterActive: boolean;
@@ -124,7 +118,6 @@ type DeviceControlMaps = {
   readonly controlProfiles: DeviceControlProfilesRead;
   readonly targetPowerConfigs: DeviceTargetPowerConfigsRead;
   readonly powerControlModes: PowerControlModePolicy;
-  readonly shedBehaviors: Readonly<Record<string, ConfiguredShedBehavior>>;
 };
 
 type TemperatureControlPolicy = {
@@ -208,7 +201,6 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
  */
 export class DeviceControlSettings {
   private maps: DeviceControlMaps = {
-    controllable: {},
     managed: {},
     powerSources: {},
     managedFilterActive: false,
@@ -229,13 +221,14 @@ export class DeviceControlSettings {
     controlProfiles: { profiles: {}, state: 'unavailable' },
     targetPowerConfigs: { configs: {}, authoredDeviceIds: new Set(), state: 'unavailable' },
     powerControlModes: { modes: {}, state: 'unavailable' },
-    shedBehaviors: {},
   };
 
   private readonly binarySwitchSettings: DeviceBinarySwitchSettings;
+  private readonly powerLimitSettings: DevicePowerLimitSettings;
 
-  constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'>) {
+  constructor(private readonly settings: Pick<SettingsPort, 'get' | 'getKeys'>, journal: DeviceJournal) {
     this.binarySwitchSettings = new DeviceBinarySwitchSettings(settings);
+    this.powerLimitSettings = new DevicePowerLimitSettings(settings, journal);
   }
 
   /** Release the setup choices of devices Homey no longer lists. */
@@ -248,7 +241,7 @@ export class DeviceControlSettings {
   isBinarySwitchWriteCurrent(deviceId: string): boolean { return this.binarySwitchSettings.isCurrent(deviceId); }
 
   /** The runtime-held Power-limit control map (`controllable_devices`), the one the planner reads. */
-  get controllableDevices(): BooleanMap { return this.maps.controllable; }
+  get controllableDevices(): BooleanMap { return this.powerLimitSettings.controllable; }
   get devicePowerSources(): DevicePowerSources { return this.maps.powerSources; }
   get lastResortDevices(): LastResortDevices { return this.binarySwitchSettings.lastResortDevices; }
   isLastResortConfigured(deviceId: string): boolean { return Object.hasOwn(this.lastResortDevices, deviceId); }
@@ -282,7 +275,7 @@ export class DeviceControlSettings {
     return this.maps.managed[deviceId] === true && !this.isPowerSourceDevice(deviceId);
   }
   /** The owner's Power-limit control choice (`resolveCapacityControlEnabled` decides). */
-  isControllable(deviceId: string): boolean { return this.maps.controllable[deviceId] === true; }
+  isControllable(deviceId: string): boolean { return this.controllableDevices[deviceId] === true; }
   /**
    * Whether the owner has managed any device; until then every device is read.
    * Explicit `false` entries alone must NOT activate it, or a fresh install
@@ -368,7 +361,7 @@ export class DeviceControlSettings {
       || this.maps.nativeEvWiring.state === 'unavailable' || Object.hasOwn(this.maps.nativeEvWiring.devices, deviceId);
   }
   getConfiguredShedBehavior(deviceId: string): ConfiguredShedBehavior {
-    return resolveShedBehavior(this.maps.shedBehaviors, deviceId);
+    return this.powerLimitSettings.shedBehavior(deviceId);
   }
   getDeviceDriverIdOverride(deviceId: string): string | undefined {
     const override = this.maps.driverOverrides[deviceId]?.trim();
@@ -433,15 +426,12 @@ export class DeviceControlSettings {
   reload(): void {
     const { settings, maps: current } = this;
     const driverOverrides = settings.get(DEVICE_DRIVER_OVERRIDES);
-    // A read that is not the map keeps the one already held: a transient miss is
-    // not an owner who cleared every limit.
-    const shedBehaviors = settings.get(OVERSHOOT_BEHAVIORS);
+    const powerLimitSettings = this.powerLimitSettings.read();
     const managed = acceptManagedDevices(settings.get(MANAGED_DEVICES), current.managed);
     const powerSources = this.readPowerSources();
     const managedFilterActive = Object.entries(managed).some(([id, value]) =>
       value === true && !Object.values(powerSources).includes(id));
     this.maps = {
-      controllable: keep(settings.get(CONTROLLABLE_DEVICES), isBooleanMap, current.controllable),
       managed,
       powerSources,
       managedFilterActive,
@@ -479,9 +469,9 @@ export class DeviceControlSettings {
       controlProfiles: this.readControlProfiles(),
       targetPowerConfigs: this.readTargetPowerConfigs(),
       powerControlModes: this.readPowerControlModes(),
-      shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
     this.binarySwitchSettings.reload(this.binarySwitchSettings.readLastResortDevices(), this.maps.managed);
+    this.powerLimitSettings.adopt(powerLimitSettings);
   }
 
   private readPowerSources(): DevicePowerSources {
