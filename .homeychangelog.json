@@ -904,5 +904,8 @@
   },
   "3.52.1": {
     "en": "Zaptec chargers that share one installation can now charge only for Smart tasks: leave Power-limit control off and turn on Only PELS starts this device on that charger. Setup > Charging current links to the switch when a charger still needs it, and the chargers in one installation can use different start settings.\n\nWeather insight now fills earlier history from the main meter you selected. Setting up power for an on/off relay without a power reading is clearer. Changing Managed by PELS on several devices in a row is applied together. PELS uses less memory after it starts. Support reports now include installed Homey app versions, device firmware and what Homey recorded when something else changed a device PELS controls."
+  },
+  "3.53.0": {
+    "en": "Overview now explains why an EV charger is waiting to start and which Smart task missed its target, and stepped device cards show the charging level or step the device reports. A last-resort relay resumes before other devices once there is room for its full maximum, and it follows Leave off until turned on again. If its maximum can never fit your limit, its card says so and other devices no longer wait for it.\n\nPeblar chargers switch phases using the measured voltage and finish a charging session before PELS hands phase control back. Turning off a charge target keeps the Charge before the battery level is known choice. Setup asks for current Homey Energy prices, offers main fuse protection in the Netherlands and explains relays that need a power reading. PELS backs up its own data daily, and support reports include the settings of supported devices."
   }
 }
