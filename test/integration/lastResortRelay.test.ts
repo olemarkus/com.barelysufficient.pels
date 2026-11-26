@@ -335,6 +335,23 @@ describe('last-resort restore priority', () => {
     expect(tight.lastResortPriorityHold).toBeNull();
     expect(devices.get('relay')?.reason).toMatchObject({ code: 'last_resort_above_limit', limit: 'grid' });
     expect(buildPlannedBinaryCommand(devices.get('smaller')!)).toMatchObject({ deviceId: 'smaller', desiredOn: true });
+
+    // A switch-off the meter has not read yet starts the settle wait; the warning stays on the relay.
+    const settling = createPlanEngineState(now - 600000);
+    const justOff = { ...relay, lastResort: { ...relay.lastResort!, observedOffAtMs: now - 5000 } };
+    const settled = applyRestorePlanForSpec({
+      planDevices: [smallerLoad, justOff], context: buildPlanContextFixture({ nowTs: now }),
+      power: buildMeasuredPower({ headroomKw: 7.5, capacityHeadroomKw: 7.5, budgetHeadroomKw: 7.5 }),
+      state: settling, sheddingActive: false,
+      deps: {
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now - 10000 }),
+        temperatureSetpoints: new Map(), structuredLog: testLogger,
+        admissionCeiling: { limit: 'grid', kw: 5 },
+      },
+    });
+    expect(settled.planDevices.find((device) => device.id === 'relay')?.reason)
+      .toMatchObject({ code: 'last_resort_above_limit' });
   });
 
   it('keeps the priority turn for a relay whose maximum fits the admission ceiling', () => {
