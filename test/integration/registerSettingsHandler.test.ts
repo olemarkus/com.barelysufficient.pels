@@ -20,7 +20,11 @@ import { testLogger } from '../utils/testLogger';
 const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
 
 const buildContext = () => {
-  const settingsListeners = new Map<string, (...args: unknown[]) => Promise<void>>();
+  type SettingsListener = (key: string) => void | Promise<void>;
+  const settingsListeners: Record<string, Set<SettingsListener>> = {
+    set: new Set(),
+    unset: new Set(),
+  };
   const priceRefresh = vi.fn();
   const timers = new TimerRegistry();
   // Deliberate partial of the broad AppContext surface — this suite exercises the
@@ -31,14 +35,8 @@ const buildContext = () => {
       settings: {
         get: vi.fn(),
         set: vi.fn(),
-        on: vi.fn((event: string, listener: (...args: unknown[]) => Promise<void>) => {
-          settingsListeners.set(event, listener);
-        }),
-        off: vi.fn((event: string, listener: (...args: unknown[]) => Promise<void>) => {
-          if (settingsListeners.get(event) === listener) {
-            settingsListeners.delete(event);
-          }
-        }),
+        on: vi.fn((event: string, listener: SettingsListener) => settingsListeners[event]?.add(listener)),
+        off: vi.fn((event: string, listener: SettingsListener) => settingsListeners[event]?.delete(listener)),
       },
     } as never,
     log: vi.fn(),
@@ -137,7 +135,7 @@ const buildContext = () => {
 
 /**
  * Register against the context, with the given home-runtime registry, and
- * return the settings `set` listener the registration installed: the specs
+ * dispatch the installed settings `set` listeners. The specs
  * write through the same edge Homey drives.
  */
 const register = (
@@ -147,9 +145,9 @@ const register = (
   registerSettingsHandler(
     ctx, () => 'Home', () => registry as HomeRuntimeRegistry | undefined, vi.fn(), vi.fn(), () => {},
   );
-  const listener = settingsListeners.get('set');
-  if (!listener) throw new Error('registerSettingsHandler installed no set listener');
-  return (key) => listener(key);
+  const listeners = settingsListeners.set;
+  if (!listeners?.size) throw new Error('registerSettingsHandler installed no set listener');
+  return async (key) => { await Promise.all([...listeners].map((listener) => listener(key))); };
 };
 
 describe('registerSettingsHandler', () => {
