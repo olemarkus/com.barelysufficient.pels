@@ -85,17 +85,21 @@ function planLastResortRestore(
   cycle: RestoreCycle, device: LastResortRestoreCandidate, loop: RestoreLoopState, allowSwap: boolean,
 ): RestoreLoopState {
   const { lastResort } = device;
+  // An above-limit relay keeps its owner-action warning through transient waits.
+  const aboveLimit = allowSwap ? null : resolveLastResortAboveLimitReason(device, cycle.deps.admissionCeiling);
   const afterLastChange = Math.max(
     lastResort.observedOffAtMs, device.lastResortOwnedOffAtMs ?? 0, cycle.state.actuation.lastRestoreMs ?? 0,
   );
   const waitingForReading = resolveMeterSettlingReason(cycle.timing, afterLastChange);
   if (waitingForReading || shouldWaitForOtherRecovery(cycle.deviceMap, device.id, false)) {
-    return keepRelayOff(cycle, device, waitingForReading ?? { code: PLAN_REASON_CODES.waitingForOtherDevices }, loop);
+    const waiting = waitingForReading ?? { code: PLAN_REASON_CODES.waitingForOtherDevices };
+    return keepRelayOff(cycle, device, aboveLimit ?? waiting, loop);
   }
   const { state, timing } = cycle;
   const blockingTarget = cycle.swapLedger.blockingTarget(device, cycle.deviceMap);
   if (blockingTarget !== undefined) {
-    return keepRelayOff(cycle, device, { code: PLAN_REASON_CODES.swapPending, targetName: blockingTarget.name }, loop);
+    const swapPending = { code: PLAN_REASON_CODES.swapPending, targetName: blockingTarget.name } as const;
+    return keepRelayOff(cycle, device, aboveLimit ?? swapPending, loop);
   }
 
   const devPower = lastResort.maximumW / 1000;
@@ -115,7 +119,6 @@ function planLastResortRestore(
   if (reserved.kind === 'blocked_by_reserve') {
     return keepRelayOff(cycle, device, buildReservedForStartReason(reserved.holderName), loop);
   }
-  const aboveLimit = allowSwap ? null : resolveLastResortAboveLimitReason(device, cycle.deps.admissionCeiling);
   if (aboveLimit !== null) return keepRelayOff(cycle, device, aboveLimit, loop);
   const rejected = buildInsufficientHeadroomUpdate(
     needed, reserved.availableKw, reserved.admission.marginKw, null, null, null,
