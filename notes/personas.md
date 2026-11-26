@@ -227,8 +227,8 @@ negative, with an explicit opt-in under Electricity prices. A home battery PELS
 can set the power of is now controlled (Main home):
 it takes surplus and is limited at its own place in the priority order (last
 by default: it stores what the willing devices leave, and covers the house
-before any device is limited), and is handed back to its own mode through the
-normal restore in priority order, or after the surplus dwell.
+before any device is limited). PELS keeps control between solar charging and
+power-limit interventions, and a price plan is optional.
 **Signature:** PV (a home battery, by default the last surplus sink and the
 first lever against the limit), EV + heat pump + VVB as surplus sinks; cares about
 self-consumption rate as the headline KPI.

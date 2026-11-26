@@ -1,7 +1,6 @@
-// SDK-boundary e2e for a home battery and solar surplus: the battery's own
-// mode stores the export, PELS claims it only to give a willing on/off device
-// the power that mode would otherwise take, caps its charge to what the device
-// leaves, and hands it back to its own mode soon after the surplus ends.
+// SDK-boundary e2e for a home battery and solar surplus: PELS allocates
+// export in priority order, lets the battery store its share, and keeps it
+// under PELS control at idle once the surplus ends.
 // Nothing internal is mocked: the whole-home net enters through the real Homey
 // Energy poll (`manager/energy/live`, negative = exporting), the battery and
 // the pump through the device API, and what is asserted is what PELS writes
@@ -22,6 +21,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  BATTERY_CONTROL_DEVICES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
@@ -36,7 +36,7 @@ const BASE_LOAD_W = 300;
 const RAMP_W = 1000;
 const BATTERY_MAX_W = 2500;
 
-type LoggedEvent = { event?: string; deviceId?: string; reason?: string; batteries?: unknown[] };
+type LoggedEvent = { event?: string };
 
 const writesTo = (put: { mock: { calls: unknown[][] } }, deviceId: string): Array<[string, unknown]> => put.mock.calls
   .filter(([path]) => typeof path === 'string' && path.startsWith(`manager/devices/device/${deviceId}/capability/`))
@@ -99,6 +99,11 @@ type BatteryCharge = 'room' | 'full' | 'exporting';
 
 const startHome = async (solarW: number, surplusWilling = true, charge: BatteryCharge = 'room'): Promise<Home> => {
   const battery = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', stepW: 5 });
+  if (charge === 'exporting') {
+    battery.setActualCapabilityValue('target_power_mode', 'trade_mode');
+    battery.setActualCapabilityValue('measure_power', -BATTERY_MAX_W);
+    mockHomeyInstance.settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: false });
+  }
   const pump = await buildPump();
   setMockDrivers({ driverA: new MockDriver('driverA', [pump, battery]) });
   seedSettings(surplusWilling);
@@ -120,7 +125,7 @@ const startHome = async (solarW: number, surplusWilling = true, charge: BatteryC
       if (typeof arg !== 'string') continue;
       try {
         const parsed = JSON.parse(arg) as LoggedEvent;
-        if (parsed.event?.startsWith('battery_') || parsed.event === 'storage_relief_state') events.push(parsed);
+        if (parsed.event?.startsWith('battery_')) events.push(parsed);
       } catch { /* not a structured line */ }
     }
     return log(...args);
@@ -188,13 +193,12 @@ describe('home battery charging from surplus (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('keeps autonomous battery export out of solar surplus after Managed is turned off', async () => {
+  it('keeps autonomous battery export out of solar surplus while Managed is off', async () => {
     const home = await startHome(0, true, 'exporting');
     await home.advance(12);
     expect(home.netW()).toBeLessThan(-PUMP_W);
     expect(home.pump.getActualCapabilityValue('onoff')).toBe(false);
 
-    mockHomeyInstance.settings.set('battery_control_devices', { [BATTERY]: false });
     await home.advance(24);
     expect(writesTo(home.put, BATTERY)).toEqual([]);
     expect(writesTo(home.put, PUMP).filter(([capability, value]) => capability === 'onoff' && value === true)).toEqual([]);
@@ -210,7 +214,6 @@ describe('home battery charging from surplus (SDK-boundary e2e)', () => {
   it('keeps unavailable unmanaged battery export out of solar surplus', async () => {
     const home = await startHome(0, true, 'exporting');
     await home.advance(12);
-    mockHomeyInstance.settings.set('battery_control_devices', { [BATTERY]: false });
     home.battery.setAvailable(false);
     mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
     await home.advance(24);
@@ -220,85 +223,74 @@ describe('home battery charging from surplus (SDK-boundary e2e)', () => {
     expect(writesTo(home.put, BATTERY)).toEqual([]);
   });
 
-  it('gives the pump the solar the battery\'s own mode stored, caps the battery to the rest, then hands it back', async () => {
-    // 2.6 kW of solar on a 300 W base load: 2.3 kW to spare, which the battery's own mode stores.
+  it('gives the pump its share before charging the battery and keeps control when solar fades', async () => {
+    // 2.6 kW of solar on a 300 W base load leaves 2.3 kW to share.
     const home = await startHome(2600);
     await home.advance(44);
     // The pump runs on its 1 kW; the battery, under Homey's claim, stores the
     // rest less the margin PELS leaves, so almost nothing is exported.
     expect(writesTo(home.put, PUMP)).toContainEqual(['onoff', true]);
     expect(writesTo(home.put, BATTERY)[0]).toEqual(['target_power_mode', 'homey']);
-    const charged = setpointsSent(home.put);
-    expect(charged.length).toBeGreaterThan(0);
-    expect(charged.every((value) => value > 0 && value < 2000)).toBe(true);
+    const setpoints = setpointsSent(home.put);
+    expect(setpoints.some((value) => value > 0)).toBe(true);
+    expect(setpoints.every((value) => value >= 0)).toBe(true);
     expect(readW(home.battery)).toBeGreaterThan(1000);
     expect(home.netW()).toBeLessThanOrEqual(0);
     expect(home.netW()).toBeGreaterThanOrEqual(-400);
     expect(home.events.some((event) => event.event === 'battery_storage_setpoint_confirmed')).toBe(true);
-    expect(home.events.filter((event) => event.event === 'storage_relief_state'))
-      .toContainEqual(expect.objectContaining({ batteries: [expect.objectContaining({ claim: 'cap_for_device' })] }));
-
-    // A cloud takes the solar: PELS takes the charge away at once, and hands
-    // the battery back within the dwell, so its own mode covers the house.
+    // When a cloud takes the solar, PELS stops charging and keeps control.
     const before = setpointsSent(home.put).length;
     home.setSolarW(0);
     await home.advance(2);
     expect(setpointsSent(home.put).slice(before)).toContain(0);
 
     await home.advance(14);
-    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
-    expect(home.events.find((event) => event.event === 'battery_storage_released'))
-      .toMatchObject({ deviceId: BATTERY, reason: 'surplus_dwell' });
-    await home.advance(3);
-    expect(readW(home.battery)).toBeLessThan(0);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    expect(readW(home.battery)).toBe(0);
+    expect(home.pump.getActualCapabilityValue('onoff')).toBe(false);
+    expect(writesTo(home.put, BATTERY).filter(([capability]) => capability === 'target_power_mode'))
+      .toEqual([['target_power_mode', 'homey']]);
   });
 
-  it('turns the pump off when the battery\'s own mode discharges to keep it running', async () => {
-    // A full battery: 1.4 kW of solar to spare is exported, and the pump starts on it.
+  it('turns the pump off when the solar that sustains it falls, while an unmanaged battery covers the gap', async () => {
+    mockHomeyInstance.settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: false });
+    // A full battery exports the 1.4 kW of spare solar, and the pump starts on it.
     const home = await startHome(1700, true, 'full');
     await home.advance(15);
     expect(writesTo(home.put, PUMP)).toContainEqual(['onoff', true]);
     expect(readW(home.pump)).toBe(PUMP_W);
 
-    // A cloud: 0.6 kW to spare. Its zero-feed mode gives way and discharges the
-    // missing 0.4 kW, so the meter reads 0 W while stored energy runs the pump.
+    // With 0.6 kW to spare, the battery's zero-feed mode supplies the other 0.4 kW.
     home.setSolarW(900);
     await home.advance(2);
     expect(readW(home.battery)).toBeLessThan(0);
     expect(home.netW()).toBe(0);
 
-    // The pump yields after the settle window, as it would to import, and the
-    // battery stops discharging. PELS never claims the battery for it.
     await home.advance(12);
     expect(writesTo(home.put, PUMP).at(-1)).toEqual(['onoff', false]);
     expect(readW(home.battery)).toBe(0);
     expect(writesTo(home.put, BATTERY)).toEqual([]);
   });
 
-  it('leaves the battery to its own mode when no willing device wants the surplus', async () => {
-    // The pump is not opted into surplus: nothing is willing.
+  it('reserves surplus for a battery ranked above the pump before the pump starts', async () => {
+    const home = await startHome(2600);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { [BATTERY]: 1, [PUMP]: 2 } });
+    await home.advance(44);
+
+    expect(readW(home.battery)).toBeGreaterThan(2000);
+    expect(readW(home.battery)).toBeLessThanOrEqual(2300);
+    expect(home.pump.getActualCapabilityValue('onoff')).toBe(false);
+    expect(writesTo(home.put, PUMP)).not.toContainEqual(['onoff', true]);
+  });
+
+  it('charges from measured surplus with price planning off and no other device using surplus', async () => {
     const home = await startHome(2600, false);
     await home.advance(20);
 
-    expect(writesTo(home.put, BATTERY)).toEqual([]);
-    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
-    // Its own mode stores everything the house does not use (the pump runs as an ordinary load here).
-    expect(readW(home.battery)).toBe(2600 - BASE_LOAD_W - readW(home.pump));
-  });
-
-  it('leaves a battery exporting in the evening to its own mode, and gives the pump none of it', async () => {
-    const home = await startHome(0);
-    // Its own mode trades: it discharges 2.5 kW, and the house exports most of it.
-    home.battery.setActualCapabilityValue('target_power_mode', 'trade_mode');
-    home.battery.setActualCapabilityValue('measure_power', -2500);
-    mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
-    const trading = (): void => { home.battery.setActualCapabilityValue('measure_power', -2500); };
-    for (let poll = 0; poll < 20; poll += 1) {
-      trading();
-      await home.advance(1);
-    }
-
-    expect(writesTo(home.put, BATTERY)).toEqual([]);
-    expect(writesTo(home.put, PUMP)).not.toContainEqual(['onoff', true]);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    expect(readW(home.battery)).toBeGreaterThan(0);
+    const spareW = 2600 - BASE_LOAD_W - readW(home.pump);
+    expect(readW(home.battery)).toBeLessThanOrEqual(spareW);
+    expect(readW(home.battery)).toBeGreaterThan(spareW - 300);
   });
 });

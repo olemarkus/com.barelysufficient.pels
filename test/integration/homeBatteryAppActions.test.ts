@@ -109,7 +109,9 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
   });
   const owner = new HomeBatteryControlOwner(
     settings, new BatteryManagedSettings(settings), actuator,
-    transport, () => true, () => false, () => false,
+    transport,
+    { readMembership: () => 'main', isPowerLimitEnabled: () => true, hasRecentMeterEvidence: () => false },
+    () => false, () => false,
   );
   return { owner, actuator };
 };

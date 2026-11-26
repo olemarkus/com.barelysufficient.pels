@@ -64,6 +64,22 @@ const batteryOn = (id: string, footprint: PhaseFootprint, signedPowerW: number) 
   },
 });
 
+const sellingBatteryOn = (footprint: PhaseFootprint, signedPowerW: number) => {
+  const battery = batteryOn('battery', footprint, signedPowerW);
+  return {
+    ...battery,
+    storage: {
+      ...battery.storage,
+      continuousPlan: {
+        reason: 'export_energy' as const,
+        setpointW: -2000,
+        validUntilMs: Date.now() + 3_600_000,
+        netExportCeilingW: 2500,
+      },
+    },
+  };
+};
+
 const planned = (plan: DevicePlan, id: string) => plan.devices.find((device) => device.id === id);
 
 describe('main fuse phase protection in the planner', () => {
@@ -329,21 +345,21 @@ describe('main fuse phase protection in the planner', () => {
     expect(plan.meta).toMatchObject({ exportPhase: 'L1' });
   });
 
-  it('does not hand a battery back onto a phase with no export room for its discharge', async () => {
+  it('keeps a battery export-limited while its sale would overload a phase', async () => {
     const state = createPlanEngineState();
-    const battery = batteryOn('battery', L1, -2000);
+    const battery = sellingBatteryOn(L1, -2000);
     await buildCycle(state, [-6.2, 1, 1]).buildDevicePlanSnapshot([battery as never]);
     const lever = state.storageLeverByDevice.battery;
     expect(lever?.exportPhase).toBe('L1');
     vi.setSystemTime(Date.now() + 700_000);
     const lowered = { ...battery, storage: { ...battery.storage, signedPowerW: lever?.setpointW ?? 0 } };
     await buildCycle(state, [-5, 1, 1]).buildDevicePlanSnapshot([lowered as never]);
-    expect(state.storageLeverByDevice.battery).toBeDefined();
+    expect(state.storageLeverByDevice.battery).toMatchObject({ purpose: 'limit', exportPhase: 'L1' });
   });
 
   it('keeps an export-phase hold within the battery\'s delivery ceiling', async () => {
     const state = createPlanEngineState();
-    const battery = batteryOn('battery', L1, -2000);
+    const battery = sellingBatteryOn(L1, -2000);
     await buildCycle(state, [-6.2, 1, 1]).buildDevicePlanSnapshot([battery as never]);
     const held = state.storageLeverByDevice.battery;
     expect(held?.exportPhase).toBe('L1');
@@ -355,16 +371,16 @@ describe('main fuse phase protection in the planner', () => {
     expect(state.storageLeverByDevice.battery?.setpointW).toBeGreaterThanOrEqual(-100);
   });
 
-  it('sizes the hand-back gate by the phase share, so a three-phase battery can go home', async () => {
+  it('allows managed idle when all three phases can accommodate their share of the planned sale', async () => {
     const state = createPlanEngineState();
-    const battery = batteryOn('battery', ALL, -3000);
+    const battery = sellingBatteryOn(ALL, -2500);
     await buildCycle(state, [-6.2, 1, 1]).buildDevicePlanSnapshot([battery as never]);
     expect(state.storageLeverByDevice.battery?.exportPhase).toBe('L1');
     vi.setSystemTime(Date.now() + 700_000);
     const lowered = { ...battery, storage: { ...battery.storage, signedPowerW: state.storageLeverByDevice.battery?.setpointW ?? 0 } };
     // L1 has room for a third of the returning discharge, not all of it.
     await buildCycle(state, [-4, 1, 1]).buildDevicePlanSnapshot([lowered as never]);
-    expect(state.storageLeverByDevice.battery).toBeUndefined();
+    expect(state.storageLeverByDevice.battery).toMatchObject({ purpose: 'continuous', baseline: true, setpointW: 0 });
   });
 
   it('asks the inverter for what the batteries left, whatever the price says', async () => {

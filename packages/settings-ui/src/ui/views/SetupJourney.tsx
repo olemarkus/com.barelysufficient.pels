@@ -129,8 +129,7 @@ const BatteryGoal = ({ id, name, goal, busy, onBatteryPlan, onOpen }: BatteryGoa
       <span class="md-switch-row__label pels-text-settings-label">Plan charging with PELS</span>
     </label>
     <p class="pels-card-supporting">
-      PELS plans charging and household supply around your prices and solar. The battery’s own schedule
-      resumes when you turn this off.
+      PELS plans charging and household supply around your prices and solar. With planning off, PELS stores spare solar and uses the battery to hold your limit.
     </p>
     {!goal.enabled && (
       <MdDecimalField class="setup-journey__battery-capacity" label="Usable capacity (kWh)" min="0.1" max="500" step="0.1" value={draft} disabled={busy}

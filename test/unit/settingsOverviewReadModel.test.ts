@@ -1092,20 +1092,11 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery PELS holds to store solar is charging from solar', () => {
-    const card = buildDeviceCard(batteryDevice({ kind: 'surplus' }), battery({ signedW: 1800, percent: 41 }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'plan_solar' }), battery({ signedW: 1800, percent: 41 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '1.8 kW',
-      reason: { text: 'Storing the solar power your devices leave' },
-    });
-  });
-
-  it('says a battery PELS caps for a device is charging less, never storing solar', () => {
-    const card = buildDeviceCard(batteryDevice({ kind: 'cap_for_device' }), battery({ signedW: 600 }));
-    expect(card.status).toMatchObject({
-      label: 'Charging',
-      powerText: '0.6 kW',
-      reason: { text: 'Charging less so a device can use the solar' },
+      reason: { text: 'Storing solar for later household use' },
     });
   });
 
@@ -1143,7 +1134,7 @@ describe('settingsOverviewReadModel home battery card', () => {
       kind: 'idle',
       powerText: '0.4 kW',
       factText: '78 % charged · supplying',
-      reason: { text: 'PELS takes over when your limit or solar needs it' },
+      reason: { text: 'Waiting for PELS to take control' },
     });
     expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
   });

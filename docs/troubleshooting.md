@@ -313,26 +313,19 @@ Check these, in order:
   FusionSolar cloud offers no charge or discharge power control, so PELS
   watches these.
 
-The card reads `PELS takes over when your limit or solar needs it` when
-everything is set up and PELS simply has no job for the battery right now. Its
-place in your priority order matters too: a battery high in the list only
-discharges once the devices below it are limited. See
+When PELS controls the battery and no charge or discharge is needed, the card reads **Waiting**. Its priority matters too. A battery high in the list discharges once the devices below it are limited. See
 [Solar and a home battery](/use-cases/homey-solar-home-battery).
 
 ## My battery's night charge stopped
 
-If your battery charges from the grid on its own schedule, for example in cheap
-night hours, that charging is a load like any other. When your home nears its
-limit, PELS limits in priority order, and the battery's charging is capped at its
-place in the list: its card reads **Limited · Charging** with
-`Waiting to charge faster`. This is how your car or heating keeps running instead.
-The charge comes back in priority order once your home has room, and the battery
-returns to its own schedule.
+With **Plan charging with PELS** on, grid charging counts like any other load.
+When your home nears its limit, PELS caps the battery's charge at its place in
+the priority list. Its card reads **Limited · Charging** with
+`Waiting to charge faster`. PELS can resume planned charging once the house
+has room.
 
 To let the night charge go ahead of other devices, move the battery up in your
-priority list (its device page → **Reorder**, or the **Modes** page). To keep
-PELS from ever capping it, turn off **Power-limit control** on the battery; PELS
-then leaves it to its own app for your solar too.
+priority list (its device page → **Reorder**, or the **Modes** page). To return control to the battery’s own schedule, turn off **Managed by PELS** or **Power-limit control** on the battery.
 
 ## A device doesn't keep PELS's changes
 

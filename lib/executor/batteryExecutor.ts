@@ -284,6 +284,12 @@ export class BatteryExecutor {
       this.recordConvergedRestore(device);
       return false;
     }
+    if (decision.kind === 'setpoint' && control.needsAdoption
+      && control.response.kind === 'follows_meter' && control.claimHeld
+      && control.response.reportsSetpoint(decision.setpointW)) {
+      this.owner.admitClaim(device.id);
+      return false;
+    }
     return decision.kind === 'release'
       ? this.release(device, decision)
       : this.sendSetpoint(device, decision, control);
@@ -358,7 +364,7 @@ export class BatteryExecutor {
     // A battery that follows the meter answers a setpoint with a mode, not a
     // power: a new setpoint whose mode it already reports, while PELS holds its
     // claim, is the state it is in, and writing it again is not a command.
-    if (control.response.kind === 'follows_meter' && control.claimHeld
+    if (control.response.kind === 'follows_meter' && control.claimHeld && !control.needsAdoption
       && control.response.reportsSetpoint(decision.setpointW)) return 'no_drift';
     const record = this.commands.get(device.id);
     if (record === undefined) return control;

@@ -629,15 +629,15 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
   });
 });
 
-describe('surplus by priority without a battery (byte-identity)', () => {
+describe('surplus beside a full battery', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval'] });
     vi.setSystemTime(new Date('2026-07-01T10:30:00.000Z'));
   });
   afterEach(() => vi.useRealTimers());
 
-  /** A battery PELS may claim that neither charges nor discharges, at this priority. */
-  const idleBattery = (priority: number): PlanInputDevice & StoragePlanInputKind => ({
+  /** A battery at its charge ceiling stays idle under PELS control. */
+  const fullBattery = (priority: number): PlanInputDevice & StoragePlanInputKind => ({
     ...buildPlanInputDevice({
       id: 'battery',
       name: 'Battery',
@@ -658,13 +658,13 @@ describe('surplus by priority without a battery (byte-identity)', () => {
       admissible: true,
       verdict: 'unverified',
       deliveryCeilingW: 2500,
-      chargeCeilingW: 2500,
+      chargeCeilingW: 0,
       ownModeGridCharge: { kind: 'observed' },
       powerLimitControl: true,
     },
   });
 
-  it('engages and holds the dump load exactly as beside an idle battery, wherever it ranks', async () => {
+  it('engages and holds the dump load the same way with a full battery at any priority', async () => {
     // A heater ranked above the pump, the pump on 3 kW of export, then a cloud.
     const heater = () => buildInputDevice({ id: 'heater', name: 'Heater', currentDrawKw: 0.8, priority: 1 });
     const pumpAt = () => ({ ...buildPump({ on: false }), priority: 5 });
@@ -689,10 +689,10 @@ describe('surplus by priority without a battery (byte-identity)', () => {
     // Without a battery no surplus offer exists to make: the storage stages stay inert.
     expect(without.h.state.storageLeverByDevice).toEqual({});
     for (const priority of [1, 3, 9]) {
-      const beside = await run([idleBattery(priority)]);
+      const beside = await run([fullBattery(priority)]);
       expect(beside.plans).toEqual(without.plans);
       expect(beside.eligibility).toEqual(without.eligibility);
-      expect(beside.h.state.storageLeverByDevice).toEqual({});
+      expect(beside.h.state.storageLeverByDevice.battery?.setpointW).toBe(0);
     }
   });
 });

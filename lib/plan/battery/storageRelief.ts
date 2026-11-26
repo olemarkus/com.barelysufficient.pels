@@ -37,39 +37,11 @@ import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFo
  * discharge still stays out of the surplus pool through the home's separate
  * observed-discharge input.
  *
- * **Surplus.** Surplus goes to the consumers in priority order, and the
- * battery is one of them, at its own place (owner ruling, 2026-10-06; last,
- * the default, is devices, then the battery, then export). A surplus claim
- * exists only to give a device ranked above the battery power the battery's
- * own mode would otherwise take; in every other situation the battery runs its
- * own mode, so its self-consumption, trading and evening discharge keep
- * working. The surplus pool counts the solar a battery stores that PELS can
- * free (`resolveStorageSurplusClaimants`) and subtracts the home's observed
- * discharge independently of its control roster. The
- * allocator hands this stage each battery's offer (`StorageSurplusOffer`):
- * what the consumers ranked above it left, and the strongest demand those
- * devices put on it. The devices already running are in the measurement, so
- * only the smallest step of a device waiting to start is taken out of it. A
- * device ranked below the battery is offered only what the battery leaves, so
- * it never takes the battery's charge, and its demand is not the battery's.
- *
- * - PELS claims a charging battery only while a device ranked above it that is
- *   not running yet could be funded by its charge, and caps the charge to what
- *   the device leaves. It never claims a battery that is discharging, or one
- *   that stopped taking charge (a full battery, its charge ceiling about 0 W),
- *   or one whose Power-limit control or Managed is off.
- * - A held charge follows its offer, less half the deadband, within the
- *   charge ceiling and the headroom to the binding pace. A rise waits for a
- *   visible step and `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS` after the last, like
- *   a tracking device's climb; a fall that eats the margin follows the offer
- *   at once. On a deficit a charge raised past the own mode's drops to it at
- *   once (it would be grid charge), and a cap below it is kept where it is:
- *   shedding decides in priority order whether to limit the battery further.
- * - The claim is needed only while a device ranked above it still wants
- *   surplus and the charge is held below what the battery's own mode charged
- *   when PELS took it (the cap doing its job). Without that for
- *   `STORAGE_SURPLUS_RELEASE_DWELL_MS` it is handed back (`surplus_dwell`),
- *   and at once if the battery stops taking charge (`full`).
+ * **Routine policy.** The ranked surplus allocator offers each battery
+ * the solar left at its priority. A battery without a current economic
+ * period charges within that offer and the measured room. Without a usable
+ * charge it remains under PELS control at 0 W. Stored energy is excluded
+ * from the surplus pool independently of the battery's control roster.
  *
  * **Credit.** A discharge increase is a commitment the meter cannot show yet.
  * For `STORAGE_RELIEF_SETTLE_WINDOW_MS` after it was decided, the part the
@@ -104,13 +76,11 @@ import {
 } from '../../planContract/storageDecision';
 import { floorStorageSetpointW } from '../../utils/storageSetpoint';
 import { getLogger } from '../../logging/logger';
-import { SURPLUS_TRACK_STEP_MIN_INTERVAL_MS } from '../admission';
 import type { MeasuredPower } from '../planContext';
 import type { StorageLeverState } from '../planState';
 import type {
   StorageSurplusClaimant,
   StorageSurplusOffer,
-  SurplusDemand,
 } from '../planSurplusAbsorb';
 import type { DevicePlanDevice, PlanInputDevice, StorageHold } from '../planTypes';
 import { NO_STORAGE_SHED_TERM } from '../shedding/types';
@@ -120,7 +90,6 @@ import {
   drawMarginWFor,
   hasStorageInput,
   hasStorageLeverInput,
-  isRaiseVisible,
   ownChargeWOf,
   ownDischargeWOf,
   resolveStorageHoldBlock,
@@ -131,17 +100,16 @@ import type {
   StorageBalance, StorageRelief, StorageStateSummary,
 } from './storageReliefTypes';
 import {
-  claimSurplusLever, resolveClaimReason, resolveOwnModeChargeW, summarizeHold, toSetpointDecision,
+  resolveClaimReason, summarizeHold, toSetpointDecision,
 } from './storageHold';
-import { continuousLever } from './storageContinuous';
+import {
+  baselineLever, baselineSolarChargeW, continuousLever, resolveEconomicResumeIncreaseW,
+} from './storageContinuous';
 export type { StorageRelief, StorageStateSummary } from './storageReliefTypes';
-export { resumeContinuousStorage } from './storageContinuous';
-export { resolveOwnModeChargeW, summarizeHold } from './storageHold';
+export { summarizeHold } from './storageHold';
 
 const logger = getLogger('plan/battery');
 
-/** How long a battery held for surplus may go without a device needing the cap before it is handed back. */
-export const STORAGE_SURPLUS_RELEASE_DWELL_MS = 2 * 60 * 1000;
 /** The least time between two step-downs of a setpoint. */
 export const STORAGE_DECREASE_MIN_INTERVAL_MS = 60 * 1000;
 /** How long a held battery may go unread before it is handed back. */
@@ -167,7 +135,6 @@ type UnreadCarrier = 'absent' | 'no_input' | MissingStorageInput;
 type ObservedStep = { kind: 'release'; reason: StorageReleaseReason } | { kind: 'hold'; lever: StorageLeverState };
 
 /** Whether the battery takes charge at all: a full one has a charge ceiling of about 0 W. */
-const takesCharge = (storage: ObservedStorageInput): boolean => storage.chargeCeilingW >= deadbandWFor(storage);
 
 export const isStorageReliefCreditable = (storage: ObservedStorageInput): boolean => (
   storage.verdict === 'unverified' || storage.verdict === 'responding'
@@ -212,7 +179,7 @@ const storageChargeAddBackW = (
 
 /**
  * Claimable batteries in priority order, with the solar charge PELS can free.
- * A held battery reserves its setpoint or own-mode charge, whichever is larger,
+ * A battery reserves its ranked solar allocation or current planned charge,
  * so consumers below it see only what it leaves. An unholdable battery has no
  * claimant: its charge remains household load. The builder receives discharge
  * separately from whole-home observations, including batteries outside this
@@ -222,21 +189,26 @@ export function resolveStorageSurplusClaimants(
   devices: readonly PlanInputDevice[],
   levers: Readonly<Record<string, StorageLeverState>>,
   signedNetW: number,
+  nowTs: number,
 ): StorageSurplusClaimant[] {
   const observed = devices.flatMap((device) => (
     hasStorageInput(device) && device.storage.reading === 'observed' ? [{ device, storage: device.storage }] : []
   ));
 
   return observed
-    .filter(({ storage }) => resolveStorageHoldBlock(storage) === 'holdable')
+    .filter(({ storage }) => resolveStorageHoldBlock(storage) === 'holdable' && !storage.handBackDeferred)
     .map(({ device, storage }): StorageSurplusClaimant => {
       const lever = levers[device.id];
       const chargeW = storageChargeAddBackW(storage, lever, signedNetW);
+      const economic = storage.continuousPlan !== undefined && storage.continuousPlan.validUntilMs > nowTs;
       return {
         deviceId: device.id,
         priority: device.priority,
         chargeW,
-        reservedW: lever === undefined ? chargeW : Math.max(chargeW, lever.setpointW, lever.ownModeChargeW),
+        reservedW: Math.max(chargeW, lever?.setpointW ?? 0),
+        ...(!economic && lever?.purpose !== 'limit' ? {
+          baseline: { storage, previous: lever, footprint: device.phaseFootprint },
+        } : {}),
       };
     });
 }
@@ -280,92 +252,9 @@ const resolveLoweredDischargeW = (
   return -floorStorageSetpointW(-Math.max(0, Math.min(heldW, baseW - (balance.headroomW - deadbandW))), storage.range);
 };
 
-/**
- * The charge its offer funds on this battery, W: what the consumers above it
- * left, less what the pool already counted of its charge (`addedBackW`), plus
- * its own charge, less half the deadband; within its charge ceiling and the
- * headroom to the binding pace (its own charge is already in that
- * measurement). A raise past `ownModeChargeW`, the charge its own mode takes,
- * comes only out of what the consumers ranked below it do not take
- * (`StorageSurplusOffer.belowW`), so a watt they are offered is never funded
- * twice; a cap below it is not bounded so. Under the deadband it is 0 W: too
- * little to tell from noise.
- */
-const resolveFundedChargeW = (
-  storage: ObservedStorageInput,
-  offer: StorageSurplusOffer,
-  balance: StorageBalance,
-  ownModeChargeW: number,
-): number => {
-  const ownChargeW = ownChargeWOf(storage);
-  const halfDeadbandW = deadbandWFor(storage) / 2;
-  const shareW = offer.availableW - offer.addedBackW + ownChargeW - halfDeadbandW;
-  const fundedCeilingW = Math.min(storage.chargeCeilingW, shareW);
-  const unboundW = balance.headroomW === null
-    ? fundedCeilingW
-    : Math.min(fundedCeilingW, ownChargeW + balance.headroomW - halfDeadbandW);
-  const raisedW = Math.max(ownModeChargeW, Math.min(unboundW, shareW - offer.belowW));
-  const fundedW = unboundW > ownModeChargeW ? raisedW : unboundW;
-  return fundedW < deadbandWFor(storage) ? 0 : floorStorageSetpointW(fundedW, storage.range);
-};
-
-/**
- * The charge to hold, W. A fall that eats the half deadband the funded charge
- * leaves follows it at once, so the battery never charges from the grid, or
- * from a device's share, for long. A rise must be a step the battery could
- * visibly answer, and waits `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS` after the
- * last one, like a tracking device's climb (`paceCeilingClimb`).
- */
-const resolvePacedChargeW = (
-  storage: ObservedStorageInput,
-  lever: StorageLeverState,
-  fundedW: number,
-  nowTs: number,
-): number => {
-  const heldW = Math.max(0, lever.setpointW);
-  if (fundedW < heldW - deadbandWFor(storage) / 2) return fundedW;
-  if (!isRaiseVisible(storage, heldW, fundedW)) return heldW;
-  return nowTs - lever.chargeRaisedAtMs < SURPLUS_TRACK_STEP_MIN_INTERVAL_MS ? heldW : fundedW;
-};
-
-/**
- * Whether a surplus hold still does its job: a device ranked above the battery
- * wants surplus, and the charge is capped below the own mode's.
- */
-const isCapNeeded = (lever: StorageLeverState, chargeW: number, demandAbove: SurplusDemand): boolean => (
-  demandAbove !== 'none' && chargeW < Math.max(0, lever.preClaimSignedW)
-);
-
-/**
- * Start a surplus claim on a battery PELS does not hold: while a device ranked
- * above it that is not running yet could be funded by the solar its own mode
- * stores, cap that charge to what the device leaves. A battery ranked above
- * every waiting device keeps its charge. A discharging battery, one that takes
- * no charge, or any battery while the house is short of its pace, is never
- * claimed for surplus. With nothing to do, the battery is left to its own mode
- * (`idle`).
- */
-const startSurplusLever = (
-  storage: ObservedStorageInput,
-  balance: StorageBalance,
-  offer: StorageSurplusOffer,
-  nowTs: number,
-): ObservedStep => {
-  const idle: ObservedStep = { kind: 'release', reason: 'idle' };
-  if (balance.deficitW > 0 || offer.demandAbove !== 'waiting' || storage.signedPowerW < 0 || !takesCharge(storage)) {
-    return idle;
-  }
-  // A claim only ever starts as a cap: its own mode's charge is the most it funds.
-  const chargeW = resolveFundedChargeW(storage, offer, balance, ownChargeWOf(storage));
-  // Only solar the pool offered: a battery charging from the grid is left alone.
-  const caps = offer.addedBackW > 0 && isRaiseVisible(storage, chargeW, ownChargeWOf(storage));
-  return caps ? { kind: 'hold', lever: claimSurplusLever(storage, chargeW, nowTs) } : idle;
-};
-
 /** The hold as this cycle's reading of the battery leaves it. */
 const readLever = (storage: ObservedStorageInput, lever: StorageLeverState): StorageLeverState => ({
   ...lever,
-  ownModeChargeW: resolveOwnModeChargeW(storage, lever.preClaimSignedW),
   stepW: storage.range.stepW,
   reading: { kind: 'read' },
 });
@@ -373,11 +262,8 @@ const readLever = (storage: ObservedStorageInput, lever: StorageLeverState): Sto
 /**
  * A limit hold, kept where shedding put it: a capped charge stays capped, and a
  * held discharge steps down on headroom (`resolveLoweredDischargeW`), within
- * the battery's delivery ceiling, until only the stopped charge is left. Only
- * the restore lane hands it back, except a battery that was discharging in its
- * own mode when PELS claimed it: its discharge never steps below that own-mode
- * discharge, and once the hold would be no deeper than its own mode it is
- * handed back (`idle`) so its own mode covers the house again.
+ * the battery's delivery ceiling, until only the stopped charge is left.
+ * The restore lane then returns the battery to its managed policy.
  */
 const keepLimitLever = (
   storage: ObservedStorageInput,
@@ -387,20 +273,18 @@ const keepLimitLever = (
 ): ObservedStep => {
   const reading = readLever(storage, lever);
   const heldDischargeW = -lever.setpointW;
-  if (heldDischargeW <= 0) return { kind: 'hold', lever: reading };
-  // A hold easing discharge for an exporting phase sits below the battery's own
-  // mode on purpose: only the restore lane ends it, once the phase has room. Its
-  // delivery ceiling still applies, so it can never hold discharge past reserve.
+  // Keep the export limit until the restore lane checks both directions.
   if (lever.exportPhase !== undefined) {
-    const heldW = Math.min(heldDischargeW, storage.deliveryCeilingW);
-    return { kind: 'hold', lever: { ...reading, setpointW: toSetpointW(heldW) } };
+    const setpointW = toSetpointW(Math.min(heldDischargeW, storage.deliveryCeilingW));
+    return { kind: 'hold', lever: {
+      ...reading,
+      setpointW,
+      economicResumeIncreaseW: resolveEconomicResumeIncreaseW(storage, setpointW, nowTs),
+    } };
   }
+  if (heldDischargeW <= 0) return { kind: 'hold', lever: reading };
   const keptW = balance.deficitW > 0 ? heldDischargeW : resolveLoweredDischargeW(storage, lever, balance, nowTs);
   const dischargeW = Math.min(keptW, storage.deliveryCeilingW);
-  const ownModeDischargeW = storage.continuousPlan === undefined ? Math.max(0, -lever.preClaimSignedW) : 0;
-  if (ownModeDischargeW >= deadbandWFor(storage) && dischargeW <= ownModeDischargeW) {
-    return { kind: 'release', reason: 'idle' };
-  }
   return {
     kind: 'hold',
     lever: {
@@ -408,34 +292,6 @@ const keepLimitLever = (
       setpointW: toSetpointW(dischargeW),
       lastDecreaseAtMs: dischargeW < heldDischargeW ? nowTs : lever.lastDecreaseAtMs,
     },
-  };
-};
-
-/**
- * The next surplus hold. On a deficit PELS drops what it added on top of the
- * battery's own mode at once (a charge raised past the own mode's, which is
- * grid charge now), and keeps the cap below it where it is: limiting the
- * battery further is shedding's choice, in priority order. Otherwise the
- * charge its offer funds, paced.
- */
-const advanceSurplusLever = (
-  storage: ObservedStorageInput,
-  lever: StorageLeverState,
-  balance: StorageBalance,
-  offer: StorageSurplusOffer,
-  nowTs: number,
-): StorageLeverState => {
-  const reading = readLever(storage, lever);
-  if (balance.deficitW > 0) {
-    return { ...reading, setpointW: Math.min(lever.setpointW, Math.max(0, lever.preClaimSignedW)) };
-  }
-  const fundedW = resolveFundedChargeW(storage, offer, balance, Math.max(0, lever.preClaimSignedW));
-  const chargeW = resolvePacedChargeW(storage, lever, fundedW, nowTs);
-  return {
-    ...reading,
-    setpointW: chargeW,
-    chargeRaisedAtMs: chargeW > Math.max(0, lever.setpointW) ? nowTs : lever.chargeRaisedAtMs,
-    lastNeedAtMs: isCapNeeded(lever, chargeW, offer.demandAbove) ? nowTs : lever.lastNeedAtMs,
   };
 };
 
@@ -498,8 +354,14 @@ class StorageReliefCycle {
     previous: StorageLeverState | undefined,
     footprint: PhaseFootprint,
   ): StorageStateSummary {
-    const { nowTs } = this;
     const observedDischargeW = ownDischargeWOf(storage);
+    if (storage.handBackDeferred && resolveStorageHoldBlock(storage) === 'holdable') {
+      if (previous !== undefined) this.levers[deviceId] = previous;
+      return {
+        deviceId, reading: 'observed', claimHeld: storage.claimHeld, powerLimitOff: false,
+        ...NO_DECISION, withheldW: observedDischargeW,
+      };
+    }
     const step = this.resolveObservedStep(deviceId, storage, previous, footprint);
     if (step.kind === 'release') {
       const summary = {
@@ -507,20 +369,38 @@ class StorageReliefCycle {
       };
       if (previous === undefined && !storage.claimHeld) return { ...summary, ...NO_DECISION };
       const deferred = !storage.claimHeld || storage.handBackDeferred;
-      // A battery handed back to an own mode that discharges keeps covering
-      // the house: only the discharge PELS held beyond that comes back as import.
-      const ownModeDischargeW = previous === undefined ? 0 : Math.max(0, -previous.preClaimSignedW);
-      const landingDischargeW = Math.max(0, observedDischargeW - ownModeDischargeW);
-      const { decision, withheldW } = this.release(step.reason, landingDischargeW, deferred);
+      // The observed discharge may stop as soon as native control resumes.
+      const { decision, withheldW } = this.release(step.reason, observedDischargeW, deferred);
       return { ...summary, ...NO_DECISION, decision, withheldW };
     }
-    const candidateW = step.lever.setpointW;
+    const next = this.boundObservedHold(storage, footprint, step.lever);
+    return this.recordObservedHold(deviceId, storage, previous, next);
+  }
+
+  private boundObservedHold(
+    storage: ObservedStorageInput,
+    footprint: PhaseFootprint,
+    lever: StorageLeverState,
+  ): StorageLeverState {
+    const plannedW = lever.setpointW;
+    const candidateW = lever.baseline === true && this.balance.headroomW !== null && plannedW > 0
+      ? Math.min(plannedW, Math.max(0, storage.signedPowerW + this.balance.headroomW - drawMarginWFor(storage)))
+      : plannedW;
     const ceilingW = candidateW < 0 ? storage.deliveryCeilingW : storage.chargeCeilingW;
     const ceiledW = Math.sign(candidateW) * Math.min(Math.abs(candidateW), ceilingW);
     const cappedW = floorStorageSetpointW(ceiledW, storage.range);
     const withinPhases = chargeWithinPhaseRoom(this.phaseRoom, storage, footprint, cappedW);
     this.phaseRoom = withinPhases.axis;
-    const next = { ...step.lever, setpointW: withinPhases.setpointW };
+    return { ...lever, setpointW: withinPhases.setpointW };
+  }
+
+  private recordObservedHold(
+    deviceId: string,
+    storage: ObservedStorageInput,
+    previous: StorageLeverState | undefined,
+    next: StorageLeverState,
+  ): StorageStateSummary {
+    const observedDischargeW = ownDischargeWOf(storage);
     this.levers[deviceId] = next;
     const nextDischargeW = -next.setpointW;
     const previousDischargeW = previous === undefined ? observedDischargeW : -previous.setpointW;
@@ -528,7 +408,7 @@ class StorageReliefCycle {
     const headroomDebitW = continuousChange
       ? Math.max(0, next.setpointW - storage.signedPowerW)
       : Math.max(0, previousDischargeW - nextDischargeW);
-    const creditW = resolveCreditW(storage, next, nowTs);
+    const creditW = resolveCreditW(storage, next, this.nowTs);
     this.balance = {
       ...this.balance,
       netImportW: this.balance.netImportW + next.setpointW - storage.signedPowerW,
@@ -618,10 +498,8 @@ class StorageReliefCycle {
   }
 
   /**
-   * Release a battery the plan may not hold (`resolveStorageHoldBlock`; with
-   * its Power-limit control off, `limit_off`), a surplus hold on a battery
-   * that stopped taking charge, or a surplus hold no device ranked above it has
-   * needed for its dwell; otherwise its next hold.
+   * A holdable battery keeps its limit, follows a live economic period or
+   * uses the routine solar/idle policy. Only an ownership block releases it.
    */
   private resolveObservedStep(
     deviceId: string,
@@ -638,12 +516,9 @@ class StorageReliefCycle {
     if (storage.continuousPlan !== undefined && storage.continuousPlan.validUntilMs > this.nowTs) {
       return { kind: 'hold', lever: continuousLever(storage, previous, this.balance, offer, this.nowTs) };
     }
-    if (previous?.purpose === 'continuous') return { kind: 'release', reason: 'idle' };
-    if (previous === undefined) return startSurplusLever(storage, this.balance, offer, this.nowTs);
-    if (!takesCharge(storage)) return { kind: 'release', reason: 'full' };
-    const next = advanceSurplusLever(storage, previous, this.balance, offer, this.nowTs);
-    const dwelled = this.nowTs - next.lastNeedAtMs >= STORAGE_SURPLUS_RELEASE_DWELL_MS;
-    return dwelled ? { kind: 'release', reason: 'surplus_dwell' } : { kind: 'hold', lever: next };
+    const setpointW = offer.baselineChargeW
+      ?? baselineSolarChargeW(storage, previous, offer, this.balance.headroomW, this.nowTs);
+    return { kind: 'hold', lever: baselineLever(storage, previous, setpointW, this.nowTs) };
   }
 }
 
@@ -781,7 +656,6 @@ const toStorageHold = (battery: StorageStateSummary): StorageHold => {
       kind: 'relief', supplyKw: Math.max(0, -battery.setpointW) / 1000,
       ...(battery.exportPhase === undefined ? {} : { exportPhase: battery.exportPhase }),
     };
-    case 'raise_charge': return { kind: 'surplus' };
     default: return { kind: battery.claim };
   }
 };

@@ -134,8 +134,8 @@ export const renderPriorityBatteryNote = (note: HTMLElement | null, orderedDevic
  */
 export const resolveBatteryManagedHint = (): string => (
   readSetupLimitsInForce() === false
-    ? 'PELS shares spare solar between it and your devices, then hands it back.'
-    : 'PELS takes it over to hold your limit or store spare solar, then hands it back.'
+    ? 'PELS controls charging to store spare solar in priority order.'
+    : 'PELS controls charging and discharging to store spare solar and hold your limit.'
 );
 
 /** The Managed switch's hint, for a battery PELS can only watch. */

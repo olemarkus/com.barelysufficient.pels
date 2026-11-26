@@ -3,8 +3,10 @@
 The battery owns an ongoing energy plan. The device page enables it and shows its
 trajectory and charge, wait, solar-storage and household-supply periods. The
 existing meter-driven planner decides the executable setpoint; the existing
-battery executor and actuator claim, command, verify and hand back the battery.
-There is no second actuation loop and no daily battery smart task.
+battery executor and actuator claim and verify the setpoint. When a price plan
+is disabled or unavailable, the same storage lane uses measured solar in
+priority order and otherwise requests idle. Capacity relief can override either
+policy. The battery owner retains the claim through these transitions.
 
 ## Economics and inputs
 

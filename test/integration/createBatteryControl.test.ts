@@ -50,13 +50,14 @@ describe('createMainBatteryControl', () => {
     const ctx = {
       homey: { settings, flow: { getTriggerCard: vi.fn() } },
       batteryManaged: new BatteryManagedSettings(settings),
+      deviceControlSettings: { controllableDevices: {} },
       deviceManager: { readBatteryControl: () => battery, requestSteppedLoadStep: vi.fn() },
       homeMembership: membership,
       capacityDryRun: false,
       // No write is sent here; the meter response witness only has to be there.
       flowBacked: { meterResponseTimings: {} },
     } as unknown as AppContext;
-    const owner = createMainBatteryControl(ctx, () => false);
+    const owner = createMainBatteryControl(ctx, () => false, () => true);
 
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_main_home' });
     pendingOwnership = false;

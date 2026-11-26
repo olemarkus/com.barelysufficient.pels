@@ -310,8 +310,9 @@ carries it, where the userdata store would need an API route of its own
   controllable devices, priorities, mode targets and the mode-target ownership
   state (a restore target the app cannot recover is not regenerable), the home
   battery claim records (`battery_control_claim.<deviceId>`, owner
-  `lib/battery/batteryClaimStore.ts`: the claim value a battery held before PELS
-  took it over, which exists nowhere else once overwritten), device
+  `lib/battery/batteryClaimStore.ts`: the original mode or command target and
+  any hand-back in progress, so a restart can resume the claim or finish
+  returning control), device
   control profiles, smart-task definitions, price/budget/EV/weather settings,
   meter and source choice (including which Power by the Hour price device
   prices the home), small live latches. The SDK's `ManagerSettings.set`

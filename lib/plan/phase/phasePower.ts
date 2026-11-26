@@ -75,17 +75,19 @@ export function withholdPhaseRoom(power: PhasePower, footprint: PhaseFootprint, 
   return { kind: 'on', phases: power.phases.map((phase) => ({ ...phase, roomKw: phase.roomKw - spent(phase.phase) })) };
 }
 
-/** The export a phase can take before its target, kW; `null` when phases are not protected. */
+const exportRoomAfterBandKw = (phase: PhaseMeasurement): number => (
+  phase.targetKw + phase.drawKw - Math.min(SHEDDING_CLEAR_THRESHOLD_KW, phase.targetKw * 0.1)
+);
+
+/** The export a phase can take after its clear band, kW; null without protection. */
 export function phaseExportRoomKw(power: PhasePower, phase: PhaseName): number | null {
   if (power.kind === 'off') return null;
   const measured = power.phases.find((entry) => entry.phase === phase);
-  return measured === undefined ? null : measured.targetKw + measured.drawKw;
+  return measured === undefined ? null : exportRoomAfterBandKw(measured);
 }
 
 /** The export room left on the tightest phase, after its clear band, kW; `null` when phases are not protected. */
 export function lowestPhaseExportRoomKw(power: PhasePower): number | null {
   if (power.kind === 'off') return null;
-  return Math.min(...power.phases.map((phase) => (
-    phase.targetKw + phase.drawKw - Math.min(SHEDDING_CLEAR_THRESHOLD_KW, phase.targetKw * 0.1)
-  )));
+  return Math.min(...power.phases.map(exportRoomAfterBandKw));
 }

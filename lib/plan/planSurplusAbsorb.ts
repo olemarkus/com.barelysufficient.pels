@@ -36,6 +36,11 @@ import {
   resolveHighestStepWithinKw,
 } from './planSteppedLoad';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import type { ObservedStorageInput } from '../../packages/planner-types/src/planInputDevice';
+import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
+import type { StorageLeverState } from './planState';
+import { baselineSolarChargeW } from './battery/storageContinuous';
+import { chargeWithinPhaseRoom } from './battery/storagePhaseCharge';
 import { IDLE_MEASURED_POWER_THRESHOLD_KW } from '../observer/idleDetector';
 
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
@@ -275,7 +280,7 @@ const couldFund = (availableKw: number, runKw: number): boolean => availableKw >
 export type SurplusWant = { kind: 'none' } | { kind: 'running' } | { kind: 'waiting'; runKw: number };
 
 /** One willing device's claim: the kW it reserves from the devices after it, and what it wants. */
-type SurplusClaim = { claimKw: number; want: SurplusWant };
+type SurplusClaim = { claimKw: number; want: SurplusWant; incomingPerPhaseKw?: ChargingPhaseVector };
 
 const NO_WANT: SurplusWant = { kind: 'none' };
 
@@ -320,17 +325,18 @@ export type StorageSurplusClaimant = {
    */
   chargeW: number;
   /**
-   * The charge it keeps at its own turn, W, at least `chargeW`: under a hold,
-   * the setpoint PELS holds it at, or the charge its own mode takes once
-   * handed back if that is more, so a raise the battery has not followed yet,
-   * or the own-mode charge a hold is keeping from it, is never offered to the
-   * consumers ranked below it.
+   * Existing charge reserved for an economic or capacity hold, W.
+   * The routine solar policy computes its reservation on its turn.
    */
   reservedW: number;
+  /** Facts for the routine solar policy, which selects a charge at its ranked turn. */
+  baseline?: { storage: ObservedStorageInput; previous: StorageLeverState | undefined; footprint: PhaseFootprint };
 };
 
 /** The home batteries as the surplus pool counts them. */
 export type StorageSurplus = {
+  /** Whole-home import room available to new charging, W. Omitted when unconstrained. */
+  headroomW?: number;
   claimants: readonly StorageSurplusClaimant[];
   /**
    * Every battery's own discharge, W: stored energy, never surplus. Out of the
@@ -355,6 +361,8 @@ export type StorageSurplusOffer = {
    * taken from a battery. Negative when the waiting devices outrun it.
    */
   availableW: number;
+  /** Routine charge funded at the battery's turn, W. */
+  baselineChargeW?: number;
   demandAbove: SurplusDemand;
   /**
    * What the pool counted of this battery's own charge, W
@@ -706,16 +714,11 @@ export function selectSurplusCandidates(
  * A home battery is a consumer in the same order, at its own priority (owner
  * ruling, 2026-10-06: surplus by priority; last, the default, is devices, then
  * the battery, then export). Its charge is in the pool, so a device ranked
- * above it may take that charge, which the storage stage answers by capping
- * the battery for it; at its turn the battery reserves that charge (under a
- * hold, the setpoint PELS holds or its own mode's charge if more), as far as
- * the consumers above it left it, so a device ranked below it only sees what
- * is left. The allocator answers each battery's offer (`StorageSurplusOffer`)
- * to the storage stage (`battery/storageRelief.ts`), with what the consumers
- * below it take (`belowW`), so a raise past the battery's own mode's charge
- * never funds a watt they were offered. The pool is composed even
- * with no willing device, so a battery PELS already holds keeps storing the
- * export until it is handed back.
+ * above it may take that charge; at its turn the battery reserves as much as
+ * the current policy can use, within what
+ * the consumers above it left it, so a device ranked below it sees the
+ * remaining solar. A battery in its routine policy selects and reserves its
+ * charge here. The offer also carries downstream demand for economic plans.
  */
 export function resolveSurplusEligibility(
   /** This cycle's candidates (`selectSurplusCandidates`). */
@@ -742,53 +745,107 @@ export function resolveSurplusEligibility(
   const hardOff = isHardOffCondition(signedNetKw, storage.dischargeW / 1000);
 
   const pool = composeSurplusPool(willing, state, signedNetKw, storage, inferredSurplusKw);
-  let { poolKw, storageKw, phaseBudget } = reserveChargingPhasePool(state, pool, phasePower);
-  let demandAbove: SurplusDemand = 'none';
-  // What every consumer so far takes of a battery's share, kW, and each
-  // battery's offer at its turn with that running total: what the consumers
-  // after it take is the difference at the end.
-  let takenKw = 0;
-  const turns = new Map<string, Omit<StorageSurplusOffer, 'belowW'> & { takenAtTurnKw: number }>();
-
+  const allocation = new RankedSurplusAllocation(reserveChargingPhasePool(state, pool, phasePower), storage.headroomW);
   const ranked: RankedSurplusConsumer[] = [
     ...willing.map((dev) => ({ kind: 'device' as const, priority: dev.priority, dev })),
     ...storage.claimants.map((claimant) => ({ kind: 'storage' as const, priority: claimant.priority, claimant })),
   ].sort(compareConsumers);
   for (const consumer of ranked) {
     if (consumer.kind === 'storage') {
-      const { claimant } = consumer;
-      const availableW = storageKw * 1000;
-      // It keeps its charge as far as the consumers above it left it; past
-      // that, the storage stage caps it to what they left.
-      const reservedKw = Math.min(claimant.reservedW / 1000, Math.max(0, storageKw));
-      poolKw -= reservedKw;
-      storageKw -= reservedKw;
-      takenKw += Math.max(claimant.chargeW / 1000, reservedKw);
-      turns.set(claimant.deviceId, { availableW, demandAbove, addedBackW: claimant.chargeW, takenAtTurnKw: takenKw });
+      allocation.reserveStorage(consumer.claimant, nowTs);
       continue;
     }
     const { dev } = consumer;
     const measuredKw = pool.addedBackIds.has(dev.id) ? positiveOrZero(dev.currentDrawKw) : 0;
-    const phaseClaim = claimForChargingPhase(dev, state, poolKw, measuredKw, phaseBudget.room, nowTs);
-    const claim = phaseClaim ?? claimForOrdinaryDevice(dev, state, phaseBudget, poolKw, measuredKw, hardOff, nowTs);
-    poolKw -= claim.claimKw;
-    phaseBudget = phaseClaim
-      ? spendPhaseBudgetVector(phaseBudget, phaseClaim.incomingPerPhaseKw)
-      : spendPhaseBudget(phaseBudget, dev.phaseFootprint, Math.max(0, claim.claimKw - measuredKw));
-    if (claim.want.kind === 'waiting') storageKw -= claim.want.runKw;
-    if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[demandAbove]) demandAbove = claim.want.kind;
-    // What it takes of a battery's share above it: its smallest step while it
-    // waits, else what it reserves beyond the draw already out of the export.
-    takenKw += claim.want.kind === 'waiting' ? claim.want.runKw : Math.max(0, claim.claimKw - measuredKw);
+    const { poolKw, phaseBudget } = allocation;
+    const claim = claimForChargingPhase(dev, state, poolKw, measuredKw, phaseBudget.room, nowTs)
+      ?? claimForOrdinaryDevice(dev, state, phaseBudget, poolKw, measuredKw, hardOff, nowTs);
+    allocation.reserveDevice(dev, measuredKw, claim);
   }
-  return new Map([...turns].map(([deviceId, { takenAtTurnKw, ...offer }]): [string, StorageSurplusOffer] => (
-    [deviceId, { ...offer, belowW: (takenKw - takenAtTurnKw) * 1000 }]
-  )));
+  return allocation.storageOffers();
+}
+
+type SurplusBalance = { poolKw: number; storageKw: number; phaseBudget: PhaseBudget };
+type StorageTurn = Omit<StorageSurplusOffer, 'belowW'> & { takenAtTurnKw: number };
+
+class RankedSurplusAllocation {
+  poolKw: number;
+  phaseBudget: PhaseBudget;
+  private storageKw: number;
+  private demandAbove: SurplusDemand = 'none';
+  private takenKw = 0;
+  private readonly turns = new Map<string, StorageTurn>();
+
+  constructor(initial: SurplusBalance, private batteryHeadroomW: number | undefined) {
+    this.poolKw = initial.poolKw;
+    this.storageKw = initial.storageKw;
+    this.phaseBudget = initial.phaseBudget;
+  }
+
+  reserveStorage(claimant: StorageSurplusClaimant, nowTs: number): void {
+    const offer = {
+      availableW: this.storageKw * 1000,
+      demandAbove: this.demandAbove,
+      addedBackW: claimant.chargeW,
+    };
+    const baseline = claimant.baseline;
+    const baselineChargeW = baseline === undefined ? undefined : this.routineCharge(baseline, offer, nowTs);
+    // Existing charge outside the pool is already part of measured demand.
+    const requestedReserveW = baselineChargeW === undefined || baseline === undefined
+      ? claimant.reservedW
+      : Math.max(0, baselineChargeW - Math.max(0, baseline.storage.signedPowerW) + claimant.chargeW);
+    const reservedKw = Math.min(Math.max(0, this.storageKw), requestedReserveW / 1000);
+    this.poolKw -= reservedKw;
+    this.storageKw -= reservedKw;
+    this.takenKw += baselineChargeW === undefined ? Math.max(claimant.chargeW / 1000, reservedKw) : reservedKw;
+    this.turns.set(claimant.deviceId, {
+      ...offer,
+      ...(baselineChargeW === undefined ? {} : { baselineChargeW }),
+      takenAtTurnKw: this.takenKw,
+    });
+  }
+
+  private routineCharge(
+    baseline: NonNullable<StorageSurplusClaimant['baseline']>,
+    offer: Omit<StorageSurplusOffer, 'belowW'>,
+    nowTs: number,
+  ): number {
+    const { storage, previous, footprint } = baseline;
+    const requestedW = baselineSolarChargeW(storage, previous, offer, this.batteryHeadroomW ?? null, nowTs);
+    const { setpointW } = chargeWithinPhaseRoom(this.phaseBudget.room, storage, footprint, requestedW);
+    const addedW = Math.max(0, setpointW - storage.signedPowerW);
+    if (this.batteryHeadroomW !== undefined) {
+      this.batteryHeadroomW = Math.max(0, this.batteryHeadroomW - addedW);
+    }
+    if (footprint.kind === 'single' || footprint.kind === 'all_three') {
+      this.phaseBudget = spendPhaseBudget(this.phaseBudget, footprint, addedW / 1000);
+    }
+    return setpointW;
+  }
+
+  reserveDevice(dev: MeteredPlanInputDevice, measuredKw: number, claim: SurplusClaim): void {
+    const increaseKw = Math.max(0, claim.claimKw - measuredKw);
+    this.poolKw -= claim.claimKw;
+    this.phaseBudget = claim.incomingPerPhaseKw
+      ? spendPhaseBudgetVector(this.phaseBudget, claim.incomingPerPhaseKw)
+      : spendPhaseBudget(this.phaseBudget, dev.phaseFootprint, increaseKw);
+    const waitingKw = claim.want.kind === 'waiting' ? claim.want.runKw : 0;
+    // A tracker can still rise after its present draw was measured.
+    this.storageKw -= dev.surplusTracking ? Math.max(waitingKw, increaseKw) : waitingKw;
+    if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[this.demandAbove]) this.demandAbove = claim.want.kind;
+    this.takenKw += Math.max(waitingKw, increaseKw);
+  }
+
+  storageOffers(): ReadonlyMap<string, StorageSurplusOffer> {
+    return new Map([...this.turns].map(([deviceId, { takenAtTurnKw, ...offer }]) => (
+      [deviceId, { ...offer, belowW: (this.takenKw - takenAtTurnKw) * 1000 }]
+    )));
+  }
 }
 
 function reserveChargingPhasePool(
   state: PlanEngineState, pool: ReturnType<typeof composeSurplusPool>, phasePower: PhasePower,
-): { poolKw: number; storageKw: number; phaseBudget: PhaseBudget } {
+): SurplusBalance {
   let { poolKw } = pool;
   // A running device's measured draw is already out of a battery's export share.
   let storageKw = pool.poolKw - pool.deviceAddBackKw;
@@ -818,7 +875,7 @@ function claimForOrdinaryDevice(
 function claimForChargingPhase(
   dev: MeteredPlanInputDevice, state: PlanEngineState, poolKw: number, measuredKw: number,
   room: PhaseRoomAxis, nowTs: number,
-): (SurplusClaim & { incomingPerPhaseKw: ChargingPhaseVector }) | undefined {
+): SurplusClaim | undefined {
   const proposal = dev.surplusTracking
     ? state.chargingPhaseCycle.chooseSurplus(dev.id, poolKw - SURPLUS_ABSORB_RESERVE_KW, room)
     : undefined;

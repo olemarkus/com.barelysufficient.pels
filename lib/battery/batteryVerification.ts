@@ -250,15 +250,19 @@ const keptPlannedTaper = (
 
 /**
  * The most charge PELS may ask for at this charge level, W: the every-level
- * ceiling and each taper step at or below the level. An unreported level gets
+ * ceiling and each taper step at or below the level. A battery reporting full
+ * has no room to charge. An unreported level gets
  * the every-level ceiling: no band lesson can be placed against it.
  */
 export const chargeCeilingAtLevelW = (
   ceiling: BatteryChargeCeiling,
   level: HomeBatteryLevelObservation | undefined,
-): number => ceiling.taper
-  .filter(step => level !== undefined && level.percent >= step.fromPercent)
-  .reduce((ceilingW, step) => Math.min(ceilingW, step.ceilingW), ceiling.everyLevelW);
+): number => {
+  if (level?.percent === 100) return 0;
+  return ceiling.taper
+    .filter(step => level !== undefined && level.percent >= step.fromPercent)
+    .reduce((ceilingW, step) => Math.min(ceilingW, step.ceilingW), ceiling.everyLevelW);
+};
 
 /** Whether a delivery past a held plateau by more than the tolerance lifts it. */
 const isLifted = (plateau: LearnedPlateau, deliveredW: number, toleranceW: number, nowMs: number): boolean => (

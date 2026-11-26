@@ -1,16 +1,14 @@
 import type { ContinuousStoragePlan, ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 import type { StorageLeverState } from '../planState';
-import type { PlanInputDevice } from '../planTypes';
-import type { MeasuredPower } from '../planContext';
 import type { StorageSurplusOffer } from '../planSurplusAbsorb';
 import { floorStorageSetpointW } from '../../utils/storageSetpoint';
 import { storageSetpointToleranceW } from '../../planContract/storageDecision';
-import { claimSurplusLever, summarizeHold } from './storageHold';
+import { startContinuousLever } from './storageHold';
 import {
-  STORAGE_RELIEF_SETTLE_WINDOW_MS, deadbandWFor, drawMarginWFor, hasStorageLeverInput, ownChargeWOf,
-  ownDischargeWOf, resolveStorageHoldBlock,
+  STORAGE_RELIEF_SETTLE_WINDOW_MS, deadbandWFor, drawMarginWFor, isRaiseVisible, ownChargeWOf, ownDischargeWOf,
 } from './storageLadder';
-import type { StorageBalance, StorageRelief, StorageStateSummary } from './storageReliefTypes';
+import type { StorageBalance } from './storageReliefTypes';
+import { SURPLUS_TRACK_STEP_MIN_INTERVAL_MS } from '../admission';
 
 function dischargeCredit(
   storage: ObservedStorageInput,
@@ -53,6 +51,19 @@ const plannedDischargeW = (plan: ContinuousStoragePlan): number => (
   plan.reason === 'supply_house' ? Number.POSITIVE_INFINITY : -plan.setpointW
 );
 
+/** Maximum extra discharge the current economic period could resume after a phase hold. */
+export function resolveEconomicResumeIncreaseW(
+  storage: ObservedStorageInput,
+  heldSetpointW: number,
+  nowTs: number,
+): number {
+  const plan = storage.continuousPlan;
+  if (plan === undefined || plan.validUntilMs <= nowTs || plan.setpointW >= 0) return 0;
+  const requestedW = Math.min(plannedDischargeW(plan), storage.deliveryCeilingW);
+  const alreadyDischargingW = Math.max(0, -Math.max(storage.signedPowerW, heldSetpointW));
+  return Math.max(0, requestedW - alreadyDischargingW);
+}
+
 /**
  * A battery reading older than the meter sample by more than this, ms, lags it.
  * The house's draw without the battery is the meter less the battery's own
@@ -87,7 +98,11 @@ const laggingDischargeCeilingW = (
  * above it left, less what the pool already counted of its own charge, plus
  * that charge, less the draw margin.
  */
-const offeredChargeW = (storage: ObservedStorageInput, offer: StorageSurplusOffer, marginW: number): number => (
+const offeredChargeW = (
+  storage: ObservedStorageInput,
+  offer: Pick<StorageSurplusOffer, 'availableW' | 'addedBackW'>,
+  marginW: number,
+): number => (
   Math.max(0, offer.availableW - offer.addedBackW + ownChargeWOf(storage) - marginW)
 );
 
@@ -148,55 +163,50 @@ export const continuousLever = (
     ? Math.min(desiredW, roomCeilingW, solarCeilingW)
     : desiredW;
   const setpointW = floorStorageSetpointW(Math.max(-storage.deliveryCeilingW, boundedW), storage.range);
-  const hold = claimSurplusLever(storage, setpointW, nowTs);
+  const hold = startContinuousLever(storage, setpointW, nowTs);
   return {
     ...hold,
-    purpose: 'continuous',
     continuousReason: plan.reason,
-    preClaimSignedW: previous?.preClaimSignedW ?? storage.signedPowerW,
-    ownModeChargeW: Math.max(0, plan.setpointW),
     ...dischargeCredit(storage, previous, setpointW, nowTs),
   };
 };
 
-export function resumeContinuousStorage(
-  relief: StorageRelief,
-  beforeHandBack: StorageRelief,
-  devices: readonly PlanInputDevice[],
-  power: MeasuredPower,
-  offers: ReadonlyMap<string, StorageSurplusOffer>,
+/** The routine policy stores only spare solar, and otherwise keeps the claim at 0 W. */
+export function baselineSolarChargeW(
+  storage: ObservedStorageInput,
+  previous: StorageLeverState | undefined,
+  offer: Pick<StorageSurplusOffer, 'availableW' | 'addedBackW'>,
+  headroomW: number | null,
   nowTs: number,
-): StorageRelief {
-  const balance: StorageBalance = {
-    deficitW: power.headroom.kind === 'off' ? 0 : Math.max(0, -power.headroom.kw * 1000),
-    headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000),
-    netImportW: power.drawKw * 1000,
-    sampledAtMs: power.sampledAtMs,
+): number {
+  const marginW = drawMarginWFor(storage);
+  const offeredW = offeredChargeW(storage, offer, marginW);
+  const roomW = headroomW === null
+    ? storage.chargeCeilingW
+    : Math.max(0, storage.signedPowerW + headroomW - marginW);
+  const fundedW = Math.min(storage.chargeCeilingW, offeredW, roomW);
+  const targetW = fundedW < deadbandWFor(storage) ? 0 : floorStorageSetpointW(fundedW, storage.range);
+  if (previous?.baseline !== true || targetW === 0) return targetW;
+
+  const heldW = Math.max(0, previous.setpointW);
+  if (targetW < heldW - marginW) return targetW;
+  if (!isRaiseVisible(storage, heldW, targetW)) return heldW;
+  return nowTs - previous.chargeRaisedAtMs < SURPLUS_TRACK_STEP_MIN_INTERVAL_MS ? heldW : targetW;
+}
+
+export function baselineLever(
+  storage: ObservedStorageInput,
+  previous: StorageLeverState | undefined,
+  setpointW: number,
+  nowTs: number,
+): StorageLeverState {
+  const hold = startContinuousLever(storage, setpointW, nowTs);
+  return {
+    ...hold,
+    baseline: true,
+    chargeRaisedAtMs: previous?.baseline === true && setpointW <= previous.setpointW
+      ? previous.chargeRaisedAtMs
+      : nowTs,
+    continuousReason: 'store_solar',
   };
-  const resumed = relief.batteries.flatMap((battery) => {
-    if (battery.decision.kind !== 'release' || battery.decision.reason !== 'restored') return [];
-    const device = devices.find(candidate => candidate.id === battery.deviceId);
-    if (device === undefined || !hasStorageLeverInput(device) || device.storage.reading !== 'observed') return [];
-    const { storage } = device;
-    const offer = offers.get(device.id);
-    if (storage.continuousPlan === undefined || storage.continuousPlan.validUntilMs <= nowTs
-      || resolveStorageHoldBlock(storage) !== 'holdable' || offer === undefined) return [];
-    const fresh = continuousLever(storage, undefined, balance, offer, nowTs);
-    const lever = {
-      ...fresh,
-      preClaimSignedW: beforeHandBack.levers[device.id]?.preClaimSignedW ?? fresh.preClaimSignedW,
-    };
-    const summary: StorageStateSummary = {
-      ...summarizeHold(device.id, storage, lever, 0),
-      decision: { kind: 'setpoint', setpointW: lever.setpointW, stepW: lever.stepW, restored: true },
-    };
-    return [{ lever, summary }];
-  });
-  const byId = new Map(resumed.map(item => [item.summary.deviceId, item.summary]));
-  const levers = {
-    ...relief.levers,
-    ...Object.fromEntries(resumed.map(item => [item.summary.deviceId, item.lever])),
-  };
-  const batteries = relief.batteries.map(battery => byId.get(battery.deviceId) ?? battery);
-  return { ...relief, levers, batteries };
 }

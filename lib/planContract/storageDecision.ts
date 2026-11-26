@@ -6,17 +6,10 @@
  * hand-backs); a battery the plan is not driving and holds no claim on carries
  * no decision at all.
  *
- * - `setpoint` — hold the battery at this signed power, W (a capped charge or
- *   a discharge to hold the limit, or a charge from the surplus the willing
- *   devices left). `stepW` is the battery's setpoint grid, which the
- *   executor's confirmation tolerance is sized against.
- * - `release` — hand the battery back to its own mode, saying which rule
- *   fired: `restored` (the restore lane handed a limit hold back in priority
- *   order), `limit_off` (the owner turned Power-limit control off: PELS hands
- *   back any hold, limit or surplus, and claims nothing), `idle` (a claim
- *   PELS holds the battery for nothing), `surplus_dwell` (a surplus hold no device needs any more), `full` (a
- *   surplus hold on a battery that stopped taking charge), or why it may not
- *   be held.
+ * - `setpoint` — hold the battery at the desired signed power, W. Idle is
+ *   0 W and keeps the claim. `stepW` sizes confirmation tolerance.
+ * - `release` — hand the battery back to its own mode after an opt-out or
+ *   a loss of safe control. Historical reasons remain readable.
  */
 export type StorageReleaseReason =
   | 'restored'

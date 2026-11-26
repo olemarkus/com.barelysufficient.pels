@@ -1175,9 +1175,7 @@ keeps the word for what PELS holds it to do.
 | State while the battery plan keeps its stored energy for later | `Waiting` |
 | State while PELS caps its charge at its place in the priority order | `Limited · Charging` (the load's `Limited` word) |
 | Reason while PELS holds it to hold the limit | `Holding your limit so your devices keep running` |
-| Reason while PELS holds it to store solar the devices leave | `Storing the solar power your devices leave` |
-| Reason while PELS caps its charge so a device can use the solar | `Charging less so a device can use the solar` |
-| Reason while PELS caps its charge | `Waiting to charge faster · 2.4 kW more needed` (the charge its own mode would take that the cap holds back; `Waiting to charge faster` alone under 0.05 kW) |
+| Reason while PELS caps its charge | `Waiting to charge faster · 2.4 kW more needed` (the reduction from the charge observed when the limit began; `Waiting to charge faster` alone under 0.05 kW) |
 | Reason while the battery plan charges from the grid | `Buying cheap electricity for later` |
 | Reason while the battery plan stores solar | `Storing solar for later household use` |
 | Reason while the battery plan supplies the home | `Using stored energy while power is expensive` |
@@ -1188,7 +1186,7 @@ keeps the word for what PELS holds it to do.
 | Device page, a sale within a stricter export limit another battery's owner set | `Selling stays within 2 kW at your meter, the lowest export limit set on your batteries.` |
 | Device page, selling opt-in under Plan charging with PELS | `Sell stored energy when profitable`; its limit field `Export limit at your meter (kW)` |
 | Device page, selling decided | `Selling is planned. Estimated 0.43 EUR lower electricity cost than keeping the energy for your home over this plan.` / `Selling would not lower your cost in this plan, so PELS keeps the energy for your home.` / `Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.` |
-| Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
+| Reason in its own mode (a battery PELS can drive) | `Waiting for PELS to take control` |
 | Reason while a battery PELS can drive left a setpoint unanswered, through the back-off and the re-probe, until it answers one (any hold but Power-limit control off, whose own line stays) | `Did not follow PELS's request: trying again later` |
 | The same, while its app reports running a mode of its own (a Sigenergy plant in its own EMS) | `Did not follow PELS's request: its app runs AI mode` (the mode as its app names it) |
 | Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
@@ -1206,8 +1204,8 @@ keeps the word for what PELS holds it to do.
 | Overview hero, one battery supplying while PELS holds it for the limit (only while it supplies: a capped charge holds nothing) | `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
 | Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
-| Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.`; with Power limits off, `PELS shares spare solar between it and your devices, then hands it back.` |
-| Setup, `Choose what PELS does`, battery row | Switch `Plan charging with PELS` (the device page's), `PELS plans charging and household supply around your prices and solar. The battery’s own schedule resumes when you turn this off.`; while off, a `Usable capacity (kWh)` field (`From your battery’s specification. PELS needs it to plan.`), empty until a capacity was saved, and the switch waits for it; while on, `Planned for 10 kWh usable capacity.` (+ ` The plan runs once you start managing.` in Simulation mode). Review lists `Plan charging with PELS on`. |
+| Device page, Managed hint | `PELS controls charging and discharging to store spare solar and hold your limit.`; with Power limits off, `PELS controls charging to store spare solar in priority order.` |
+| Setup, `Choose what PELS does`, battery row | Switch `Plan charging with PELS` (the device page's), `PELS plans charging and household supply around your prices and solar. With planning off, PELS stores spare solar and uses the battery to hold your limit.`; while off, a `Usable capacity (kWh)` field (`From your battery’s specification. PELS needs it to plan.`), empty until a capacity was saved, and the switch waits for it; while on, `Planned for 10 kWh usable capacity.` (+ ` The plan runs once you start managing.` in Simulation mode). Review lists `Plan charging with PELS on`. |
 | Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |
 | Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |

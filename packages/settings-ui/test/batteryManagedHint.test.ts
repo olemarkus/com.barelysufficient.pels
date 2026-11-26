@@ -7,7 +7,7 @@ describe('battery Managed hint', () => {
   it('names the limit while one is in force, or while the limits are still being read', () => {
     limitsInForce = true;
     expect(resolveBatteryManagedHint())
-      .toBe('PELS takes it over to hold your limit or store spare solar, then hands it back.');
+      .toBe('PELS controls charging and discharging to store spare solar and hold your limit.');
     limitsInForce = null;
     expect(resolveBatteryManagedHint()).toContain('hold your limit');
   });
@@ -15,6 +15,6 @@ describe('battery Managed hint', () => {
   it('names only the solar job with Power limits off: there is no limit to hold', () => {
     limitsInForce = false;
     expect(resolveBatteryManagedHint())
-      .toBe('PELS shares spare solar between it and your devices, then hands it back.');
+      .toBe('PELS controls charging to store spare solar in priority order.');
   });
 });

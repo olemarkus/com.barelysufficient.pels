@@ -74,7 +74,7 @@ requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     managed,
     actuator,
     transport,
-    () => true,
+    { readMembership: () => 'main', isPowerLimitEnabled: () => true, hasRecentMeterEvidence: () => false },
     () => false,
     () => false,
   );

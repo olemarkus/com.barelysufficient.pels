@@ -17,17 +17,22 @@ import type { HomeMembershipPort } from './membership';
 
 type ListedDeviceCandidate = { id: string; isBatteryOrSolar: boolean; deviceClass?: string };
 
+/** A battery can leave Main only on a settled assignment. */
+export const readMainHomeMembership = (
+  membership: HomeMembershipPort | undefined, deviceId: string,
+): 'main' | 'other' | 'unsettled' => {
+  if (membership === undefined || !membership.isOwnershipReady()
+    || membership.hasPendingOwnershipGeneration() || membership.isDeviceZoneUnknown(deviceId)) return 'unsettled';
+  return membership.getHomeIdForDevice(deviceId) === MAIN_HOME_ID ? 'main' : 'other';
+};
+
 /**
  * Whether the device is a Main-home member on settled membership: the port
  * wired, ownership ready, no ownership change pending, and the device not held
  * out of every home. Unknown membership answers false (see the header).
  */
 export const isSettledMainHomeMember = (membership: HomeMembershipPort | undefined, deviceId: string): boolean => (
-  membership !== undefined
-  && membership.isOwnershipReady()
-  && !membership.hasPendingOwnershipGeneration()
-  && membership.getHomeIdForDevice(deviceId) === MAIN_HOME_ID
-  && !membership.isDeviceZoneUnknown(deviceId)
+  readMainHomeMembership(membership, deviceId) === 'main'
 );
 
 export function isListedWholeHomeDevice(

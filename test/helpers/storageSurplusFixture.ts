@@ -13,6 +13,6 @@ export const storageDischargeObservationsFixture = (devices: readonly PlanInputD
 export const storageSurplusFixture = (
   devices: readonly PlanInputDevice[], levers: Readonly<Record<string, StorageLeverState>>, signedNetW: number,
 ) => ({
-  claimants: resolveStorageSurplusClaimants(devices, levers, signedNetW),
+  claimants: resolveStorageSurplusClaimants(devices, levers, signedNetW, 0),
   dischargeW: resolveStorageDischargeW(storageDischargeObservationsFixture(devices), levers),
 });

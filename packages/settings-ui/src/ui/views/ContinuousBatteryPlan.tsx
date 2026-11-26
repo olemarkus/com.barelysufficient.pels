@@ -301,7 +301,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
       <MdSwitch aria-label="Plan charging with PELS" selected={draft.enabled} disabled={props.busy || (enableBlocked && !draft.enabled)}
         onChange={(event: Event) => update('enabled', readSwitchSelected(event))} />
     </label>
-    <p class="field__hint">PELS plans charging and household supply. Your battery’s own schedule resumes when you turn this off. Changes apply when you save.</p>
+    <p class="field__hint">PELS uses prices to plan charging and household supply. With planning off, PELS stores spare solar and uses the battery to hold your limit. Changes apply when you save.</p>
     {props.blockedReason && <p class="field__hint" role="status">{props.blockedReason}</p>}
     {unit === null && <p class="field__hint" role="status">Waiting for the electricity price unit.</p>}
     {changedUnit && <p class="field__hint" role="status">The electricity price unit changed from {props.config.priceUnit} to {unit}. Review the wear allowance and save the battery plan.</p>}

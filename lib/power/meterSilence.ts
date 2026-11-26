@@ -37,6 +37,12 @@ export const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean 
   a !== null && a.silentSinceMs === b.silentSinceMs && a.cause === b.cause
 );
 
+/** Whether an already active control mode can wait for the next meter-driven decision. */
+export const hasRecentMeterEvidence = (tracker: PowerTrackerState, nowMs: number): boolean => {
+  const lastTs = resolveMeterEvidenceAtMs(tracker);
+  return lastTs !== undefined && nowMs - lastTs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+};
+
 /**
  * The 10-minute meter-silence policy, one instance per home, for BOTH power
  * sources (owner ruling 2026-08-31, superseding the 2026-08-16 "no freshness

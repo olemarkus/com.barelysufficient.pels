@@ -27,9 +27,9 @@ import {
 import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { buildReservedForStartReason, resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
+import { phaseExportRoomKw } from '../phase/phasePower';
 import { resolvePhaseRoomAxis } from '../phase/phaseRoom';
 import { withChargingPhaseOffCandidates } from './chargingPhaseRestore';
-import { phaseExportRoomKw } from '../phase/phasePower';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import {
   resolveAcknowledgedStepUpReservationKw, resolveRunningInstallationReservationKw,

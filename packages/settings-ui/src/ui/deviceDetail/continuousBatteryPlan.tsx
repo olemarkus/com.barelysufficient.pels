@@ -51,7 +51,7 @@ function display(current: BatteryPlanSession): void {
   if (managedHint && current.drivable && current.read !== null) {
     // A blocked or waiting plan says so below; the hint claims planning only while a plan runs.
     managedHint.textContent = current.read.status === 'planned' && current.blockedReason === ''
-      ? 'PELS plans charging and household supply, and holds your power limit. Turn off battery planning to return to its own schedule.'
+      ? 'PELS plans charging and household supply around your prices and solar.'
       : resolveBatteryManagedHint();
   }
   if (current.read === null || current.config === null) {
