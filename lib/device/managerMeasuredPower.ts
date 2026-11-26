@@ -7,6 +7,7 @@ import type { ResolvedTransportPowerState } from './transport/transportTypes';
 
 export function resolveMeasuredPowerKw(params: {
   deviceId: string;
+  sourceDeviceId: string;
   deviceLabel: string;
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
@@ -18,6 +19,7 @@ export function resolveMeasuredPowerKw(params: {
 }): DeviceMeasuredPowerResolution & { meterEnergy?: import('./measuredPowerReader').MeterEnergyReading } {
   const {
     deviceId,
+    sourceDeviceId,
     deviceLabel,
     capabilities,
     capabilityObj,
@@ -31,21 +33,18 @@ export function resolveMeasuredPowerKw(params: {
     deviceId, capabilities, capabilityObj, livePowerWByDeviceId, deviceEnergyW, homeyEnergyObservedAtMs: now,
   });
   const measuredPower = measuredPowerResolver.resolve({ deviceId, deviceLabel, observation });
-  // Every accepted reading goes to peak learning, which applies its own
-  // credibility floor (`MIN_PEAK_LEARNING_KW`): it needs the standby readings
-  // too, to tell one running reading from the next.
-  if (typeof measuredPower.measuredPowerKw === 'number' && Number.isFinite(measuredPower.measuredPowerKw)) {
-    updateLastKnownPower({
-      state: powerState,
-      deviceId,
-      measuredKw: measuredPower.measuredPowerKw,
-      deviceLabel,
-      // WHEN PELS READ IT, not the capability's `lastUpdated`: Homey reports on
-      // change, so a device steady at its peak stops republishing and would
-      // otherwise have its peak expire for holding still.
-      nowMs: now,
-      onPeakChanged: powerState.onLearnedPeakChanged,
-    });
-  }
+  // Report the binding even before it has a reading so learning cannot mix
+  // samples across successive sources. Standby readings also reach the learner.
+  updateLastKnownPower({
+    state: powerState,
+    deviceId,
+    sourceDeviceId,
+    measuredKw: measuredPower.measuredPowerKw,
+    deviceLabel,
+    // WHEN PELS READ IT, not the capability's `lastUpdated`: Homey reports on
+    // change, so a steady device would otherwise have its peak expire.
+    nowMs: now,
+    onPeakChanged: powerState.onLearnedPeakChanged,
+  });
   return { ...measuredPower, meterEnergy: observation.meterEnergy };
 }

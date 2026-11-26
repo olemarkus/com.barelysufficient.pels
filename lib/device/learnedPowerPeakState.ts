@@ -1,6 +1,9 @@
 import {
   adoptPersistedLearnedPeaks,
+  learnedPeakForSource,
   pruneExpiredLearnedPeaks,
+  resolveLearnedPeakKw,
+  type LearnedPeak,
   type LearnedPeaksByDeviceId,
 } from './devicePowerPeak';
 import { normalizeError } from '../utils/errorUtils';
@@ -8,15 +11,20 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import { scheduleLegacyImportRetry } from '../store/legacySettingsImport';
 import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
+import type { DeviceControlSettings } from './deviceControlSettings';
 
 /** Registry name for the minute retry of an owed legacy import or the read after it. */
 const CATCH_UP_TIMER = 'learnedPeakLegacyImportRetry';
+
+export type MeterHistoryPeak = LearnedPeak & { sourceDeviceId: string };
+export type SaveHistoryPeakOutcome = 'imported' | 'already_learned' | 'save_failed';
 
 export type LearnedPowerPeakState = {
   /** Restore the learned peaks at boot. */
   load: () => void;
   /** Write the learned peaks through to the store. */
   persist: () => void;
+  saveFromHistory: (deviceId: string, peak: MeterHistoryPeak) => SaveHistoryPeakOutcome;
 };
 
 /**
@@ -40,10 +48,11 @@ export type LearnedPowerPeakState = {
 export function createLearnedPowerPeakState(params: {
   getStore: () => LearnedPowerPeakStore;
   getPeaks: () => LearnedPeaksByDeviceId;
+  deviceControl: Pick<DeviceControlSettings, 'devicePowerSources'>;
   timers: TimerRegistry;
   getStructuredLogger: () => PinoLogger;
 }): LearnedPowerPeakState {
-  const { getStore, getPeaks, timers, getStructuredLogger } = params;
+  const { getStore, getPeaks, deviceControl, timers, getStructuredLogger } = params;
   /**
    * False until a read has told us what is stored. A write before it would make
    * the store hold exactly the in-memory record, deleting every row this run has
@@ -73,7 +82,20 @@ export function createLearnedPowerPeakState(params: {
     // Merged rather than replaced: a failed read is retried from the next write,
     // and the read after a legacy import also each minute until it lands, by
     // which point the ingest path holds peaks of its own.
-    const adopted = adoptPersistedLearnedPeaks(persisted, peaks);
+    const { devicePowerSources } = deviceControl;
+    // An old row has no proof of which meter supplied it. Retire it on a
+    // known external assignment, including an import that finished late.
+    for (const [deviceId, socketId] of Object.entries(devicePowerSources)) {
+      if (socketId === null) continue;
+      const stored = persisted[deviceId];
+      if (stored && stored.sourceDeviceId === undefined) {
+        delete persisted[deviceId];
+        writeOwed = true;
+      }
+      const held = peaks[deviceId];
+      if (held && held.sourceDeviceId === undefined) delete peaks[deviceId];
+    }
+    const adopted = adoptPersistedLearnedPeaks(persisted, peaks, devicePowerSources);
     // In-place: the record is shared by reference with `DeviceTransport`, which
     // took it at construction. Replacing it would leave the transport writing
     // into the old object and this one reading an orphan.
@@ -131,7 +153,26 @@ export function createLearnedPowerPeakState(params: {
     if (reachable && (importOwed || !read)) scheduleLegacyImportRetry(timers, CATCH_UP_TIMER, catchUp);
   };
 
+  const saveFromHistory = (deviceId: string, peak: MeterHistoryPeak): SaveHistoryPeakOutcome => {
+    catchUp();
+    if (!read) return 'save_failed';
+    const peaks = getPeaks();
+    const held = learnedPeakForSource(peaks[deviceId], deviceId, peak.sourceDeviceId);
+    const now = Date.now();
+    if (resolveLearnedPeakKw(held, now) !== null) return 'already_learned';
+    try {
+      getStore().write(pruneExpiredLearnedPeaks({ ...peaks, [deviceId]: peak }, now));
+      // eslint-disable-next-line functional/immutable-data -- The transport shares this record by reference.
+      peaks[deviceId] = peak;
+      return 'imported';
+    } catch (error) {
+      getStructuredLogger().error({ event: 'learned_peaks_write_failed', err: normalizeError(error) });
+      return 'save_failed';
+    }
+  };
+
   return {
+    saveFromHistory,
     /** The legacy import is settled first, so the boot read sees what it brought. */
     load: catchUp,
 

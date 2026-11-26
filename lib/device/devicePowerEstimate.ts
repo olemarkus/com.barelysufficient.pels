@@ -1,5 +1,5 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
-import { resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePowerPeak';
+import { learnedPeakForSource, resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type {
   BinaryControlCapabilityId, DeviceExpectedPowerOverrides, ExpectedPowerSource,
 } from '../../packages/contracts/src/types';
@@ -55,6 +55,7 @@ export type PowerEstimateResult = {
 export function estimatePower(params: {
   device: HomeyDeviceLike;
   deviceId: string;
+  sourceDeviceId?: string;
   deviceLabel: string;
   binaryCapabilityId?: BinaryControlCapabilityId;
   measuredPowerKw?: number;
@@ -64,6 +65,7 @@ export function estimatePower(params: {
   const {
     device,
     deviceId,
+    sourceDeviceId = deviceId,
     deviceLabel,
     binaryCapabilityId,
     measuredPowerKw,
@@ -72,10 +74,11 @@ export function estimatePower(params: {
   } = params;
 
   const loadW = getLoadSettingWatts(device);
+  const peak = learnedPeakForSource(state.lastKnownPowerKw[deviceId], deviceId, sourceDeviceId);
   const result: PowerEstimateResult = resolveExpectedPower({
     override: state.expectedPowerKwOverrides[deviceId],
     loadW,
-    peakKw: resolveLearnedPeakKw(state.lastKnownPowerKw[deviceId], now),
+    peakKw: resolveLearnedPeakKw(peak, now),
     energyEstimateW: getHomeyEnergyEstimateWatts(device),
     binaryCapabilityId,
   });
@@ -257,11 +260,9 @@ function emitEstimateDecisionLog(params: {
 // promotion that no longer exists — a measurement above a manual override does
 // not supersede it.
 function buildEstimateDecisionLogFields(params: {
-  deviceId: string;
   result: PowerEstimateResult;
   measuredPowerKw?: number;
   loadKw?: number;
-  state: PowerEstimateState;
 }): {
   source: ExpectedPowerSource;
   estimatedKw: number;
@@ -269,25 +270,16 @@ function buildEstimateDecisionLogFields(params: {
   loadKw: number | null;
   peakMeasuredKw: number | null;
 } {
-  const { deviceId, result, state } = params;
+  const { result } = params;
   return {
     source: result.expectedPowerSource,
     estimatedKw: roundLogValue(result.expectedPowerKw, 2),
     measuredPowerKw: roundMaybeKw(params.measuredPowerKw),
     loadKw: roundMaybeKw(params.loadKw),
-    peakMeasuredKw: resolvePeakMeasuredKw(result.expectedPowerSource, deviceId, state),
+    peakMeasuredKw: result.expectedPowerSource === 'measured-peak' ? roundMaybeKw(result.expectedPowerKw) : null,
   };
 }
 
 function roundMaybeKw(value: number | undefined): number | null {
   return typeof value === 'number' ? roundLogValue(value, 2) : null;
-}
-
-function resolvePeakMeasuredKw(
-  source: ExpectedPowerSource,
-  deviceId: string,
-  state: PowerEstimateState,
-): number | null {
-  if (source !== 'measured-peak') return null;
-  return roundMaybeKw(state.lastKnownPowerKw[deviceId]?.kw);
 }

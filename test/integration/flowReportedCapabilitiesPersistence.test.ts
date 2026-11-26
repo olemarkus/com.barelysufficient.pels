@@ -21,7 +21,9 @@ describe('Flow capability persistence reads', () => {
   let repository: SettingsRepository;
 
   const buildFlowBacked = () => createFlowBackedDeviceState(
-    mockHomeyInstance as unknown as Homey.App['homey'], {
+    mockHomeyInstance as unknown as Homey.App['homey'],
+    { devicePowerSources: {}, hasSavedPowerSource: () => false },
+    {
       persistence: repository,
       getStructuredLogger: () => testLogger,
       getFlowReportedCapabilities: () => reports,

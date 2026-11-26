@@ -27,6 +27,13 @@ export function sourceOptions(entry: DevicePowerSetupEntry | undefined, selected
   return [{ value: '', label: ownLabel }, ...options];
 }
 
+export function sourceChangeWarning(
+  entry: DevicePowerSetupEntry | undefined, selected: string, guided: boolean,
+): string {
+  if (!entry || (guided && !entry.configured) || selected === (entry.sourceId ?? '')) return '';
+  return 'PELS starts learning running power again when you save this change.';
+}
+
 export function sourceHelp(
   entry: DevicePowerSetupEntry | undefined, selected: string,
 ): string {

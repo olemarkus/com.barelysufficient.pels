@@ -54,9 +54,11 @@ const resolveFlowBackedRefreshTrigger = (
  */
 export const createFlowBackedDeviceState = (
   homey: Homey.App['homey'],
-  deps: Omit<FlowBackedDeviceStateDeps, 'isFlowCardAvailable' | 'getFlowBackedRefreshTrigger'>,
+  deviceControl: FlowBackedDeviceStateDeps['deviceControl'],
+  deps: Omit<FlowBackedDeviceStateDeps, 'deviceControl' | 'isFlowCardAvailable' | 'getFlowBackedRefreshTrigger'>,
 ): FlowBackedDeviceState => new FlowBackedDeviceState({
   ...deps,
+  deviceControl,
   isFlowCardAvailable: (kind, cardId) => isFlowCardAvailable(homey, kind, cardId),
   getFlowBackedRefreshTrigger: () => resolveFlowBackedRefreshTrigger(homey),
 });

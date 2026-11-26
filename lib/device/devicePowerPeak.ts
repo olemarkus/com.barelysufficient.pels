@@ -30,6 +30,7 @@
  * readings (`rankedPeakLevelKw`), which are held in memory for the run.
  */
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
+import type { DevicePowerSources } from '../../packages/shared-domain/src/settings/devicePowerSources';
 import { MAX_PLAUSIBLE_DEVICE_POWER_KW } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
@@ -57,6 +58,8 @@ export const PEAK_REANCHOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export type LearnedPeak = {
   kw: number;
   observedAtMs: number;
+  /** Omitted only on rows that predate source tracking. */
+  sourceDeviceId?: string;
 };
 
 export type LearnedPeaksByDeviceId = Record<string, LearnedPeak>;
@@ -101,6 +104,14 @@ export const resolveLearnedPeakKw = (
   if (!peak || peak.kw <= 0) return null;
   return isExpired(peak, nowMs) ? null : peak.kw;
 };
+
+export const learnedPeakForSource = (
+  peak: LearnedPeak | undefined,
+  deviceId: string,
+  sourceDeviceId: string,
+): LearnedPeak | undefined => (
+  (peak?.sourceDeviceId ?? deviceId) === sourceDeviceId ? peak : undefined
+);
 
 /**
  * The entry to store for a new reading, or `null` to leave the store untouched.
@@ -155,6 +166,8 @@ export type PeakReadings = {
   /** Its latest separate readings at or above `MIN_PEAK_LEARNING_KW`, oldest first. */
   samplesKw: readonly number[];
 };
+
+export type PeakReadingWindow = { sourceDeviceId: string; readings?: PeakReadings };
 
 /**
  * A device's readings with one more taken into account.
@@ -231,7 +244,15 @@ const isFiniteTimestamp = (value: unknown): value is number => (
 export const parseLearnedPeakEntry = (value: unknown, deviceId: string): LearnedPeak | undefined => {
   const entry = asUnknownRecord(value);
   if (!deviceId || !entry || !isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.observedAtMs)) return undefined;
-  return { kw: entry.kw, observedAtMs: entry.observedAtMs };
+  const { sourceDeviceId } = entry;
+  if (sourceDeviceId !== undefined && (typeof sourceDeviceId !== 'string' || sourceDeviceId.trim() === '')) {
+    return undefined;
+  }
+  return {
+    kw: entry.kw,
+    observedAtMs: entry.observedAtMs,
+    ...(sourceDeviceId === undefined ? {} : { sourceDeviceId }),
+  };
 };
 
 /** The plausibility check shared by stored rows and the legacy settings import. */
@@ -259,7 +280,9 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
   const parsed: LearnedPeaksByDeviceId = {};
   for (const [deviceId, value] of Object.entries(record)) {
     const entry = parseLearnedPeakEntry(value, deviceId);
-    if (entry && !exceedsLearnedPeakCeiling(entry)) parsed[deviceId] = entry;
+    if (entry && !exceedsLearnedPeakCeiling(entry)) {
+      parsed[deviceId] = { kw: entry.kw, observedAtMs: entry.observedAtMs };
+    }
   }
   return parsed;
 };
@@ -387,11 +410,16 @@ export const classifyExpectedPowerOverridesSetting = (
 export const adoptPersistedLearnedPeaks = (
   persisted: LearnedPeaksByDeviceId,
   held: LearnedPeaksByDeviceId,
+  powerSources?: DevicePowerSources,
 ): LearnedPeaksByDeviceId => {
   const merged: LearnedPeaksByDeviceId = { ...persisted };
   for (const [deviceId, heldPeak] of Object.entries(held)) {
-    const next = nextLearnedPeak(merged[deviceId], heldPeak.kw, heldPeak.observedAtMs);
-    if (next) merged[deviceId] = next;
+    const stored = merged[deviceId];
+    const resolvedSource = powerSources ? powerSources[deviceId] ?? deviceId : undefined;
+    const previous = learnedPeakForSource(stored, deviceId, heldPeak.sourceDeviceId ?? deviceId);
+    if (!previous && resolvedSource && learnedPeakForSource(stored, deviceId, resolvedSource)) continue;
+    const next = nextLearnedPeak(previous, heldPeak.kw, heldPeak.observedAtMs);
+    if (next) merged[deviceId] = heldPeak;
   }
   return merged;
 };

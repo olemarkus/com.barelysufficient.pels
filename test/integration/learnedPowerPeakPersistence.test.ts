@@ -43,12 +43,14 @@ describe('learned power peak persistence', () => {
   let store: LearnedPowerPeakStore;
   let peaks: LearnedPeaksByDeviceId;
   let timers: TimerRegistry;
+  const deviceControl = { devicePowerSources: {} as Record<string, string | null> };
 
   const buildState = (getStore: () => LearnedPowerPeakStore = () => store) => (
     createLearnedPowerPeakState({
       getStructuredLogger: () => testLogger,
       getStore,
       getPeaks: () => peaks,
+      deviceControl,
       timers,
     })
   );
@@ -60,6 +62,7 @@ describe('learned power peak persistence', () => {
     repository = createLearnedPowerPeakRepository(db);
     store = createImportingLearnedPowerPeakStore(installSettings(), repository);
     peaks = {};
+    deviceControl.devicePowerSources = {};
     timers = new TimerRegistry();
   });
 
@@ -76,6 +79,45 @@ describe('learned power peak persistence', () => {
     state.load();
 
     expect(peaks).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
+  });
+
+  it('retains peaks by source across reload and retires ambiguous external legacy rows', () => {
+    repository.write({
+      legacySocket: { kw: 6.598, observedAtMs: NOW },
+      legacyNative: { kw: 1.5, observedAtMs: NOW },
+      heater: { kw: 2.874, observedAtMs: NOW, sourceDeviceId: 'socket-b' },
+    });
+    deviceControl.devicePowerSources = { legacySocket: 'socket-a', heater: 'socket-b' };
+    buildState().load();
+
+    const expected = {
+      legacyNative: { kw: 1.5, observedAtMs: NOW },
+      heater: { kw: 2.874, observedAtMs: NOW, sourceDeviceId: 'socket-b' },
+    };
+    expect(peaks).toEqual(expected);
+    expect(repository.read()).toEqual(expected);
+  });
+
+  it('keeps the in-process peak from the assigned meter when a delayed load holds an old source', () => {
+    repository.write({ heater: { kw: 6.598, observedAtMs: NOW, sourceDeviceId: 'socket-a' } });
+    peaks.heater = { kw: 2.874, observedAtMs: NOW, sourceDeviceId: 'socket-b' };
+    deviceControl.devicePowerSources = { heater: 'socket-b' };
+    buildState().persist();
+
+    expect(repository.read()).toEqual({ heater: { kw: 2.874, observedAtMs: NOW, sourceDeviceId: 'socket-b' } });
+  });
+
+  it('saves an imported peak and lets live learning win if it already has a peak from this meter', () => {
+    const state = buildState();
+    deviceControl.devicePowerSources = { heater: 'socket-b' };
+    const imported = { kw: 2.874, observedAtMs: NOW - 5000, sourceDeviceId: 'socket-b' };
+    expect(state.saveFromHistory('heater', imported)).toBe('imported');
+    expect(repository.read()).toEqual({ heater: imported });
+    const live = { ...imported, kw: 3.1, observedAtMs: NOW };
+    peaks.heater = live;
+    state.persist();
+    expect(state.saveFromHistory('heater', { ...imported, kw: 6.598 })).toBe('already_learned');
+    expect(repository.read()).toEqual({ heater: live });
   });
 
   it('drops an obsolete peak at info and quarantines only damaged rows at error', () => {
@@ -307,6 +349,7 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
   let settings: MockSettings;
   let peaks: LearnedPeaksByDeviceId;
   let timers: TimerRegistry;
+  const deviceControl = { devicePowerSources: {} as Record<string, string | null> };
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
@@ -318,6 +361,7 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
       charger: { kw: 5, observedAtMs: NOW - 1000 },
     });
     peaks = {};
+    deviceControl.devicePowerSources = {};
     timers = new TimerRegistry();
   });
 
@@ -347,6 +391,7 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
       getStructuredLogger: () => testLogger,
       getStore: () => store,
       getPeaks: () => peaks,
+      deviceControl,
       timers,
     });
     state.load();

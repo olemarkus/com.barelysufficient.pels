@@ -130,6 +130,11 @@ ID. A socket ID chooses another device's live watts. An entry with value
 `ExternalDevicePower` resolves socket eligibility and links observations.
 See [external device power](state-management/external-device-power.md).
 
+`device_power_history_import` carries an explicit request and its correlated
+result for importing recent running power from an assigned socket. The
+device power history importer consumes live requests and publishes the result.
+A request persisted from an earlier run is not replayed.
+
 `device_binary_switches` belongs to DeviceControlSettings. It maps a Homey device
 ID to the user's selected Homey on/off capability ID. Removing an entry restores
 the device's default binary control. Device transport validates the exact

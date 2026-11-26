@@ -1,6 +1,7 @@
 import type { MdDialog } from '@material/web/dialog/dialog.js';
 import type { DevicePowerSetupEntry } from '../../../contracts/src/settingsUi/devices.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import { sourceChangeWarning } from './devicePowerSetupChoices.ts';
 import type { SetupDraft } from './devicePowerSetupWrites.ts';
 
 export type GuidedControls = {
@@ -61,7 +62,9 @@ export function renderGuidedReview(
     controls.dialog.setAttribute('aria-label', label);
   }
   review.hidden = !reviewing;
-  review.textContent = reviewing && entry ? describeGuidedSetup(entry, draft) : '';
+  review.textContent = reviewing && entry
+    ? [describeGuidedSetup(entry, draft), sourceChangeWarning(entry, draft.source, true)].filter(Boolean).join(' ')
+    : '';
   simulation.hidden = !reviewing || !isSimulation;
   status.hidden = !message;
   status.textContent = message;

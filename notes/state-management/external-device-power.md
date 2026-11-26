@@ -22,7 +22,12 @@ assignment is no longer eligible, the projected capability disappears and
 the device's remaining capabilities follow their normal control rules.
 An off report withdraws earlier watts. A fresh zero reported after the
 switch is an observation. Removing the assignment restores the device's
-own power source.
+own power source. Running-power estimates only use learned peaks from the
+selected source. On a meter change, the new source needs its own readings
+before PELS can learn a peak from it. With **Import from meter history**, the owner can
+use the previous hour in Homey Insights once they confirm the socket measured
+the same device throughout that hour. PELS uses recent, distinct fine-grained
+readings, and preserves a figure it has already learned from that source.
 
 The setup inventory stays separate from the managed roster and travels through
 the existing device settings read. The device's regular observation, planning

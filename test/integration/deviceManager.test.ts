@@ -208,6 +208,73 @@ describe('DeviceTransport', () => {
         );
     });
 
+    it('learns running power from the newly assigned meter without carrying over the old meter peak', async () => {
+        const devicePowerSources: Record<string, string | null> = { appliance: 'socket-a' };
+        const lastKnownPowerKw = {};
+        deviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
+            settings: { isManaged: (id) => id === 'appliance', isControllable: (id) => id === 'appliance' },
+        }, { lastKnownPowerKw }, {
+            externalPower: {
+                settings: {
+                    devicePowerSources,
+                    managedDevices: { appliance: true },
+                    isMeteringSocketReserved: () => false,
+                    isMainFusePhaseMeter: () => false,
+                },
+                resolveHome: () => 'main',
+            },
+        });
+        const stamp = stampedNow(BASELINE_OFFSET_MS);
+        const initialDevices = {
+            appliance: homeyDevice(
+                { id: 'appliance', name: 'Appliance', class: 'other' },
+                { onoff: setable(true), measure_power: 400 },
+                stamp,
+            ),
+            'socket-a': homeyDevice(
+                { id: 'socket-a', name: 'Original meter', class: 'socket' },
+                { onoff: setable(true), measure_power: 6598 },
+                stamp,
+            ),
+        };
+        const refresh = () => deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
+        const appliance = () => deviceManager.getSnapshotByDeviceId('appliance');
+        await deviceManager.init();
+        mockApiGet.mockResolvedValue(initialDevices);
+        await refresh();
+        await emitCapability('socket-a', 'measure_power', 6599);
+        await emitCapability('socket-a', 'measure_power', 6600);
+        expect(appliance()).toMatchObject({ expectedPowerKw: 6.598, expectedPowerSource: 'measured-peak' });
+
+        devicePowerSources.appliance = 'socket-b';
+        await refresh();
+        expect(appliance()?.measuredPowerKw).toBeUndefined();
+        expect(appliance()?.expectedPowerSource).not.toBe('measured-peak');
+        expect(lastKnownPowerKw).not.toHaveProperty('appliance');
+
+        mockApiGet.mockResolvedValue({
+            ...initialDevices,
+            'socket-b': homeyDevice(
+                { id: 'socket-b', name: 'Replacement meter', class: 'socket' },
+                { onoff: setable(true), measure_power: 2874 },
+                stamp,
+            ),
+        });
+        await refresh();
+        expect(appliance()).toMatchObject({ measuredPowerKw: 2.874, externalPowerSocketId: 'socket-b' });
+        expect(appliance()?.expectedPowerSource).not.toBe('measured-peak');
+        await emitCapability('socket-b', 'measure_power', 2875);
+        expect(appliance()?.expectedPowerSource).not.toBe('measured-peak');
+        await emitCapability('socket-b', 'measure_power', 2876);
+        expect(appliance()).toMatchObject({ expectedPowerKw: 2.874, expectedPowerSource: 'measured-peak' });
+        expect(lastKnownPowerKw).toMatchObject({ appliance: { kw: 2.874, sourceDeviceId: 'socket-b' } });
+
+        devicePowerSources.appliance = null;
+        await refresh();
+        expect(appliance()).toMatchObject({ measuredPowerKw: 0.4 });
+        expect(appliance()?.expectedPowerSource).not.toBe('measured-peak');
+    });
+
     describe('init', () => {
         it('marks SDK ready and logs initialization when checks pass', async () => {
             await deviceManager.init();

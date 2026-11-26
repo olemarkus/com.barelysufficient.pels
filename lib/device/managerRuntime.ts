@@ -22,12 +22,13 @@ import { mergeDeviceUpdateObservations } from './transport/observationMerge';
 import { mergeTemperatureRejectionsIntoDeviceUpdate } from './transport/managerObservation';
 import {
   MIN_PEAK_LEARNING_KW,
+  learnedPeakForSource,
   nextLearnedPeak,
   recordPeakReading,
   resolveLearnedPeakKw,
   resolvePeakLevelKw,
   type LearnedPeaksByDeviceId,
-  type PeakReadings,
+  type PeakReadingWindow,
 } from './devicePowerPeak';
 import type { ObservedCapabilityChange } from '../ports/observedStateEvents';
 
@@ -61,7 +62,7 @@ type RealtimeReconcileResult = {
  */
 type PeakLearningState = {
   lastKnownPowerKw: LearnedPeaksByDeviceId;
-  peakReadings: Map<string, PeakReadings>;
+  peakReadings: Map<string, PeakReadingWindow>;
 };
 
 /**
@@ -72,14 +73,34 @@ type PeakLearningState = {
  * re-anchor it with no observation at that level. Answers whether one went.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-const retireExpiredPeak = (state: PeakLearningState, deviceId: string, nowMs: number): boolean => {
+const retireExpiredPeak = (
+  state: PeakLearningState,
+  deviceId: string,
+  sourceDeviceId: string,
+  nowMs: number,
+): boolean => {
   const peak = state.lastKnownPowerKw[deviceId];
   if (!peak || resolveLearnedPeakKw(peak, nowMs) !== null) return false;
   // eslint-disable-next-line no-param-reassign
   delete state.lastKnownPowerKw[deviceId];
-  state.peakReadings.delete(deviceId);
+  if (learnedPeakForSource(peak, deviceId, sourceDeviceId)) state.peakReadings.set(deviceId, { sourceDeviceId });
   return true;
 };
+
+/** A new binding starts a new window, even while that meter has no reading. */
+const resetLearningForSource = (state: PeakLearningState, deviceId: string, sourceDeviceId: string): boolean => {
+  const window = state.peakReadings.get(deviceId);
+  const changed = window !== undefined && window.sourceDeviceId !== sourceDeviceId;
+  const external = sourceDeviceId !== deviceId;
+  if (changed || (!window && external)) state.peakReadings.set(deviceId, { sourceDeviceId });
+
+  const learned = state.lastKnownPowerKw[deviceId];
+  if (!learned || (!changed && learnedPeakForSource(learned, deviceId, sourceDeviceId))) return false;
+  // eslint-disable-next-line no-param-reassign
+  delete state.lastKnownPowerKw[deviceId];
+  return true;
+};
+
 /* eslint-enable functional/immutable-data */
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
@@ -88,7 +109,8 @@ export function updateLastKnownPower(params: {
     lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   };
   deviceId: string;
-  measuredKw: number;
+  sourceDeviceId: string;
+  measuredKw: number | undefined;
   deviceLabel: string;
   nowMs: number;
   /**
@@ -104,15 +126,19 @@ export function updateLastKnownPower(params: {
   const {
     state,
     deviceId,
+    sourceDeviceId,
     measuredKw,
     deviceLabel,
     nowMs,
     onPeakChanged,
   } = params;
-  if (retireExpiredPeak(state, deviceId, nowMs)) onPeakChanged?.();
-  const previous = state.lastKnownPowerKw[deviceId];
-  const readings = recordPeakReading(state.peakReadings.get(deviceId), measuredKw);
-  state.peakReadings.set(deviceId, readings);
+  if (resetLearningForSource(state, deviceId, sourceDeviceId)
+    || retireExpiredPeak(state, deviceId, sourceDeviceId, nowMs)) onPeakChanged?.();
+  if (measuredKw === undefined) return;
+  const previous = learnedPeakForSource(state.lastKnownPowerKw[deviceId], deviceId, sourceDeviceId);
+  const previousReadings = state.peakReadings.get(deviceId)?.readings;
+  const readings = recordPeakReading(previousReadings, measuredKw);
+  if (readings !== previousReadings) state.peakReadings.set(deviceId, { sourceDeviceId, readings });
   // Gated at the credibility floor: a standby trickle can rarely displace an
   // established peak, but it could establish the first one, and a device whose
   // only draw so far is 3 W would carry a 3 W expectation into the restore axis.
@@ -122,7 +148,7 @@ export function updateLastKnownPower(params: {
   const next = nextLearnedPeak(previous, levelKw, nowMs);
   if (!next) return;
 
-  state.lastKnownPowerKw[deviceId] = next;
+  state.lastKnownPowerKw[deviceId] = { ...next, sourceDeviceId };
   // Announced before the log dedupe below, which returns early for a peak that
   // reads the same as last time — exactly the re-anchored window this exists for.
   onPeakChanged?.();
