@@ -23,16 +23,18 @@ export function resolveDevicePowerState(
   const { measuredPowerResolver, powerState } = deps;
   const { capabilities, capabilityObj } = overlay;
   const currentTemperature = getCurrentTemperature(capabilityObj);
-  const hasExternalPower = deps.externalPower?.kind === 'external';
+  const externalPower = deps.externalPower?.kind === 'external' ? deps.externalPower : undefined;
+  const sourceDeviceId = externalPower?.socketId ?? deviceId;
   const measuredPower = resolveMeasuredPowerKw({
-    deviceId, deviceLabel, capabilities, capabilityObj,
-    livePowerWByDeviceId: hasExternalPower ? {} : livePowerWByDeviceId,
-    deviceEnergyW: hasExternalPower ? null : readHomeyEnergyDeviceWatts(device),
+    deviceId, sourceDeviceId, deviceLabel, capabilities, capabilityObj,
+    livePowerWByDeviceId: externalPower ? {} : livePowerWByDeviceId,
+    deviceEnergyW: externalPower ? null : readHomeyEnergyDeviceWatts(device),
     now, measuredPowerResolver, powerState,
   });
   const powerEstimate = estimatePower({
     device,
     deviceId,
+    sourceDeviceId,
     deviceLabel,
     binaryCapabilityId,
     measuredPowerKw: measuredPower.measuredPowerKw,

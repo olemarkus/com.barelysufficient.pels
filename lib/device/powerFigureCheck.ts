@@ -30,7 +30,7 @@ import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedL
 import { getLogger } from '../logging/logger';
 import type { SoleSwitchOffFall, SoleSwitchOffFallRecording } from '../ports/soleSwitchOffFalls';
 import { normalizeError } from '../utils/errorUtils';
-import { resolveLearnedPeakKw } from './devicePowerPeak';
+import { learnedPeakForSource, resolveLearnedPeakKw } from './devicePowerPeak';
 import {
   createHomeMeterFallRepository,
   type HomeMeterFall,
@@ -118,11 +118,13 @@ export const resolvePowerFigureCheck = (
   falls: readonly HomeMeterFall[],
   powerState: DeviceTransportPowerState,
   nowMs: number,
+  sourceDeviceId = device.id,
 ): PowerFigureCheck | undefined => {
   if (device.isEvCharger || device.isBatteryOrSolar) return undefined;
   if (isSteppedLoadSnapshot(device)) {
     const highest = getSteppedLoadHighestStep(device.steppedLoadProfile);
-    const peakKw = resolveLearnedPeakKw(powerState.lastKnownPowerKw[device.id], nowMs);
+    const peak = learnedPeakForSource(powerState.lastKnownPowerKw[device.id], device.id, sourceDeviceId);
+    const peakKw = resolveLearnedPeakKw(peak, nowMs);
     if (!highest || peakKw === null) return undefined;
     const figureKw = highest.planningPowerW / 1000;
     return isWellAbove(peakKw, figureKw) ? { measuredKw: peakKw, figureKw, figure: 'highest_level' } : undefined;
@@ -149,6 +151,7 @@ export class PowerFigureChecks implements SoleSwitchOffFallRecording {
     private readonly getRepository: () => HomeMeterFallRepository,
     /** The app's manual figures and learned peaks, read at each check. */
     private readonly getPowerState: () => DeviceTransportPowerState,
+    private readonly readExternalPowerSocketId?: (deviceId: string) => string | undefined,
   ) {}
 
   recordSoleSwitchOffFall(fall: SoleSwitchOffFall): void {
@@ -169,7 +172,9 @@ export class PowerFigureChecks implements SoleSwitchOffFallRecording {
 
   read(device: PowerFigureCheckDevice, nowMs: number): PowerFigureCheck | undefined {
     const falls = this.loadFalls();
-    return resolvePowerFigureCheck(device, falls?.get(device.id) ?? [], this.getPowerState(), nowMs);
+    return resolvePowerFigureCheck(
+      device, falls?.get(device.id) ?? [], this.getPowerState(), nowMs, this.readExternalPowerSocketId?.(device.id),
+    );
   }
 
   /**
@@ -209,11 +214,12 @@ export class PowerFigureChecks implements SoleSwitchOffFallRecording {
 export const createPowerFigureChecks = (
   getDatabase: () => UserdataDatabase,
   getPowerState: () => DeviceTransportPowerState,
+  readExternalPowerSocketId?: (deviceId: string) => string | undefined,
 ): PowerFigureChecks => {
   let opened: { database: UserdataDatabase; repository: HomeMeterFallRepository } | undefined;
   return new PowerFigureChecks(() => {
     const database = getDatabase();
     if (opened?.database !== database) opened = { database, repository: createHomeMeterFallRepository(database) };
     return opened.repository;
-  }, getPowerState);
+  }, getPowerState, readExternalPowerSocketId);
 };

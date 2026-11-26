@@ -25,7 +25,7 @@ describe('expected power override persistence', () => {
 
   const buildFlowBacked = (
     homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey'],
-  ): FlowBackedDeviceState => createFlowBackedDeviceState(homey, {
+  ): FlowBackedDeviceState => createFlowBackedDeviceState(homey, { devicePowerSources: {}, hasSavedPowerSource: () => false }, {
     persistence: new SettingsRepository(homey),
     getStructuredLogger: () => testLogger,
     getFlowReportedCapabilities: () => ({}),

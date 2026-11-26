@@ -4,8 +4,9 @@ import { describeSetupReadbackError, readGuidedControls, renderGuidedReview, ren
   from './guidedDeviceSetupPresentation.ts';
 import {
   canReviewWiring, CHOOSE_SWITCH, hasSwitchChoice, hasUsableSwitch,
-  sourceHelp, sourceOptions, switchOptions, type SetupOption,
+  sourceChangeWarning, sourceHelp, sourceOptions, switchOptions, type SetupOption,
 } from './devicePowerSetupChoices.ts';
+import { mountDevicePowerHistoryImport } from './devicePowerHistoryImport.ts';
 import { trackSetupSave } from './setupJourneyState.ts';
 import { HOMEY_ENERGY_SETUP_HINT } from '../../../shared-domain/src/homeyEnergySetup.ts';
 import { isLastResortMaximumW } from '../../../shared-domain/src/settings/lastResortDevices.ts';
@@ -14,7 +15,8 @@ import { createSelectOption } from './materialSelectOption.ts';
 import type { MaterialSelectOptionElement } from './components.ts';
 import { persistDeviceSetup, type SetupDraft } from './devicePowerSetupWrites.ts';
 import {
-  buildDevicePowerSetupForm, readSetupFields, setupControl, type SetupFields, type SetupPart, type SetupSelect,
+  buildDevicePowerSetupForm, readSetupFields, renderSourceChangeNotice, setupControl,
+  type SetupFields, type SetupPart, type SetupSelect,
 } from './devicePowerSetupMarkup.ts';
 
 let entries: readonly DevicePowerSetupEntry[] = [];
@@ -207,16 +209,6 @@ export const allowLastResortPriorityMove = (dragged: HTMLElement, related: HTMLE
   isLastResortConfigured(dragged.dataset.deviceId ?? '') === isLastResortConfigured(related.dataset.deviceId ?? '')
 );
 
-function renderSourcePart(
-  part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
-  disabled: boolean,
-): void {
-  const { select, help } = part;
-  updateOptions(select, sourceOptions(entry, draft.source), draft.source);
-  select.disabled = disabled;
-  help.textContent = sourceHelp(entry, draft.source);
-}
-
 function renderSwitchPart(
   part: NonNullable<SetupFields['binary']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
   disabled: boolean, guided: boolean,
@@ -248,6 +240,7 @@ class DevicePowerSetupForm {
   private saving = false;
   private reviewing = false;
   private status = '';
+  private readonly historyImport;
 
   constructor(
     private readonly container: HTMLElement,
@@ -255,6 +248,7 @@ class DevicePowerSetupForm {
     private readonly guided?: GuidedControls,
   ) {
     const { source, binary, lastResort, save } = fields;
+    this.historyImport = mountDevicePowerHistoryImport(container, () => refreshDeviceSetup());
     if (source) source.select.onchange = () => this.edit();
     if (binary) binary.select.onchange = () => this.edit();
     if (lastResort) {
@@ -351,7 +345,10 @@ class DevicePowerSetupForm {
   render(): void {
     if (!this.guided) {
       this.container.hidden = !this.isShown();
-      if (this.container.hidden) return;
+      if (this.container.hidden) {
+        this.historyImport?.hide();
+        return;
+      }
     }
     const entry = findSetupEntry(this.selectedId);
     const current = this.readCurrentDraft(entry);
@@ -378,9 +375,13 @@ class DevicePowerSetupForm {
     part: NonNullable<SetupFields['source']>, entry: DevicePowerSetupEntry | undefined, draft: SetupDraft,
     disabled: boolean,
   ): void {
-    renderSourcePart(part, entry, draft, disabled);
+    const { field, select, help, sourceChange } = part;
+    updateOptions(select, sourceOptions(entry, draft.source), draft.source);
+    select.disabled = disabled;
+    help.textContent = sourceHelp(entry, draft.source);
+    renderSourceChangeNotice(sourceChange, sourceChangeWarning(entry, draft.source, Boolean(this.guided)));
+    this.historyImport?.show(entry, draft.source, disabled || this.awaitingReadback);
     if (!this.guided) return;
-    const { field, select } = part;
     field.hidden = entry?.ownPowerW !== undefined && !draft.source;
     select.hidden = !draft.source && entry?.sources.length === 0;
     renderManagedSockets(part.managedSockets, entry, this.saving, (id) => { void this.releaseSocket(id); });

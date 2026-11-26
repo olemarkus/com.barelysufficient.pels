@@ -25,6 +25,8 @@ import {
 
 const runSerializedExpectedPowerWrite = createSerializedAsyncRunner();
 
+const EXPECTED_POWER_SNAPSHOT_WAIT_MS = 12000;
+
 const INVALID_EXPECTED_POWER_MESSAGE = 'Power when running must be a positive number of watts.';
 
 /**
@@ -49,10 +51,32 @@ export const supportsExpectedPowerDevice = (
     && !isLastResortConfigured(device.id))
 );
 
-type ExpectedPowerFieldEntry =
+type ExpectedPowerEdit =
   | { kind: 'clear' }
-  | { kind: 'set'; kw: number }
-  | { kind: 'invalid' };
+  | { kind: 'set'; kw: number };
+
+type PendingExpectedPowerEdit = {
+  edit: ExpectedPowerEdit;
+  /** Once storage acknowledges the write, bound the wait for the runtime snapshot. */
+  snapshotTimer?: number;
+};
+
+const pendingEdits = new Map<string, PendingExpectedPowerEdit>();
+
+const clearPendingEdit = (deviceId: string): void => {
+  window.clearTimeout(pendingEdits.get(deviceId)?.snapshotTimer);
+  pendingEdits.delete(deviceId);
+};
+
+type ExpectedPowerFieldEntry = ExpectedPowerEdit | { kind: 'invalid' };
+
+const snapshotConfirmsEdit = (device: SettingsUiDeviceView, edit: ExpectedPowerEdit): boolean => (
+  edit.kind === 'clear'
+    ? device.expectedPowerSource !== 'manual'
+    : device.expectedPowerSource === 'manual' && formatWatts(device.expectedPowerKw) === formatWatts(edit.kw)
+);
+
+const formatWatts = (kw: number): string => String(Math.round(kw * 1000));
 
 /**
  * What the owner typed, as one of three answers rather than a nullable number:
@@ -89,12 +113,25 @@ export const renderExpectedPowerField = (device: SettingsUiDeviceView | null) =>
   }
   const visible = supportsExpectedPowerDevice(device);
   deviceDetailExpectedPowerRow.hidden = !visible;
-  if (!visible || !device) return;
+  if (!device) return;
+  if (!visible) {
+    clearPendingEdit(device.id);
+    return;
+  }
 
-  // The producer resolves one figure for every device it parses, whichever rung
-  // of the ladder wins, so the field shows what PELS is using right now — not
-  // only the override. Typing over it is then an edit of a visible number.
-  deviceDetailExpectedPower.value = String(Math.round(device.expectedPowerKw * 1000));
+  const pending = pendingEdits.get(device.id);
+  if (pending) {
+    // A settings write can repaint this page before the runtime has re-parsed
+    // its devices. Keep the edit visible without attributing it to that snapshot.
+    if (pending.snapshotTimer === undefined || !snapshotConfirmsEdit(device, pending.edit)) {
+      deviceDetailExpectedPower.value = pending.edit.kind === 'clear' ? '' : formatWatts(pending.edit.kw);
+      deviceDetailExpectedPowerSource.hidden = true;
+      return;
+    }
+    clearPendingEdit(device.id);
+  }
+
+  deviceDetailExpectedPower.value = formatWatts(device.expectedPowerKw);
   // `expectedPowerSource` is stamped by the same producer and is REQUIRED on the
   // contract, so there is no absent case to render around: every device has a
   // rung, and the line always says which one is answering.
@@ -107,61 +144,64 @@ type ExpectedPowerHandlerDeps = {
   refreshOpenDeviceDetail: () => void;
 };
 
-/**
- * Save or clear one device's "Power when running", serialized with every other
- * write of the record. `refresh` re-renders whatever shows the figure: the
- * open device page, or nothing for a write made from elsewhere, whose screen
- * follows the device list the runtime serves after the settings write.
- */
-const persistExpectedPowerEntry = async (
-  deviceId: string,
-  entry: Exclude<ExpectedPowerFieldEntry, { kind: 'invalid' }>,
-  refresh: () => void,
-): Promise<void> => {
-  await runSerializedExpectedPowerWrite(async () => {
-    await writeFreshSetting<DeviceExpectedPowerOverrides>({
-      key: DEVICE_EXPECTED_POWER_OVERRIDES,
-      context: 'device detail',
-      logMessage: 'Failed to save power when running',
-      toastMessage: 'Failed to save power when running.',
-      // Use the live snapshot as the fallback so a transient null or
-      // non-object SDK read does not erase other devices' figures.
-      fallbackValue: state.deviceExpectedPowerOverrides,
-      // Shape-guard only. Entry validation is the runtime's
-      // (`parseExpectedPowerOverrides`), and duplicating it here would mean
-      // copying a validator across the settings-UI/runtime boundary the UI
-      // may not import across.
-      readFresh: (value) => readRecordSettingStrict<ExpectedPowerOverride>(value),
-      mutate: (currentOverrides) => {
-        const nextOverrides = { ...currentOverrides };
-        if (entry.kind === 'set') nextOverrides[deviceId] = { kw: entry.kw, ts: Date.now(), origin: 'settings' };
-        else delete nextOverrides[deviceId];
-        return nextOverrides;
-      },
-      commit: (nextOverrides) => {
-        state.deviceExpectedPowerOverrides = nextOverrides;
-        // No optimistic write onto the device: `expectedPowerKw` is the
-        // producer's resolved answer, and the runtime re-parses the snapshot
-        // on this settings write. Re-rendering from the device we hold keeps
-        // the field honest until that answer arrives.
-        refresh();
-      },
-      rollback: refresh,
-    });
-  });
-};
-
-const NOTHING_TO_REFRESH = (): void => {};
-
-/** The "Use X kW" recommendation's write: the same record and path as typing the figure on the device page. */
-export const saveExpectedPowerFigure = (deviceId: string, kw: number): Promise<void> => (
-  persistExpectedPowerEntry(deviceId, { kind: 'set', kw }, NOTHING_TO_REFRESH)
+/** Save or clear one device's figure, serialized with every write of the record. */
+const persistExpectedPowerEntry = (deviceId: string, edit: ExpectedPowerEdit) => (
+  runSerializedExpectedPowerWrite(() => writeFreshSetting<DeviceExpectedPowerOverrides>({
+    key: DEVICE_EXPECTED_POWER_OVERRIDES,
+    context: 'device detail',
+    logMessage: 'Failed to save power when running',
+    toastMessage: 'Failed to save power when running.',
+    // Use the live snapshot as the fallback so a transient null or
+    // non-object SDK read does not erase other devices' figures.
+    fallbackValue: state.deviceExpectedPowerOverrides,
+    // Shape-guard only. The runtime validates the entries.
+    readFresh: readRecordSettingStrict<ExpectedPowerOverride>,
+    mutate: (currentOverrides) => {
+      const nextOverrides = { ...currentOverrides };
+      if (edit.kind === 'set') nextOverrides[deviceId] = { kw: edit.kw, ts: Date.now(), origin: 'settings' };
+      else delete nextOverrides[deviceId];
+      return nextOverrides;
+    },
+    commit: (nextOverrides) => {
+      state.deviceExpectedPowerOverrides = nextOverrides;
+    },
+  }))
 );
 
+/** The "Use X kW" recommendation's write: the same record and path as typing the figure on the device page. */
+export const saveExpectedPowerFigure = async (deviceId: string, kw: number): Promise<void> => {
+  clearPendingEdit(deviceId);
+  await persistExpectedPowerEntry(deviceId, { kind: 'set', kw });
+};
+
 export const initExpectedPowerHandlers = (deps: ExpectedPowerHandlerDeps) => {
-  const persist = (deviceId: string, entry: Exclude<ExpectedPowerFieldEntry, { kind: 'invalid' }>) => (
-    persistExpectedPowerEntry(deviceId, entry, deps.refreshOpenDeviceDetail)
-  );
+  const refreshEdit = (deviceId: string) => {
+    if (deps.getCurrentDetailDeviceId() === deviceId) deps.refreshOpenDeviceDetail();
+  };
+
+  const persist = async (deviceId: string, edit: ExpectedPowerEdit) => {
+    clearPendingEdit(deviceId);
+    const saving: PendingExpectedPowerEdit = { edit };
+    pendingEdits.set(deviceId, saving);
+    refreshEdit(deviceId);
+
+    const saved = await persistExpectedPowerEntry(deviceId, edit);
+    if (pendingEdits.get(deviceId) !== saving) return;
+    if (saved === null) {
+      pendingEdits.delete(deviceId);
+    } else {
+      const waiting: PendingExpectedPowerEdit = {
+        edit,
+        snapshotTimer: window.setTimeout(() => {
+          if (pendingEdits.get(deviceId) !== waiting) return;
+          pendingEdits.delete(deviceId);
+          refreshEdit(deviceId);
+        }, EXPECTED_POWER_SNAPSHOT_WAIT_MS),
+      };
+      pendingEdits.set(deviceId, waiting);
+    }
+    refreshEdit(deviceId);
+  };
 
   deviceDetailExpectedPower?.addEventListener('change', async () => {
     const deviceId = deps.getCurrentDetailDeviceId();

@@ -2,6 +2,11 @@ import type { MdDialog } from '@material/web/dialog/dialog.js';
 import type { MdFilledSelect } from '@material/web/select/filled-select.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DevicePowerSetupEntry } from '../../contracts/src/settingsUi/devices.ts';
+import {
+  DEVICE_POWER_HISTORY_IMPORT, readDevicePowerHistoryImport,
+} from '../../shared-domain/src/settings/devicePowerHistoryImport.ts';
+import { setHomeyClient } from '../src/ui/homey.ts';
+import { createHomeyMock } from './helpers/homeyApiMock.ts';
 import { HOMEY_ENERGY_SETUP_DOCS_URL } from '../../shared-domain/src/homeyEnergySetup.ts';
 import { DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
@@ -41,8 +46,8 @@ const query = <T extends HTMLElement>(suffix: string, id = prefix): T => {
   return element;
 };
 
-const select = (suffix: string, value: string) => {
-  const control = query<MdFilledSelect>(suffix);
+const select = (suffix: string, value: string, id = prefix) => {
+  const control = query<MdFilledSelect>(suffix, id);
   control.value = value;
   control.dispatchEvent(new Event('change'));
   return control;
@@ -175,6 +180,23 @@ describe('Guided device setup', () => {
     expect(query<MdFilledSelect>('source').value).toBe('socket');
     expect(manage).not.toHaveBeenCalled();
     expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('warns in guided review when replacing a saved source', () => {
+    const sources = [
+      ...device().sources, { id: 'replacement', name: 'New socket', state: 'selectable' as const },
+    ];
+    accept({ ...configured, sources });
+    const { dialog, save } = setup();
+    expect(query('source-change').hidden).toBe(true);
+
+    select('source', 'replacement');
+    expect(query('source-change').textContent).toContain('starts learning running power again');
+    expect(query('source-change').hidden).toBe(false);
+
+    save.click();
+    expect(dialog.querySelector('[data-setup-review]')?.textContent).toContain('starts learning running power again');
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('saves a newly released socket after going back from a confirmed meter', async () => {
@@ -318,5 +340,125 @@ describe('Device detail setup', () => {
   it('keeps the external meter ahead of a stale last-resort maximum', () => {
     accept({ ...configured, lastResortMaximumW: 4500 });
     expect(readLastResortSetup('spa')).toBeUndefined();
+  });
+});
+
+describe('External sensor meter history', () => {
+  const detailId = 'device-detail-power-setup';
+  const control = <T extends HTMLElement>(suffix: string): T => query<T>(suffix, detailId);
+  const openImport = () => control('history-import').click();
+  const confirm = () => control('history-confirm').click();
+
+  const openExternalSensors = () => {
+    const { refresh, dialog: guidedDialog } = setup();
+    const homey = createHomeyMock();
+    setHomeyClient(homey);
+    renderDeviceDetailPowerSetup('spa');
+    const dialog = control<MdDialog>('history-confirmation');
+    vi.spyOn(dialog, 'show').mockImplementation(async () => { dialog.open = true; });
+    vi.spyOn(dialog, 'close').mockImplementation(async (value = '') => {
+      if (!dialog.open) return;
+      dialog.returnValue = value;
+      dialog.open = false;
+      dialog.dispatchEvent(new Event('close'));
+    });
+    return { dialog, guidedDialog, homey, refresh };
+  };
+
+  beforeEach(() => {
+    write.mockReset().mockResolvedValue({});
+    accept({ ...configured, sourceReady: true });
+  });
+
+  it('warns on a different selection and offers import only after the saved meter is read back', async () => {
+    const sources = [
+      ...device().sources, { id: 'replacement', name: 'New socket', state: 'selectable' as const },
+    ];
+    accept({ ...configured, sourceReady: true, sources });
+    const { homey, guidedDialog, refresh } = openExternalSensors();
+
+    expect(control('history').hidden).toBe(false);
+    expect(control('source-change').hidden).toBe(true);
+    expect(guidedDialog.querySelector('[data-setup="history-import"]')).toBeNull();
+    select('source', 'replacement', detailId);
+    expect(control('source-change').textContent).toContain('starts learning running power again');
+    expect(control('source-change').hidden).toBe(false);
+    expect(control('history').hidden).toBe(true);
+
+    control('save').click();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(control('source-change').hidden).toBe(false);
+    expect(control('history').hidden).toBe(true);
+
+    accept({ ...configured, sourceId: 'replacement', sourceReady: true, sources });
+    renderDeviceDetailPowerSetup('spa');
+    expect(control('source-change').hidden).toBe(true);
+    expect(control('history').hidden).toBe(false);
+    expect(homey.set).not.toHaveBeenCalled();
+  });
+
+  it('requires confirmation, waits for its result and refreshes the imported figure', async () => {
+    const { dialog, homey, refresh } = openExternalSensors();
+    homey.get.mockImplementationOnce((_key, callback) => callback(null, {
+      kind: 'result', id: '00000000-0000-4000-8000-000000000000', outcome: 'history_unavailable',
+    }));
+    homey.set.mockImplementation((key, value, callback) => {
+      const request = readDevicePowerHistoryImport(value);
+      homey.__settingsStore[key] = { kind: 'result', id: request?.id, outcome: 'imported' };
+      callback(null);
+    });
+
+    openImport();
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain('throughout the previous hour');
+    expect(homey.set).not.toHaveBeenCalled();
+    control('history-cancel').click();
+    expect(homey.set).not.toHaveBeenCalled();
+
+    openImport();
+    confirm();
+    expect(control('history-import')).toHaveProperty('disabled', true);
+    expect(control('history-status').textContent).toContain('Importing from meter history');
+
+    await vi.waitFor(() => expect(control('history-status').textContent).toContain('Running power imported'));
+    expect(homey.set).toHaveBeenCalledExactlyOnceWith(DEVICE_POWER_HISTORY_IMPORT, {
+      kind: 'request', id: expect.any(String), deviceId: 'spa', sourceDeviceId: 'socket',
+    }, expect.any(Function));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(control('history-import')).toHaveProperty('disabled', false);
+  });
+
+  it('discards an open confirmation when the device page closes', () => {
+    const { dialog, homey } = openExternalSensors();
+    openImport();
+
+    renderDeviceDetailPowerSetup(undefined);
+    expect(dialog.open).toBe(false);
+    confirm();
+
+    accept({ ...configured, sourceReady: false });
+    renderDeviceDetailPowerSetup('spa');
+    expect(control('history').hidden).toBe(true);
+    accept({ ...configured, sourceReady: true });
+    renderDeviceDetailPowerSetup('spa');
+    expect(control('history').hidden).toBe(false);
+    expect(homey.set).not.toHaveBeenCalled();
+  });
+
+  it('stops waiting when Homey does not answer the fresh setting read', async () => {
+    const { homey, refresh } = openExternalSensors();
+    homey.get.mockImplementation(() => {});
+
+    vi.useFakeTimers();
+    try {
+      openImport();
+      confirm();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(control('history-status').textContent).toContain('couldn’t confirm the import');
+      expect(control('history-import')).toHaveProperty('disabled', false);
+      expect(refresh).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

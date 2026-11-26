@@ -20,7 +20,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
 import type { DeviceJournal } from '../../ports/deviceJournal';
 import type { PowerEstimateState } from '../devicePowerEstimate';
-import type { PeakReadings } from '../devicePowerPeak';
+import type { PeakReadingWindow } from '../devicePowerPeak';
 import type { ObservedStateEmitterDispatcher } from '../../ports/observedStateEvents';
 
 /**
@@ -68,7 +68,7 @@ export type ResolvedTransportPowerState = PowerEstimateState & LearnedPeakChange
    * Per device, the latest readings its peak level is read from
    * (`rankedPeakLevelKw`). Held for the run only: a restart collects them again.
    */
-  peakReadings: Map<string, PeakReadings>;
+  peakReadings: Map<string, PeakReadingWindow>;
 };
 
 export type SnapshotRefreshMetrics = {

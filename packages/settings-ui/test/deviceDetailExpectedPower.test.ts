@@ -102,9 +102,15 @@ const field = () => document.querySelector('#device-detail-expected-power') as H
 const row = () => document.querySelector('#device-detail-expected-power-row') as HTMLElement;
 const sourceLine = () => document.querySelector('#device-detail-expected-power-source') as HTMLElement;
 
-const typeAndCommit = async (value: string) => {
+const repaintDeviceDetail = () => document.dispatchEvent(new Event('devices-updated'));
+
+const enterWatts = (value: string) => {
   field().value = value;
   field().dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+const typeAndCommit = async (value: string) => {
+  enterWatts(value);
   await flushPromises();
 };
 
@@ -156,17 +162,95 @@ describe('device detail power when running', () => {
     expect(sourceLine().textContent).toBe('PELS measured this while the device was running.');
   });
 
-  it('writes the typed watts through as the manual kW figure', async () => {
-    const { homey, state } = await openDetailFor(buildDevice());
+  it('keeps the saved watts visible through stale repaints until the runtime publishes the manual figure', async () => {
+    const { homey, state } = await openDetailFor(buildDevice({
+      expectedPowerKw: 6.598,
+      expectedPowerSource: 'measured-peak',
+    }));
 
-    await typeAndCommit('2400');
+    await typeAndCommit('2500');
+    repaintDeviceDetail();
 
     expect(homey.set).toHaveBeenCalledWith(
       DEVICE_EXPECTED_POWER_OVERRIDES,
-      { 'heater-1': { kw: 2.4, ts: expect.any(Number), origin: 'settings' } },
+      { 'heater-1': { kw: 2.5, ts: expect.any(Number), origin: 'settings' } },
       expect.any(Function),
     );
-    expect(state.deviceExpectedPowerOverrides['heater-1']?.kw).toBe(2.4);
+    expect(state.deviceExpectedPowerOverrides['heater-1']?.kw).toBe(2.5);
+    expect(field().value).toBe('2500');
+    expect(sourceLine().hidden).toBe(true);
+
+    state.latestDevices = [buildDevice({ expectedPowerKw: 2.5, expectedPowerSource: 'manual' })];
+    repaintDeviceDetail();
+
+    expect(field().value).toBe('2500');
+    expect(sourceLine().hidden).toBe(false);
+    expect(sourceLine().textContent).toBe('This is your figure.');
+  });
+
+  it('keeps a later edit while an earlier serialized write settles', async () => {
+    const { homey, state } = await openDetailFor(buildDevice());
+    const finishSaves: Array<() => void> = [];
+    const delaySave = (key: string, value: unknown, callback: (error: Error | null) => void) => {
+      finishSaves.push(() => {
+        homey.__settingsStore[key] = value;
+        callback(null);
+      });
+    };
+    homey.set.mockImplementationOnce(delaySave).mockImplementationOnce(delaySave);
+
+    await typeAndCommit('2400');
+    await typeAndCommit('2600');
+    expect(finishSaves).toHaveLength(1);
+
+    finishSaves[0]();
+    await flushPromises();
+    state.latestDevices = [buildDevice({ expectedPowerKw: 2.4, expectedPowerSource: 'manual' })];
+    repaintDeviceDetail();
+
+    expect(finishSaves).toHaveLength(2);
+    expect(field().value).toBe('2600');
+    expect(sourceLine().hidden).toBe(true);
+
+    finishSaves[1]();
+    await flushPromises();
+    state.latestDevices = [buildDevice({ expectedPowerKw: 2.6, expectedPowerSource: 'manual' })];
+    repaintDeviceDetail();
+
+    expect(field().value).toBe('2600');
+    expect(sourceLine().hidden).toBe(false);
+  });
+
+  it('restores the runtime figure when the write fails', async () => {
+    const { homey } = await openDetailFor(buildDevice({
+      expectedPowerKw: 6.598,
+      expectedPowerSource: 'measured-peak',
+    }));
+    homey.set.mockImplementationOnce((_key, _value, callback) => callback(new Error('write failed')));
+
+    await typeAndCommit('2500');
+
+    expect(field().value).toBe('6598');
+    expect(sourceLine().hidden).toBe(false);
+    expect(sourceLine().textContent).toBe('PELS measured this while the device was running.');
+  });
+
+  it('shows the latest projection after a bounded wait without a runtime update', async () => {
+    await openDetailFor(buildDevice());
+
+    vi.useFakeTimers();
+    try {
+      enterWatts('2500');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(field().value).toBe('2500');
+      expect(sourceLine().hidden).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(12000);
+      expect(field().value).toBe('1000');
+      expect(sourceLine().hidden).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps other devices figures when writing one', async () => {
@@ -222,6 +306,16 @@ describe('device detail power when running', () => {
       expect.any(Function),
     );
     expect(state.deviceExpectedPowerOverrides['heater-1']).toBeUndefined();
+    repaintDeviceDetail();
+    expect(field().value).toBe('');
+    expect(sourceLine().hidden).toBe(true);
+
+    state.latestDevices = [buildDevice({ expectedPowerKw: 6.598, expectedPowerSource: 'measured-peak' })];
+    repaintDeviceDetail();
+
+    expect(field().value).toBe('6598');
+    expect(sourceLine().hidden).toBe(false);
+    expect(sourceLine().textContent).toBe('PELS measured this while the device was running.');
   });
 
   it('refuses a non-positive entry instead of silently clearing the figure', async () => {

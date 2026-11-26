@@ -252,14 +252,10 @@ export class DeviceControlSettings {
   isMainFusePhaseMeter(deviceId: string): boolean {
     return this.settings.get(MAIN_FUSE_PHASE_METER_DEVICE_ID) === deviceId;
   }
-  isPowerSourceDevice(deviceId: string): boolean {
-    return Object.values(this.maps.powerSources).includes(deviceId);
-  }
+  isPowerSourceDevice(deviceId: string): boolean { return Object.values(this.maps.powerSources).includes(deviceId); }
 
   /** Reserve the socket as soon as its assignment has been persisted. */
-  isMeteringSocketReserved(deviceId: string): boolean {
-    return Object.values(this.readPowerSources()).includes(deviceId);
-  }
+  isMeteringSocketReserved(id: string): boolean { return Object.values(this.readPowerSources()).includes(id); }
   get managedDevices(): BooleanMap { return this.maps.managed; }
   /** Per-device start authority; absence reads as `'unrestricted'`. */
   get deviceStartPolicies(): Readonly<Record<string, DeviceStartPolicy>> { return this.maps.startPolicies; }
@@ -472,6 +468,11 @@ export class DeviceControlSettings {
     };
     this.binarySwitchSettings.reload(this.binarySwitchSettings.readLastResortDevices(), this.maps.managed);
     this.powerLimitSettings.adopt(powerLimitSettings);
+  }
+
+  /** Verify current persisted authority before importing history for a device. */
+  hasSavedPowerSource(deviceId: string, sourceDeviceId: string): boolean {
+    return readDevicePowerSources(this.settings.get(DEVICE_POWER_SOURCES))?.[deviceId] === sourceDeviceId;
   }
 
   private readPowerSources(): DevicePowerSources {

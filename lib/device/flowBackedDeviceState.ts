@@ -6,6 +6,7 @@ import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
 import {
   createLearnedPowerPeakState,
   type LearnedPowerPeakState,
+  type MeterHistoryPeak,
 } from './learnedPowerPeakState';
 import {
   applyExpectedPowerOverrides,
@@ -35,6 +36,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import type { DeviceTransport } from './deviceTransport';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { DevicePersistencePort } from './devicePersistencePort';
+import type { DeviceControlSettings } from './deviceControlSettings';
 import type { FlowBackedRefreshTrigger } from './flowBackedRefreshTrigger';
 import type {
   DeviceExpectedPowerOverrides,
@@ -99,6 +101,7 @@ export type FlowBackedDeviceStateDeps = {
   getSteppedLoadProfile: (deviceId: string) => unknown;
   getExpectedPowerKwOverrides: () => DeviceExpectedPowerOverrides;
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
+  deviceControl: Pick<DeviceControlSettings, 'devicePowerSources' | 'hasSavedPowerSource'>;
   /** The learned peaks' store; reached once the userdata database is open. */
   getLearnedPowerPeakStore: () => LearnedPowerPeakStore;
   /** The app's userdata database, where the power-figure check keeps the home meter's falls; reached once open. */
@@ -144,13 +147,18 @@ export class FlowBackedDeviceState {
     this.learnedPowerPeakState = createLearnedPowerPeakState({
       getStore: () => deps.getLearnedPowerPeakStore(),
       getPeaks: () => deps.getLearnedPowerPeaks(),
+      deviceControl: deps.deviceControl,
       timers: deps.timers,
       getStructuredLogger: () => deps.getStructuredLogger('devices'),
     });
-    this.powerFigureChecks = createPowerFigureChecks(() => deps.getUserdataDatabase(), () => ({
-      expectedPowerKwOverrides: deps.getExpectedPowerKwOverrides(),
-      lastKnownPowerKw: deps.getLearnedPowerPeaks(),
-    }));
+    this.powerFigureChecks = createPowerFigureChecks(
+      () => deps.getUserdataDatabase(),
+      () => ({
+        expectedPowerKwOverrides: deps.getExpectedPowerKwOverrides(),
+        lastKnownPowerKw: deps.getLearnedPowerPeaks(),
+      }),
+      (deviceId) => deps.getDeviceManager()?.getSnapshotByDeviceId(deviceId)?.externalPowerSocketId,
+    );
     this.meterResponseTimings = createMeterResponseTimings(() => deps.getUserdataDatabase());
   }
 
@@ -162,6 +170,19 @@ export class FlowBackedDeviceState {
   /** Every device a Flow card has reported a capability for. */
   getFlowReportedDeviceIds(): string[] {
     return getFlowReportedDeviceIds(this.deps.getFlowReportedCapabilities());
+  }
+
+  readPowerHistorySource(deviceId: string): string | undefined {
+    const manager = this.deps.getDeviceManager();
+    const assigned = manager?.getSnapshotByDeviceId(deviceId)?.externalPowerSocketId;
+    if (!assigned || !this.deps.deviceControl.hasSavedPowerSource(deviceId, assigned)) return undefined;
+    const setup = manager?.readDevicePowerSetup()?.devices.find((entry) => entry.id === deviceId);
+    if (setup?.sourceId !== assigned) return undefined;
+    return setup.sources.some(({ id, state }) => id === assigned && state === 'selectable') ? assigned : undefined;
+  }
+
+  saveLearnedPowerFromHistory(deviceId: string, peak: MeterHistoryPeak) {
+    return this.learnedPowerPeakState.saveFromHistory(deviceId, peak);
   }
 
   /** Write-through of the learned measured peaks. */

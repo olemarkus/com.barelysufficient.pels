@@ -13,6 +13,7 @@ const PART_MARKUP: Record<SetupPart, string> = {
   <div class="md-field-row" data-setup="source-field">
     <md-filled-select data-setup="source" label="Power source" data-describedby="help"></md-filled-select>
     <small class="field__hint" data-setup="help"></small>
+    <small class="field__hint" data-setup="source-change" aria-live="polite" hidden></small>
     <div data-setup="managed-sockets"></div>
   </div>`,
   switch: `
@@ -58,13 +59,34 @@ const SAVE_MARKUP = `
     <md-filled-tonal-button type="button" data-setup="save">Save</md-filled-tonal-button>
   </div>`;
 
+const HISTORY_IMPORT_MARKUP = `
+  <div class="md-field-row" data-setup="history" hidden>
+    <div class="device-setup-form__actions">
+      <md-outlined-button type="button" data-setup="history-import">
+        Import from meter history
+      </md-outlined-button>
+    </div>
+    <small class="field__hint" data-setup="history-status" role="status"></small>
+  </div>
+  <md-dialog data-setup="history-confirmation">
+    <div slot="headline">Import from meter history?</div>
+    <p slot="content" class="pels-text-body">
+      Only import if this meter measured this device throughout the previous hour.
+    </p>
+    <div slot="actions">
+      <md-text-button type="button" data-setup="history-cancel">Cancel</md-text-button>
+      <md-filled-button type="button" data-setup="history-confirm">Import</md-filled-button>
+    </div>
+  </md-dialog>`;
+
 /** Fill `host` with a setup form for `parts`, its ids starting with `prefix`. */
 export function buildDevicePowerSetupForm(
   host: HTMLElement, prefix: string, parts: readonly SetupPart[], withSave: boolean,
 ): void {
   const details = parts.map((part) => PART_MARKUP[part]).join('');
   const markup = `<div class="device-setup-form__fields" data-setup="details">${details}`
-    + `${withSave ? SAVE_MARKUP : ''}</div>`;
+    + `${withSave ? SAVE_MARKUP : ''}`
+    + `${withSave && parts.includes('source') ? HISTORY_IMPORT_MARKUP : ''}</div>`;
   // Parsed from this module's static markup; the nodes upgrade when adopted into the page.
   host.replaceChildren(...new DOMParser().parseFromString(markup, 'text/html').body.childNodes);
   host.querySelectorAll<HTMLElement>('[data-setup]').forEach((element) => {
@@ -94,15 +116,21 @@ function readPowerChoiceFields(root: HTMLElement) {
   return heading && homeyEnergy ? { heading, homeyEnergy } : undefined;
 }
 
+function readSourceFields(root: HTMLElement) {
+  const select = setupControl<SetupSelect>(root, 'source');
+  const field = setupControl(root, 'source-field');
+  const managedSockets = setupControl(root, 'managed-sockets');
+  const help = setupControl(root, 'help');
+  const sourceChange = setupControl(root, 'source-change');
+  return select && field && managedSockets && help && sourceChange
+    ? { select, field, managedSockets, help, sourceChange } : undefined;
+}
+
 /** One form's controls; a device page's form carries only its own part. */
 export function readSetupFields(root: HTMLElement) {
   const details = setupControl(root, 'details');
   const save = setupControl<HTMLElement & { disabled: boolean }>(root, 'save');
   if (!details || !save) return undefined;
-  const source = setupControl<SetupSelect>(root, 'source');
-  const sourceField = setupControl(root, 'source-field');
-  const managedSockets = setupControl(root, 'managed-sockets');
-  const help = setupControl(root, 'help');
   const control = setupControl<SetupSelect>(root, 'binary');
   const switchField = setupControl(root, 'binary-field');
   const switchHelp = setupControl(root, 'binary-help');
@@ -115,8 +143,7 @@ export function readSetupFields(root: HTMLElement) {
     details,
     save,
     powerChoices: readPowerChoiceFields(root),
-    source: source && sourceField && managedSockets && help
-      ? { select: source, field: sourceField, managedSockets, help } : undefined,
+    source: readSourceFields(root),
     binary: control && switchField && switchHelp
       ? { select: control, field: switchField, help: switchHelp } : undefined,
     lastResort: lastResort && lastResortToggle && lastResortHelp && maximum && maximumHelp
@@ -126,3 +153,9 @@ export function readSetupFields(root: HTMLElement) {
 }
 
 export type SetupFields = NonNullable<ReturnType<typeof readSetupFields>>;
+
+export function renderSourceChangeNotice(element: HTMLElement, message: string): void {
+  const notice = element;
+  notice.hidden = !message;
+  notice.textContent = message;
+}

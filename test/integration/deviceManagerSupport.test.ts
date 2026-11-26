@@ -259,11 +259,11 @@ describe('device manager support helpers', () => {
     // Readings above the standing peak count once three have reached a level:
     // the peak is the third-highest of them.
     [1.2, 1.3].forEach((kw) => updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw: kw, deviceLabel: 'Device 1', nowMs: 0,
+      state, deviceId: 'dev1', sourceDeviceId: 'dev1', measuredKw: kw, deviceLabel: 'Device 1', nowMs: 0,
     }));
     expect(state.lastKnownPowerKw.dev1?.kw).toBe(0.5);
     updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw: 1.25, deviceLabel: 'Device 1', nowMs: 0,
+      state, deviceId: 'dev1', sourceDeviceId: 'dev1', measuredKw: 1.25, deviceLabel: 'Device 1', nowMs: 0,
     });
     expect(state.lastKnownPowerKw.dev1?.kw).toBe(1.2);
 
@@ -321,13 +321,14 @@ describe('device manager support helpers', () => {
 
     // A match before the anchor is a re-anchor interval old moves nothing.
     updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: 60_000, onPeakChanged,
+      state, deviceId: 'dev1', sourceDeviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: 60_000, onPeakChanged,
     });
     expect(onPeakChanged).not.toHaveBeenCalled();
 
     updateLastKnownPower({
       state,
       deviceId: 'dev1',
+      sourceDeviceId: 'dev1',
       measuredKw: 2,
       deviceLabel: 'Device 1',
       nowMs: PEAK_REANCHOR_INTERVAL_MS,
@@ -340,12 +341,43 @@ describe('device manager support helpers', () => {
     updateLastKnownPower({
       state,
       deviceId: 'dev1',
+      sourceDeviceId: 'dev1',
       measuredKw: 1,
       deviceLabel: 'Device 1',
       nowMs: PEAK_REANCHOR_INTERVAL_MS + 1000,
       onPeakChanged,
     });
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets the peak sample window when the selected meter changes without reporting a reading', () => {
+    const state = { lastKnownPowerKw: {} as LearnedPeaksByDeviceId, peakReadings: new Map() };
+    const read = (sourceDeviceId: string, measuredKw: number | undefined) => updateLastKnownPower({
+      state, deviceId: 'heater', sourceDeviceId, measuredKw, deviceLabel: 'Heater', nowMs: 0,
+    });
+
+    read('socket-a', 2);
+    read('socket-a', 2.1);
+    read('socket-b', undefined);
+    read('socket-a', 2.2);
+    expect(state.lastKnownPowerKw.heater).toBeUndefined();
+    read('socket-a', 2.3);
+    read('socket-a', 2.4);
+    expect(state.lastKnownPowerKw.heater).toMatchObject({ kw: 2.2, sourceDeviceId: 'socket-a' });
+  });
+
+  it('retires a stored external peak when the first read after boot uses native power', () => {
+    const state = {
+      lastKnownPowerKw: { heater: { kw: 2.8, observedAtMs: 0, sourceDeviceId: 'socket-a' } },
+      peakReadings: new Map(),
+    };
+    const onPeakChanged = vi.fn();
+    updateLastKnownPower({
+      state, deviceId: 'heater', sourceDeviceId: 'heater', measuredKw: undefined,
+      deviceLabel: 'Heater', nowMs: 0, onPeakChanged,
+    });
+    expect(state.lastKnownPowerKw.heater).toBeUndefined();
+    expect(onPeakChanged).toHaveBeenCalledOnce();
   });
 
   it('retires an expired peak with its readings instead of re-anchoring it from them', () => {
@@ -356,7 +388,7 @@ describe('device manager support helpers', () => {
     };
     const onPeakChanged = vi.fn();
     const read = (measuredKw: number, nowMs: number): void => updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw, deviceLabel: 'Device 1', nowMs, onPeakChanged,
+      state, deviceId: 'dev1', sourceDeviceId: 'dev1', measuredKw, deviceLabel: 'Device 1', nowMs, onPeakChanged,
     });
     [3, 3.1, 3.2].forEach((kw) => read(kw, 0));
     expect(state.lastKnownPowerKw.dev1?.kw).toBe(3);
@@ -433,7 +465,7 @@ describe('device manager support helpers', () => {
     // The peak is the third-highest reading so far: 1.232 after three readings
     // (the standing band), 1.234 after four (same band), 1.29 after five.
     [1.232, 1.234, 1.29, 1.3, 1.31].forEach((kw) => updateLastKnownPower({
-      state, deviceId: 'dev1', measuredKw: kw, deviceLabel: 'Device 1', nowMs: 0,
+      state, deviceId: 'dev1', sourceDeviceId: 'dev1', measuredKw: kw, deviceLabel: 'Device 1', nowMs: 0,
     }));
 
     const peakEvents = logCapture.findEvents('power_estimate_peak_updated');

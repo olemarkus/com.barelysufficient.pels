@@ -544,7 +544,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     this, this.targetPowerReachabilityWiring.updateTargetPowerReachability,
     (dueAtMs) => this.snapshotHelpers.scheduleTargetPowerProbeSettlement(dueAtMs),
   );
-  public readonly flowBacked = createFlowBackedDeviceState(this.homey, {
+  public readonly flowBacked = createFlowBackedDeviceState(this.homey, this.deviceControlSettings, {
     persistence: this.settingsRepository,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getFlowReportedCapabilities: () => this.flowReportedCapabilities,
