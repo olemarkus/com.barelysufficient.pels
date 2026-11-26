@@ -39,16 +39,7 @@ export const hasGenericSetupControls = (device: HomeyDeviceLike): boolean => {
 };
 
 function readSocketPowerCapability(source: HomeyDeviceLike): HomeyDeviceLike['capabilitiesObj']['measure_power'] {
-  if (!source.available) return undefined;
-  const power = source.capabilitiesObj.measure_power;
-  const onoff = source.capabilitiesObj.onoff;
-  if (onoff?.value !== false) return power;
-  // An off report withdraws pre-switch watts. A confirmed zero measured after
-  // the switch is a fresh observation in its own right.
-  if (power?.value !== 0) return undefined;
-  const powerAt = toCapabilityTimestampMs(power.lastUpdated);
-  const offAt = toCapabilityTimestampMs(onoff.lastUpdated);
-  return powerAt !== undefined && offAt !== undefined && powerAt > offAt ? power : undefined;
+  return source.available ? source.capabilitiesObj.measure_power : undefined;
 }
 
 function readSocketPowerW(source: HomeyDeviceLike): number | undefined {
