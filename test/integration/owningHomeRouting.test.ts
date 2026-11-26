@@ -5,7 +5,9 @@ import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacity
 import type { AppContext } from '../../lib/app/appContext';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
-import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { configuredLastResortFrom } from '../utils/configuredLastResortFixture';
+import type { ExternalOffHoldSettingsStore } from '../../lib/observer/externalOffHold';
 import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
 import type { PlanService } from '../../lib/plan/planService';
 import {
@@ -14,6 +16,10 @@ import {
   syncExternalOffHoldForObservation,
 } from '../../setup/appObservedControlStateRuntime';
 import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+
+const createExternalOffHoldPolicy = (store: ExternalOffHoldSettingsStore) => (
+  createSettingsExternalOffHoldPolicy(store, configuredLastResortFrom(store))
+);
 // Integration coverage for R7b owning-home routing of everything a realtime
 // device observation now touches (`HomeRuntimeRegistry.getOwningHomeRouteForDevice`).
 // Main's answer to any of these is wrong for a sub-home device in a way that looks

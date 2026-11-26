@@ -296,7 +296,7 @@ If a relay has no device power reading, choose **Turn off as a last resort** dur
 
 PELS uses the household meter for the load's contribution. It turns off the relay only after ordinary limiting is exhausted, or when the household meter stops reporting. Before PELS turns the relay on, it needs room for the full configured maximum plus extra room for the start. Last-resort devices stay at the top of **Modes**. Order them there to choose which resumes first. While the next relay waits for available power, PELS holds other devices that would otherwise resume or increase their draw.
 
-**Leave off until turned on again** works here as it does for other switches. With it off, PELS can start the relay when power allows. With it on, a shutoff from Homey, the device itself, or a Flow keeps the relay off until it is turned on again. A relay turned off by PELS still resumes on its own. Existing last-resort setups get the toggle switched on during upgrade, and relays that are already off stay off.
+**Leave off until turned on again** works here as it does for other switches. With it off, PELS can start the relay when power allows. With it on, a shutoff from Homey, the device itself, or a Flow keeps the relay off until it is turned on again. A relay turned off by PELS still resumes on its own. Existing last-resort setups get the toggle switched on during the update to this version. A relay that is off when PELS first starts after that update stays off until it is turned on again, including one PELS switched off just before the update. After that, a relay PELS turns off resumes on its own.
 
 If you turn off last-resort control while PELS is holding the relay off, turn the relay back on in Homey when there is enough power.
 

@@ -1,6 +1,8 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { controlContestsForTest } from '../helpers/controlContests';
-import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { configuredLastResortFrom } from '../utils/configuredLastResortFixture';
+import type { ExternalOffHoldSettingsStore } from '../../lib/observer/externalOffHold';
 // Integration coverage for the per-home operating mode (multi-home):
 // - the settings→bundle seam: an `operating_mode:<homeId>` write routes
 //   through the REAL settings handler to ONE bundle's mode rebuild — never to
@@ -69,6 +71,10 @@ import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMo
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { testLogger } from '../utils/testLogger';
 import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
+
+const createExternalOffHoldPolicy = (store: ExternalOffHoldSettingsStore) => (
+  createSettingsExternalOffHoldPolicy(store, configuredLastResortFrom(store))
+);
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 

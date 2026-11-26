@@ -3,6 +3,9 @@ import {
   DEVICE_BINARY_SWITCHES, DEVICE_POWER_SOURCES, LAST_RESORT_DEVICES, MANAGED_DEVICES,
 } from '../utils/settingsKeys';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
+import type { ConfiguredLastResortDevicesRead } from '../ports/configuredLastResortDevices';
+
+export type { ConfiguredLastResortDevicesRead } from '../ports/configuredLastResortDevices';
 import { readDevicePowerSources } from '../../packages/shared-domain/src/settings/devicePowerSources';
 import { readDeviceBinarySwitches, type DeviceBinarySwitches }
   from '../../packages/shared-domain/src/settings/deviceBinarySwitches';
@@ -16,6 +19,11 @@ import { readLastResortDevices, type LastResortDevices }
 export type { LastResortDevices }
   from '../../packages/shared-domain/src/settings/lastResortDevices';
 
+/** A last-resort map read from its settings key, or why it could not be used. */
+export type LastResortDevicesRead =
+  | { status: 'resolved'; devices: LastResortDevices }
+  | { status: 'unavailable' };
+
 type SetupSettingsPort = Pick<SettingsPort, 'get' | 'getKeys'>;
 const selectionFor = (switches: DeviceBinarySwitches, deviceId: string): string | undefined => (
   Object.hasOwn(switches, deviceId) ? switches[deviceId] : undefined
@@ -25,6 +33,8 @@ const selectionFor = (switches: DeviceBinarySwitches, deviceId: string): string 
 export class DeviceBinarySwitchSettings {
   private accepted: DeviceBinarySwitches = {};
   private lastResort: LastResortDevices = {};
+  /** Whether a read of `last_resort_devices` was ever adopted; the initial `{}` is no answer. */
+  private lastResortResolved = false;
   private managed: Readonly<Record<string, boolean>> = {};
   private readonly revisions = new Map<string, number>();
   private nextRevision = 0;
@@ -41,7 +51,20 @@ export class DeviceBinarySwitchSettings {
       && this.lastResortIsCurrent(deviceId);
   }
 
-  reload(lastResort: LastResortDevices, managed: Readonly<Record<string, boolean>>): void {
+  get lastResortDevices(): LastResortDevices { return this.lastResort; }
+
+  readConfiguredLastResortDevices(): ConfiguredLastResortDevicesRead {
+    if (!this.lastResortResolved) {
+      const read = this.readLastResortDevices();
+      if (read.status === 'unavailable') return read;
+      this.reload(read, this.managed);
+    }
+    return { status: 'resolved', deviceIds: Object.keys(this.lastResort) };
+  }
+
+  /** Adopt one generation; an unavailable last-resort read keeps the accepted map. */
+  reload(lastResortRead: LastResortDevicesRead, managed: Readonly<Record<string, boolean>>): void {
+    const lastResort = lastResortRead.status === 'resolved' ? lastResortRead.devices : this.lastResort;
     const next = this.read() ?? this.accepted;
     const knownIds = new Set([
       ...Object.keys(this.accepted), ...Object.keys(next), ...Object.keys(this.lastResort), ...Object.keys(lastResort),
@@ -57,18 +80,26 @@ export class DeviceBinarySwitchSettings {
     }
     this.accepted = next;
     this.lastResort = lastResort;
+    this.lastResortResolved ||= lastResortRead.status === 'resolved';
     this.managed = managed;
   }
 
-  readLastResortDevices(): LastResortDevices {
+  /**
+   * The persisted last-resort map, or `unavailable` when the read is not the
+   * map: a throw, a malformed value, or a missing value Homey's key list cannot
+   * confirm as never written. The caller keeps its accepted map then.
+   */
+  readLastResortDevices(): LastResortDevicesRead {
     try {
       const value = this.settings.get(LAST_RESORT_DEVICES);
       const devices = readLastResortDevices(value);
-      if (devices) return devices;
+      if (devices) return { status: 'resolved', devices };
       const known = readSettingsKeyList(this.settings);
-      if (value == null && known.status === 'resolved' && !known.keys.includes(LAST_RESORT_DEVICES)) return {};
-    } catch { /* Keep the runtime's accepted setting. */ }
-    return this.lastResort;
+      if (value == null && known.status === 'resolved' && !known.keys.includes(LAST_RESORT_DEVICES)) {
+        return { status: 'resolved', devices: {} };
+      }
+    } catch { /* Not the map: the caller keeps its accepted one. */ }
+    return { status: 'unavailable' };
   }
 
   private lastResortIsCurrent(deviceId: string): boolean {

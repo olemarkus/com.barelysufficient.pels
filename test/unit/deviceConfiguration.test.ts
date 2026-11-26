@@ -110,7 +110,8 @@ describe('DeviceConfigurationStore identity resolution', () => {
       externalPowerSocketId: 'socket',
       externalPowerSocketName: socketName,
     };
-    expect(resolve(snapshot)?.powerSetupRequirement).toEqual({ kind: 'metering_socket', socketName });
+    expect(resolve(snapshot)?.powerSetupRequirement).toEqual(socketName === undefined
+      ? { kind: 'metering_socket_unavailable' } : { kind: 'metering_socket', socketName });
     expect(resolve({ ...snapshot, powerCapable: true, measuredPowerKw: 0 })?.powerSetupRequirement).toBeNull();
   });
 

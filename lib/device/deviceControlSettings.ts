@@ -1,6 +1,6 @@
 import {
   DeviceBinarySwitchSettings, pruneDeviceSetupForMissingDevices, readDevicePowerSources,
-  type DevicePowerSources, type LastResortDevices,
+  type ConfiguredLastResortDevicesRead, type DevicePowerSources, type LastResortDevices,
 } from './deviceSetupSettings';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeEvChargingSessionSmoothingSettings, type EvChargingSessionSmoothingSettings }
@@ -106,7 +106,6 @@ type DeviceControlMaps = {
   readonly controllable: BooleanMap;
   readonly managed: BooleanMap;
   readonly powerSources: DevicePowerSources;
-  readonly lastResortDevices: LastResortDevices;
   readonly managedFilterActive: boolean;
   readonly budgetExempt: BooleanMap;
   readonly phaseConnections: Readonly<Record<string, DevicePhaseConnection>>;
@@ -212,7 +211,6 @@ export class DeviceControlSettings {
     controllable: {},
     managed: {},
     powerSources: {},
-    lastResortDevices: {},
     managedFilterActive: false,
     budgetExempt: {},
     phaseConnections: {},
@@ -252,8 +250,12 @@ export class DeviceControlSettings {
   /** The runtime-held Power-limit control map (`controllable_devices`), the one the planner reads. */
   get controllableDevices(): BooleanMap { return this.maps.controllable; }
   get devicePowerSources(): DevicePowerSources { return this.maps.powerSources; }
-  get lastResortDevices(): LastResortDevices { return this.maps.lastResortDevices; }
-  isLastResortConfigured(deviceId: string): boolean { return Object.hasOwn(this.maps.lastResortDevices, deviceId); }
+  get lastResortDevices(): LastResortDevices { return this.binarySwitchSettings.lastResortDevices; }
+  isLastResortConfigured(deviceId: string): boolean { return Object.hasOwn(this.lastResortDevices, deviceId); }
+  /** The configured relays, or `unavailable` while no read of the setting has been accepted. */
+  readConfiguredLastResortDevices(): ConfiguredLastResortDevicesRead {
+    return this.binarySwitchSettings.readConfiguredLastResortDevices();
+  }
   isMainFusePhaseMeter(deviceId: string): boolean {
     return this.settings.get(MAIN_FUSE_PHASE_METER_DEVICE_ID) === deviceId;
   }
@@ -442,7 +444,6 @@ export class DeviceControlSettings {
       controllable: keep(settings.get(CONTROLLABLE_DEVICES), isBooleanMap, current.controllable),
       managed,
       powerSources,
-      lastResortDevices: this.binarySwitchSettings.readLastResortDevices(),
       managedFilterActive,
       budgetExempt: keep(settings.get(BUDGET_EXEMPT_DEVICES), isBooleanMap, current.budgetExempt),
       phaseConnections: readPhaseConnections(settings.get(DEVICE_PHASE_CONNECTIONS), current.phaseConnections),
@@ -480,7 +481,7 @@ export class DeviceControlSettings {
       powerControlModes: this.readPowerControlModes(),
       shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
-    this.binarySwitchSettings.reload(this.maps.lastResortDevices, this.maps.managed);
+    this.binarySwitchSettings.reload(this.binarySwitchSettings.readLastResortDevices(), this.maps.managed);
   }
 
   private readPowerSources(): DevicePowerSources {

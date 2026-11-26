@@ -39,8 +39,10 @@ export const isStarvationSupportedDeviceClass = (deviceClass: string): boolean =
 
 const resolvePowerSetupRequirement = (snapshot: TransportDeviceSnapshot): DevicePowerSetupRequirement | null => {
   if (!needsHomeyEnergySetup(snapshot)) return null;
-  return snapshot.externalPowerSocketId === undefined
-    ? { kind: 'homey_energy' }
+  if (snapshot.externalPowerSocketId === undefined) return { kind: 'homey_energy' };
+  // The transport names only an assigned socket that is listed and eligible.
+  return snapshot.externalPowerSocketName === undefined
+    ? { kind: 'metering_socket_unavailable' }
     : { kind: 'metering_socket', socketName: snapshot.externalPowerSocketName };
 };
 

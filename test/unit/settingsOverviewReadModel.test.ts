@@ -631,12 +631,16 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it.each([
-    [' Metering socket ', 'Waiting for a power reading from Metering socket. Check the socket in Homey.'],
-    [undefined, 'Metering socket unavailable. Choose another power source under External sensors.'],
-  ] as const)('guides a Manual card to its assigned socket (%s)', (socketName, text) => {
+    [{ kind: 'metering_socket', socketName: ' Metering socket ' },
+      'Waiting for a power reading from Metering socket. Check the socket in Homey.'],
+    [{ kind: 'metering_socket', socketName: ' ' },
+      'Waiting for a power reading from the assigned metering socket. Check the socket in Homey.'],
+    [{ kind: 'metering_socket_unavailable' },
+      'Metering socket unavailable. Choose another power source under External sensors.'],
+  ] as const)('guides a Manual card to its assigned socket (%o)', (requirement, text) => {
     const device = buildPlanDevice({ controllable: false, unmetered: true });
     const { status } = buildDeviceCard(device, {
-      ...absentTemperature, getDevicePowerSetupRequirement: () => ({ kind: 'metering_socket', socketName }),
+      ...absentTemperature, getDevicePowerSetupRequirement: () => requirement,
     });
     expect(status).toMatchObject({ kind: 'manual', powerText: null });
     expect(status.reason).toEqual({ text, tone: 'warning' });

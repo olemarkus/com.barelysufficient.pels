@@ -5,7 +5,10 @@ import {
   type ExternalOffHoldOptInRead,
   type ExternalOffHoldSettingsStore,
 } from '../../lib/observer/externalOffHold';
-import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { createExternalOffHoldPolicy as createSettingsPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { configuredLastResortFrom } from '../utils/configuredLastResortFixture';
+import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
+
 import {
   EXTERNAL_OFF_HOLDS,
   EXTERNAL_OFF_HOLDS_INITIALIZED,
@@ -34,6 +37,10 @@ const holdKey = (deviceId: string): string => (
 
 const optedIn = (optIn: Record<string, boolean>): ExternalOffHoldOptInRead => (
   { status: 'resolved', optIn }
+);
+
+const createSettingsExternalOffHoldPolicy = (store: ExternalOffHoldSettingsStore) => (
+  createSettingsPolicy(store, configuredLastResortFrom(store))
 );
 
 type FakeStore = ExternalOffHoldSettingsStore & {
@@ -563,6 +570,31 @@ describe('the last-resort upgrade', () => {
     expect(afterRestart.isHeld('later')).toBe(false);
   });
 
+  it("seeds holds from the device-control owner's accepted map when the stored one turns malformed", () => {
+    const store = fakeStore({ [LAST_RESORT_DEVICES]: { relay: 6000 } });
+    const owner = new DeviceControlSettings(store);
+    owner.reload();
+    store.set(LAST_RESORT_DEVICES, 'garbage');
+    owner.reload();
+    const policy = createSettingsPolicy(store, {
+      isConfigured: (id) => owner.isLastResortConfigured(id),
+      read: () => owner.readConfiguredLastResortDevices(),
+    });
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBe(true);
+    expect(store.get(holdKey('relay'))).toBe(true);
+    expect(policy.heldDeviceIds()).toEqual(['relay']);
+  });
+
+  it('waits for the device-control owner to accept a map before finishing', () => {
+    const store = fakeStore({ [LAST_RESORT_DEVICES]: 'garbage' });
+    const policy = createSettingsExternalOffHoldPolicy(store);
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBeNull();
+
+    store.set(LAST_RESORT_DEVICES, { relay: 6000 });
+    expect(policy.heldDeviceIds()).toEqual(['relay']);
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBe(true);
+  });
+
   it('keeps last-resort starts gated until a partial migration can finish', () => {
     const store = fakeStore({ [LAST_RESORT_DEVICES]: { relay: 6000 } });
     const set = store.set;
@@ -570,7 +602,7 @@ describe('the last-resort upgrade', () => {
       if (key === holdKey('relay')) throw new Error('hold temporarily unwritable');
       set(key, value);
     });
-    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    const policy = createSettingsExternalOffHoldPolicy(store);
     expect(policy.isHeld('relay')).toBe(true);
     expect(policy.isHeld('other')).toBe(false);
     expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBeNull();
@@ -588,7 +620,7 @@ describe('the last-resort upgrade', () => {
       if (key === LAST_RESORT_EXTERNAL_OFF_MIGRATED) throw new Error('marker temporarily unwritable');
       set(key, value);
     });
-    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    const policy = createSettingsExternalOffHoldPolicy(store);
     expect(policy.heldDeviceIds()).toEqual(['relay']);
     policy.clearHold('relay'); // The observation sweep saw the relay turned on.
     expect(store.get(holdKey('relay'))).toBeNull();
@@ -610,7 +642,7 @@ describe('the last-resort upgrade', () => {
     const reads = vi.spyOn(store, 'get').mockImplementation((key) => (
       key === LAST_RESORT_EXTERNAL_OFF_MIGRATED ? null : get(key)
     ));
-    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    const policy = createSettingsExternalOffHoldPolicy(store);
     expect(policy.heldDeviceIds()).toEqual([]);
     expect(store.get(RESPECT_EXTERNAL_OFF_DEVICES)).toEqual({ relay: false });
 
@@ -638,7 +670,7 @@ describe('the last-resort upgrade', () => {
       set(key, value);
       if (key === LAST_RESORT_EXTERNAL_OFF_MIGRATED) failOptInRead = true;
     });
-    const policy = createSettingsExternalOffHoldPolicy(store, (id) => id === 'relay');
+    const policy = createSettingsExternalOffHoldPolicy(store);
     expect(policy.isHeld('other')).toBe(true);
 
     failSetupRead = false;

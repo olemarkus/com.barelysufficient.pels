@@ -21,7 +21,9 @@
 // their REAL plan engine/service/guard/pipeline.
 import { controlContestsForTest } from '../helpers/controlContests';
 import { createModeOwnershipTransfer } from '../../setup/homeRuntime/createModeOwnershipTransfer';
-import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
+import { configuredLastResortFrom } from '../utils/configuredLastResortFixture';
+import type { ExternalOffHoldSettingsStore } from '../../lib/observer/externalOffHold';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
@@ -67,6 +69,10 @@ import { testLogger } from '../utils/testLogger';
 import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
 import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 import { fixedConfirmationWindows } from '../helpers/confirmationWindows';
+
+const createExternalOffHoldPolicy = (store: ExternalOffHoldSettingsStore) => (
+  createSettingsExternalOffHoldPolicy(store, configuredLastResortFrom(store))
+);
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
