@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from './deviceJournalStub';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
@@ -52,7 +53,7 @@ export const deviceControlSettingsFixture = (maps: DeviceControlSettingsFixture 
   const settings = new DeviceControlSettings({
     get: (key) => values.get(key) ?? null,
     getKeys: () => [...values.keys()],
-  });
+  }, ignoredDeviceJournal);
   settings.reload();
   return settings;
 };

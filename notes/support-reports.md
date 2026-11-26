@@ -31,13 +31,16 @@ decided about a device, in its structured-log event's shape, kept beside the
 activity history in the userdata database for 7 days and 200 events per device. A
 device report includes every kept event about the device and its related devices
 (the cars that may pair with a charger, or the chargers that selected a car),
-whatever the report window: a missed car link is explained by a plug-in and a timeout
+whatever the report window. A missed car link is explained by a plug-in and a timeout
 that may lie hours before the reported time. A report carries at most 300 of them,
 about 150 KiB, keeping those nearest the incident and stating how many it left out. The car link records
 plug-ins and unplugs on both sides, each wait to identify the connected car, the
 timeout with the cars it waited for and why past matches did not decide, and a
 selected car that reported its plug-in after the window. A charger or car report
 also carries the current car link (`Current car link`).
+Power-limit setting changes keep the previous and
+new accepted values per device, including the configured limiting action and
+its heating and cooling limits when applicable.
 A Main device report carries the device's smart task (`Current smart task`): the
 stored task; `plan`, its recorded plan (decision, learned rate, the latest revision's
 reason and bookings, and whether it booked the capture hour); and `lastCycle`, the

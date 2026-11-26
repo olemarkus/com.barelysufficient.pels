@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createExternalOffHoldPolicy,
@@ -572,7 +573,7 @@ describe('the last-resort upgrade', () => {
 
   it("seeds holds from the device-control owner's accepted map when the stored one turns malformed", () => {
     const store = fakeStore({ [LAST_RESORT_DEVICES]: { relay: 6000 } });
-    const owner = new DeviceControlSettings(store);
+    const owner = new DeviceControlSettings(store, ignoredDeviceJournal);
     owner.reload();
     store.set(LAST_RESORT_DEVICES, 'garbage');
     owner.reload();

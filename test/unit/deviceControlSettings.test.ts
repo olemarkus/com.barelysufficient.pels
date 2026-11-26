@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
+import { captureLogger } from '../utils/loggerCapture';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import {
+  CONTROLLABLE_DEVICES,
   DEVICE_BINARY_SWITCHES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_POWER_SOURCES,
@@ -9,6 +12,7 @@ import {
   LAST_RESORT_DEVICES,
   EV_CHARGING_SESSION_SMOOTHING,
   MANAGED_DEVICES,
+  OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
@@ -34,12 +38,115 @@ const settingsDouble = (initial: Record<string, unknown> = {}, keys?: string[]) 
 };
 
 const loaded = (port: ConstructorParameters<typeof DeviceControlSettings>[0]): DeviceControlSettings => {
-  const settings = new DeviceControlSettings(port);
+  const settings = new DeviceControlSettings(port, ignoredDeviceJournal);
   settings.reload();
   return settings;
 };
 
 const temperatureDevice = { deviceType: 'temperature' as const };
+
+describe('DeviceControlSettings power-limit setting history', () => {
+  const eventName = 'device_power_limit_settings_changed';
+
+  it('records accepted changes to the toggle and temperature limits in both diagnostic streams', () => {
+    const { port, values } = settingsDouble({
+      [CONTROLLABLE_DEVICES]: { heater: true },
+      [OVERSHOOT_BEHAVIORS]: { heater: { action: 'set_temperature', temperature: 22, coolingTemperature: 26 } },
+    });
+    const journal = { record: vi.fn() };
+    const saved = captureLogger();
+    onTestFinished(() => saved.restore());
+    const settings = new DeviceControlSettings(port, journal);
+
+    settings.reload();
+    settings.reload();
+    expect(journal.record).not.toHaveBeenCalled();
+
+    values[CONTROLLABLE_DEVICES] = { heater: false };
+    settings.reload();
+    values[OVERSHOOT_BEHAVIORS] = { heater: { action: 'set_temperature', temperature: 21, coolingTemperature: 27 } };
+    settings.reload();
+    expect(settings.isControllable('heater')).toBe(false);
+    expect(settings.getConfiguredShedBehavior('heater')).toEqual({
+      action: 'set_temperature', temperature: 21, coolingTemperature: 27,
+    });
+
+    const initial = { action: 'set_temperature', temperature: 22, coolingTemperature: 26 };
+    const changed = { action: 'set_temperature', temperature: 21, coolingTemperature: 27 };
+    const expectedChanges = [
+      {
+        component: 'devices', event: eventName, deviceId: 'heater',
+        previous: { powerLimitControl: true, configuredShedBehavior: initial },
+        current: { powerLimitControl: false, configuredShedBehavior: initial },
+      },
+      {
+        component: 'devices', event: eventName, deviceId: 'heater',
+        previous: { powerLimitControl: false, configuredShedBehavior: initial },
+        current: { powerLimitControl: false, configuredShedBehavior: changed },
+      },
+    ];
+    expect(journal.record.mock.calls).toEqual(expectedChanges.map((event) => [['heater'], event]));
+    expect(saved.findEvents(eventName)).toMatchObject(expectedChanges);
+  });
+
+  it('treats a verified unset key as the baseline and ignores explicit defaults', () => {
+    const { port, values } = settingsDouble();
+    const journal = { record: vi.fn() };
+    const settings = new DeviceControlSettings(port, journal);
+    settings.reload();
+
+    values[CONTROLLABLE_DEVICES] = { heater: false };
+    values[OVERSHOOT_BEHAVIORS] = { heater: { action: 'turn_off' } };
+    settings.reload();
+    expect(journal.record).not.toHaveBeenCalled();
+
+    values[CONTROLLABLE_DEVICES] = { heater: true };
+    values[OVERSHOOT_BEHAVIORS] = { heater: { action: 'set_step' } };
+    settings.reload();
+    values[CONTROLLABLE_DEVICES] = {};
+    values[OVERSHOOT_BEHAVIORS] = {};
+    settings.reload();
+    expect(journal.record).toHaveBeenCalledTimes(2);
+    expect(journal.record).toHaveBeenLastCalledWith(['heater'], expect.objectContaining({
+      previous: { powerLimitControl: true, configuredShedBehavior: { action: 'set_step' } },
+      current: { powerLimitControl: false, configuredShedBehavior: { action: 'turn_off' } },
+    }));
+  });
+
+  it('keeps the last accepted maps across malformed or failed reloads and ignores the first successful baseline', () => {
+    const { port, values } = settingsDouble({
+      [CONTROLLABLE_DEVICES]: null,
+      [OVERSHOOT_BEHAVIORS]: [],
+    });
+    const journal = { record: vi.fn() };
+    const settings = new DeviceControlSettings(port, journal);
+    settings.reload();
+
+    values[CONTROLLABLE_DEVICES] = { heater: true };
+    values[OVERSHOOT_BEHAVIORS] = { heater: { action: 'set_step' } };
+    settings.reload();
+    expect(journal.record).not.toHaveBeenCalled();
+
+    values[CONTROLLABLE_DEVICES] = { heater: 'false' };
+    values[OVERSHOOT_BEHAVIORS] = null;
+    settings.reload();
+    expect(settings.isControllable('heater')).toBe(true);
+    expect(settings.getConfiguredShedBehavior('heater')).toEqual({ action: 'set_step' });
+    expect(journal.record).not.toHaveBeenCalled();
+
+    values[CONTROLLABLE_DEVICES] = {};
+    values[OVERSHOOT_BEHAVIORS] = {};
+    port.throwOn = EV_CAR_ASSOCIATIONS;
+    expect(() => settings.reload()).toThrow('settings unavailable');
+    expect(settings.isControllable('heater')).toBe(true);
+    expect(settings.getConfiguredShedBehavior('heater')).toEqual({ action: 'set_step' });
+    expect(journal.record).not.toHaveBeenCalled();
+
+    port.throwOn = undefined;
+    settings.reload();
+    expect(journal.record).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('DeviceControlSettings EV charging continuity', () => {
   it('defaults off and admits healthy opt-ins independently', () => {

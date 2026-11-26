@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import { describe, expect, it } from 'vitest';
 import type {
   AssociatedCarSnapshot, CarConfirmation, EvCarCurrentLimits, SteppedLoadProfile,
@@ -63,7 +64,7 @@ const persistedPolicy = (initialValue: unknown, listed = true) => {
   const settings = new DeviceControlSettings({
     get: (key) => key === EV_CAR_CURRENT_LIMITS ? read.value : null,
     getKeys: () => read.listed ? [EV_CAR_CURRENT_LIMITS] : [],
-  });
+  }, ignoredDeviceJournal);
   const runtime = setup({}, settings);
   runtime.links.set('charger', associated('a'));
   runtime.configurations.set(charger());
@@ -78,7 +79,7 @@ const persistedPolicies = (carValue: unknown, chargerValue: unknown, chargerList
       return key === EV_CHARGER_CURRENT_LIMITS ? read.chargerValue : null;
     },
     getKeys: () => [EV_CAR_CURRENT_LIMITS, ...(read.chargerListed ? [EV_CHARGER_CURRENT_LIMITS] : [])],
-  });
+  }, ignoredDeviceJournal);
   const runtime = setup({}, settings);
   runtime.configurations.set(charger());
   runtime.snapshots.replaceSnapshot([charger()]);

@@ -17,7 +17,7 @@ import type { DeviceExpectedPowerOverrides } from './packages/contracts/src/type
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { SettingsUiDeviceReads } from './lib/device/settingsUiDeviceReads';
-import { DeviceControlSettings } from './lib/device/deviceControlSettings';
+import { createDeviceSettings } from './setup/appInit/createDeviceSettings';
 import { createDeviceReadSources, joinObservedDeviceDescriptors } from './lib/device/deviceReadSources';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
@@ -154,7 +154,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public readonly capacitySettingsStore = createCapacitySettingsStore(
     this.homey.settings, MAIN_HOME_ID, () => this.getCapacityScalars(),
   );
-  public readonly deviceControlSettings = new DeviceControlSettings(this.homey.settings);
+  public readonly deviceControlSettings = createDeviceSettings(this.homey.settings, () => this.getUserdataDatabase());
   public readonly batteryManaged = new BatteryManagedSettings(this.homey.settings);
   public readonly homeModeCatalog = createHomeModeCatalog(
     MAIN_HOME_ID,

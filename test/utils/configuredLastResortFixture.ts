@@ -1,3 +1,4 @@
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { ConfiguredLastResortDevices } from '../../lib/ports/configuredLastResortDevices';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
@@ -9,7 +10,7 @@ import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 export function configuredLastResortFrom(
   settings: Pick<SettingsPort, 'get' | 'getKeys'>,
 ): ConfiguredLastResortDevices {
-  const owner = new DeviceControlSettings(settings);
+  const owner = new DeviceControlSettings(settings, ignoredDeviceJournal);
   try {
     owner.reload();
   } catch {

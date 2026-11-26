@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import { describe, expect, it, vi } from 'vitest';
+import { ignoredDeviceJournal } from '../helpers/deviceJournalStub';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -134,7 +135,7 @@ const overrideFixture = () => {
       { id: 'target_temperature', unit: '°C', min: 20, max: 85, value: 61, step: 0.5 },
     ],
   });
-  const deviceControlSettings = new DeviceControlSettings(settings);
+  const deviceControlSettings = new DeviceControlSettings(settings, ignoredDeviceJournal);
   const app = pelsHostDouble({
     getLatestPlanSnapshotForUi: () => ({ devices: [planDevice('heater', 'Water heater')] }),
     getSettingsUiManagedDevices: () => [device],
