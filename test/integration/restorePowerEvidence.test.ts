@@ -49,7 +49,7 @@ function poweredRestore() {
     powerTracker: homeReading(2300, 2500, 3000),
     drawEvidence: observer,
     getShedBehavior: () => ({ action: 'turn_off' }),
-    temperatureSetpoints: new Map(), structuredLog: testLogger, planningCeiling: null,
+    temperatureSetpoints: new Map(), structuredLog: testLogger, admissionCeiling: null,
   };
   const nowTs = 4000;
   return { observer, state, deps, nowTs, devices: [restoredHeater('first')] };
@@ -427,7 +427,7 @@ function steppedUp(options: { planningPowerKw?: number; risenKw?: number; risenR
     powerTracker: homeReading(2300, 2500, 3000),
     drawEvidence: observer,
     getShedBehavior: () => ({ action: 'turn_off' }),
-    temperatureSetpoints: new Map(), structuredLog: testLogger, planningCeiling: null,
+    temperatureSetpoints: new Map(), structuredLog: testLogger, admissionCeiling: null,
   };
   const devices = [steppedPlanDevice({ id: 'charger', planningPowerKw: options.planningPowerKw ?? 4.6 })];
   return { observer, state, deps, nowTs: 4000, devices };
@@ -549,7 +549,7 @@ function ampStepUp(wattsPerAmp: number, risenKw: number) {
     powerTracker: homeReading(2300, 2500, 3000),
     drawEvidence: observer,
     getShedBehavior: () => ({ action: 'turn_off' }),
-    temperatureSetpoints: new Map(), structuredLog: testLogger, planningCeiling: null,
+    temperatureSetpoints: new Map(), structuredLog: testLogger, admissionCeiling: null,
   };
   const devices = [steppedPlanDevice({
     id: 'charger', isEvCharger: true, steppedLoadProfile: ampLadder(wattsPerAmp), selectedStepId: '7a',

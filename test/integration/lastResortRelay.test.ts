@@ -290,7 +290,7 @@ describe('last-resort restore priority', () => {
     expect(commands.get('smaller')).toBeUndefined();
   });
 
-  it('lets the smaller load start when the relay maximum can never fit the planning ceiling', () => {
+  it('lets the smaller load start when the relay maximum can never fit the admission ceiling', () => {
     const result = applyRestorePlanForSpec({
       planDevices: [smallerLoad, relay], context: buildPlanContextFixture({ nowTs: now }),
       power: buildMeasuredPower({ headroomKw: 5, capacityHeadroomKw: 5, budgetHeadroomKw: 5 }),
@@ -301,7 +301,7 @@ describe('last-resort restore priority', () => {
         powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
         temperatureSetpoints: new Map(),
         structuredLog: testLogger,
-        planningCeiling: { limit: 'capacity', kw: 5 },
+        admissionCeiling: { limit: 'capacity', kw: 5 },
       },
     });
     const devices = new Map(result.planDevices.map((device) => [device.id, device]));
@@ -313,7 +313,7 @@ describe('last-resort restore priority', () => {
     });
   });
 
-  it('keeps the priority turn for a relay whose maximum fits the planning ceiling', () => {
+  it('keeps the priority turn for a relay whose maximum fits the admission ceiling', () => {
     const result = applyRestorePlanForSpec({
       planDevices: [smallerLoad, relay], context: buildPlanContextFixture({ nowTs: now }),
       power: buildMeasuredPower({ headroomKw: 5, capacityHeadroomKw: 5, budgetHeadroomKw: 5 }),
@@ -324,7 +324,7 @@ describe('last-resort restore priority', () => {
         powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
         temperatureSetpoints: new Map(),
         structuredLog: testLogger,
-        planningCeiling: { limit: 'grid', kw: 6.6 },
+        admissionCeiling: { limit: 'grid', kw: 6.6 },
       },
     });
     expect(result.lastResortPriorityHold).not.toBeNull();

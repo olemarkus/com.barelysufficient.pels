@@ -1477,7 +1477,7 @@ export const restoreCycleFixture = (
     drawEvidence: noDrawEvidence,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(),
-    planningCeiling: null,
+    admissionCeiling: null,
   },
   deviceMap,
   swapLedger: state.swapLedger,
@@ -1621,7 +1621,7 @@ export const applyRestorePlanForSpec = (spec: {
   storageLevers?: Readonly<Record<string, StorageLeverState>>;
   sheddingActive: boolean;
   guardInShortfall?: boolean;
-  deps: Omit<RestoreDeps, 'drawEvidence' | 'planningCeiling'> & Partial<Pick<RestoreDeps, 'drawEvidence' | 'planningCeiling'>>;
+  deps: Omit<RestoreDeps, 'drawEvidence' | 'admissionCeiling'> & Partial<Pick<RestoreDeps, 'drawEvidence' | 'admissionCeiling'>>;
 }): RestorePlanResult => applyRestorePlan(
   spec.planDevices,
   spec.context,
@@ -1629,5 +1629,5 @@ export const applyRestorePlanForSpec = (spec: {
   spec.state,
   spec.storageLevers ?? {},
   sheddingPlanFixture({ sheddingActive: spec.sheddingActive, guardInShortfall: spec.guardInShortfall ?? false }),
-  { drawEvidence: noDrawEvidence, planningCeiling: null, ...spec.deps },
+  { drawEvidence: noDrawEvidence, admissionCeiling: null, ...spec.deps },
 );

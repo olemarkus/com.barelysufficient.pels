@@ -26,7 +26,7 @@ function isLastResortRestoreCandidate(device: DevicePlanDevice): device is LastR
 
 /**
  * A relay whose maximum, plus the room PELS keeps for its start, is above the
- * planning ceiling can never be admitted. Giving it the priority turn would hold
+ * highest rate admission can ever offer can never be admitted. Giving it the priority turn would hold
  * every other start behind a relay that can never run, so it gets none and its
  * card asks the owner to correct the setup instead.
  */
@@ -131,7 +131,7 @@ export function markUnrestoredLastResort(cycle: RestoreCycle, limiting: boolean)
     const inactive = resolveInactiveRestoreUpdate(device);
     if (inactive) setRestorePlanDevice(deviceMap, id, inactive);
     else if (isLastResortRestoreCandidate(device)) {
-      const aboveLimit = resolveLastResortAboveLimitReason(device, cycle.deps.planningCeiling);
+      const aboveLimit = resolveLastResortAboveLimitReason(device, cycle.deps.admissionCeiling);
       setRestorePlanDevice(deviceMap, id, { plannedState: 'shed', reason: aboveLimit ?? reason });
     }
   }

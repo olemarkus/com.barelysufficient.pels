@@ -23,11 +23,12 @@ export type RestoreDeps = {
    * the swap lane reads whether limiting a device still releases demand from it. */
   temperatureSetpoints: TemperatureSetpointsByDevice;
   /**
-   * The home's planning ceiling this build (`resolvePlanningPowerCeiling`), or
-   * `null` with no power limit on. A last-resort relay whose buffered maximum is
-   * above it can never be admitted, so it gets no priority turn.
+   * The highest rate admission can ever offer this build
+   * (`resolveAdmissionPowerCeiling`), or `null` when no enabled limit bounds it.
+   * A last-resort relay whose buffered maximum is above it can never be
+   * admitted, so it gets no priority turn.
    */
-  planningCeiling: PowerLimitCeiling | null;
+  admissionCeiling: PowerLimitCeiling | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog: PinoLogger;
 };

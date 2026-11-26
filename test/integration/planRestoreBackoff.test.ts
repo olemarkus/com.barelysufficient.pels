@@ -123,7 +123,7 @@ const restoreDeps = (lastTimestamp: number): RestoreDeps => ({
   powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp }),
   temperatureSetpoints: new Map(),
   getShedBehavior: () => ({ action: 'turn_off' }),
-  planningCeiling: null,
+  admissionCeiling: null,
 });
 
 // Restore-decision events resolve their own `plan`-topic emitter

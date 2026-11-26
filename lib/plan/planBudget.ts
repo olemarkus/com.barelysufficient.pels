@@ -16,7 +16,8 @@
  */
 import type CapacityGuard from '../power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitCeiling, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import { capacityLimitKwAt, gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import type { PowerTrackerState } from '../power/tracker';
 import type { CapacityPeriodMinutes, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { spendLimitHeadroom, type LimitHeadroom, type PlanContext } from './planContext';
@@ -154,6 +155,23 @@ export function computeDynamicSoftLimit(
   // The remaining allowance is a period fact used for exhaustion and display.
   // Discretionary pacing patience has its own configured-margin allowance.
   return { allowedKw, hourlyBudgetExhausted, remainingKWh };
+}
+
+/**
+ * The highest import rate live admission can ever offer under an enabled limit,
+ * or `null` when no enabled limit bounds it. The grid import target always
+ * bounds it. A quarter caps its pace at the sustainable rate
+ * (`computeDynamicSoftLimit`), so Capacity limit bounds it in 15-minute periods.
+ * An hour's pace rises above that rate in an under-used hour, so an hour sets no
+ * such bound. A load whose start needs more than this can never be admitted.
+ */
+export function resolveAdmissionPowerCeiling(settings: PowerLimitSettings, atMs: number): PowerLimitCeiling | null {
+  const capacityKw = settings.capacityEnabled && settings.periodMinutes === 15
+    ? resolveUsableCapacityKw({ limitKw: capacityLimitKwAt(settings, atMs), marginKw: settings.marginKw })
+    : null;
+  const gridKw = settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw);
+  if (gridKw !== null && (capacityKw === null || gridKw <= capacityKw)) return { limit: 'grid', kw: gridKw };
+  return capacityKw === null ? null : { limit: 'capacity', kw: capacityKw };
 }
 
 type TimedRunPower =
