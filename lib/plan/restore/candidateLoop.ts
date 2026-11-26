@@ -56,10 +56,10 @@ export function applyRestoreCandidates(
     // the axis choice (exempt → capacity, else min with the measured-exempt
     // budget axis) and the per-axis debit live here.
     const availableForCandidate = ledger.availableFor(candidate.device);
-    const result = applyRestoreCandidate(cycle, lane, candidate, {
-      availableHeadroom: availableForCandidate,
-      restoredOneThisCycle: restoredOne,
-    });
+    const loop = { availableHeadroom: availableForCandidate, restoredOneThisCycle: restoredOne };
+    const result = candidate.kind === 'setpoint'
+      ? candidate.restore(loop)
+      : applyRestoreCandidate(cycle, lane, candidate, loop);
     if (availableForCandidate !== null && result.availableHeadroom !== null) {
       ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
     }
@@ -130,7 +130,7 @@ export function applyActiveSteppedRestoreCandidates(
 function applyRestoreCandidate(
   cycle: RestoreCycle,
   lane: RestoreLane,
-  candidate: RestoreCandidate,
+  candidate: Exclude<RestoreCandidate, { kind: 'setpoint' }>,
   loop: RestoreLoopState,
 ): RestoreLoopState {
   if (candidate.kind === 'storage') {

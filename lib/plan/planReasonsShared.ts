@@ -39,12 +39,13 @@ export function isShortfallReason(reason: ClassifiedPlanReason): boolean {
 export type HoldPass = {
   readonly state: PlanEngineState;
   /**
-   * The restore pass this lane runs after, whole: its effective `timing` (the
+   * Restore timing and reservations shared with the ranked walk. The
    * shed-window ladder `resolveOffDeviceReason`, the restore gate and the
-   * meter-settling check all read it), its startup reservations, and the
-   * devices it restored, which this lane neither admits again nor debits twice.
+   * meter-settling check all read the same timing. This lane skips devices
+   * the ranked walk already admitted.
    */
-  readonly restoreResult: RestorePlanResult;
+  readonly restoreResult: Pick<RestorePlanResult, 'timing' | 'headroomReserves' | 'restoredThisCycle'>;
+  readonly lastResortPriorityHold: RestorePlanResult['lastResortPriorityHold'];
   /**
    * This cycle's shedding decision: the fresh shed reasons, the guard's
    * shortfall, and its shedding latch — the restore pass forks on the latch

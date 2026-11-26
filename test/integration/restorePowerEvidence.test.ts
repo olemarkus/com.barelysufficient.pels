@@ -381,13 +381,18 @@ describe('restore cooldown early release', () => {
 });
 
 describe('setpoint restore behind a last-resort relay', () => {
-  it.each([16, 19])('keeps the limit at 16 °C when the current setpoint is %s °C', (currentTarget) => {
+  it.each([
+    { currentTarget: 16, targetOnly: false },
+    { currentTarget: 19, targetOnly: false },
+    { currentTarget: 16, targetOnly: true },
+  ])('keeps the limit at 16 °C from $currentTarget °C (setpoint-only: $targetOnly)', ({ currentTarget, targetOnly }) => {
     const nowTs = 1_000_000;
     const state = createPlanEngineState(nowTs - 600000);
     state.shedDecisions.lastPlannedShedIds = new Set(['thermostat']);
     const temperatureSetpoints = fixtureLimitedSetpoints({ thermostat: 16 });
     const thermostat = buildPlanDevice({
-      id: 'thermostat', priority: 2, currentState: 'on', currentDrawKw: 0,
+      id: 'thermostat', priority: 2, currentDrawKw: 0,
+      ...(targetOnly ? { currentState: 'not_applicable', binaryCapabilityId: undefined } : { currentState: 'on' }),
       currentTarget, currentTemperature: 18, plannedTarget: 21, expectedPowerKw: 1, shedAction: 'set_temperature',
     });
     const relay = buildPlanDevice({

@@ -112,6 +112,7 @@ const emptyRestoreResult: RestorePlanResult = {
   headroomAxes: { phase: { kind: 'off' }, grid: { kind: 'off' }, capacity: { kind: 'on', kw: 1 }, budget: { kind: 'off' } },
   planDevices: [],
   restoredThisCycle: new Set<string>(),
+  rankedSetpointDecisions: new Set<string>(),
   storageHandedBack: new Set<string>(),
   headroomReserves: [],
   lastResortPriorityHold: null,

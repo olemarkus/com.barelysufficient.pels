@@ -18,11 +18,17 @@ import type { TemperatureSetpointsByDevice } from '../../../packages/planner-typ
 import type { ShedDecisions } from '../shedDecisions';
 import type { StorageLeverState } from '../planState';
 import { buildCountdownTiming, buildShedCooldownReason, type RestoreTiming } from './timing';
+import type { RestoreLoopState } from './types';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
 export type RestoreCandidate =
   | { kind: 'binary' | 'stepped' | 'charging_phase'; device: MeteredDevicePlanDevice }
+  | {
+    kind: 'setpoint';
+    device: MeteredDevicePlanDevice;
+    restore(loop: RestoreLoopState): RestoreLoopState;
+  }
   | { kind: 'storage'; device: DevicePlanDevice; lever: StorageLeverState };
 
 function isEligibleForLivePowerControl(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
