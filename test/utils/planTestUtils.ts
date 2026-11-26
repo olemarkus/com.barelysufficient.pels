@@ -1206,6 +1206,7 @@ export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides 
     isEvCharger: overrides.isEvCharger ?? false,
     isBatteryOrSolar: overrides.isBatteryOrSolar ?? false,
     starvationSupported: overrides.starvationSupported ?? false,
+    phaseFootprint: overrides.phaseFootprint ?? { kind: 'unknown' },
     // The two producer-resolved boost bits, materialized from the fixture's own
     // config and readings by the SAME resolvers `toPlanDevice` calls, so a
     // fixture cannot express a boost state the producer would never emit. An
@@ -1488,8 +1489,8 @@ export const restoreCycleFixture = (
   storageHandBackWaitingAt: Number.POSITIVE_INFINITY,
   headroomReserves: [],
   batchState: buildDisabledRestoreBatchState(),
-  readPhaseRoom: () => ({ kind: 'off' }),
   readPhaseExportRoomKw: () => null,
+  readPhaseRoom: () => ({ kind: 'off' }),
   phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
 });
 

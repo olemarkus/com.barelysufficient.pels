@@ -52,7 +52,7 @@ const seedSettings = (): void => {
 
 const startApp = async (): Promise<{ put: ReturnType<typeof vi.spyOn>; events: LoggedEvent[] }> => {
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
-  const app = createApp();
+  const app = createApp({ withoutPowerMeasurement: true });
   const events: LoggedEvent[] = [];
   const log = app.log.bind(app);
   app.log = (...args: unknown[]) => {
@@ -84,7 +84,7 @@ describe('home battery hand-back (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('hands back a battery a crashed run left claimed: setpoint 0, then the claim value it held before', async () => {
+  it('hands back a claim left by a crashed run when the meter has no reading', async () => {
     const battery = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'homey', targetPowerW: -2000 });
     setMockDrivers({ batteries: new MockDriver('batteries', [battery]) });
     seedSettings();

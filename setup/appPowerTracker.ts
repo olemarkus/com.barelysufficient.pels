@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import { PowerTrackerState } from '../lib/power/tracker';
 import { resolveDailyKwh } from '../lib/power/dailyKwhResolve';
+import { hasRecentMeterEvidence } from '../lib/power/meterSilence';
 import {
   createHomeTrackerPersistence,
   type HomeTrackerPersistence,
@@ -116,6 +117,10 @@ export class AppPowerTracker {
 
   readDailyKwh(dateKey: string, timeZone: string): ReturnType<typeof resolveDailyKwh> {
     return resolveDailyKwh(this.deps.getTracker().getState(), dateKey, timeZone);
+  }
+
+  hasRecentMeterEvidence(): boolean {
+    return hasRecentMeterEvidence(this.deps.getTracker().getState(), Date.now());
   }
 
   /** Boot: adopt the stored tracker, if the store holds one. */

@@ -41,8 +41,10 @@ function newStoppedChargeKw(
     ? 0 : newKw;
 }
 
-/** Bank routine stopped charge in the same bounded ledger as selected charge limits.
- * This carrier is bookkeeping only; its setpoints never become capacity decisions. */
+/** Bank stopped economic charging in the bounded ledger used by capacity limits.
+ * The solar-only policy can reduce charging as production falls, which does not
+ * promise net import relief. This carrier never becomes a capacity decision.
+ */
 export function resolveContinuousChargeRelief(
   state: PlanEngineState,
   devices: readonly PlanInputDevice[],
@@ -67,7 +69,7 @@ export function resolveContinuousChargeRelief(
   const reliefByDevice = new Map<string, ShedRelief>();
   for (const device of devices) {
     const next = storage.levers[device.id];
-    if (next?.purpose !== 'continuous' || !isStorageLimitScope(device)
+    if (next?.purpose !== 'continuous' || next.baseline === true || !isStorageLimitScope(device)
       || !isStorageReliefCreditable(device.storage)) continue;
     const previous = state.storageLeverByDevice[device.id];
     const newKw = newStoppedChargeKw(device, previous, next, carried);

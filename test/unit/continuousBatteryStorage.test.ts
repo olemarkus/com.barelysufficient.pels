@@ -1,7 +1,7 @@
 import { storageSurplusFixture as resolveStorageSurplus } from '../helpers/storageSurplusFixture';
 import { describe, expect, it } from 'vitest';
-import { decideStorageRelief, resumeContinuousStorage } from '../../lib/plan/battery/storageRelief';
-import { applyStorageHandBacks, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
+import { decideStorageRelief } from '../../lib/plan/battery/storageRelief';
+import { resumeStorageAfterLimit, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
 import { buildStorageCandidate, resolveStorageSpend } from '../../lib/plan/shedding/storageCandidate';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { StorageLeverState } from '../../lib/plan/planState';
@@ -26,7 +26,7 @@ const offers = (ids = ['battery']) => new Map(ids.map(id => [id, {
 }]));
 
 describe('continuous battery execution decisions', () => {
-  it('retains the original own-mode power across limit hand-back and later idle release', () => {
+  it('restores a limit to managed idle, and keeps control after the price period ends', () => {
     const native = battery();
     const power = buildMeasuredPower({ drawKw: 3, headroomKw: 3 });
     const original = decideStorageRelief([native], power, {}, offers(), NOW, 0);
@@ -35,13 +35,11 @@ describe('continuous battery execution decisions', () => {
     const supplying = battery({ signedPowerW: -1000,
       continuousPlan: { setpointW: -1000, validUntilMs: NOW + 60_000, reason: 'supply_house', storesSurplus: true },
     });
-    const resumed = resumeContinuousStorage(applyStorageHandBacks(limited, new Set(['battery'])),
-      limited, [supplying], power, offers(), NOW + 1000);
-    expect(resumed.levers.battery.preClaimSignedW).toBe(0);
-    expect(resumed.batteries[0].decision).toMatchObject({ kind: 'setpoint', restored: true });
+    const resumed = resumeStorageAfterLimit(limited, new Set(['battery']), [supplying], NOW + 1000);
+    expect(resumed.batteries[0].decision).toMatchObject({ kind: 'setpoint', setpointW: 0, restored: true });
     const released = decideStorageRelief([battery({ signedPowerW: -1000, continuousPlan: undefined })],
       power, resumed.levers, offers(), NOW + 2000, 0);
-    expect(released.batteries[0].decision).toEqual({ kind: 'release', reason: 'idle' });
+    expect(released.batteries[0].decision).toMatchObject({ kind: 'setpoint', setpointW: 0 });
     expect(released.shed.netCreditKw).toBe(-1);
   });
 
@@ -272,11 +270,11 @@ describe('continuous battery execution decisions', () => {
     expect(resolveStorageSpend(candidate, 1)?.setpointW).toBe(-1100);
   });
 
-  it('releases the routine hold when its plan ends or the owner disables control', () => {
+  it('keeps managed idle after a price period, then releases on explicit opt-out', () => {
     const previous: Record<string, StorageLeverState> = decideStorageRelief([battery()], buildMeasuredPower(), {}, offers(), NOW, 0).levers;
     const expired = battery({ continuousPlan: { setpointW: 0, validUntilMs: NOW, reason: 'hold_energy', storesSurplus: true } });
     expect(decideStorageRelief([expired], buildMeasuredPower(), previous, offers(), NOW, 0).batteries[0].decision)
-      .toEqual({ kind: 'release', reason: 'idle' });
+      .toMatchObject({ kind: 'setpoint', setpointW: 0 });
     expect(decideStorageRelief([battery({ powerLimitControl: false })], buildMeasuredPower(), previous, offers(), NOW, 0).batteries[0].decision)
       .toEqual({ kind: 'release', reason: 'limit_off' });
   });

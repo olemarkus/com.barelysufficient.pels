@@ -235,23 +235,13 @@ export type LooseDevicePlanDevice = DevicePlanDeviceBase
 
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
 export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
-/**
- * Why PELS holds a home battery: discharging to hold the limit (`relief`);
- * its charge capped at its place in the priority order (`charge_limit`, with
- * the charge its own mode would take that the cap holds back, kW); its own
- * mode's charge capped so a device ranked above it can use the solar
- * (`cap_for_device`); or storing solar the devices above it leave (`surplus`). A battery it does not hold:
- * `power_limit_off` when its Power-limit control is off (PELS never takes it
- * over, and its own app is in charge), `none` otherwise.
- */
+/** The reason for a managed battery's current target or lack of control. */
 export type StorageHold =
   | { kind: 'none' }
   | { kind: 'power_limit_off' }
   /** `supplyKw`: the discharge PELS holds it at, kW (what it would supply, in simulation). */
   | { kind: 'relief'; supplyKw: number; exportPhase?: PhaseName }
   | { kind: 'charge_limit'; heldBackKw: number; exportPhase?: PhaseName }
-  | { kind: 'cap_for_device' }
-  | { kind: 'surplus' }
   | { kind: 'plan_charge' }
   | { kind: 'plan_solar' }
   | { kind: 'plan_supply' }

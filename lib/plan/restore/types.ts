@@ -1,5 +1,5 @@
-import type { PowerLimitCeiling } from '../../../packages/contracts/src/capacitySettings';
 import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
+import type { PowerLimitCeiling } from '../../../packages/contracts/src/capacitySettings';
 import type { PhaseRoomAxis } from '../phase/phaseRoom';
 import type { RestoreHeadroomAxes } from './headroomLedger';
 import type { DrawEvidenceReads } from '../../observer/observedDeviceStateProjection';
@@ -74,7 +74,7 @@ export type RestoreCycle = {
   readonly swapLedger: SwapLedger;
   readonly timing: RestoreTiming;
   readonly restoredThisCycle: Set<string>;
-  /** Home batteries the pass handed back (`storageHandBack.ts`): never loads, so never in `restoredThisCycle`. */
+  /** Battery restores to managed idle, separate from ordinary load restores. */
   readonly storageHandedBack: Set<string>;
   /**
    * The holds PELS keeps on home batteries after this build's limit step
@@ -91,7 +91,7 @@ export type RestoreCycle = {
   readonly headroomReserves: readonly HeadroomReserve[];
   /** The phases' room as the pass has spent it: a swap counts a donor only for what it frees on them. */
   readonly readPhaseRoom: () => PhaseRoomAxis;
-  /** The export room left on a phase before its target, kW; `null` while phases are not protected. */
+  /** The measured export room after the phase's clear band. */
   readonly readPhaseExportRoomKw: (phase: PhaseName) => number | null;
   readonly batchState: RestoreBatchState;
   /**
@@ -132,7 +132,7 @@ export type RestorePlanResult = {
   /**
    * Home batteries this pass handed back, in priority order with the loads
    * (`storageHandBack.ts`); the battery stage releases their holds
-   * (`applyStorageHandBacks`).
+   * (`resumeStorageAfterLimit`).
    */
   storageHandedBack: ReadonlySet<string>;
   // Post-pass NON-EXEMPT view (min of capacity and measured-exempt budget axes

@@ -13,11 +13,11 @@
  *   write (not fenced, not in capacity simulation). Before the first
  *   admission the owner records the claim value the battery holds
  *   (`batteryClaimStore.ts`).
- * - **Hand-back.** When the plan releases the battery (`releaseClaim`: idle,
- *   meter silent, no longer admissible, not responding, inverted sign), on
- *   opt-out, in capacity simulation, and at the first boot that finds a record
- *   left by a run that never handed back. Boot recovery from the durable claim
- *   record is THE hand-back after an app stop, a crash or a restart alike:
+ * - **Hand-back.** When the plan releases the battery for a safety or control
+ *   loss reason, on opt-out, and in capacity simulation. A compatible,
+ *   enabled claim from an earlier run can be adopted by measured planning
+ *   during the boot adoption window while Main still has recent meter evidence. A hand-back already started
+ *   before restart, or a claim that cannot safely be retained, is recovered:
  *   there is none at app stop, because Homey ends the app some 15-20 ms after
  *   "Stopping...", before a capability write could complete. Hand-back is
  *   exempt from Main's fence and from capacity simulation, like the executor's
@@ -115,15 +115,16 @@ import type {
 } from '../ports/batteryControlOwner';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { StorageActuation, StorageControlBinding } from '../ports/storageCommand';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../packages/shared-domain/src/powerFreshness';
 import { normalizeError } from '../utils/errorUtils';
-import { BatteryClaimStore, type BatteryClaimRecord } from './batteryClaimStore';
+import { BatteryClaimStore, type BatteryClaimRecord, type LoadedBatteryClaims } from './batteryClaimStore';
 import { BatteryWriteQueue } from './batteryWriteQueue';
 import {
   ClaimWriteLog,
   describeBatteryControl,
   describeHandBack,
   isClaimEngaged, toGridChargeFacts, toLeverResponse,
-  isDrivableBattery,
+  isDrivableBattery, resolveTerminalFailure,
   isRecordOfBinding,
   runsOnHomeyApiKey,
   isTerminalFailureLifted,
@@ -153,15 +154,6 @@ const logger = getLogger('battery');
  */
 type MomentaryHolds = 'holds_apply' | 'holds_ignored';
 
-type LoadedClaimRecords = {
-  status: 'loaded';
-  records: Map<string, BatteryClaimRecord>;
-  unreadable: ReadonlySet<string>;
-};
-
-/** The stored claim records, or that their key list has not read cleanly yet. */
-type ClaimRecords = LoadedClaimRecords | { status: 'unavailable' };
-
 /**
  * An admission check that passed, writing nothing: the battery's record is
  * stored (`recorded`), or the claim value it reports now can be recorded
@@ -169,19 +161,26 @@ type ClaimRecords = LoadedClaimRecords | { status: 'unavailable' };
  */
 type RecordableClaim = {
   kind: 'recordable';
-  claims: LoadedClaimRecords;
+  claims: LoadedBatteryClaims;
   value: ClaimToRecord;
 };
 type CurrentClaimRecord = Exclude<BatteryClaimRecord, { kind: 'legacy_app_actions' }>;
 type ClaimCheck = { kind: 'recorded'; record: CurrentClaimRecord } | RecordableClaim;
 
+/** Main-home authority and evidence used to decide if a restored claim can wait for a plan. */
+export type BatteryOwnershipScope = {
+  readMembership(deviceId: string): 'main' | 'other' | 'unsettled';
+  isPowerLimitEnabled(deviceId: string): boolean;
+  hasRecentMeterEvidence(): boolean;
+};
+
 export class HomeBatteryControlOwner implements BatteryControlOwner {
   private readonly store: BatteryClaimStore;
   private readonly legacyRecovery: LegacyBatteryRecovery;
-  /** The stored claim records; read from the store until a read resolves. */
-  private claims: ClaimRecords = { status: 'unavailable' };
   /** Records still owed a hand-back that is not running right now. */
   private readonly pending = new PendingHandBacks();
+  /** A healthy meter alone cannot keep an unadopted battery's last setpoint running. */
+  private readonly bootAdoptionDeadlineMs = Date.now() + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
   /** Complete refreshes in a row each recorded battery has been missing from. */
   private readonly absent = new AbsentBatteries();
   /** Hand-backs running now, each answering whether the battery went back. */
@@ -204,8 +203,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
    * @param managed The owner's Managed map; `isManaged` and admission answer from it.
    * @param actuation The write seam. The owner dispatches only hand-backs through it.
    * @param devices Battery control and legacy hand-back as the transport resolves them.
-   * @param isMainHomeMember Whether the device's Main-home membership is settled;
-   *   false while membership is unknown or an ownership change is pending.
+   * @param scope The settled membership, power-limit control, and meter evidence ports.
    * @param isActuationFenced Main's write fence: a home torn down, ownership
    *   unsettled, or a superseded apply.
    * @param isCapacityDryRun Capacity simulation (dry run): nothing may be written.
@@ -215,11 +213,11 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     private readonly managed: BatteryManagedSettings,
     private readonly actuation: StorageActuation,
     private readonly devices: BatteryControlDeviceReads,
-    private readonly isMainHomeMember: (deviceId: string) => boolean,
+    private readonly scope: BatteryOwnershipScope,
     private readonly isActuationFenced: () => boolean,
     private readonly isCapacityDryRun: () => boolean,
   ) {
-    this.store = new BatteryClaimStore(settings);
+    this.store = new BatteryClaimStore(settings, (deviceId) => this.pending.markBootRecovery(deviceId));
     this.legacyRecovery = new LegacyBatteryRecovery(devices, managed, actuation, this.store);
     // Settle the map the owner starts from, so the first change to it is told
     // apart from it (`applyControlSettings`).
@@ -242,6 +240,12 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (check.kind === 'recorded') {
       // A record a previous run left is adopted rather than handed back: it
       // still names the value the battery held before PELS first claimed it.
+      if (check.record.releasePending) {
+        const claims = this.store.load();
+        if (claims.status !== 'loaded' || !this.store.setReleasePending(claims, deviceId, check.record, false)) {
+          return { status: 'refused', reason: 'claim_record_unwritable' };
+        }
+      }
       this.pending.delete(deviceId);
       return { status: 'admitted', control: toControlBinding(check.record) };
     }
@@ -266,7 +270,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
         // The record this dispatch made names a claim the rejected write never
         // took: nothing to hand back. One made before keeps its restore value.
         return this.watchOnly.judgeClaimRejected(deviceId, this.devices.readBatteryControl(deviceId), written, () => {
-          const claims = this.loadClaims();
+          const claims = this.store.load();
           return recordBefore === undefined && claims.status === 'loaded'
             && claims.records.has(deviceId) && this.forget(claims, deviceId);
         });
@@ -312,7 +316,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   resolveLegacyRecovery(deviceId: string, body: unknown): Promise<void> {
     return this.writes.run(deviceId, () => {
-      const claims = this.loadClaims();
+      const claims = this.store.load();
       if (claims.status !== 'loaded') throw new Error('Battery recovery could not be loaded. Try again.');
       return this.legacyRecovery.complete(deviceId, body, claims.records, () => this.clearClaimState(claims, deviceId));
     });
@@ -332,9 +336,9 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   /** The batteries PELS holds through their app's actions, `undefined` while the claim records cannot be read. */
   private readAppActionClaims(): string[] | undefined {
-    const loaded = this.loadClaims();
+    const loaded = this.store.load();
     if (loaded.status !== 'loaded') return undefined;
-    const claims = this.retryUnreadableClaims(loaded);
+    const claims = this.store.retryUnreadable(loaded);
     if (claims.unreadable.size > 0) return undefined;
     return [...claims.records].flatMap(([deviceId, record]) => (record.kind !== 'claim_capability' ? [deviceId] : []));
   }
@@ -391,7 +395,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (!isDrivableBattery(battery)) return { kind: 'none' };
     const range = battery.kind === 'setpoint' ? battery.surface.range : battery.range;
     const nowMs = Date.now();
-    const claims = this.loadClaims();
+    const claims = this.store.load();
     const verification = this.verification.read(deviceId, range, nowMs);
     const record = claims.status === 'loaded' ? claims.records.get(deviceId) : undefined;
     const claimHeld = claims.status === 'loaded' && claims.records.has(deviceId);
@@ -401,6 +405,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       deliveryCeilingW: verification.deliveryCeilingW,
       chargeCeiling: verification.chargeCeiling,
       claimHeld,
+      ...(claimHeld && this.isBootRecovery(deviceId) ? { needsAdoption: true } : {}),
       handBackDeferred: this.releasing.has(deviceId) || this.pending.isWaiting(deviceId, nowMs)
         || (record !== undefined && this.claimWrites.readStanding(deviceId, record, battery, nowMs) === 'taken_over'),
       // A claim-less battery reports no claim: PELS's record is its claim.
@@ -422,9 +427,9 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   }
 
   onSnapshotCommitted(refresh: ObservedDeviceStateRefreshPayload): void {
-    const claims = this.loadClaims();
+    const claims = this.store.load();
     if (claims.status !== 'loaded') return;
-    this.retryUnreadableClaims(claims);
+    this.store.retryUnreadable(claims);
     this.absent.onSnapshot(claims.records.keys(), refresh, (deviceId) => {
       if (this.releasing.has(deviceId) || this.legacyRecovery.isRunning(deviceId)) return false;
       this.forget(claims, deviceId);
@@ -443,10 +448,13 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   }
 
   /** Retry each hand-back that is due, and each terminal one the battery's control surface lifted. */
-  private retryPendingHandBacks(claims: LoadedClaimRecords, nowMs: number): void {
+  private retryPendingHandBacks(claims: LoadedBatteryClaims, nowMs: number): void {
     for (const [deviceId, pending] of this.pending) {
       if (pending.state === 'awaiting_owner' || this.releasing.has(deviceId)) continue;
       const record = claims.records.get(deviceId);
+      if (record && pending.state === 'due' && pending.reason === 'boot_recovery'
+        && pending.failures === 0 && !pending.awaitingReport
+        && !this.shouldRecoverBootClaim(deviceId, record, nowMs)) continue;
       const retry = pending.state === 'terminal'
         ? isTerminalFailureLifted(record, this.devices.readBatteryControl(deviceId), pending.failure)
         // An unseen battery has no binding to write through yet.
@@ -456,7 +464,22 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     }
   }
 
-  private disableTakenOverClaims(claims: LoadedClaimRecords): void {
+  private shouldRecoverBootClaim(deviceId: string, record: BatteryClaimRecord, nowMs: number): boolean {
+    if (record.releasePending || record.kind === 'legacy_app_actions' || nowMs >= this.bootAdoptionDeadlineMs
+      || this.isCapacityDryRun() || !this.scope.isPowerLimitEnabled(deviceId)) return true;
+    const managed = this.managed.read();
+    if (managed.status === 'resolved' && !isBatteryControlEnabled(managed.devices, deviceId)) return true;
+    if (this.scope.readMembership(deviceId) === 'other' || !this.scope.hasRecentMeterEvidence()) return true;
+    const battery = this.devices.readBatteryControl(deviceId);
+    return battery.kind !== 'unobserved' && (!isDrivableBattery(battery)
+      || !isRecordOfBinding(record, battery) || resolveTerminalFailure(record, battery) !== undefined);
+  }
+
+  private isBootRecovery(deviceId: string): boolean {
+    return this.pending.get(deviceId)?.reason === 'boot_recovery';
+  }
+
+  private disableTakenOverClaims(claims: LoadedBatteryClaims): void {
     const nowMs = Date.now();
     for (const [deviceId, record] of claims.records) {
       if (this.releasing.has(deviceId) || this.settleObservedHandBack(deviceId)) continue;
@@ -469,8 +492,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   /** Whether PELS's own hand-back of this battery landed (`ClaimWriteLog.showsLandedHandBack`): never a takeover. */
   private showsOwedHandBack(deviceId: string, record: BatteryClaimRecord, battery: SetpointBatteryRead): boolean {
-    const bootRecovery = this.pending.get(deviceId)?.reason === 'boot_recovery';
-    return this.claimWrites.showsLandedHandBack(deviceId, record, battery, bootRecovery, Date.now());
+    return this.claimWrites.showsLandedHandBack(deviceId, record, battery, this.isBootRecovery(deviceId), Date.now());
   }
 
   /**
@@ -478,7 +500,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
    * (`showsOwedHandBack`), logged as released. True when it did.
    */
   private settleObservedHandBack(deviceId: string): boolean {
-    const claims = this.loadClaims();
+    const claims = this.store.load();
     if (claims.status !== 'loaded' || this.releasing.has(deviceId)) return false;
     const record = claims.records.get(deviceId);
     const pending = this.pending.get(deviceId);
@@ -490,7 +512,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   }
 
   private forgetHandedBack(
-    claims: LoadedClaimRecords,
+    claims: LoadedBatteryClaims,
     deviceId: string,
     record: BatteryClaimRecord,
     reason: ReleaseReason,
@@ -516,7 +538,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     for (const deviceId of [...this.takenOver]) {
       if (isBatteryControlEnabled(devices, deviceId)) this.takenOver.delete(deviceId);
     }
-    const claims = this.loadClaims();
+    const claims = this.store.load();
     if (claims.status !== 'loaded') return;
     for (const deviceId of [...claims.records.keys()]) {
       if (!isBatteryControlEnabled(devices, deviceId)) {
@@ -533,7 +555,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
    * and turn Managed straight back off. Dropping it lets the next claim record
    * the mode the battery runs now, which is the one PELS hands back to.
    */
-  private adoptAfterReenable(claims: LoadedClaimRecords, deviceId: string): void {
+  private adoptAfterReenable(claims: LoadedBatteryClaims, deviceId: string): void {
     const record = claims.records.get(deviceId);
     const battery = this.devices.readBatteryControl(deviceId);
     if (record?.kind !== 'claim_capability' || battery.kind !== 'setpoint') return;
@@ -566,12 +588,14 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (this.isWatchOnly(deviceId)) return 'watch_only';
     const control = this.managed.read();
     if (control.status !== 'resolved') return 'control_setting_unreadable';
-    if (!isBatteryControlEnabled(control.devices, deviceId)) return 'control_disabled';
-    if (!this.isMainHomeMember(deviceId)) return 'not_main_home';
+    if (!isBatteryControlEnabled(control.devices, deviceId) || !this.scope.isPowerLimitEnabled(deviceId)) {
+      return 'control_disabled';
+    }
+    if (this.scope.readMembership(deviceId) !== 'main') return 'not_main_home';
     const momentary = holds === 'holds_apply' ? this.resolveWriteOnlyRefusal() : null;
     if (momentary !== null) return momentary;
     if (this.releasing.has(deviceId) || this.pending.holdsClaim(deviceId, Date.now())) return 'release_in_flight';
-    const claims = this.loadClaims();
+    const claims = this.store.load();
     if (claims.status !== 'loaded') return 'claim_records_unread';
     if (claims.unreadable.has(deviceId)) return 'claim_record_unreadable';
     const record = claims.records.get(deviceId);
@@ -589,7 +613,11 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     holds: MomentaryHolds,
   ): BatteryClaimRefusal | ClaimCheck {
     if (record.kind === 'legacy_app_actions' || !isRecordOfBinding(record, battery)) return 'claim_record_mismatch';
-    const standing = this.claimWrites.readStanding(deviceId, record, battery, Date.now());
+    const nowMs = Date.now();
+    if (this.isBootRecovery(deviceId) && (record.releasePending || nowMs >= this.bootAdoptionDeadlineMs)) {
+      return 'release_in_flight';
+    }
+    const standing = this.claimWrites.readStanding(deviceId, record, battery, nowMs);
     if (standing === 'taken_over') return 'claim_lost';
     return standing === 'contested' && holds === 'holds_apply' ? 'claim_contested' : { kind: 'recorded', record };
   }
@@ -602,56 +630,18 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     return record;
   }
 
-  /**
-   * The claim records, read from the store until the read resolves. Every
-   * record found then is a claim the previous run never handed back; a record
-   * that does not parse is logged once and leaves every other battery alone.
-   */
-  private loadClaims(): ClaimRecords {
-    if (this.claims.status === 'loaded') return this.claims;
-    const read = this.store.readAll();
-    if (read.status !== 'resolved') return this.claims;
-    this.claims = {
-      status: 'loaded',
-      records: new Map(read.records),
-      unreadable: new Set(read.unreadableDeviceIds),
-    };
-    for (const deviceId of read.records.keys()) {
-      this.pending.markBootRecovery(deviceId);
-    }
-    for (const deviceId of read.unreadableDeviceIds) {
-      logger.warn({ event: 'battery_control_claim_record_unreadable', deviceId });
-    }
-    return this.claims;
-  }
-
-  private retryUnreadableClaims(claims: LoadedClaimRecords): LoadedClaimRecords {
-    if (claims.unreadable.size === 0) return claims;
-    const read = this.store.readAll();
-    if (read.status !== 'resolved') return claims;
-    const unreadable = new Set([...claims.unreadable].filter((id) => read.unreadableDeviceIds.includes(id)));
-    for (const deviceId of claims.unreadable) {
-      const record = read.records.get(deviceId);
-      if (record === undefined) continue;
-      claims.records.set(deviceId, record);
-      this.pending.markBootRecovery(deviceId);
-    }
-    this.claims = { ...claims, unreadable };
-    return this.claims;
-  }
-
   /** The battery's stored claim record, or `undefined` when it has none or the records are not read. */
   private readRecord(deviceId: string): BatteryClaimRecord | undefined {
-    const claims = this.loadClaims();
+    const claims = this.store.load();
     return claims.status === 'loaded' ? claims.records.get(deviceId) : undefined;
   }
 
-  private forget(claims: LoadedClaimRecords, deviceId: string): boolean {
+  private forget(claims: LoadedBatteryClaims, deviceId: string): boolean {
     this.clearClaimState(claims, deviceId);
     return this.store.remove(deviceId);
   }
 
-  private clearClaimState(claims: LoadedClaimRecords, deviceId: string): void {
+  private clearClaimState(claims: LoadedBatteryClaims, deviceId: string): void {
     claims.records.delete(deviceId);
     this.claimWrites.forget(deviceId);
     this.pending.delete(deviceId);
@@ -674,7 +664,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   }
 
   private async runRelease(deviceId: string, reason: ReleaseReason): Promise<boolean> {
-    const claims = this.claims;
+    const claims = this.store.load();
     if (claims.status !== 'loaded') return false;
     const record = claims.records.get(deviceId);
     if (record === undefined) return false;
@@ -689,10 +679,13 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     // Its app refuses control, so it refuses the hand-back's writes as well.
     // Nothing is recorded: the hand-back is due again once watch-only ends.
     if (this.isWatchOnly(deviceId)) return false;
-    const bootRecovery = this.pending.get(deviceId)?.reason === 'boot_recovery';
     const verdict: ReleaseVerdict = battery.kind === 'unobserved' ? { kind: 'release' }
-      : this.claimWrites.classifyRelease(deviceId, record, battery, bootRecovery, Date.now());
+      : this.claimWrites.classifyRelease(deviceId, record, battery, this.isBootRecovery(deviceId), Date.now());
     if (verdict.kind !== 'release') return this.settleWithoutWrite(claims, deviceId, record, reason, verdict);
+    if (!this.store.setReleasePending(claims, deviceId, record, true)) {
+      // A settings failure cannot keep an unsafe setpoint running. The original claim still names the restore target.
+      logger.warn({ event: 'battery_control_release_record_failed', deviceId, reason });
+    }
     this.pending.noteRestoreUnreported(deviceId, reason);
     this.claimWrites.noteRestore(deviceId, Date.now());
     try {
@@ -726,7 +719,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
    * the claim is contested, or superseded by a takeover.
    */
   private settleWithoutWrite(
-    claims: LoadedClaimRecords,
+    claims: LoadedBatteryClaims,
     deviceId: string,
     record: BatteryClaimRecord,
     reason: ReleaseReason,

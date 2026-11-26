@@ -57,7 +57,7 @@ import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
  *   is owed its integration's hand-back actions; nothing it reports can show a
  *   takeover.
  */
-export type BatteryClaimRecord =
+export type BatteryClaimRecord = (
   | {
     kind: 'claim_capability';
     capabilityId: HomeBatteryClaimCapabilityId;
@@ -65,15 +65,21 @@ export type BatteryClaimRecord =
     claimedAtMs: number;
   }
   | { kind: 'app_actions'; target: AppActionControlTarget; claimedAtMs: number }
-  | { kind: 'legacy_app_actions'; claimedAtMs: number };
+  | { kind: 'legacy_app_actions'; claimedAtMs: number }
+) & { releasePending?: true };
 
 /** A record's stored form: the claim capability's unchanged since records were first stored. */
 const toStoredRecord = (record: BatteryClaimRecord): Record<string, unknown> => {
+  const release = record.releasePending ? { releasePending: true } : {};
   if (record.kind === 'app_actions') {
-    return { handBack: 'app_actions', target: record.target, claimedAtMs: record.claimedAtMs };
+    return { handBack: 'app_actions', target: record.target, claimedAtMs: record.claimedAtMs, ...release };
   }
-  if (record.kind === 'legacy_app_actions') return { handBack: 'app_actions', claimedAtMs: record.claimedAtMs };
-  return { capabilityId: record.capabilityId, previousValue: record.previousValue, claimedAtMs: record.claimedAtMs };
+  if (record.kind === 'legacy_app_actions') {
+    return { handBack: 'app_actions', claimedAtMs: record.claimedAtMs, ...release };
+  }
+  return {
+    capabilityId: record.capabilityId, previousValue: record.previousValue, claimedAtMs: record.claimedAtMs, ...release,
+  };
 };
 
 /**
@@ -112,26 +118,84 @@ const parseActionTarget = (value: unknown): AppActionControlTarget | null => {
 
 const parseClaimRecord = (value: unknown): BatteryClaimRecord | null => {
   if (!isUnknownRecord(value)) return null;
-  const { capabilityId, previousValue, claimedAtMs, handBack } = value;
+  const { capabilityId, previousValue, claimedAtMs, handBack, releasePending } = value;
   if (typeof claimedAtMs !== 'number' || !Number.isFinite(claimedAtMs)) return null;
+  if (releasePending !== undefined && releasePending !== true) return null;
+  const release: Pick<BatteryClaimRecord, 'releasePending'> = releasePending ? { releasePending } : {};
   if (handBack === 'app_actions') {
     if (capabilityId !== undefined || previousValue !== undefined) return null;
-    if (!('target' in value)) return { kind: 'legacy_app_actions', claimedAtMs };
+    if (!('target' in value)) return { kind: 'legacy_app_actions', claimedAtMs, ...release };
     const target = parseActionTarget(value.target);
-    return target === null ? null : { kind: 'app_actions', target, claimedAtMs };
+    return target === null ? null : { kind: 'app_actions', target, claimedAtMs, ...release };
   }
   if (!isClaimCapabilityId(capabilityId) || typeof previousValue !== 'string' || previousValue.length === 0) {
     return null;
   }
-  return { kind: 'claim_capability', capabilityId, previousValue, claimedAtMs };
+  return { kind: 'claim_capability', capabilityId, previousValue, claimedAtMs, ...release };
 };
 
 const claimKey = (deviceId: string): string => `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${deviceId}`;
 
 const logger = getLogger('battery');
 
+export type LoadedBatteryClaims = {
+  status: 'loaded';
+  records: Map<string, BatteryClaimRecord>;
+  unreadable: ReadonlySet<string>;
+};
+
+type CachedBatteryClaims = LoadedBatteryClaims | { status: 'unavailable' };
+
 export class BatteryClaimStore {
-  constructor(private readonly settings: SettingsPort) {}
+  private cache: CachedBatteryClaims = { status: 'unavailable' };
+
+  constructor(
+    private readonly settings: SettingsPort,
+    private readonly onRestoredClaim: (deviceId: string) => void = () => undefined,
+  ) {}
+
+  /** Keep the last resolved list; an unavailable key list remains owed a read. */
+  load(): CachedBatteryClaims {
+    if (this.cache.status === 'loaded') return this.cache;
+    const read = this.readAll();
+    if (read.status !== 'resolved') return this.cache;
+    this.cache = {
+      status: 'loaded',
+      records: new Map(read.records),
+      unreadable: new Set(read.unreadableDeviceIds),
+    };
+    for (const deviceId of read.records.keys()) this.onRestoredClaim(deviceId);
+    for (const deviceId of read.unreadableDeviceIds) {
+      logger.warn({ event: 'battery_control_claim_record_unreadable', deviceId });
+    }
+    return this.cache;
+  }
+
+  retryUnreadable(claims: LoadedBatteryClaims): LoadedBatteryClaims {
+    if (claims.unreadable.size === 0) return claims;
+    const read = this.readAll();
+    if (read.status !== 'resolved') return claims;
+    const unreadable = new Set([...claims.unreadable].filter((id) => read.unreadableDeviceIds.includes(id)));
+    for (const deviceId of claims.unreadable) {
+      const record = read.records.get(deviceId);
+      if (record === undefined) continue;
+      claims.records.set(deviceId, record);
+      this.onRestoredClaim(deviceId);
+    }
+    this.cache = { ...claims, unreadable };
+    return this.cache;
+  }
+
+  /** Persist a hand-back before touching the battery, or clear it when a new admission supersedes it. */
+  setReleasePending(
+    claims: LoadedBatteryClaims, deviceId: string, record: BatteryClaimRecord, pending: boolean,
+  ): boolean {
+    if (Boolean(record.releasePending) === pending) return true;
+    const updated: BatteryClaimRecord = { ...record, releasePending: pending ? true : undefined };
+    if (!this.write(deviceId, updated)) return false;
+    claims.records.set(deviceId, updated);
+    return true;
+  }
 
   readAll(): BatteryClaimRecordsRead {
     const keyList = readSettingsKeyList(this.settings);

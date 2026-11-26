@@ -1,7 +1,7 @@
 // SDK-boundary e2e for home-battery relief: over the pace, PELS discharges the
 // battery before it sheds the owner's devices, verifies the battery follows,
-// and hands it back when it is not needed, not responding, or the meter goes
-// silent. Nothing internal is mocked: the whole-home net enters through the
+// keeps control at idle after the peak, and hands it back when it stops
+// responding or the meter goes silent. The whole-home net enters through the
 // real Homey Energy poll (`manager/energy/live`), the battery and the heater
 // through the device API, and what is asserted is what PELS writes back
 // through the SDK (`api.put`) and its structured logs.
@@ -195,20 +195,20 @@ describe('home battery relief (SDK-boundary e2e)', () => {
       .toMatchObject({ deviceId: BATTERY, reason: 'meter_silent' });
   });
 
-  it('hands the battery back through the restore lane once the house has room for it', async () => {
+  it('keeps the battery under PELS control at idle once the peak passes', async () => {
     const home = await startHome({ houseW: 4500, following: true });
     await home.advance(6);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
 
-    // The heater's need passes: the house falls well under the pace, the
-    // discharge steps back to 0 W, and the restore lane hands the battery back
-    // once its cooldowns allow and the house has room for its full charge
-    // (it was idle when PELS took it), with no idle wait.
+    // The house falls below the pace. The battery steps back to idle and
+    // remains under PELS control without a price plan.
     home.setHouseW(0);
     await home.advance(36);
 
-    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
-    expect(home.events.find((event) => event.event === 'battery_storage_released'))
-      .toMatchObject({ deviceId: BATTERY, reason: 'restored' });
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    expect(home.battery.getActualCapabilityValue('target_power')).toBe(0);
+    expect(home.battery.getActualCapabilityValue('measure_power')).toBe(0);
+    expect(writesTo(home.put, BATTERY).filter(([capability]) => capability === 'target_power_mode'))
+      .toEqual([['target_power_mode', 'homey']]);
   });
 });

@@ -500,8 +500,9 @@ battery write ahead of shedding selection. It is never in the shed set, so the
 executor never sees a `shedAction` for it: its setpoint leaves selection as
 `storageSetpoints`, becomes a limit hold in `lib/plan/battery/storageLimit.ts`,
 and reaches the storage lane as an ordinary `StorageDecision`. The restore
-lane hands a limit hold back in priority order (release reason `restored`);
-there is no idle-timer hand-back.
+lane restores managed idle in priority order. Ordinary measured planning
+resumes solar charging or the price plan. The battery owner persists the
+hand-back request before writing so a restart can finish it.
 
 Binary and stepped actuator outcomes distinguish issued requests from acknowledgement.
 Every issued binary/step outcome carries `acknowledged`; a step also carries its

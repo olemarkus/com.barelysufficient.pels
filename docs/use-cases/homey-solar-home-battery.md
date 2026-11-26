@@ -28,9 +28,9 @@ A Marstek Venus paired with the Marstek Battery Connector app (its local connect
 
 Until a key is saved, the battery's card reads `PELS can only watch it: add a Homey API key so it can help with your limit and solar`. These apps report no control mode back to Homey, so a change you make in the battery's own app while PELS holds it is not seen, and PELS's next command replaces it. Turn off **Managed by PELS** or **Power-limit control** to take the battery back.
 
-## Your battery keeps its own mode until PELS has a job for it
+## PELS controls your managed battery
 
-Self-consumption, the battery's own price trading and its own schedule keep running as usual. PELS takes the battery over only while it has a job for it: sharing your solar in priority order, or holding your limit when its turn comes. When the job is done, PELS hands the battery back to the mode it was in. A Zendure on its local app has no mode of its own in Homey: PELS hands it back at 0 W, and your own flows take it from there.
+PELS sets the battery to charge from spare solar, discharge to hold your power limit, or idle. Turn on **Plan charging with PELS** if you also want it to plan charging and household supply around electricity prices. A Zendure on its local app has no mode of its own in Homey: PELS hands it back at 0 W, and your own flows take it from there.
 
 The battery shows up like any other managed device: a card on the **Overview**, a row in the device list and its own device page.
 
@@ -48,7 +48,7 @@ That one place decides two things:
 - **Who gets the sun.** Solar surplus goes to your devices and batteries in priority order, and only what is left goes to the grid. With the battery last, your devices get the sun first, then the battery, then the grid. A device ranked below the battery gets what the battery leaves. A device ranked above it gets the solar first: if it is waiting to start, PELS lowers the battery's charge so the device can run.
 - **Who is limited first, and who the battery protects.** When the house nears its limit, PELS limits in priority order, from the bottom up. When the battery's turn comes, PELS first caps its charge, then asks it to discharge enough to cover the rest. Devices below the battery are limited before it, and its discharge protects every device above it. Last in the list, it covers your whole home before any device is limited.
 
-So if the battery starts its own cheap-hour charging from the grid while the car is charging, PELS caps the battery's charge, not the car. And at the dinner peak, a battery last in the list discharges so the heating, hot water and car keep running.
+If PELS plans cheap-hour charging for both the car and the battery, the device higher in priority gets the available power first. And at the dinner peak, a battery last in the list discharges so the heating, hot water and car keep running.
 
 When the battery is empty, or does not follow what PELS asks, PELS simply moves on to the next device, exactly as in a home without a battery. Your limit holds either way.
 
@@ -71,11 +71,10 @@ If you change the battery's mode in its own app while PELS holds it, PELS takes 
 | Card | What it means |
 | --- | --- |
 | `Supplying` · `Holding your limit so your devices keep running` | The battery discharges so the house stays under its limit. The Overview hero adds a line such as `Sessy battery is supplying 2.4 kW to hold your limit.` |
-| `Charging` · `Storing the solar power your devices leave` | PELS holds the battery for a device above it, and lets it store the solar that device leaves. |
-| `Charging` · `Charging less so a device can use the solar` | PELS lowered the battery's charge so a device above it can run on the sun. |
+| `Charging` · `Storing solar for later household use` | PELS uses the solar surplus available at the battery’s place in your priority list. |
 | `Limited · Charging` · `Waiting to charge faster` | PELS capped the battery's charge at its place in the priority order, and gives the rest back as the house has room. |
 | `Selling to grid` · `Selling stored energy while export pays more` | With **Plan charging with PELS** and **Sell stored energy when profitable** on, the battery sells stored energy: it discharges and your meter shows export. While the house still uses all of it, the card reads `Supplying`. |
-| `Own mode` · `PELS takes over when your limit or solar needs it` | PELS has no job for the battery right now; its own app is in charge. |
+| `Waiting` | PELS is keeping the battery idle until it has power to store or a reason to discharge. |
 | `Own mode` · `PELS can only watch it: its app does not accept control` | The battery's app refused PELS (for example a Sessy on its cloud login). PELS tries again after six hours or when PELS restarts. |
 | `Own mode` · `PELS can only watch it: its app does not give Homey control` | The battery's app offers Homey no power setting or Homey/API mode PELS can use, so PELS reads the battery and never controls it. |
 | `Own mode` · `Power-limit control is off: its own app is in charge` | **Power-limit control** is off for the battery. |
@@ -84,10 +83,10 @@ The fact line shows how full the battery is, such as `62 % charged`. While PELS 
 
 ## When PELS hands the battery back
 
-- **After a limit.** Bringing the battery back is a normal resume in your priority order: once the house has room for the battery to charge in its own mode again, PELS hands it back to the mode it was in.
-- **After sharing solar.** About two minutes after no device above the battery needs that power any more, PELS hands it back. A full battery is handed back at once.
-- **At once** if the power meter stops reporting, or the battery stops responding.
-- **When PELS restarts.** PELS keeps a record of every battery it holds, and hands each one back as it starts again.
+- **When you turn off Managed by PELS or Power-limit control.** The battery returns to its own mode.
+- **If the meter stops reporting or the battery stops responding.** PELS gives control back.
+
+After a restart, PELS can resume control from new meter readings. If the meter stays silent, PELS gives control back.
 
 If you uninstall PELS while it holds the battery, switch the battery's mode back in its own app.
 
@@ -106,17 +105,17 @@ If you uninstall PELS while it holds the battery, switch the battery's mode back
 
 Take a home with a 5 kW hard cap, 6 kW of panels, a 10 kWh battery, a water heater with **Use solar surplus**, and an EV charger with **Charge on solar surplus**. The battery is last in priority.
 
-**10:00.** The panels make 3 kW and the house uses 1 kW. The water heater's target is raised, and it takes the surplus first. The battery's own mode stores what is left: its card reads `Own mode` · `PELS takes over when your limit or solar needs it`, with `· charging` on the fact line.
+**10:00.** The panels make 3 kW and the house uses 1 kW. The water heater's target is raised, and it takes the surplus first. PELS uses the remaining surplus to charge the battery.
 
-**12:30.** The car comes home and plugs in. The battery is already storing the sun, so PELS lowers its charge: `Charging less so a device can use the solar`. The car charges on the sun ahead of the battery, and the battery takes the rest. Almost nothing goes to the grid.
+**12:30.** The car comes home and plugs in. The battery is already storing the sun, so PELS lowers its charge to make room. The car charges on the sun ahead of the battery, and the battery takes the rest. Almost nothing goes to the grid.
 
-**16:00.** The car is full and the sun is fading. The battery takes every watt of surplus. About two minutes later PELS hands it back, and its own mode stores the rest.
+**16:00.** The car is full and the sun is fading. The battery stores the remaining surplus and idles when the sun fades.
 
 **18:00.** Dinner, floor heating and the dishwasher push the house past its safe pace. The battery is last in the list, so its turn comes first: `Supplying` · `Holding your limit so your devices keep running`, and the hero reads `Sessy battery is supplying 2.4 kW to hold your limit.` No device is turned down, and the hour stays under 5 kW.
 
 **21:30.** The battery is empty. PELS limits the floor heating in priority order, exactly as it would without a battery, and the hard cap still holds.
 
-**02:00.** The battery's own schedule charges from the grid in a cheap hour, while a Smart task charges the car for the morning. As the house nears its limit, PELS caps the battery's charge first: `Limited · Charging`. The car finishes on time. When the house has room again, the battery's charge comes back in priority order and PELS hands it back to its own mode.
+**02:00.** With **Plan charging with PELS** enabled, the battery can charge from the grid in a cheap hour while a Smart task charges the car for the morning. As the house nears its limit, PELS caps the battery’s charge first. The car finishes on time and PELS resumes the battery plan as room becomes available.
 
 The battery's charging from the grid counts against your [daily budget](../daily-budget.md) like any other load.
 

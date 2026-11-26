@@ -87,6 +87,7 @@ describe('buildPlanInputDevice', () => {
       isEvCharger: false,
       isBatteryOrSolar: false,
       starvationSupported: false,
+      phaseFootprint: { kind: 'unknown' },
     });
   });
 

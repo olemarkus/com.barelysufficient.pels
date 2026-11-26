@@ -101,9 +101,7 @@ export const BATTERY_CHARGE_LIMITED_LABEL = `${displayStateLabel('held')} · ${B
 export const BATTERY_REASON_LINES = {
   relief: 'Holding your limit so your devices keep running',
   charge_limit: 'Waiting to charge faster',
-  surplus: 'Storing the solar power your devices leave',
-  cap_for_device: 'Charging less so a device can use the solar',
-  none: 'PELS takes over when your limit or solar needs it',
+  none: 'Waiting for PELS to take control',
   power_limit_off: 'Power-limit control is off: its own app is in charge',
   plan_charge: 'Buying cheap electricity for later',
   plan_solar: 'Storing solar for later household use',
@@ -120,8 +118,6 @@ export const BATTERY_REASON_LINES = {
 export const BATTERY_SIMULATED_REASON_LINES = {
   relief: 'Would hold your limit so your devices keep running',
   charge_limit: 'Would charge slower to hold your limit',
-  surplus: 'Would store the solar power your devices leave',
-  cap_for_device: 'Would charge less so a device can use the solar',
   plan_charge: 'Would buy cheap electricity for later',
   plan_solar: 'Would store solar for later household use',
   plan_supply: 'Would use stored energy while power is expensive',
@@ -154,8 +150,6 @@ const HELD_BACK_MIN_KW = 0.05;
 const INTENDED_DIRECTION = {
   relief: 'supplying',
   charge_limit: 'charging',
-  surplus: 'charging',
-  cap_for_device: 'charging',
   plan_charge: 'charging',
   plan_solar: 'charging',
   plan_supply: 'supplying',

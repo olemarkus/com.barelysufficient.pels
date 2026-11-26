@@ -10,7 +10,7 @@ import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import type { HomeyEnergyApi } from '../../lib/utils/homeyEnergy';
 import type { SmartTaskCandidateRequest } from '../../packages/contracts/src/smartTaskEdit';
 import {
-  CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS,
+  BATTERY_CONTROL_DEVICES, CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING, PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 
@@ -258,14 +258,15 @@ describe('continuous battery plan through the Homey SDK', () => {
     expect(setpoints(home).every(watts => watts === 0)).toBe(true);
   });
 
-  it('hands back after the owner disables continuous planning through the settings channel', async () => {
+  it('keeps the idle claim after the owner disables price planning', async () => {
     const home = await startHome(true);
     await home.advance(8);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
     mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: { ...CONFIG, enabled: false } });
     await home.advance(4);
     expect(((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).status).toBe('disabled');
-    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    expect(home.battery.getActualCapabilityValue('target_power')).toBe(0);
   });
 
   it('protects the minimum reserve when capacity pressure asks for battery relief', async () => {
@@ -404,30 +405,30 @@ describe('continuous battery plan through the Homey SDK', () => {
     expect(batteryReadingsAtCurtail.every(watts => watts > 0)).toBe(true);
   });
 
-  it('hands the battery back on restart, then resumes its plan', async () => {
+  it('retains ownership across restart and returns the original mode on opt-out', async () => {
     const home = await startHome(true);
     await home.advance(8);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
     await home.app.onUninit();
     home.put.mockClear();
-    const restarted = createApp();
+    const restarted = createApp({ withoutPowerMeasurement: true });
     await restarted.onInit();
     const modeWrites = () => home.put.mock.calls.flatMap(([path, body]) => (
       path === `manager/devices/device/${BATTERY}/capability/target_power_mode` ? [(body as { value: unknown }).value] : []
     ));
-    // Boot recovery hands back every battery the last run held, as docs/solar.md says.
-    await home.advance(1);
-    expect(modeWrites()).toEqual(['anti_feed']);
-    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
-    // Once the battery reports its own mode, the plan takes it over again.
-    await home.advance(3);
+    await home.advance(4);
     const resumed = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
     expect(resumed.status, JSON.stringify(resumed)).toBe('planned');
-    expect(modeWrites()).toEqual(['anti_feed', 'homey']);
+    expect(modeWrites()).toEqual([]);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+
+    mockHomeyInstance.settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: false });
+    await home.advance(4);
+    expect(modeWrites()).toEqual(['anti_feed']);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
   });
 
-  it('hands the battery back when the plan runs out of published prices', async () => {
+  it('falls back to a managed idle setpoint when the price plan runs out', async () => {
     vi.setSystemTime(Date.UTC(2026, 9, 27, 1, 40));
     const home = await startHome(true, 20, undefined, Date.UTC(2026, 9, 27, 2));
     await home.advance(8);
@@ -438,7 +439,8 @@ describe('continuous battery plan through the Homey SDK', () => {
     await home.advance(150);
     expect((await api.ui_devices(context())).continuousBatteryPlans[BATTERY])
       .toMatchObject({ status: 'waiting', reason: 'prices_unavailable' });
-    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    expect(home.battery.getActualCapabilityValue('target_power')).toBe(0);
   });
 
   it('respects a manual mode change in the battery app', async () => {

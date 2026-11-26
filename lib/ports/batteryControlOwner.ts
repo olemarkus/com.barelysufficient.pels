@@ -236,6 +236,8 @@ export type BatteryLeverRead =
     chargeCeiling: BatteryChargeCeiling;
     /** PELS holds a recorded claim and owes the battery a hand-back. */
     claimHeld: boolean;
+    /** A measured decision must adopt the claim left by a previous run, even if the reported mode already matches. */
+    needsAdoption?: true;
     /**
      * A hand-back of this battery is running, waiting out its retry back-off, or
      * stopped for good: asking for another now would do nothing.

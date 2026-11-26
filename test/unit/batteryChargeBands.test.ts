@@ -110,6 +110,7 @@ describe('battery charge ceiling by charge band', () => {
     expect(chargeCeilingAtLevelW(ceiling, level(85))).toBe(1200);
     // A higher band's lesson cannot lift a lower one's: the taper only falls.
     expect(chargeCeilingAtLevelW(ceiling, level(97))).toBe(1200);
+    expect(chargeCeilingAtLevelW(ceiling, level(100))).toBe(0);
     expect(chargeCeilingAtLevelW(ceiling, undefined)).toBe(2500);
   });
 

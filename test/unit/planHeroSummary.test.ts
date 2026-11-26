@@ -249,7 +249,7 @@ describe('buildDecisionSentence', () => {
     });
 
     it('does not name a battery held for surplus that is discharging', () => {
-      expect(named({ kind: 'surplus' }, -2400)).toEqual([]);
+      expect(named({ kind: 'plan_solar' }, -2400)).toEqual([]);
     });
 
     it('does not name a battery in its own mode that is discharging', () => {

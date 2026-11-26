@@ -128,7 +128,8 @@ const startHome = async (params: {
     return originalGet(path);
   });
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
-  await createApp().onInit();
+  let app = createApp({ withoutPowerMeasurement: true });
+  await app.onInit();
   const follow = (): void => {
     if (params.batteries === 0) return;
     const targetW = followedPowerW(p1.getActualCapabilityValue(MODE), houseW, params.groupLimitW ?? 800);
@@ -146,8 +147,9 @@ const startHome = async (params: {
       }
     },
     restart: async () => {
-      await cleanupApps();
-      await createApp().onInit();
+      await app.onUninit();
+      app = createApp({ withoutPowerMeasurement: true });
+      await app.onInit();
       await drainPending();
     },
     refreshDevices: () => { mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now()); },
@@ -207,10 +209,10 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     expect(batteries[0]).toMatchObject({ name: 'P1 meter batteries', batteryControl: 'drivable' });
     expect(continuousBatteryPlans[GROUP]).toMatchObject({ status: 'disabled', exportUnsupported: true });
     expect(devices.some((device) => device.id === 'battery-1')).toBe(false);
-    // In its own mode the group already holds the P1 at zero, so it takes the
-    // export by itself: PELS has no need to claim it, and never grid-charges it.
+    // PELS claims the group and tells it to store the metered export.
     expect(home.p1.getActualCapabilityValue('measure_power.battery_group_power_w')).toBe(500);
-    expect(home.modeWrites()).toEqual([]);
+    expect(home.modeWrites()).toContain('zero_charge_only');
+    expect(home.modeWrites()).not.toContain('to_full');
   });
 
   it('(b) reads three batteries as one group, and under quarter-hour capacity pressure covers the import', async () => {
@@ -244,7 +246,7 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     expect(claimKeys.filter((key: string) => key.includes('battery-'))).toEqual([]);
   });
 
-  it('(d) hands the group back to the mode it held, exactly once, when the owner turns Power-limit control off', async () => {
+  it('(d) hands the group back to the mode it held, exactly once, when the owner turns Managed off', async () => {
     const home = await startHome({
       country: 'BE', batteries: 1, houseW: 5000, mode: 'predictive',
       settings: meterSettings({ [CAPACITY_LIMIT_KW]: 3, [CAPACITY_MARGIN_KW]: 0, [CAPACITY_PERIOD_MINUTES]: 15 }),
@@ -291,13 +293,16 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
   });
 
-  it('(d, restart) still hands the group back to its recorded mode, once, after an app restart', async () => {
+  it('(d, restart) keeps the group claimed and restores its recorded mode only on opt-out', async () => {
     const home = await startHome(pressured());
     await home.advance(12);
     expect(home.modeWrites()).toContain('zero_discharge_only');
     expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toMatchObject({ previousValue: 'predictive' });
     await home.restart();
     await home.advance(6);
+    expect(home.modeWrites()).not.toContain('predictive');
+    expect(home.p1.getActualCapabilityValue(MODE)).toBe('zero_discharge_only');
+    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toMatchObject({ previousValue: 'predictive' });
     const before = home.modeWrites().length;
     mockHomeyInstance.settings.set(BATTERY_CONTROL_DEVICES, { [GROUP]: false });
     await home.advance(12);
@@ -305,7 +310,7 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
   });
 
-  it('(d, restart) hands back a group the P1 reports only after its first read since the restart', async () => {
+  it('(d, restart) retains a claim when the P1 group appears after the first device read', async () => {
     const home = await startHome(pressured());
     await home.advance(12);
     expect(home.modeWrites()).toContain('zero_discharge_only');
@@ -316,6 +321,8 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     for (const capabilityId of GROUP_CAPABILITIES) home.p1.restoreCapability(capabilityId);
     home.refreshDevices();
     await home.advance(6);
+    expect(home.modeWrites()).not.toContain('predictive');
+    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toMatchObject({ previousValue: 'predictive' });
     const before = home.modeWrites().length;
     mockHomeyInstance.settings.set(BATTERY_CONTROL_DEVICES, { [GROUP]: false });
     await home.advance(12);
@@ -339,7 +346,7 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
   });
 
-  it('(b, load drops) hands the group back to the owner\'s standby once the hold is no longer needed', async () => {
+  it('(b, load drops) keeps the group claimed in standby once the hold is no longer needed', async () => {
     const home = await startHome({
       country: 'BE', batteries: 3, houseW: 3500, mode: 'standby', groupLimitW: 2400,
       settings: meterSettings({ [CAPACITY_LIMIT_KW]: 3, [CAPACITY_MARGIN_KW]: 0, [CAPACITY_PERIOD_MINUTES]: 15 }),
@@ -347,17 +354,12 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     await home.advance(12);
     expect(home.modeWrites()).toContain('zero_discharge_only');
     const before = home.modeWrites().length;
-    // The load drops: 1.8 kW of room, less than the group's 2.4 kW charge ceiling, but its own standby imports nothing.
     home.setHouseW(1200);
     await home.advance(72);
-    // The hold steps down to 0 W (standby, PELS's hold) and is then handed back to the owner's standby.
-    const after = home.modeWrites().slice(before);
-    expect(after).toEqual(['standby', 'standby']);
-    // Handed back once: nothing more is written while the load stays low. The
-    // group already held standby, so it reports no change: its record goes once
-    // the report window has passed with the group still in standby.
+    expect(home.modeWrites().slice(before)).toEqual(['standby']);
+    expect(home.p1.getActualCapabilityValue('measure_power.battery_group_power_w')).toBe(0);
     await home.advance(36);
-    expect(home.modeWrites().slice(before)).toEqual(['standby', 'standby']);
-    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
+    expect(home.modeWrites().slice(before)).toEqual(['standby']);
+    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toMatchObject({ previousValue: 'standby' });
   });
 });

@@ -1,41 +1,14 @@
 /**
- * Restoring a home battery is handing it back (owner ruling, 2026-10-06). A
- * battery PELS holds for the limit (its charge capped, or discharging) leaves
- * that hold only here, in priority order with every other restore, under the
- * same gates: the startup and shed/restore cooldowns, meter settling, one
- * restore per cycle unless a batch is open, devices still recovering, startup
- * reservations, and the headroom its own mode takes once it charges again.
- *
- * The lane runs on the admission headroom, which already withholds the
- * discharge PELS holds (`withoutStorageWithheld`), so that discharge is never
- * spent on a hand-back: the battery steps its discharge down on headroom first
- * (`lib/plan/battery/storageRelief.ts`), and is handed back once the house has
- * room for the charge its own mode takes.
- *
- * A hand-back waiting for room holds back every restore ranked below it
- * (`isBehindWaitingHandBack`): a smaller device lower in the order would
- * otherwise take the room first, every cycle, and the battery never swaps.
- *
- * The hand-back is sized as the charge its own mode takes once handed back
- * (`StorageLeverState.ownModeChargeW`) above what the hold already lets
- * through (`resolveOwnModeChargeAboveHoldW`): a battery capped at a charge
- * already draws it on the meter, so only the rest is new. A discharge hold
- * lets no charge through, so it needs the whole own-mode charge; the discharge
- * PELS holds is withheld from restore already, so the hand-back never spends
- * it.
- *
- * The battery is not a load: nothing here touches its plan device. A hand-back
- * the lane admits joins `storageHandedBack`, and the battery stage releases
- * the hold (`applyStorageHandBacks`, reason `restored`).
+ * Return a capacity-limited battery to managed idle at its turn in the
+ * restore order. The headroom ledger has already withheld its discharge,
+ * and a later measured cycle admits routine solar or economic operation.
  */
-import { phaseShare } from '../phase/phaseRoom';
+import { phaseRoomFor, phaseShare } from '../phase/phaseRoom';
 import { spendPowerHeadroom } from '../powerLimitMath';
 import type { DevicePlanDevice } from '../planTypes';
 import type { StorageLeverState } from '../planState';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import { resolveOwnModeChargeAboveHoldW } from '../battery/storageLadder';
 import { buildReserveAdmittedLogFields, resolveReserveAdmission } from '../admission';
-import { computeRestoreBufferKw } from './accounting';
 import { canAdmitWithinBatch, canAttemptBatchContinuation, recordBatchAdmission } from './batch';
 import { shouldWaitForOtherRecovery } from './coordination';
 import {
@@ -44,7 +17,33 @@ import {
 } from './timing';
 import type { RestoreCycle, RestoreLoopState } from './types';
 
-/** Hand the battery back if the lane admits it now: its limit hold (`resolveStorageHandBack`). */
+function exportRoomFits(
+  cycle: RestoreCycle,
+  device: DevicePlanDevice,
+  increaseW: number,
+): boolean {
+  if (increaseW <= 0) return true;
+  return (['L1', 'L2', 'L3'] as const).every((phase) => {
+    const neededKw = increaseW * phaseShare(device.phaseFootprint, phase) / 1000;
+    const availableKw = cycle.readPhaseExportRoomKw(phase);
+    return neededKw === 0 || availableKw === null || availableKw >= neededKw;
+  });
+}
+
+function phaseRestoreBlock(
+  cycle: RestoreCycle,
+  device: DevicePlanDevice,
+  lever: StorageLeverState,
+): 'phase_import' | 'phase_export' | null {
+  if (lever.exportPhase === undefined) return null;
+  // Admission power already debits all held or observed discharge, including
+  // its phase share. The phase axis also withholds its usual clear band.
+  const phaseRoom = phaseRoomFor(cycle.readPhaseRoom(), device.phaseFootprint);
+  if (phaseRoom.kind === 'on' && phaseRoom.kw < 0) return 'phase_import';
+  return exportRoomFits(cycle, device, lever.economicResumeIncreaseW ?? 0) ? null : 'phase_export';
+}
+
+/** Restore a battery to managed idle if the lane admits it now. */
 export function planStorageHandBack(
   cycle: RestoreCycle,
   dev: DevicePlanDevice,
@@ -53,8 +52,9 @@ export function planStorageHandBack(
 ): RestoreLoopState {
   const { state, deviceMap, timing, batchState, headroomReserves, phase } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
-  /** The charge its own mode adds once handed back, over what the hold lets through, kW. */
-  const handBackChargeKw = resolveOwnModeChargeAboveHoldW(lever) / 1000;
+  // A positive held charge can drop to idle without needing import room.
+  // An active discharge must first be eased to zero by the storage stage.
+  if (lever.setpointW < 0 && lever.exportPhase === undefined) return loop;
   const debugKey = `storage:${dev.id}`;
   const reject = (rejectionReason: string): RestoreLoopState => {
     emitRestoreDebugEventOnChange(state, debugKey, {
@@ -63,7 +63,7 @@ export function planStorageHandBack(
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      neededKw: handBackChargeKw,
+      neededKw: 0,
       availableKw: availableHeadroom,
       decision: 'rejected',
       rejectionReason,
@@ -72,16 +72,8 @@ export function planStorageHandBack(
     return loop;
   };
 
-  // Handed back, it discharges again: not onto a phase with no export room for it.
-  if (lever.exportPhase !== undefined) {
-    const roomKw = cycle.readPhaseExportRoomKw(lever.exportPhase);
-    const resumesAtW = lever.resumePlan !== undefined && lever.resumePlan.validUntilMs > timing.nowTs
-      ? lever.resumePlan.setpointW : lever.preClaimSignedW;
-    const resumedKw = Math.max(0, lever.setpointW - resumesAtW) / 1000;
-    if (roomKw !== null && roomKw < resumedKw * phaseShare(dev.phaseFootprint, lever.exportPhase)) {
-      return reject('phase_export');
-    }
-  }
+  const phaseBlock = phaseRestoreBlock(cycle, dev, lever);
+  if (phaseBlock !== null) return reject(phaseBlock);
 
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
   const blockedByInCycleRestore = restoredOneThisCycle && !batchContinuation;
@@ -97,7 +89,7 @@ export function planStorageHandBack(
   );
   if (gateReason) return reject(gateReason.code);
 
-  const neededKw = handBackChargeKw + computeRestoreBufferKw(handBackChargeKw);
+  const neededKw = 0;
   if (batchContinuation && !canAdmitWithinBatch(batchState, neededKw)) return reject('batch_full');
   const reserved = resolveReserveAdmission(dev, availableHeadroom, neededKw, headroomReserves);
   if (reserved.kind === 'blocked_by_reserve') return reject('reserved_for_start');

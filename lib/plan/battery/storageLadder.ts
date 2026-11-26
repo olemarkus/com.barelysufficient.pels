@@ -66,8 +66,8 @@ export type StorageHoldBlock = Extract<
  */
 export function resolveStorageHoldBlock(storage: ObservedStorageInput): StorageHoldBlock | 'holdable' {
   if (storage.verdict === 'not_responding' || storage.verdict === 'sign_inverted') return storage.verdict;
-  if (!storage.admissible) return 'not_admissible';
   if (!storage.powerLimitControl) return 'limit_off';
+  if (!storage.admissible) return 'not_admissible';
   return 'holdable';
 }
 
@@ -97,16 +97,9 @@ export const drawMarginWFor = (storage: Pick<ObservedStorageInput, 'range'>): nu
 /** The battery's own charge, W: 0 while it is idle or discharging. */
 export const ownChargeWOf = (storage: ObservedStorageInput): number => Math.max(0, storage.signedPowerW);
 
-/**
- * The charge its own mode takes once handed back on top of what this hold
- * already lets through, W. A charge the hold lets through is on the meter
- * already, so only the rest is new draw; a discharge hold lets none through,
- * so it is the whole own-mode charge. The restore lane sizes a hand-back on
- * it (`lib/plan/restore/storageHandBack.ts`), and a charge limit names it as
- * the charge it holds back (`resolveHeldBackChargeW`).
- */
-export const resolveOwnModeChargeAboveHoldW = (lever: StorageLeverState): number => (
-  Math.max(0, lever.ownModeChargeW - Math.max(0, lever.setpointW))
+/** How far the limit reduced the charge that was observed when it began. */
+export const resolveChargeAboveLimitW = (lever: StorageLeverState): number => (
+  Math.max(0, lever.limitedChargeW - Math.max(0, lever.setpointW))
 );
 
 /** Whether raising from `fromW` to `toW` (either side of 0 W) is a step the battery could visibly answer. */

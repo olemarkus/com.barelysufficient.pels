@@ -1,25 +1,18 @@
-/**
- * The two battery steps around restore that turn the plan's choices into
- * holds: the limit shedding chose at the battery's place in the priority
- * order (`applyStorageLimits`), and the hand-back the restore lane admitted in
- * priority order (`applyStorageHandBacks`). Neither selects anything: shedding
- * and restore decided, and these only carry the decision onto the battery's
- * hold (`StorageLeverState`) and its `StorageDecision`, which the executor's
- * storage lane carries out unchanged.
- */
+/** Materialize the signed limit and managed-idle restore selected by the planner. */
 import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFootprint';
 import type { PlanInputDevice } from '../planTypes';
 import { withholdPhaseRoom } from '../phase/phasePower';
 import { spendLimitHeadroom } from '../planContext';
 import type { MeasuredPower } from '../planContext';
-import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
 import type { StorageSetpoint } from '../shedding/types';
-import { STORAGE_RELIEF_SETTLE_WINDOW_MS, hasStorageLeverInput, ownDischargeWOf } from './storageLadder';
+import {
+  STORAGE_RELIEF_SETTLE_WINDOW_MS, hasStorageLeverInput, isStorageDrivable, ownDischargeWOf,
+} from './storageLadder';
+import { baselineLever, resolveEconomicResumeIncreaseW } from './storageContinuous';
 import {
   isSettling,
   sumWithheldKw,
-  resolveOwnModeChargeW,
   summarizeHold,
   type StorageRelief,
   type StorageStateSummary,
@@ -32,7 +25,7 @@ import {
  * credited twice. Only discharge is credited this way (`creditBaseW` 0 or
  * more); a stopped charge is pending relief's. A hold that only caps the charge
  * has no discharge to settle. A surplus hold shedding chooses becomes a limit
- * hold, and keeps the charge its own mode took when PELS first claimed it.
+ * hold, and keeps the timing of its prior requests.
  *
  * An unbanked ask (a re-probing battery, or one not following its limit)
  * credits nothing: its credit base is the discharge it now asks for, and it
@@ -45,7 +38,6 @@ const toLimitLever = (
   nowTs: number,
 ): StorageLeverState => {
   const { setpointW, banked, storage } = chosen;
-  const preClaimSignedW = previous?.preClaimSignedW ?? storage.signedPowerW;
   return {
     setpointW,
     purpose: 'limit',
@@ -53,13 +45,12 @@ const toLimitLever = (
     lastDecreaseAtMs: previous?.lastDecreaseAtMs ?? nowTs,
     chargeRaisedAtMs: previous?.chargeRaisedAtMs ?? nowTs,
     lastNeedAtMs: banked ? nowTs : (previous?.lastNeedAtMs ?? nowTs - STORAGE_RELIEF_SETTLE_WINDOW_MS),
-    preClaimSignedW,
-    ownModeChargeW: resolveOwnModeChargeW(storage, preClaimSignedW),
+    limitedChargeW: previous?.purpose === 'limit' ? previous.limitedChargeW : Math.max(0, storage.signedPowerW),
     stepW: storage.range.stepW,
     reading: { kind: 'read' },
-    ...(chosen.exportPhase === undefined ? {} : { exportPhase: chosen.exportPhase }),
-    ...(storage.continuousPlan === undefined ? {} : {
-      resumePlan: { setpointW: storage.continuousPlan.setpointW, validUntilMs: storage.continuousPlan.validUntilMs },
+    ...(chosen.exportPhase === undefined ? {} : {
+      exportPhase: chosen.exportPhase,
+      economicResumeIncreaseW: resolveEconomicResumeIncreaseW(storage, setpointW, nowTs),
     }),
   };
 };
@@ -108,19 +99,36 @@ export function applyStorageLimits(
   };
 }
 
-/** Hand back every battery the restore lane admitted (`restored`). */
-export function applyStorageHandBacks(
+/** Leave the capacity hold at idle. Routine solar or economic dispatch can
+ * take over on the next measured cycle, through its normal admission gates.
+ */
+export function resumeStorageAfterLimit(
   relief: StorageRelief,
-  handedBack: ReadonlySet<string>,
+  restored: ReadonlySet<string>,
+  devices: readonly PlanInputDevice[],
+  nowTs: number,
 ): StorageRelief {
-  if (handedBack.size === 0) return relief;
-  const released: StorageDecision = { kind: 'release', reason: 'restored' };
+  if (restored.size === 0) return relief;
+  const resumed = new Map(devices.flatMap((device) => {
+    if (!restored.has(device.id) || !hasStorageLeverInput(device)
+      || device.storage.reading !== 'observed' || !isStorageDrivable(device.storage)) return [];
+    const lever = baselineLever(device.storage, relief.levers[device.id], 0, nowTs);
+    return [[device.id, { storage: device.storage, lever }] as const];
+  }));
   return {
     ...relief,
-    levers: Object.fromEntries(Object.entries(relief.levers).filter(([deviceId]) => !handedBack.has(deviceId))),
-    batteries: relief.batteries.map((battery): StorageStateSummary => (handedBack.has(battery.deviceId)
-      ? { ...battery, claim: 'none', decision: released, setpointW: 0, heldBackChargeW: 0, creditW: 0 }
-      : battery)),
+    levers: {
+      ...relief.levers, ...Object.fromEntries([...resumed].map(([deviceId, { lever }]) => [deviceId, lever])),
+    },
+    batteries: relief.batteries.map((battery): StorageStateSummary => {
+      const restoredBattery = resumed.get(battery.deviceId);
+      if (restoredBattery === undefined) return battery;
+      const summary = summarizeHold(battery.deviceId, restoredBattery.storage, restoredBattery.lever, 0);
+      return {
+        ...summary,
+        decision: { kind: 'setpoint', setpointW: 0, stepW: restoredBattery.lever.stepW, restored: true },
+      };
+    }),
   };
 }
 

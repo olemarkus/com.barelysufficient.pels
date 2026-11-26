@@ -572,7 +572,7 @@ export class AppServiceWiring {
   // Body in `setup/appInit/createBatteryControl.ts`; a method so the integration boot helper reaches it.
   initBatteryControl(): void {
     initMainBatteryControl(this.deps.ctx, this.deps.teardown, this.deps.observedStateEmitter,
-      () => this.isMainActuationFenced());
+      () => this.isMainActuationFenced(), () => this.deps.powerTrackerHelpers.hasRecentMeterEvidence());
   }
 
   /**

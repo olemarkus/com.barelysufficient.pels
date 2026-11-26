@@ -3,15 +3,16 @@ import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts
 import type { TeardownRegistry } from '../../lib/utils/teardownRegistry';
 import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
 import type { BatteryControlOwner, StorageLaneBinding } from '../../lib/ports/batteryControlOwner';
+import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireBatteryControl, requireDeviceManager } from './contextGuards';
-import { bindSettledMainHomeMember } from './mainHomeMembership';
+import { bindMainHomeMembership } from './mainHomeMembership';
 
 /**
  * The Main home's battery control owner, constructed with the reads it owns
  * policy over. Main only in v1: the owner refuses a claim for any battery
  * that is not a Main-home member on settled membership
- * (`isSettledMainHomeMember`, bound in `mainHomeMembership.ts`). Membership is
+ * (`readMainHomeMembership`, bound in `mainHomeMembership.ts`). Membership is
  * published by its own startup step and cleared at app stop, so it is read per
  * call, like Main's write fence reads it.
  *
@@ -23,6 +24,7 @@ import { bindSettledMainHomeMember } from './mainHomeMembership';
 export const createMainBatteryControl = (
   ctx: AppContext,
   isActuationFenced: () => boolean,
+  hasRecentMeterEvidence: () => boolean,
 ): BatteryControlOwner => {
   const deviceManager = requireDeviceManager(ctx);
   const actuator = buildDeviceActuator(ctx);
@@ -32,7 +34,13 @@ export const createMainBatteryControl = (
     ctx.batteryManaged,
     actuator,
     deviceManager,
-    bindSettledMainHomeMember(ctx),
+    {
+      readMembership: bindMainHomeMembership(ctx),
+      isPowerLimitEnabled: (deviceId) => (
+        isBatteryPowerLimitEnabled(ctx.deviceControlSettings.controllableDevices, deviceId)
+      ),
+      hasRecentMeterEvidence,
+    },
     isActuationFenced,
     () => ctx.capacityDryRun,
   );
@@ -57,8 +65,9 @@ export const initMainBatteryControl = (
   teardown: TeardownRegistry,
   observedState: ObservedStateRefreshFeed,
   isActuationFenced: () => boolean,
+  hasRecentMeterEvidence: () => boolean,
 ): void => {
-  const owner = createMainBatteryControl(ctx, isActuationFenced);
+  const owner = createMainBatteryControl(ctx, isActuationFenced, hasRecentMeterEvidence);
   // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
   ctx.batteryControl = owner;
   teardown.register(BATTERY_CONTROL_TEARDOWN_KEY, observedState.onObservedStateRefresh(

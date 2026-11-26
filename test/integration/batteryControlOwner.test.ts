@@ -10,6 +10,7 @@ import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings
 import type { BatteryCommandKeepAlive, BatteryControlRead, LegacyBatteryTargetRead } from '../../lib/ports/batteryControlOwner';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { StorageCommand, StorageControlBinding } from '../../lib/ports/storageCommand';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
@@ -66,6 +67,9 @@ const buildOwner = (params: {
   settings?: SettingsPort;
   batteries?: Record<string, BatteryControlRead>;
   mainMember?: boolean;
+  unsettledMembership?: boolean;
+  powerLimitEnabled?: boolean;
+  hasRecentMeterEvidence?: () => boolean;
   fenced?: boolean;
   dryRun?: boolean;
   readLegacyTarget?: (deviceId: string) => LegacyBatteryTargetRead;
@@ -93,7 +97,14 @@ const buildOwner = (params: {
         }),
       },
     },
-    () => params.mainMember ?? true,
+    {
+      readMembership: () => {
+        if (params.unsettledMembership) return 'unsettled';
+        return params.mainMember === false ? 'other' : 'main';
+      },
+      isPowerLimitEnabled: () => params.powerLimitEnabled ?? true,
+      hasRecentMeterEvidence: params.hasRecentMeterEvidence ?? (() => false),
+    },
     () => params.fenced ?? false,
     () => params.dryRun ?? false,
   );
@@ -523,17 +534,126 @@ describe('HomeBatteryControlOwner hand-back', () => {
   });
 
   it('adopts a previous run\'s claim on admission instead of handing it back', async () => {
+    let recent = true;
     const { owner, settings, commands } = buildOwner({
       settings: settingsStore({ [CLAIM_KEY]: record('manual') }),
       batteries: { [BATTERY]: setpointBattery('homey') },
+      hasRecentMeterEvidence: () => recent,
     });
 
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([]);
+    expect(owner.readControl(BATTERY)).toMatchObject({ needsAdoption: true, claimHeld: true });
+
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+    recent = false;
     owner.onSnapshotCommitted(refresh(BATTERY));
     await settle();
 
     expect(commands).toEqual([]);
     expect(settings.get(CLAIM_KEY)).toEqual(record('manual'));
+  });
+
+  it('hands back an unadopted claim after the prior meter evidence expires', async () => {
+    let recent = true;
+    const { owner, settings, commands } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('manual') }),
+      batteries: { [BATTERY]: setpointBattery('homey') },
+      hasRecentMeterEvidence: () => recent,
+      unsettledMembership: true,
+    });
+
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([]);
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_main_home' });
+
+    recent = false;
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'manual' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('expires an unadopted boot claim even while the whole-home meter keeps reporting', async () => {
+    const { owner, settings, commands } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('manual') }),
+      batteries: { [BATTERY]: setpointBattery('homey') },
+      hasRecentMeterEvidence: () => true,
+    });
+
+    vi.setSystemTime(T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - 1);
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([]);
+    expect(owner.readControl(BATTERY)).toMatchObject({ admissible: true, needsAdoption: true });
+
+    vi.setSystemTime(T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'release_in_flight' });
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'manual' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it.each([
+    { reason: 'settled meter area', mainMember: false },
+    { reason: 'disabled power-limit control', powerLimitEnabled: false },
+  ])('hands back a claim at boot with recent power and $reason', async ({ reason: _reason, ...scope }) => {
+    const { owner, settings, commands } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('manual') }),
+      batteries: { [BATTERY]: setpointBattery('homey') },
+      hasRecentMeterEvidence: () => true,
+      ...scope,
+    });
+
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'manual' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('preserves an attempted hand-back through restart even with recent meter evidence', async () => {
+    const settings = settingsStore();
+    const failed = buildOwner({
+      settings,
+      apply: async () => {
+        expect(settings.get(CLAIM_KEY)).toEqual({ ...record('anti_feed', T0), releasePending: true });
+        throw new Error('lost connection mid-write');
+      },
+    });
+    expect(failed.owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+    await expect(failed.owner.releaseClaim(BATTERY, 'meter_silent')).resolves.toBe('not_released');
+    expect(failed.commands).toHaveLength(1);
+
+    const { owner, commands } = buildOwner({
+      settings,
+      batteries: { [BATTERY]: setpointBattery('homey') },
+      hasRecentMeterEvidence: () => true,
+    });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'release_in_flight' });
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('hands back on meter silence even if it cannot mark the record as releasing', async () => {
+    const settings = settingsStore();
+    const { owner, commands } = buildOwner({
+      settings,
+      apply: async () => {
+        expect(settings.get(CLAIM_KEY)).toEqual(record('anti_feed', T0));
+        return { requested: true };
+      },
+    });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+    settings.set = () => { throw new Error('settings unavailable'); };
+
+    await expect(owner.releaseClaim(BATTERY, 'meter_silent')).resolves.toBe('released');
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
   it('prunes the record of a battery missing from two complete refreshes in a row, never on an empty one', async () => {
@@ -686,7 +806,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
         readBatteryControl: () => setpointBattery('anti_feed'),
         batteryAppActions: { readLegacyTarget: () => ({ kind: 'unavailable', reasonCode: 'not_app_actions' }) },
       },
-      () => true,
+      { readMembership: () => 'main', isPowerLimitEnabled: () => true, hasRecentMeterEvidence: () => false },
       () => false,
       () => dryRun,
     );
@@ -867,7 +987,9 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
 
     expect(removeKey).not.toHaveBeenCalled();
-    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', target: TARGET, claimedAtMs: T0 });
+    expect(settings.get(CLAIM_KEY)).toEqual({
+      handBack: 'app_actions', target: TARGET, claimedAtMs: T0, releasePending: true,
+    });
     // The hand-back is still owed, and retried as any failed one.
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'release_in_flight' });
   });

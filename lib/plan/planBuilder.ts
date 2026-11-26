@@ -63,11 +63,10 @@ import {
   decideStorageRelief,
   resolveStorageSurplusClaimants,
   resolveStorageDischargeW,
-  resumeContinuousStorage,
   type StorageRelief,
 } from './battery/storageRelief';
 import {
-  applyStorageHandBacks, applyStorageLimits, simulateFollowedHolds, withoutStorageWithheld,
+  resumeStorageAfterLimit, applyStorageLimits, simulateFollowedHolds, withoutStorageWithheld,
 } from './battery/storageLimit';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import {
@@ -509,7 +508,10 @@ export class PlanBuilder {
     nowTs: number,
   ): ReadonlyMap<string, StorageSurplusOffer> {
     const storage = {
-      claimants: resolveStorageSurplusClaimants(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000),
+      claimants: resolveStorageSurplusClaimants(
+        context.devices, this.state.storageLeverByDevice, power.drawKw * 1000, nowTs,
+      ),
+      ...(power.headroom.kind === 'on' ? { headroomW: Math.max(0, power.headroom.kw * 1000) } : {}),
       dischargeW: resolveStorageDischargeW(
         this.deps.getStorageDischargeObservations(), this.state.storageLeverByDevice,
       ),
@@ -608,10 +610,7 @@ export class PlanBuilder {
     devices: readonly PlanInputDevice[],
     nowTs: number,
   ): StorageRelief {
-    const storageRelief = resumeContinuousStorage(
-      applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack), limitedStorage,
-      devices, power, surplusOffers, nowTs,
-    );
+    const storageRelief = resumeStorageAfterLimit(limitedStorage, restoreResult.storageHandedBack, devices, nowTs);
     this.state.storageLeverByDevice = storageRelief.levers;
     this.logStorageRelief(storageRelief, power, surplusOffers);
     return storageRelief;
