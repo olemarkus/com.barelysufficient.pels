@@ -1068,12 +1068,14 @@ When a running last-resort relay gains a power reading, its Overview card shows
 the measured power and says `Has its own power reading. Turn off last-resort
 control under Power limiting.`
 When a relay's maximum plus its start room is above the highest rate admission
-can ever offer (the grid import target, or the hard cap minus the safety margin
-in 15-minute periods), PELS can never turn it back on. Its card then shows a
-warning that names the limit, for example `Maximum power draw 6.0 kW plus room
-for its start does not fit under your hard cap (4.8 kW after the safety
-margin). Lower it under Power limiting.`, or `… under your grid import limit,
-which PELS keeps at 4.8 kW. …` (`lastResortAboveLimit`). An hourly capacity
+can offer from the grid (the grid import target, or the hard cap minus the
+safety margin in 15-minute periods), it fits only while solar export or a
+battery makes room. It then gets no priority turn and holds no other device.
+Its card shows a warning that names the limit, for example `Maximum power draw
+6.0 kW plus room for its start does not fit under your hard cap (4.8 kW after
+the safety margin), so PELS turns it on only while solar or a battery makes
+room. Lower it under Power limiting.`, or `… under your grid import limit,
+which PELS keeps at 4.8 kW, …` (`lastResortAboveLimit`). An hourly capacity
 period sets no such ceiling: its pace rises in an under-used hour.
 For an on/off device without power information, the Managed hint points to a
 metering socket when available. It recommends last-resort setup for variable

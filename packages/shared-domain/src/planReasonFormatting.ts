@@ -577,8 +577,9 @@ export function formatSteppedFairnessHoldLine(stepId: string | null, limitedDevi
 }
 
 /**
- * The relay's configured maximum cannot fit under the home's limit, so PELS can
- * never turn it back on. Names the two numbers and the setting to change.
+ * The relay's configured maximum does not fit under the home's limit, so PELS
+ * turns it on only while solar or a battery makes room. Names the two numbers
+ * and the setting to change.
  */
 export function formatLastResortAboveLimitStatus(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.lastResortAboveLimit }>,
@@ -587,8 +588,8 @@ export function formatLastResortAboveLimitStatus(
   const limit = reason.limit === 'grid'
     ? `your grid import limit, which PELS keeps at ${limitKw} kW`
     : `your hard cap (${limitKw} kW after the safety margin)`;
-  return `Maximum power draw ${reason.maximumKw.toFixed(1)} kW plus room for its start does not fit under ${limit}. `
-    + 'Lower it under Power limiting.';
+  return `Maximum power draw ${reason.maximumKw.toFixed(1)} kW plus room for its start does not fit under ${limit}, `
+    + 'so PELS turns it on only while solar or a battery makes room. Lower it under Power limiting.';
 }
 
 export function formatDeviceReasonUserFacing(reason: DeviceReason): string {

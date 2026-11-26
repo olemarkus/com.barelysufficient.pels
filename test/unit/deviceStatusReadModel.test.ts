@@ -68,7 +68,8 @@ describe('last-resort relay whose maximum can never fit', () => {
     ['grid', 'your grid import limit, which PELS keeps at 4.8 kW'],
   ] as const)('warns on the card and names the %s limit', (limit, named) => {
     expect(buildDeviceStatus(offRelay(limit), false, 0).reason).toEqual({
-      text: `Maximum power draw 6.0 kW plus room for its start does not fit under ${named}. Lower it under Power limiting.`,
+      text: `Maximum power draw 6.0 kW plus room for its start does not fit under ${named}, so PELS turns it on `
+        + 'only while solar or a battery makes room. Lower it under Power limiting.',
       tone: 'warning',
     });
   });

@@ -1,5 +1,6 @@
 import {
-  applyLastResortRestorePass, getNextLastResortRestore, markUnrestoredLastResort, type LastResortRestoreCandidate,
+  applyLastResortRestorePass, applyOpportunisticLastResortRestore, getNextLastResortRestores, markUnrestoredLastResort,
+  type LastResortRestoreCandidate,
 } from './lastResort';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../planTypes';
@@ -52,10 +53,16 @@ export type { RestoreDeps, RestorePlanResult } from './types';
 type RestorePass =
   | { kind: 'last_resort'; target: LastResortRestoreCandidate; hold: DeviceReason }
   | { kind: 'last_resort_wait'; hold: DeviceReason; useOrdinaryWaitReasons: boolean }
-  | { kind: 'shortfall' | 'full' | 'budget_exempt' | 'waiting' };
+  | { kind: 'full'; aboveLimit: LastResortRestoreCandidate | undefined }
+  | { kind: 'shortfall' | 'budget_exempt' | 'waiting' };
 
 /** The last-resort facts the pass is chosen from: a relay start in flight, and the relay due its turn. */
-type LastResortRestoreState = { pending: boolean; target: LastResortRestoreCandidate | undefined };
+type LastResortRestoreState = {
+  pending: boolean;
+  target: LastResortRestoreCandidate | undefined;
+  /** A relay above the admission ceiling: tried without a hold when nothing else has the turn. */
+  aboveLimit: LastResortRestoreCandidate | undefined;
+};
 
 function resolveRestorePass(
   lastResort: LastResortRestoreState,
@@ -80,7 +87,7 @@ function resolveRestorePass(
     if (plannable) return { kind: 'last_resort', target, hold };
     return { kind: 'last_resort_wait', useOrdinaryWaitReasons, hold };
   }
-  if (plannable) return { kind: 'full' };
+  if (plannable) return { kind: 'full', aboveLimit: lastResort.aboveLimit };
   if (exemptPlannable) return { kind: 'budget_exempt' };
   return { kind: 'waiting' };
 }
@@ -111,7 +118,7 @@ export function applyRestorePlan(
   const effectiveTiming = resolveEffectiveTiming(timing, context);
   const lastResort: LastResortRestoreState = {
     pending: planDevices.some((device) => device.lastResort && device.binaryCommandPending),
-    target: getNextLastResortRestore(planDevices, deps.admissionCeiling),
+    ...getNextLastResortRestores(planDevices, deps.admissionCeiling),
   };
   const pass = resolveRestorePass(lastResort, context, power, state, timing, effectiveTiming, sheddingPlan);
   // Only the lane that can actually consider a target spends its reservation window.
@@ -184,6 +191,10 @@ function applyResolvedRestorePass(
       }
       return false;
     case 'full':
+      if (pass.aboveLimit !== undefined && applyOpportunisticLastResortRestore(cycle, ledger, pass.aboveLimit)) {
+        markRestoreCandidatesHeld(cycle.deviceMap, cycle.swapLedger, buildReservedForStartReason(pass.aboveLimit.name));
+        return true;
+      }
       return applyFullRestorePass(cycle, ledger, false).restoredOneThisCycle;
     case 'budget_exempt':
       return applyBudgetExemptRestorePass(cycle, ledger, false).restoredOneThisCycle;

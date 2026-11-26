@@ -313,6 +313,30 @@ describe('last-resort restore priority', () => {
     });
   });
 
+  it('starts a relay above the admission ceiling while export makes room, without holding others first', () => {
+    const run = (headroomKw: number) => applyRestorePlanForSpec({
+      planDevices: [smallerLoad, relay], context: buildPlanContextFixture({ nowTs: now }),
+      power: buildMeasuredPower({ headroomKw, capacityHeadroomKw: headroomKw, budgetHeadroomKw: headroomKw }),
+      state: createPlanEngineState(now - 600000),
+      sheddingActive: false,
+      deps: {
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
+        temperatureSetpoints: new Map(),
+        structuredLog: testLogger,
+        admissionCeiling: { limit: 'grid', kw: 5 },
+      },
+    });
+    const withExport = new Map(run(7.5).planDevices.map((device) => [device.id, device]));
+    expect(buildPlannedBinaryCommand(withExport.get('relay')!)).toMatchObject({ deviceId: 'relay', desiredOn: true });
+    expect(buildPlannedBinaryCommand(withExport.get('smaller')!)).toBeUndefined();
+    const tight = run(6);
+    const devices = new Map(tight.planDevices.map((device) => [device.id, device]));
+    expect(tight.lastResortPriorityHold).toBeNull();
+    expect(devices.get('relay')?.reason).toMatchObject({ code: 'last_resort_above_limit', limit: 'grid' });
+    expect(buildPlannedBinaryCommand(devices.get('smaller')!)).toMatchObject({ deviceId: 'smaller', desiredOn: true });
+  });
+
   it('keeps the priority turn for a relay whose maximum fits the admission ceiling', () => {
     const result = applyRestorePlanForSpec({
       planDevices: [smallerLoad, relay], context: buildPlanContextFixture({ nowTs: now }),
