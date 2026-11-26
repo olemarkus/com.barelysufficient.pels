@@ -19,9 +19,10 @@ const SETTINGS = {
 };
 const LIMIT = { action: 'set_temperature' as const, temperature: LIMITED_TARGET };
 
-const pump = (priority: number, currentTarget = LIMITED_TARGET, on = true) => buildPlanInputDevice({
+const pump = (priority: number, currentTarget = LIMITED_TARGET, on = true, targetOnly = false) => buildPlanInputDevice({
   id: 'pump', name: 'Pump', deviceType: 'temperature', priority,
-  binaryCapabilityId: 'onoff', binaryControl: { on },
+  binaryCapabilityId: targetOnly ? undefined : 'onoff',
+  ...(targetOnly ? {} : { binaryControl: { on } }),
   currentTarget, currentTemperature: 21,
   targets: [{ id: 'target_temperature', value: currentTarget, unit: '°C', min: 5, max: 30, step: 0.5 }],
   currentDrawKw: on ? 1 : 0, expectedPowerKw: on ? 1 : 6, shedBehavior: LIMIT,
@@ -74,6 +75,25 @@ describe('setpoint demand closes electrical restore batching through the full pl
       expect(plannedPump.plannedState).toBe(pumpRank === 1 ? 'keep' : 'shed');
     }
   });
+
+  it.each([[1, 2.5], [2, 2.5], [1, 10], [2, 10]])(
+    'honors thermostat rank %s against a relay at a %s kW pace',
+    async (pumpRank, paceKw) => {
+      const relayRank = 3 - pumpRank;
+      for (const reverse of [false, true]) {
+        const devices = [pump(pumpRank, LIMITED_TARGET, true, true), direct(relayRank)];
+        // The 10 kW pace leaves room for both and exercises the shared slot and batch boundary.
+        const plan = await recoveryPlan(reverse ? devices.reverse() : devices, paceKw);
+        expect(plan.devices.find(({ id }) => id === 'pump')).toMatchObject({
+          plannedState: pumpRank === 1 ? 'keep' : 'shed',
+          plannedTarget: pumpRank === 1 ? REQUESTED_TARGET : LIMITED_TARGET,
+        });
+        expect(plan.devices.find(({ id }) => id === `direct-${relayRank}`)).toMatchObject({
+          plannedState: relayRank === 1 ? 'keep' : 'shed',
+        });
+      }
+    },
+  );
 
   it.each([LIMITED_TARGET, REQUESTED_TARGET])('still prices a real OFF start whose current target is %s', async (currentTarget) => {
     // 19 C represents the unchanged setpoint policy; 22 C also covers a pump

@@ -8,7 +8,8 @@ import { temperatureSetpointsFor, unlimitedSetpointAddsDemand } from './planTemp
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { PlanEngineState } from './planState';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
-import type { RestorePlanResult } from './restore/types';
+import type { RestoreCycle, RestorePlanResult } from './restore/types';
+import { isBehindWaitingHandBack } from './restore/storageHandBack';
 import type { SheddingPlan } from './shedding/types';
 import {
   PLAN_REASON_CODES,
@@ -22,7 +23,11 @@ import {
 import { isBudgetReason, isShortfallReason, isSwapReason } from './planReasonsShared';
 import type { HoldLoopState, HoldPass, PendingRestoreDelay } from './planReasonsShared';
 import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
-import { NEUTRAL_STARTUP_HOLD_REASON, resolveOffDeviceReason } from './restore/devices';
+import {
+  isRestoreLiveEligibleDevice, NEUTRAL_STARTUP_HOLD_REASON, resolveOffDeviceReason, type RestoreCandidate,
+} from './restore/devices';
+import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 import {
   resolveMeterSettlingHold,
   resolveRestoreDecision,
@@ -169,6 +174,7 @@ export function applyShedTemperatureHold(
   const pass: HoldPass = {
     state,
     restoreResult,
+    lastResortPriorityHold: restoreResult.lastResortPriorityHold,
     sheddingPlan,
     pendingRestoreDelay,
     temperatureSetpoints,
@@ -177,6 +183,10 @@ export function applyShedTemperatureHold(
   };
 
   for (const dev of planDevices) {
+    if (restoreResult.rankedSetpointDecisions.has(dev.id)) {
+      nextDevices.push(dev);
+      continue;
+    }
     const availableForDevice = ledger.availableFor(dev);
     const result = applyHoldToDevice(pass, dev, {
       availableHeadroom: availableForDevice,
@@ -197,6 +207,64 @@ export function applyShedTemperatureHold(
   };
 }
 /* eslint-enable functional/immutable-data */
+
+/** Setpoint-only devices have no electrical restore candidate to carry their target. */
+export function getRankedSetpointRestoreCandidates(
+  cycle: RestoreCycle,
+  sheddingPlan: SheddingPlan,
+  decided: Set<string>,
+): RestoreCandidate[] {
+  const { state, deps, deviceMap, timing } = cycle;
+  const { temperatureSetpoints } = deps;
+  const planDevices = Array.from(deviceMap.values());
+  const candidates = planDevices.filter((device): device is MeteredDevicePlanDevice & TemperatureKind => (
+    isRestoreLiveEligibleDevice(device)
+    && state.shedDecisions.lastPlannedShedIds.has(device.id)
+    && !isBinaryPlanDevice(device)
+    && !isSteppedLoadDevice(device)
+    && isTemperaturePlanDevice(device)
+    && isLimitedBySetpointThisBuild(temperatureSetpoints, device.id)
+    && unlimitedSetpointAddsDemand(temperatureSetpoints, device)
+  ));
+  if (candidates.length === 0) return [];
+  const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(temperatureSetpoints);
+  const pass: HoldPass = {
+    state,
+    restoreResult: cycle,
+    // Only the full pass builds these candidates, after last-resort priority has been resolved.
+    lastResortPriorityHold: null,
+    sheddingPlan,
+    pendingRestoreDelay: getPendingRestoreDelay(
+      planDevices, state, temperatureSetpoints, normalizedShedFloorCByDevice, timing.nowTs,
+    ),
+    temperatureSetpoints,
+    normalizedShedFloorCByDevice,
+    planDeviceMap: deviceMap,
+  };
+
+  return candidates.map((candidate) => ({
+    kind: 'setpoint',
+    device: candidate,
+    restore(loop) {
+      const device = deviceMap.get(candidate.id);
+      if (!device || !isTemperaturePlanDevice(device)) return loop;
+      const result = isBehindWaitingHandBack(cycle, device)
+        ? applyHoldUpdate(pass, device, resolveBatteryHandBackHold(pass, device), loop)
+        : applyHoldToDevice(pass, device, loop);
+      deviceMap.set(device.id, result.device);
+      decided.add(device.id);
+      return result;
+    },
+  }));
+}
+
+function resolveBatteryHandBackHold(pass: HoldPass, device: DevicePlanDevice & TemperatureKind): DeviceReason {
+  const floorC = shedFloorCFor(pass.normalizedShedFloorCByDevice, device.id);
+  if (isObservedAtShedFloor(device, floorC)) return { code: PLAN_REASON_CODES.waitingForOtherDevices };
+  return renderPlanReasonDecision(
+    getProducerShedReason({ dev: device, shedReasons: pass.sheddingPlan.shedReasons }) ?? CAPACITY_FALLBACK_REASON,
+  );
+}
 
 function resolveHoldGating(
   pass: HoldPass,
@@ -227,7 +295,7 @@ function holdTemperatureBehindLastResort(
   gating: ReturnType<typeof resolveHoldGating>,
   observedAtShedFloor: boolean,
 ): HoldDecision | null {
-  const { lastResortPriorityHold } = pass.restoreResult;
+  const { lastResortPriorityHold } = pass;
   if (lastResortPriorityHold === null || gating.shouldAbortRestoreForShortfall || gating.shouldHold
     || !(observedAtShedFloor || gating.wasShedLastPlan)
     || !isTemperaturePlanDevice(dev) || !unlimitedSetpointAddsDemand(pass.temperatureSetpoints, dev)) return null;

@@ -7,6 +7,7 @@ import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 import type { SheddingPlan } from '../shedding/types';
+import { getRankedSetpointRestoreCandidates } from '../planReasonsHoldDecisions';
 import {
   getOnDevices,
   getRestoreCandidates,
@@ -157,12 +158,14 @@ export function applyRestorePlan(
     readPhaseExportRoomKw: (phaseName) => phaseExportRoomKw(power.phase, phaseName),
   };
 
-  const restoredOneThisCycle = applyResolvedRestorePass(pass, cycle, ledger, sheddingActive);
+  const rankedSetpointDecisions = new Set<string>();
+  const restoredOneThisCycle = applyResolvedRestorePass(pass, cycle, ledger, sheddingPlan, rankedSetpointDecisions);
   markUnrestoredLastResort(cycle, guardInShortfall || sheddingActive);
   yieldAvailablePower(deviceMap, availablePowerDevices, ledger);
   return {
     planDevices: Array.from(deviceMap.values()),
     restoredThisCycle,
+    rankedSetpointDecisions,
     storageHandedBack,
     availableHeadroom: ledger.summaryAvailableKw(),
     headroomAxes: ledger.axes(),
@@ -174,8 +177,13 @@ export function applyRestorePlan(
 }
 
 function applyResolvedRestorePass(
-  pass: RestorePass, cycle: RestoreCycle, ledger: RestoreHeadroomLedger, sheddingActive: boolean,
+  pass: RestorePass,
+  cycle: RestoreCycle,
+  ledger: RestoreHeadroomLedger,
+  sheddingPlan: SheddingPlan,
+  rankedSetpointDecisions: Set<string>,
 ): boolean {
+  const { sheddingActive } = sheddingPlan;
   switch (pass.kind) {
     case 'shortfall':
       markRestoreCandidatesStayShedForShortfall(cycle.deviceMap);
@@ -195,7 +203,7 @@ function applyResolvedRestorePass(
         markRestoreCandidatesHeld(cycle.deviceMap, cycle.swapLedger, buildReservedForStartReason(pass.aboveLimit.name));
         return true;
       }
-      return applyFullRestorePass(cycle, ledger, false).restoredOneThisCycle;
+      return applyFullRestorePass(cycle, ledger, sheddingPlan, rankedSetpointDecisions).restoredOneThisCycle;
     case 'budget_exempt':
       return applyBudgetExemptRestorePass(cycle, ledger, false).restoredOneThisCycle;
     case 'waiting':
@@ -288,13 +296,15 @@ function reserveAuthorizedPower(ledger: RestoreHeadroomLedger, planDevices: read
 function applyFullRestorePass(
   cycle: RestoreCycle,
   ledger: RestoreHeadroomLedger,
-  restoredOne: boolean,
+  sheddingPlan: SheddingPlan,
+  rankedSetpointDecisions: Set<string>,
 ): { restoredOneThisCycle: boolean } {
   const { deviceMap, deps } = cycle;
   const snapshot = Array.from(deviceMap.values());
   // A battery PELS holds for the limit is handed back here, at its place in
   // the same priority order (`storageHandBack.ts`).
   const restoreCandidates = sortRestoreCandidates([
+    ...getRankedSetpointRestoreCandidates(cycle, sheddingPlan, rankedSetpointDecisions),
     ...withChargingPhaseOffCandidates(
       snapshot, getRestoreCandidates(snapshot, cycle.state.shedDecisions), cycle.state.chargingPhaseCycle,
     ),
@@ -303,7 +313,7 @@ function applyFullRestorePass(
   const lane: RestoreLane = {
     onDevices: getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints),
   };
-  return applyRestoreLanes(cycle, lane, restoreCandidates, ledger, restoredOne);
+  return applyRestoreLanes(cycle, lane, restoreCandidates, ledger, false);
 }
 
 /**

@@ -127,6 +127,8 @@ export type RestoreLane = {
 export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   restoredThisCycle: Set<string>;
+  /** Setpoint decisions already applied in priority order, including holds. */
+  rankedSetpointDecisions: ReadonlySet<string>;
   /**
    * Home batteries this pass handed back, in priority order with the loads
    * (`storageHandBack.ts`); the battery stage releases their holds
