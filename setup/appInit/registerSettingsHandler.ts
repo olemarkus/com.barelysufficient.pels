@@ -1,6 +1,5 @@
 import { DailyBudgetSettingsReactions } from '../../lib/dailyBudget/dailyBudgetSettingsReactions';
-import { DevicePowerHistoryImporter } from '../../lib/device/devicePowerHistoryImporter';
-import { createHomeyWebApiGet } from '../homeyWebApi';
+import { attachDevicePowerHistory } from './attachDevicePowerHistory';
 import type { AppContext } from '../../lib/app/appContext';
 import { createSettingsHandler } from '../../lib/utils/settingsHandlers';
 import { attachSettingsHandler } from '../../lib/utils/settingsHandlerListeners';
@@ -94,10 +93,7 @@ export const registerSettingsHandler = (
     (key) => ctx.observedTemperatureModeUpdates.consumeSettingChange(key),
     () => ctx.notifyOperatingModeChanged(getHomeOperatingMode()),
   );
-  const detachPowerHistory = new DevicePowerHistoryImporter(
-    ctx.homey.settings, ctx.flowBacked, createHomeyWebApiGet(),
-    () => ctx.refreshTargetDevicesSnapshot({ fast: true, emitFlowBackedRefresh: false }),
-  ).attach();
+  const detachPowerHistory = attachDevicePowerHistory(ctx);
   return () => {
     detachPowerHistory();
     detachSettings();
