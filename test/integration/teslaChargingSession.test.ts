@@ -688,10 +688,11 @@ test.each(['Disconnected', 'Complete'])(
       const owner = session();
       owner.observeDevices(initial);
       const snapshot = transport.getSnapshotByDeviceId('battery')!;
-      expect(owner.project(owner.project(snapshot, { method: 'flow', confirmation: 'vehicle' }),
-        { method: 'flow', confirmation: 'vehicle' }).controlAdapter?.unavailableStatus?.kind).toBe('idle');
+      const readSetup = () => ({ method: 'flow', confirmation: 'vehicle' } as const);
+      expect(owner.project(owner.project(snapshot, readSetup), readSetup).controlAdapter?.unavailableStatus?.kind)
+        .toBe('idle');
       owner.setTrustEpoch('reconnected');
-      expect(owner.project(snapshot, { method: 'flow', confirmation: 'vehicle' })
+      expect(owner.project(snapshot, readSetup)
         .controlAdapter?.unavailableStatus?.kind).toBe('unavailable');
     } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
   },
@@ -914,7 +915,7 @@ describe('a car whose charging control is turned off', () => {
   it('reads Manual with the switch it needs while the car charges at home', () => {
     const owner = session(); owner.observeDevices(devices());
     expect(owner.isAllowed('battery')).toBe(true);
-    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus).toEqual({
+    expect(owner.project(snapshot(), () => off).controlAdapter?.unavailableStatus).toEqual({
       kind: 'manual', factText: null,
       reasonText: 'Turn on “Control charging through this car” to let PELS control charging',
     });
@@ -924,7 +925,7 @@ describe('a car whose charging control is turned off', () => {
     const initial = devices();
     initial[0]!.capabilitiesObj.charging_state = cap('Disconnected');
     const owner = session(); owner.observeDevices(initial);
-    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus)
+    expect(owner.project(snapshot(), () => off).controlAdapter?.unavailableStatus)
       .toEqual({ kind: 'idle', factText: 'Unplugged', reasonText: null });
   });
 
@@ -932,7 +933,7 @@ describe('a car whose charging control is turned off', () => {
     const initial = devices();
     initial[0] = { ...initial[0]!, available: false };
     const owner = session(); owner.observeDevices(initial);
-    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus).toEqual({
+    expect(owner.project(snapshot(), () => off).controlAdapter?.unavailableStatus).toEqual({
       kind: 'unavailable', factText: null, reasonText: 'Homey reports this device unavailable',
     });
   });
@@ -958,7 +959,7 @@ describe('a car Homey reports that PELS cannot place at home', () => {
         capabilitiesObj: { ...base.capabilitiesObj, ...patch.capabilitiesObj } };
     });
     const owner = session(); owner.observeDevices(initial);
-    return owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus;
+    return owner.project(snapshot(), () => vehicle).controlAdapter?.unavailableStatus;
   };
 
   it('says an asleep car is asleep or offline', () => {
@@ -973,7 +974,7 @@ describe('a car Homey reports that PELS cannot place at home', () => {
     const initial = devices();
     initial[2]!.capabilitiesObj!.car_state = cap('offline');
     const owner = session(); owner.observeDevices(initial);
-    expect(owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus).toEqual({
+    expect(owner.project(snapshot(), () => vehicle).controlAdapter?.unavailableStatus).toEqual({
       kind: 'manual', factText: 'Charging', reasonText: 'The car is asleep or offline',
     });
   });
@@ -995,7 +996,7 @@ describe('a car Homey reports that PELS cannot place at home', () => {
     const initial = devices();
     initial[0]!.capabilitiesObj.charging_state = cap('Stopped');
     owner.observeDevices(initial);
-    expect(owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus).toEqual({
+    expect(owner.project(snapshot(), () => vehicle).controlAdapter?.unavailableStatus).toEqual({
       kind: 'manual', factText: 'Paused',
       reasonText: 'Set your Homey’s location so PELS can tell when the car is home',
     });

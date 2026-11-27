@@ -496,7 +496,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getDeviceManager: () => this.deviceManager,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
-    getPlanInputSnapshot: () => this.getPlanInputSnapshot(),
+    getPlanInputSnapshot: () => this.getPlanInputSnapshot('runtime_control'),
     getDeviceSurfaces: () => this.getDeviceSurfaces(),
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
@@ -603,7 +603,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       const device = this.getRuntimeDevice(deviceId);
       return device && filterDevicesForHome(this.ctx.homeMembership, [device], MAIN_HOME_ID)[0];
     },
-    () => filterDevicesForHome(this.ctx.homeMembership, this.getPlanInputSnapshot(), MAIN_HOME_ID), {
+    () => filterDevicesForHome(this.ctx.homeMembership, this.getPlanInputSnapshot('runtime_control'), MAIN_HOME_ID), {
       smartTaskState: (deviceId) => readSmartTaskOpen(this.homey.settings, deviceId, this.getNow().getTime()),
       leadMs: (device, fromC, targetC) => resolveModePreparationLeadMs(this.powerTracker, device, fromC, targetC),
     });

@@ -42,13 +42,13 @@ test('the generic registry isolates two vehicle sessions and trust recovery', ()
   sessions.observeDevices([...first, ...second], Date.now());
   const firstSnapshot = snapshot(first[0]!);
   const secondSnapshot = snapshot(second[0]!);
-  expect(sessions.project(firstSnapshot, setup).available).toBe(true);
-  expect(sessions.project(secondSnapshot, setup).available).toBe(true);
+  expect(sessions.project(firstSnapshot, () => setup).available).toBe(true);
+  expect(sessions.project(secondSnapshot, () => setup).available).toBe(true);
   sessions.observeCapability('first-location', 'measure_location_latitude', 61);
-  expect(sessions.project(firstSnapshot, setup)).toMatchObject({ available: false, measuredPowerKw: 0 });
-  expect(sessions.project(secondSnapshot, setup).available).toBe(true);
+  expect(sessions.project(firstSnapshot, () => setup)).toMatchObject({ available: false, measuredPowerKw: 0 });
+  expect(sessions.project(secondSnapshot, () => setup).available).toBe(true);
   sessions.setTrustEpoch('disconnected:2');
-  expect(sessions.project(secondSnapshot, setup)).toMatchObject({ available: false, measuredPowerKw: 0 });
+  expect(sessions.project(secondSnapshot, () => setup)).toMatchObject({ available: false, measuredPowerKw: 0 });
   expect(sessions.controlEvents(secondSnapshot, 'measure_charge_power', 4)).toEqual([
     { capabilityId: 'measure_charge_power', value: 0 },
   ]);

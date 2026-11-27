@@ -307,11 +307,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     // record, then decorated. It used to spread the whole fixture, which handed
     // the planner inventory metadata (the class) that production planner input
     // does not carry, and hid every consumer still reading it.
-    getPlanInputSnapshot: () => context.deviceControlHelpers.decorateTargetSnapshotList(
+    getPlanInputSnapshot: (purpose) => context.deviceControlHelpers.decorateTargetSnapshotList(
       readRuntimeDevices(
         getDeviceConfigurationStore().getAll(),
         (deviceId) => context.observer.getObservedRecord(deviceId),
       ),
+      purpose,
     ),
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(

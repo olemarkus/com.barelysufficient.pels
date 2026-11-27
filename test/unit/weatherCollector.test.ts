@@ -699,6 +699,35 @@ describe('WeatherCollector', () => {
     expect(day?.kwhUncontrolled).toBeCloseTo(15, 6);
   });
 
+  it('defers only controlled history and reconsiders it on the next start', async () => {
+    const fetchInsights = vi.fn(async () => ({}));
+    const { collector, persisted, logger } = buildHarness({ fetchInsights });
+    persisted.value = {
+      records: [],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: TEMP_BACKFILL_VERSION,
+      meterKwhBackfillDone: true,
+      meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+      meterScopeSinceDateKey: '2025-12-27',
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchInsights).not.toHaveBeenCalled();
+    expect(collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBe(true);
+    expect(collector.getHistoryStateSnapshot().controlledBackfillVersion).toBeUndefined();
+    expect(logger.info).toHaveBeenCalledWith({
+      event: 'weather_controlled_backfill_no_source', outcome: 'insufficient_scope_history',
+    });
+    collector.stop();
+
+    vi.setSystemTime(Date.UTC(2026, 0, 11, 10));
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchInsights).toHaveBeenCalledExactlyOnceWith('manager/devices/device');
+    expect(collector.getHistoryStateSnapshot().controlledBackfillVersion).toBeUndefined();
+    collector.stop();
+  });
+
   it('does NOT start the controlled split while a stale temperature backfill is about to re-run', async () => {
     // meterKwhBackfillDone is stale-true but backfillVersion is old → the temp
     // backfill will re-run and clear markers; the controlled split must wait.
@@ -764,7 +793,7 @@ describe('WeatherCollector', () => {
 
   it('recovers meter history and refits after the tracker history is lost', async () => {
     const recomputeDerived = vi.fn((state: WeatherHistoryState) => state);
-    const { collector, store } = buildHarness({
+    const { collector, store, persisted, logger } = buildHarness({
       getDailyKwh: vi.fn(() => ({})),
       recomputeDerived,
       fetchInsights: vi.fn(async (path: string) => {
@@ -784,6 +813,11 @@ describe('WeatherCollector', () => {
           : { step: 6 * HOUR_MS, values: [] };
       }),
     });
+    persisted.value = {
+      records: [],
+      meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+      meterScopeSinceDateKey: '2026-01-05',
+    };
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
     collector.stop();
@@ -791,6 +825,10 @@ describe('WeatherCollector', () => {
     const written = lastWritten(store);
     expect(written.meterKwhBackfillDone).toBe(true);
     expect(written.meterKwhDeviceId).toBe('meter-1');
+    expect(written.controlledBackfillVersion).toBeUndefined();
+    expect(logger.info).toHaveBeenCalledWith({
+      event: 'weather_controlled_backfill_no_source', outcome: 'insufficient_scope_history',
+    });
     expect(written.records).toHaveLength(KWH_DAYS);
     expect(written.records.every((record) => record.kwhTotal === 40 && record.quality.kwhBackfilled)).toBe(true);
     expect(recomputeDerived).toHaveBeenCalledOnce();

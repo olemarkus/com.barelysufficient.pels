@@ -113,7 +113,7 @@ export function createPlanEngineComposition(
   // of "held".
   const execution = new ExecutionState(options.controlContests);
   const state = createPlanEngineState(Date.now(), (deviceId) => isExternalOffHeldForObservedDevice(
-    ctx.externalOffHold?.isHeld(deviceId) === true,
+    () => ctx.externalOffHold?.isHeld(deviceId) === true,
     ctx.observer.getObservedRecord(deviceId),
   ), execution);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(

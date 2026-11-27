@@ -401,6 +401,7 @@ export class WeatherBackfillChain {
       fetchFromHomeyApi: this.deps.fetchInsights,
       isManaged: this.deps.isManagedDevice,
       getControlledDailyKwh: (dateKey) => this.readScopeDailyKwh(dateKey).controlled,
+      meterScopeSinceDateKey: state.meterScopeSinceDateKey,
       timeZone: this.deps.getTimeZone(),
       nowMs: this.deps.getNowMs(),
     }).then((result) => {

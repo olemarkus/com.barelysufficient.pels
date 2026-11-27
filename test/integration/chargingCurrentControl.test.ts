@@ -6,6 +6,8 @@ import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import { partialDouble } from '../helpers/partialDouble';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
@@ -33,10 +35,36 @@ function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesSt
   const control = new ChargingCurrentControl(settings, homeyAccess, new FlowActionCardInventory(logger), logger, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
   deviceControlSettingsFixture({ devicePowerControlModes: { charger: 'automatic' } }));
   const access = control.access;
-  return { inventory, control, access, get, values, flowWritesStore };
+  return { inventory, control, access, get, values, flowWritesStore, settings };
 }
 const response = (body: unknown) => ({ status: 200, ok: true, headers: { get: () => 'test' }, json: async () => body });
 afterEach(() => vi.unstubAllGlobals());
+
+test('a relay and a missing device skip charging settings even with stale built-in choices', () => {
+  const relay: HomeyDeviceLike = {
+    ...HOMEY_DEVICE_FIELDS, id: 'relay', name: 'Relay', class: 'socket', capabilities: ['onoff'],
+  };
+  const { control, settings, values } = fixture(relay);
+  values.set('charging_current_control', { relay: selected, missing: selected });
+  const get = vi.spyOn(settings, 'get');
+  const getKeys = vi.spyOn(settings, 'getKeys');
+
+  expect(control.acceptFlowFacts({
+    writes: new Map(), evSocReporters: [], powerUsageReporters: { flowCount: 0 }, steppedLoadCards: {},
+  })).toBe(false);
+  expect(() => control.assertControlAllowed(relay, 'onoff')).not.toThrow();
+  for (const id of ['relay', 'missing']) {
+    expect(control.routesBuiltIn(id)).toBe(false);
+    const snapshot = partialDouble<TransportDeviceSnapshot>({
+      id, controlAdapter: {
+        kind: 'capability_adapter', activationRequired: false, activationEnabled: false, currentControl: 'built_in',
+      },
+    });
+    expect(control.projectControl(snapshot).controlAdapter).not.toHaveProperty('currentControl');
+  }
+  expect(get).not.toHaveBeenCalledWith('charging_current_control');
+  expect(getKeys).not.toHaveBeenCalled();
+});
 
 test('prefers a writable current capability without requiring an API key', async () => {
   const { control } = fixture(zaptec(true));

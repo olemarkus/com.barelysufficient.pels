@@ -6,7 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
-import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
+import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
+import { projectObservedState } from '../../lib/device/observedStateProjection';
+import { resolveDefaultSmartTaskKind } from '../../packages/shared-domain/src/smartTaskDeviceKind';
+import { decorateSnapshotWithDeviceControl, DeviceControlProjection } from '../../lib/planInput/deviceControlProjection';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 
 /**
@@ -52,6 +55,50 @@ const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   binaryControllable: true,
   managed: true,
   binaryControl: { on: true },
+});
+
+describe('temperature policy projection', () => {
+  it('skips adjustment reads for runtime control and keeps the smart-task policy on the full snapshot', () => {
+    const thermal = thermostat();
+    const relay = {
+      ...thermal, id: 'relay', deviceClass: 'socket', deviceType: 'onoff' as const,
+      controlModel: 'binary_power' as const, capabilities: ['onoff'], targets: [], temperature: undefined,
+    };
+    const steppedThermal = {
+      ...thermal, id: 'stepped-thermostat', controlModel: 'stepped_load' as const,
+      steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 1000 }] },
+    };
+    const devices = [relay, thermal, steppedThermal];
+    const allowsAdjustments = vi.fn(() => false);
+    const projection = new DeviceControlProjection(
+      steppedStoresForTest().store, new DeviceConfigurationStore(), () => undefined, () => false, allowsAdjustments,
+    );
+
+    const runtime = projection.decorateTargetSnapshotList(devices, 'runtime_control');
+    expect(runtime.map((device) => device.controlModel)).toEqual(['binary_power', 'temperature_target', 'stepped_load']);
+    expect(runtime.map((device) => device.temperatureAdjustmentsDisabled)).toEqual([undefined, undefined, undefined]);
+    expect(allowsAdjustments).not.toHaveBeenCalled();
+
+    const full = projection.decorateTargetSnapshotList(devices);
+    expect(full.map(resolveDefaultSmartTaskKind)).toEqual([null, null, null]);
+    expect(allowsAdjustments.mock.calls).toEqual(devices.map(({ id }) => [id]));
+  });
+
+  it('resolves lifecycle fallback from the setpoint disable policy without reading adjustments', () => {
+    const thermal = thermostat();
+    const configuration = new DeviceConfigurationStore();
+    configuration.replace([thermal]);
+    const allowsAdjustments = vi.fn(() => false);
+    const disabled = vi.fn(() => false);
+    const projection = new DeviceControlProjection(
+      steppedStoresForTest().store, configuration, () => projectObservedState(thermal), disabled, allowsAdjustments,
+    );
+
+    expect(projection.getLifecycleFallbackDevice(thermal.id)?.targetAxis).toEqual({ state: 'writable' });
+    disabled.mockReturnValue(true);
+    expect(projection.getLifecycleFallbackDevice(thermal.id)?.targetAxis).toEqual({ state: 'unavailable' });
+    expect(allowsAdjustments).not.toHaveBeenCalled();
+  });
 });
 
 describe('temperature-control policy read', () => {

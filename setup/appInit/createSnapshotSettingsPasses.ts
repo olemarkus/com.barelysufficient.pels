@@ -23,7 +23,7 @@ export const createModeDeviceTargetFill = (ctx: AppContext): ModeDeviceTargetFil
   // This settings pass needs the same runtime configuration and observer values
   // used by planning; inventory metadata stays on DeviceReads.
   () => listModeTargetFillDevices(
-    ctx.getPlanInputSnapshot().map((device) => toPlanDevice(
+    ctx.getPlanInputSnapshot('runtime_control').map((device) => toPlanDevice(
       ctx,
       device,
       createDefaultToPlanDeviceOptions(),
