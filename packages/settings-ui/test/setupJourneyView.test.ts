@@ -169,6 +169,7 @@ const headerProps = (overrides: Partial<SetupJourneyHeaderProps> = {}): SetupJou
   onDismissQuarterHour: vi.fn(),
   capacityOffAction: false,
   onCapacityOff: vi.fn(),
+  hardCapChoice: null,
   simulationExitStep: null,
   onOpenSimulation: vi.fn(),
   ...overrides,

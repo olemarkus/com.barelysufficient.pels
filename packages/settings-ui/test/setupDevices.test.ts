@@ -12,8 +12,9 @@ const load = async () => {
   const { state } = await import('../src/ui/state.ts');
   state.devicesLoaded = true;
   state.initialLoadComplete = true;
-  const { readGuidedDeviceChoices, readSetupDeviceChoices } = await import('../src/ui/setupDevices.ts');
-  return { state, readGuidedDeviceChoices, readSetupDeviceChoices };
+  const { createGuidedSetupActions, readGuidedDeviceChoices, readSetupDeviceChoices } =
+    await import('../src/ui/setupDevices.ts');
+  return { state, createGuidedSetupActions, readGuidedDeviceChoices, readSetupDeviceChoices };
 };
 
 const device = (id: string, name: string, extra: Partial<SettingsUiDeviceListItem> = {}): SettingsUiDeviceListItem => ({
@@ -81,6 +82,96 @@ describe('Setup device choices', () => {
     ]);
     if (choices.state !== 'ready') throw new Error('Choices unavailable');
     expect(choices.devices.map(({ detail }) => detail)).toEqual(['Heater · Living room · 0 kW', 'Heater']);
+  });
+});
+
+describe('Guided relay management confirmation', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const startRelay = async () => {
+    const { createGuidedSetupActions, state } = await load();
+    const relay = device('relay', 'Relay', { deviceClass: 'socket', powerCapable: false, capabilities: ['onoff'] });
+    state.latestDevices = [relay];
+    const { beginManagedControlIntent } = await import('../src/ui/managedControlIntent.ts');
+    const write = vi.fn(async () => {
+      beginManagedControlIntent('relay');
+      state.managedMap.relay = true;
+    });
+    const refresh = vi.fn(async () => {
+      state.latestDevices = [];
+      return true;
+    });
+    const readback = vi.fn<Parameters<typeof createGuidedSetupActions>[2]>().mockResolvedValue('pending');
+    vi.useFakeTimers();
+    const actions = createGuidedSetupActions(write, refresh, readback);
+    return { state, relay, write, refresh, readback, actions, beginManagedControlIntent };
+  };
+
+  it('confirms a saved relay once it appears managed, without another write or discovery', async () => {
+    const { write, refresh, readback, actions } = await startRelay();
+    readback.mockResolvedValueOnce('pending').mockResolvedValueOnce('confirmed');
+
+    const result = actions.manage('relay', true);
+    await vi.runAllTimersAsync();
+
+    await expect(result).resolves.toBe(true);
+    expect(write).toHaveBeenCalledExactlyOnceWith('relay', true);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(readback).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns immediately when the managed setting write failed', async () => {
+    const { write, refresh, readback, actions } = await startRelay();
+    write.mockResolvedValueOnce(undefined);
+
+    await expect(actions.manage('relay', true)).resolves.toBe(false);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(readback).not.toHaveBeenCalled();
+  });
+
+  it('stops waiting if a later Managed intent supersedes the add', async () => {
+    const { readback, actions, beginManagedControlIntent } = await startRelay();
+    const result = actions.manage('relay', true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(readback).toHaveBeenCalledTimes(1);
+
+    beginManagedControlIntent('relay');
+    await vi.runAllTimersAsync();
+
+    await expect(result).resolves.toBe(false);
+    expect(readback).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips polling if the refresh already confirms management', async () => {
+    const { state, relay, refresh, readback, actions } = await startRelay();
+    refresh.mockImplementationOnce(async () => {
+      state.latestDevices = [{ ...relay, managed: true }];
+      return true;
+    });
+
+    await expect(actions.manage('relay', true)).resolves.toBe(true);
+    expect(readback).not.toHaveBeenCalled();
+  });
+
+  it('keeps the add retryable if the confirmation endpoint is unavailable', async () => {
+    const { readback, actions } = await startRelay();
+    readback.mockResolvedValueOnce('unavailable');
+    const result = actions.manage('relay', true);
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(result).resolves.toBe(false);
+    expect(readback).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the add retryable if a readback never responds', async () => {
+    const { readback, actions } = await startRelay();
+    readback.mockImplementation(() => new Promise(() => {}));
+    const result = actions.manage('relay', true);
+    await vi.advanceTimersByTimeAsync(8_000);
+
+    await expect(result).resolves.toBe(false);
+    expect(readback).toHaveBeenCalledTimes(1);
+    expect(readback.mock.calls[0]?.[1]()).toBe(false);
   });
 });
 

@@ -23,6 +23,8 @@ import { resolveDeviceDetailControlState } from './deviceDetail/controlState.ts'
 import { isSurplusTrackingDeviceShape } from './deviceDetail/solarSurplusTracking.ts';
 import { isDumpLoadDeviceShape } from './deviceDetail/solarSurplus.ts';
 import { hasActiveDeadlineObjective, resolveManagedState, state } from './state.ts';
+import { sleep } from './homey.ts';
+import { captureManagedControlIntent } from './managedControlIntent.ts';
 import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplusTrackingCopy.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { needsHomeyEnergySetup, HOMEY_ENERGY_SETUP_REASON } from '../../../shared-domain/src/homeyEnergySetup.ts';
@@ -173,17 +175,59 @@ export const renderGuidedDeviceChoices = (devices: SettingsUiDeviceListItem[], j
   return new Set(candidates.map(({ id }) => id));
 };
 
+type ReadManagedConfirmation = (
+  id: string, isStillWanted: () => boolean,
+) => Promise<'confirmed' | 'pending' | 'unavailable'>;
+
+const hasManagedReadback = (id: string): boolean => (
+  state.latestDevices.some((device) => device.id === id && device.managed)
+);
+
+const waitForManagedReadback = async (
+  id: string, isStillWanted: () => boolean, read: ReadManagedConfirmation,
+): Promise<boolean> => {
+  let waiting = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const canConfirm = () => waiting && isStillWanted();
+  const poll = async (): Promise<boolean> => {
+    for (let delay = 250; canConfirm(); delay = Math.min(delay * 2, 1_000)) {
+      await sleep(delay);
+      if (!canConfirm()) return false;
+      if (hasManagedReadback(id)) return true;
+      const result = await read(id, canConfirm);
+      if (result !== 'pending') return canConfirm() && result === 'confirmed';
+    }
+    return false;
+  };
+  // The runtime batches Managed writes before refreshing. Leave room for that
+  // work, while bounding the dialog even if a read callback never arrives.
+  const deadline = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => { waiting = false; resolve(false); }, 8_000);
+  });
+  try {
+    return await Promise.race([poll(), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const createGuidedManageAction = (
   setManaged: (deviceId: string, enabled: boolean) => Promise<void>, refresh: () => Promise<boolean>,
+  readManagedConfirmation: ReadManagedConfirmation,
 ) => async (deviceId: string, enabled: boolean): Promise<boolean> => {
-  if (enabled) {
-    const device = state.latestDevices.find(({ id }) => id === deviceId);
-    if (!device || !resolveDeviceManageability(device).canManage || !state.initialLoadComplete) return false;
+  if (!enabled) {
+    if (resolveManagedState(deviceId)) await setManaged(deviceId, false);
+    return !resolveManagedState(deviceId);
   }
-  if (resolveManagedState(deviceId) !== enabled) await setManaged(deviceId, enabled);
-  if (resolveManagedState(deviceId) !== enabled) return false;
-  if (!enabled) return true;
-  return await refresh() && state.latestDevices.some((device) => device.id === deviceId && device.managed);
+  const device = state.latestDevices.find(({ id }) => id === deviceId);
+  if (!device || !resolveDeviceManageability(device).canManage || !state.initialLoadComplete) return false;
+
+  const write = resolveManagedState(deviceId) ? undefined : setManaged(deviceId, true);
+  const isCurrent = captureManagedControlIntent(deviceId);
+  const isStillWanted = () => isCurrent() && resolveManagedState(deviceId);
+  await write;
+  if (!isStillWanted() || !await refresh() || !isStillWanted()) return false;
+  return hasManagedReadback(deviceId) || waitForManagedReadback(deviceId, isStillWanted, readManagedConfirmation);
 };
 
 const guidedManagedDisabledReason = (id: string): string | null => {
@@ -195,9 +239,10 @@ const guidedManagedDisabledReason = (id: string): string | null => {
 
 export const createGuidedSetupActions = (
   setManaged: (deviceId: string, enabled: boolean) => Promise<void>, refresh: () => Promise<boolean>,
+  readManagedConfirmation: ReadManagedConfirmation,
 ): GuidedDeviceSetupActions => ({
   refresh,
-  manage: createGuidedManageAction(setManaged, refresh),
+  manage: createGuidedManageAction(setManaged, refresh, readManagedConfirmation),
   managedDisabledReason: guidedManagedDisabledReason,
   offersHomeyEnergy: (id) => needsHomeyEnergySetup(state.latestDevices.find((device) => device.id === id)),
   simulation: () => state.dryRun,

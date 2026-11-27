@@ -9457,7 +9457,8 @@ md-switch {
 [data-setup-journey-panel] > .pels-appbar,
 [data-setup-journey-panel] .device-control-legend,
 [data-setup-journey-panel="power"] #settings-limits-form,
-[data-setup-journey-panel="hardCap"] #settings-limits-global {
+[data-setup-journey-panel="hardCap"] #settings-limits-global,
+[data-setup-journey-panel="hardCap"]:has(.setup-journey__hard-cap) #settings-capacity-choice {
   display: none;
 }
 

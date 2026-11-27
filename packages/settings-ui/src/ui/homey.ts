@@ -228,6 +228,12 @@ const isApiCacheWriteStillValid = (uri: string, generationAtFetch: number): bool
   (apiCachePathGenerations.get(apiCachePathOf(uri)) ?? 0) === generationAtFetch
 );
 
+/** Fence a caller's uncached read against newer invalidations or publications. */
+export const captureApiCacheWriteGuard = (uri: string): (() => boolean) => {
+  const generationAtFetch = apiCachePathGenerations.get(apiCachePathOf(uri)) ?? 0;
+  return () => isApiCacheWriteStillValid(uri, generationAtFetch);
+};
+
 /**
  * Whether a response is a scoped read the runtime could NOT serve
  * (`homeScope: { state: 'unavailable' }`).

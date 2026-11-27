@@ -82,15 +82,17 @@ const zoneArea = (zone: unknown): string | null => {
   return NORWAY_ZONE_NAME.exec(record.zoneName)?.[1] ?? null;
 };
 
-/**
- * The Norwegian price area Homey Energy prices this hub in: the zone the owner
- * set in Homey, or else the one Homey set from the hub's location.
- */
-export const classifyHomeyEnergyZone = (body: unknown): Lookup<string> => {
+/** Preserve both Norwegian areas when the configured and location-derived zones disagree. */
+export const classifyHomeyEnergyZone = (body: unknown): SuggestedPriceArea | { kind: 'failed' } => {
   const record = asUnknownRecord(body);
   if (!record) return { kind: 'failed' };
-  const area = zoneArea(record.userConfigured) ?? zoneArea(record.autoConfigured);
-  return area === null ? { kind: 'none' } : { kind: 'found', value: area };
+  const homeyEnergyArea = zoneArea(record.userConfigured);
+  const locationArea = zoneArea(record.autoConfigured);
+  if (homeyEnergyArea !== null && locationArea !== null && homeyEnergyArea !== locationArea) {
+    return { kind: 'conflict', homeyEnergyArea, locationArea };
+  }
+  const area = homeyEnergyArea ?? locationArea;
+  return area === null ? NO_PRICE_AREA : { kind: 'from_homey_energy', area };
 };
 
 const lookUpGridCompany = async (latitude: number, longitude: number): Promise<Lookup<GridCompany>> => {
@@ -167,7 +169,7 @@ export class NorwayPriceSetupSuggester {
     this.ports.structuredLog.info({
       event: 'price_setup_suggestion',
       gridCompany: gridCompany.outcome,
-      priceArea: priceArea.kind === 'none' ? 'none' : 'found',
+      priceArea: priceArea.kind === 'from_homey_energy' ? 'found' : priceArea.kind,
     });
     return { gridCompany: gridCompany.suggestion, priceArea };
   }
@@ -199,7 +201,7 @@ export class NorwayPriceSetupSuggester {
   private async readHomeyEnergyArea(): Promise<SuggestedPriceArea> {
     try {
       const area = classifyHomeyEnergyZone(await this.ports.homeyWebApiGet(HOMEY_ENERGY_ZONE_PATH));
-      return area.kind === 'found' ? { kind: 'from_homey_energy', area: area.value } : NO_PRICE_AREA;
+      return area.kind === 'failed' ? NO_PRICE_AREA : area;
     } catch {
       return NO_PRICE_AREA;
     }

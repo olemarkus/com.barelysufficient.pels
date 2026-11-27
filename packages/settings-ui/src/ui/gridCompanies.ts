@@ -1,3 +1,21 @@
+export const COUNTIES: ReadonlyArray<{ code: string; name: string }> = [
+  { code: '03', name: 'Oslo' },
+  { code: '11', name: 'Rogaland' },
+  { code: '15', name: 'Møre og Romsdal' },
+  { code: '18', name: 'Nordland' },
+  { code: '31', name: 'Østfold' },
+  { code: '32', name: 'Akershus' },
+  { code: '33', name: 'Buskerud' },
+  { code: '34', name: 'Innlandet' },
+  { code: '39', name: 'Vestfold' },
+  { code: '40', name: 'Telemark' },
+  { code: '42', name: 'Agder' },
+  { code: '46', name: 'Vestland' },
+  { code: '50', name: 'Trøndelag' },
+  { code: '55', name: 'Troms' },
+  { code: '56', name: 'Finnmark' },
+];
+
 export type GridCompany = {
   name: string;
   organizationNumber: string;

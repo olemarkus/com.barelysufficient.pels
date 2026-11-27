@@ -1,6 +1,8 @@
 import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
 import {
+  isGridImportLimitIncomplete,
   readPowerLimitSettings,
+  refreshPowerLimitControls,
   syncPowerLimitSwitches,
   syncCapacityLimitControls,
   syncHardCapChoice,
@@ -572,6 +574,17 @@ export const saveSettingsLimitsSettings = async () => {
     // A failed save must not leave a switch claiming a different control posture.
     syncPowerLimitSwitches(lastGoodCapacityScalars);
     throw caught;
+  }
+};
+
+export const autoSaveSettingsLimits = async (): Promise<void> => {
+  // The field's own hint says what is missing; a save now would only fail.
+  if (isGridImportLimitIncomplete()) { refreshPowerLimitControls(); return; }
+  try {
+    await saveSettingsLimitsSettings();
+  } catch (error) {
+    await logSettingsError('Failed to save limits and safety settings', error, 'autoSaveSettingsLimits');
+    await showToastError(error, 'Failed to save limits and safety settings.');
   }
 };
 

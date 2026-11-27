@@ -58,12 +58,19 @@ describe('classifyCountyLookup', () => {
 });
 
 describe('classifyHomeyEnergyZone', () => {
-  it('prefers the Norwegian zone the owner set in Homey, then the one Homey set from the location', () => {
+  it('preserves both Norwegian zones when the configured and location-derived zones disagree', () => {
     expect(classifyHomeyEnergyZone({
-      userConfigured: { zoneName: 'NO-NO4', zoneCountryKey: 'NO' },
-      autoConfigured: { zoneName: 'NO-NO3', zoneCountryKey: 'NO' },
-    })).toEqual({ kind: 'found', value: 'NO4' });
-    expect(classifyHomeyEnergyZone(ZONE_USER_ELSEWHERE)).toEqual({ kind: 'found', value: 'NO3' });
+      userConfigured: { zoneName: 'NO-NO3', zoneCountryKey: 'NO' },
+      autoConfigured: { zoneName: 'NO-NO1', zoneCountryKey: 'NO' },
+    })).toEqual({ kind: 'conflict', homeyEnergyArea: 'NO3', locationArea: 'NO1' });
+  });
+
+  it('offers a single area when the Norwegian zones agree or only one is usable', () => {
+    const zone = { zoneName: 'NO-NO3', zoneCountryKey: 'NO' };
+    const offer = { kind: 'from_homey_energy', area: 'NO3' };
+    expect(classifyHomeyEnergyZone({ userConfigured: zone, autoConfigured: zone })).toEqual(offer);
+    expect(classifyHomeyEnergyZone({ userConfigured: zone })).toEqual(offer);
+    expect(classifyHomeyEnergyZone(ZONE_USER_ELSEWHERE)).toEqual(offer);
   });
 
   it('has no area outside Norway, and fails on an unreadable answer', () => {
@@ -127,6 +134,19 @@ describe('NorwayPriceSetupSuggester', () => {
     });
     const nveUrl = new URL(fetchMock.mock.calls[0][0] as string);
     expect(nveUrl.searchParams.get('geometry')).toBe('10.39,63.43');
+  });
+
+  it('returns an area conflict alongside the grid company and county', async () => {
+    answerLookups(NVE_TRONDHEIM, { status: 200, body: KARTVERKET_TRONDHEIM });
+
+    const zone = async () => ({
+      userConfigured: { zoneName: 'NO-NO1', zoneCountryKey: 'NO' },
+      autoConfigured: { zoneName: 'NO-NO3', zoneCountryKey: 'NO' },
+    });
+    await expect(suggester({ zone }).suggest(NOTHING_CHOSEN)).resolves.toEqual({
+      gridCompany: TENSIO,
+      priceArea: { kind: 'conflict', homeyEnergyArea: 'NO1', locationArea: 'NO3' },
+    });
   });
 
   it('asks no one again for the same location', async () => {

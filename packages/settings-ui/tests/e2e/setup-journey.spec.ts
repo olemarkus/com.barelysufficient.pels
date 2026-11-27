@@ -722,3 +722,56 @@ test('sets up a named spa without changing how ready devices are managed', async
     await touch.close();
   }
 });
+
+test('a last-resort relay closes setup after a delayed managed readback', async ({ page }) => {
+  await page.addInitScript(() => {
+    const relay = {
+      id: 'relay', name: 'Water heater relay', available: true, deviceClass: 'socket', deviceType: 'onoff',
+      isEvCharger: false, isBatteryOrSolar: false, binaryControllable: true, canSetControl: true,
+      powerCapable: false, capabilities: ['onoff'], targets: [],
+    };
+    const w = window as unknown as {
+      __PELS_HOMEY_STUB__: unknown;
+      Homey: { __stub: { getSetting: (key: string) => Record<string, unknown> } };
+    };
+    let sawStaleDiscovery = false;
+    let confirmationReads = 0;
+    const devices = (discovery: boolean) => {
+      const settings = w.Homey.__stub;
+      const maximum = settings.getSetting('last_resort_devices').relay;
+      const requested = settings.getSetting('managed_devices').relay === true;
+      if (discovery && requested) sawStaleDiscovery = true;
+      const managed = requested && sawStaleDiscovery && !discovery && ++confirmationReads > 1;
+      return {
+        devices: maximum === undefined ? [] : [{ ...relay, managed }],
+        devicePowerSetup: { devices: [{
+          id: relay.id, name: relay.name, homeId: 'main',
+          configured: Object.hasOwn(settings.getSetting('device_power_sources'), relay.id),
+          sourceId: null, sourceReady: false, defaultBinarySwitchAvailable: true, usedBy: null, sources: [],
+          lastResortAvailable: true, lastResortMaximumW: maximum,
+        }] },
+        chargerPhasePresets: { state: 'resolved', presets: {} },
+      };
+    };
+    w.__PELS_HOMEY_STUB__ = {
+      settings: {
+        managed_devices: {}, controllable_devices: {}, device_power_sources: {}, device_binary_switches: {},
+        last_resort_devices: {}, capacity_dry_run: true,
+      },
+      apiHandlers: { 'GET /ui_devices': () => devices(false), 'POST /ui_refresh_devices': () => devices(true) },
+    };
+  });
+  await page.goto('/?page=settings/devices&setup=devices');
+  await page.getByRole('textbox', { name: 'Find another device' }).fill('Water heater relay');
+  await page.getByRole('button', { name: 'Set up Water heater relay' }).click();
+  const dialog = page.locator('#device-power-setup');
+  await expect(dialog.getByRole('heading', { name: 'Set up Water heater relay' })).toBeVisible();
+  await dialog.getByRole('switch', { name: 'Turn off as a last resort' }).click();
+  await dialog.getByRole('spinbutton', { name: 'Maximum power draw' }).fill('2000');
+  await dialog.getByRole('button', { name: 'Review setup' }).click();
+  await dialog.getByRole('button', { name: 'Add to PELS' }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('switch', { name: 'Manage Water heater relay' })).toBeChecked();
+  expect(await stored(page, 'last_resort_devices')).toEqual({ relay: 2000 });
+});

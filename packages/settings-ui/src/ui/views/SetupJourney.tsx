@@ -218,6 +218,14 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
   </div>
 );
 
+export type SetupHardCapChoice = {
+  label: string;
+  detail: string;
+  canKeep: boolean;
+  onKeep: () => void;
+  onChange: () => void;
+};
+
 export type SetupJourneyHeaderProps = {
   title: string;
   /** The required steps done; `null` on the optional page, which is not one of them. */
@@ -238,6 +246,7 @@ export type SetupJourneyHeaderProps = {
   onDismissQuarterHour: () => void;
   capacityOffAction: boolean;
   onCapacityOff: () => void;
+  hardCapChoice: SetupHardCapChoice | null;
   /** The setup step still open when the simulation banner sent someone here; `null` hides the way out. */
   simulationExitStep: string | null;
   onOpenSimulation: () => void;
@@ -275,6 +284,18 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
       </div>
     </div>}
     {props.error && <p role="alert" class="pels-notice-warning">{props.error}</p>}
+    {props.hardCapChoice !== null && <div class="setup-recommendation-card__actions setup-journey__hard-cap">
+      <MdFilledTonalButton
+        type="button"
+        disabled={props.busy || !props.hardCapChoice.canKeep}
+        onClick={props.hardCapChoice.onKeep}
+      >
+        Keep {props.hardCapChoice.label}
+      </MdFilledTonalButton>
+      <MdTextButton type="button" disabled={props.busy} onClick={props.hardCapChoice.onChange}>
+        Change hard cap
+      </MdTextButton>
+    </div>}
     {props.journeyActions && <div class="setup-recommendation-card__actions">
       <MdTextButton type="button" data-settings-target="recommendations">Back to setup</MdTextButton>
       <MdFilledButton type="button" disabled={props.busy || !props.canContinue} onClick={props.onContinue}>

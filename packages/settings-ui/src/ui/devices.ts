@@ -19,6 +19,7 @@ import {
 } from '../../../contracts/src/settingsUi/paths.ts';
 import {
   callApi,
+  captureApiCacheWriteGuard,
   getApiReadModel,
   invalidateApiCacheForAllHomes,
   invalidateApiCacheForScopedHomes,
@@ -72,7 +73,7 @@ import {
   MANAGED_DEVICES,
   CONTROLLABLE_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import { parseDeviceList } from './deviceListRead.ts';
 
 export const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
@@ -80,40 +81,6 @@ export const refreshHomeBadgesAndRepaint = (): void => {
     renderDevices(state.latestDevices);
     renderPriorities(state.latestDevices);
   });
-};
-
-const hasValidFlowConflict = (value: unknown): boolean => {
-  if (value === undefined) return true;
-  if (!isUnknownRecord(value)) return false;
-  const conflict = value as { conflictingCapabilities?: unknown; flowName?: unknown };
-  return Array.isArray(conflict.conflictingCapabilities)
-    && conflict.conflictingCapabilities.every((capability) => typeof capability === 'string')
-    && (conflict.flowName === undefined || typeof conflict.flowName === 'string');
-};
-
-const isDeviceType = (value: unknown): boolean => value === 'temperature' || value === 'onoff';
-
-const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListItem => (
-  typeof value === 'object'
-  && value !== null
-  && typeof (value as { id?: unknown }).id === 'string'
-  && typeof (value as { name?: unknown }).name === 'string'
-  && typeof (value as { available?: unknown }).available === 'boolean'
-  // Required on the wire: the charger and on/off checks read them straight.
-  && typeof (value as { isEvCharger?: unknown }).isEvCharger === 'boolean'
-  && typeof (value as { binaryControllable?: unknown }).binaryControllable === 'boolean'
-  && typeof (value as { isBatteryOrSolar?: unknown }).isBatteryOrSolar === 'boolean'
-  && typeof (value as { managed?: unknown }).managed === 'boolean'
-  && typeof (value as { deviceClass?: unknown }).deviceClass === 'string'
-  && isDeviceType((value as { deviceType?: unknown }).deviceType)
-  && hasValidFlowConflict((value as { flowConflict?: unknown }).flowConflict)
-);
-
-export const parseDeviceList = (value: unknown): SettingsUiDeviceListItem[] => {
-  if (!Array.isArray(value) || !value.every(hasResolvedAvailability)) {
-    throw new TypeError('Invalid device list response.');
-  }
-  return value;
 };
 
 // Whole-home only, deliberately: the two `state.*` solar flags are HOME-level
@@ -470,7 +437,7 @@ const refreshGuidedDevices = async (): Promise<boolean> => {
 };
 
 const guidedSetupActions = createGuidedSetupActions(
-  (id, enabled) => buildManagedToggleHandler(id)(enabled), refreshGuidedDevices,
+  (id, enabled) => buildManagedToggleHandler(id)(enabled), refreshGuidedDevices, readGuidedManagedConfirmation,
 );
 
 export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
@@ -510,56 +477,77 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   target.appendChild(fragment);
 };
 
+const acceptRefreshedDevicePayload = (response: SettingsUiDevicesPayload, devices: SettingsUiDeviceListItem[]) => {
+  acceptDevicePowerSetup(response.devicePowerSetup);
+  // A whole-home response can re-seed only the bare cache entry.
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+  const chargerPhasePresets = applyChargerPhasePresetsRead(response.chargerPhasePresets);
+  const payload = {
+    ...response,
+    devices,
+    chargerPhasePresets,
+    hasManagedSolarDevice: response.hasManagedSolarDevice === true,
+    hasExhibitedExport: response.hasExhibitedExport === true,
+    surplusPoolReachable: response.surplusPoolReachable === true,
+  };
+  primeApiCache(SETTINGS_UI_DEVICES_PATH, payload);
+  state.hasManagedSolarDevice = payload.hasManagedSolarDevice;
+  state.hasExhibitedExport = payload.hasExhibitedExport;
+  state.surplusPoolReachable = payload.surplusPoolReachable;
+  // These reads bypass getTargetDevices, which normally starts the badge refresh.
+  refreshHomeBadgesAndRepaint();
+};
+
+const publishRefreshedDevices = async (devices: SettingsUiDeviceListItem[], render = true): Promise<void> => {
+  state.latestDevices = devices;
+  state.devicesLoaded = true;
+  if (render) {
+    renderDevices(devices);
+    renderPriorities(devices);
+    renderPriceConfigDevices();
+  }
+  document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
+  invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
+  await refreshPlan();
+};
+
+async function readGuidedManagedConfirmation(
+  id: string, isStillWanted: () => boolean,
+): Promise<'confirmed' | 'pending' | 'unavailable'> {
+  if (state.isBusy) return 'pending';
+  const readIsCurrent = captureApiCacheWriteGuard(SETTINGS_UI_DEVICES_PATH);
+  const rosterBeforeRead = state.latestDevices;
+  try {
+    const response = await callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH);
+    // A newer refresh may already have published a different roster.
+    if (!isStillWanted() || state.isBusy || !readIsCurrent() || rosterBeforeRead !== state.latestDevices) {
+      return 'pending';
+    }
+    const devices = parseDeviceList(response?.devices);
+    if (!response.devicePowerSetup) return 'unavailable';
+    if (!devices.some((device) => device.id === id && device.managed)) return 'pending';
+    acceptRefreshedDevicePayload(response, devices);
+    void publishRefreshedDevices(devices).catch((error) => {
+      void logSettingsError('Failed to update views after device setup', error, 'device setup');
+    });
+    return 'confirmed';
+  } catch (error) {
+    void logSettingsError('Failed to confirm managed device', error, 'device setup');
+    return 'unavailable';
+  }
+}
+
 const runDeviceRefresh = async (options?: { render?: boolean }) => {
   setBusy(true);
   try {
     const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
     const refreshedDevices = Array.isArray(response?.devices) ? parseDeviceList(response.devices) : null;
-    if (refreshedDevices) {
-      acceptDevicePowerSetup(response.devicePowerSetup);
-      // The refresh endpoint answers for the WHOLE home, so it may only re-seed
-      // the bare entry; every home-scoped entry it did not refresh is dropped
-      // rather than left to serve a pre-refresh device list.
-      invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
-      const chargerPhasePresets = applyChargerPhasePresetsRead(response.chargerPhasePresets);
-      primeApiCache(SETTINGS_UI_DEVICES_PATH, {
-        // Keep the owner readouts with this roster: device-detail settings
-        // consume the same cache as the device list.
-        ...response,
-        devices: refreshedDevices,
-        chargerPhasePresets,
-        hasManagedSolarDevice: response.hasManagedSolarDevice === true,
-        hasExhibitedExport: response.hasExhibitedExport === true,
-        surplusPoolReachable: response.surplusPoolReachable === true,
-      });
-      state.hasManagedSolarDevice = response.hasManagedSolarDevice === true;
-      state.hasExhibitedExport = response.hasExhibitedExport === true;
-      state.surplusPoolReachable = response.surplusPoolReachable === true;
-      // Discovery bypasses `getTargetDevices`, the seam that starts the badge
-      // membership refresh — without its own fetch here a
-      // newly discovered device renders unbadged until an unrelated refetch.
-      // The no-devices fallback below goes through `getTargetDevices`, which
-      // already fetches badges, so only this branch refreshes (no double
-      // fetch). It remains independent so a stuck badge callback cannot block
-      // the successfully discovered device payload.
-      refreshHomeBadgesAndRepaint();
-    } else {
-      invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
-    }
+    if (refreshedDevices) acceptRefreshedDevicePayload(response, refreshedDevices);
+    else invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
 
-    // When the refresh returns no devices we fall back to the cached read model via
-    // getTargetDevices(), which also re-derives state.hasManagedSolarDevice.
-    const devices = refreshedDevices ?? await getTargetDevices();
-    state.latestDevices = devices;
-    state.devicesLoaded = true;
-    if (options?.render !== false) {
-      renderDevices(devices);
-      renderPriorities(devices);
-      renderPriceConfigDevices();
-    }
-    document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
-    invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
-    return await refreshPlan().then(() => refreshedDevices !== null && response?.devicePowerSetup !== undefined);
+    // If the refresh omits the list, the regular read supplies the device state.
+    await publishRefreshedDevices(refreshedDevices ?? await getTargetDevices(), options?.render !== false);
+    return refreshedDevices !== null && response?.devicePowerSetup !== undefined;
   } catch (error) {
     await logSettingsError('Failed to refresh devices', error, 'refreshDevices');
     const message = error instanceof Error && error.message
