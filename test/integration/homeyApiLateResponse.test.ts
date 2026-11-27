@@ -3,7 +3,7 @@ import type { AddressInfo } from 'net';
 import type Homey from 'homey';
 import type { MockInstance } from 'vitest';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { initHomeyHttpClient, setRawCapabilityValue } from '../../lib/device/transport/managerHomeyApi';
+import { getRawDevices, initHomeyHttpClient, setRawCapabilityValue } from '../../lib/device/transport/managerHomeyApi';
 import { runWithContext } from '../../lib/logging/alsContext';
 
 /**
@@ -57,6 +57,18 @@ describe('Homey HTTP transport — answers that arrive after the caller gave up'
   afterEach(() => {
     requestSpy.mockRestore();
     logCapture.restore();
+  });
+
+  it.each([1, 2, 3])('decodes a UTF-8 character split after byte %i across response chunks', async (offset) => {
+    const payload = { device: { name: 'Høme 😀' } };
+    const bytes = Buffer.from(JSON.stringify(payload));
+    const split = bytes.indexOf(Buffer.from('😀')) + offset;
+    respond = (_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write(bytes.subarray(0, split));
+      setTimeout(() => res.end(bytes.subarray(split)), 10);
+    };
+    await expect(getRawDevices('manager/devices/device')).resolves.toEqual(payload);
   });
 
   it('records the owning app\'s real error when it arrives after the timeout', async () => {

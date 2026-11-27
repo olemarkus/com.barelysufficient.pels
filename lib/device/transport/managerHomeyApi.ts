@@ -300,12 +300,14 @@ function homeyHttpRequest(
     };
 
     const req = requestModule.request(options, (res) => {
-      const chunks: Buffer[] = [];
+      // Decode as chunks arrive so a complete second response Buffer is not needed.
+      res.setEncoding('utf8');
+      const chunks: string[] = [];
       /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('data', (chunk: string) => chunks.push(chunk));
       /* eslint-enable functional/immutable-data */
       res.on('end', () => {
-        const raw = Buffer.concat(chunks).toString('utf8');
+        const raw = chunks.join('');
         // The control path gave up on this request long ago and has already
         // decided. This is the answer arriving anyway — the ONLY place the
         // owning app's real error is ever visible — so log it and stop.
