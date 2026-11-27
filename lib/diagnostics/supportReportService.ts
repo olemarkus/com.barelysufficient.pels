@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { promisify } from 'node:util';
-import { gzip } from 'node:zlib';
 import type {
   PreparedSupportReport, SupportReportDocument, SupportReportEvidence, SupportReportRequest,
   SupportReportResponse, SupportReportTrigger,
@@ -9,6 +7,7 @@ import { MAIN_HOME_ID } from '../home/homeConfig';
 import { getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { SupportReportTransport } from './homeyReportTransport';
+import { gzipSupportReportJson } from './supportReportEncoding';
 import { readSupportReportRequest, SupportReportInputError } from './supportReportInput';
 import { HEATING_SHADOW_REPORT_TITLE } from './heatingShadowReport';
 
@@ -30,8 +29,6 @@ const logger = getLogger('diagnostics/support-report');
 
 const DAILY_REPORT_PROBLEM = 'Daily diagnostics report, sent because the owner turned it on.';
 
-const gzipAsync = promisify(gzip);
-
 const reportHeader = ({ trigger, request }: SupportReportDocument): string => [
   'PELS PROBLEM REPORT V2',
   `Type: ${trigger}, ${request.subject.kind}`,
@@ -48,10 +45,10 @@ const reportHeader = ({ trigger, request }: SupportReportDocument): string => [
 const toMessage = async (document: SupportReportDocument): Promise<{
   message: string; bytes: number; jsonBytes: number;
 }> => {
-  const json = JSON.stringify(document);
-  const data = (await gzipAsync(json)).toString('base64');
+  const { buffer, jsonBytes } = await gzipSupportReportJson(document);
+  const data = buffer.toString('base64');
   const message = `${reportHeader(document)}\n${data}\nEND PELS REPORT ${document.id}\n`;
-  return { message, bytes: Buffer.byteLength(message, 'utf8'), jsonBytes: Buffer.byteLength(json, 'utf8') };
+  return { message, bytes: Buffer.byteLength(message, 'utf8'), jsonBytes };
 };
 
 type EncodedMessage = Awaited<ReturnType<typeof toMessage>>;
