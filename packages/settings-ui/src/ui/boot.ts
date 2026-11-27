@@ -4,6 +4,7 @@ import { loadEvCarCurrentLimits, loadEvChargerCurrentLimits } from './deviceDeta
 import { bindMainFuseControls } from './mainFuseControls.ts';
 import { initAreaSimulationBannerNavigation } from './simulationBannerNavigation.ts';
 import { openSetupReview, initSetupJourney, retrySetupPathReads } from './setupJourney.ts';
+import { openFirstSetupStep } from './setupIntentNavigation.ts';
 import { setupJourneyFromSearch } from './setupJourneyState.ts';
 import { showUsageDayToday } from './usageDayView.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
@@ -212,6 +213,10 @@ const initTabHandlers = () => {
     // hidden, so the link names the scope it needs and we switch first.
     if (trigger.dataset.settingsHomeScope === MAIN_HOME_ID) selectHomeScope(MAIN_HOME_ID);
     const setup = setupJourneyFromSearch(`setup=${trigger.dataset.setupJourney ?? ''}`);
+    if (trigger.dataset.setupStatus === 'next' && (setup === 'power' || setup === 'devices')) {
+      void openFirstSetupStep(target, setup);
+      return;
+    }
     showTab(target, setup ?? undefined);
     // Optional deep-link anchor: land on the field the trigger promised, not
     // the top of the target panel (e.g. the no-data banner's "Choose power

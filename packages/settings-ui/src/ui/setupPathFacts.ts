@@ -6,6 +6,7 @@ import {
   isBelgianHourlySetup,
   isSetupStepOpen,
   resolveSetupPath,
+  resolveSetupCapacityLimit,
   type SetupCapacityLimit,
   type SetupHardCap,
   type SetupPathState,
@@ -161,6 +162,10 @@ export const publishSetupHardCapRead = (
   hardCap = { state: 'ready', value: resolveSetupLimits(configured, running) };
   notify();
 };
+
+export const readSetupCapacityLimit = (): SetupCapacityLimit | null => (
+  hardCap.state === 'ready' ? resolveSetupCapacityLimit(hardCap.value) : null
+);
 
 export const readUnchosenSetupHardCap = (): Extract<SetupCapacityLimit, { state: 'unset' }> | null => (
   hardCap.state === 'ready' && hardCap.value.state === 'unset' ? hardCap.value : null

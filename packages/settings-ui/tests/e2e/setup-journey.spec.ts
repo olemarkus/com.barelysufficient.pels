@@ -2,8 +2,9 @@ import { expect, injectHomeyHostCss, renderTest as test, type Page } from './fix
 
 const seed = async (
   page: Page, market = 'NL', solarAvailable = false, solarDevice = true, powerSource: string | null = null,
+  startingSettings: Record<string, unknown> = {},
 ) => {
-  await page.addInitScript(({ market, solarAvailable, solarDevice, powerSource }) => {
+  await page.addInitScript(({ market, solarAvailable, solarDevice, powerSource, startingSettings }) => {
     const saved = JSON.parse(sessionStorage.getItem('setup-saved-settings') ?? '{}') as Record<string, unknown>;
     const device = {
       id: 'setup-pump', name: 'Pool pump', zone: 'Garden', available: true,
@@ -31,12 +32,12 @@ const seed = async (
         ui_devices_has_managed_solar: solarDevice, ui_devices_has_exhibited_export: false,
         ui_devices_surplus_pool_reachable: solarAvailable,
         ...(powerSource === null ? {} : { power_source: powerSource }),
-        ...saved,
+        ...startingSettings, ...saved,
       },
       unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'].filter((key) => !(key in saved)),
       apiHandlers: { 'GET /ui_devices': devices },
     };
-  }, { market, solarAvailable, solarDevice, powerSource });
+  }, { market, solarAvailable, solarDevice, powerSource, startingSettings });
 };
 
 const stored = (page: Page, key: string) => page.evaluate((key) => (
@@ -44,13 +45,18 @@ const stored = (page: Page, key: string) => page.evaluate((key) => (
 ).Homey.__stub.getSetting(key), key);
 
 // Homey persists these writes across WebView reloads; the in-memory fixture does not.
-const reloadSavedSetup = async (page: Page) => {
+const persistSetupFixture = async (page: Page) => {
   await page.evaluate(() => {
     const stub = (window as unknown as { Homey: { __stub: { getSetting: (key: string) => unknown } } }).Homey.__stub;
     const keys = ['managed_devices', 'controllable_devices', 'price_optimization_settings',
-      'setup_recommendation_dismissals', 'capacity_enabled', 'capacity_period_minutes', 'capacity_limit_kw', 'capacity_margin_kw'];
+      'setup_intent', 'setup_recommendation_dismissals', 'capacity_enabled', 'capacity_period_minutes',
+      'capacity_limit_kw', 'capacity_margin_kw'];
     sessionStorage.setItem('setup-saved-settings', JSON.stringify(Object.fromEntries(keys.map((key) => [key, stub.getSetting(key)]))));
   });
+};
+
+const reloadSavedSetup = async (page: Page) => {
+  await persistSetupFixture(page);
   await page.reload();
 };
 
@@ -59,6 +65,76 @@ const choosePump = async (page: Page) => {
   await expect.poll(() => stored(page, 'controllable_devices')).toEqual({ 'setup-pump': true });
   await expect(page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
 };
+
+for (const market of ['NL', 'BE'] as const) {
+  test(`first setup asks why before connecting the meter in ${market} and resumes after reload`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: market === 'NL' ? 320 : 480, height: 900 });
+    await seed(page, market, false, true, 'flow', { power_tracker_state: null, pels_status: null });
+    await page.goto('/');
+    const powerStep = page.locator('#overview-setup-path [data-setup-step="power"]');
+    await expect(powerStep).toHaveAttribute('data-setup-status', 'next');
+    await powerStep.click();
+    await expect(page).toHaveURL(/setup=intent/);
+    const question = page.locator('#setup-review-root');
+    const solar = 'Use spare solar';
+    const battery = 'Coordinate my home battery';
+    const quarterHour = 'Limit quarter-hour peaks';
+    await expect(question.locator('md-outlined-button')).toHaveText([
+      ...(market === 'NL' ? [solar, battery, quarterHour] : [quarterHour, solar, battery]),
+      'Continue with general setup',
+    ]);
+    await expect(question).toContainText('Your Flow must send net import, negative when exporting.');
+    await expect(page.locator('#stale-data-banner')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('setup-intent.png'), fullPage: true, scale: 'css' });
+    await question.getByRole('button', { name: 'Back to setup', exact: true }).click();
+    await expect(powerStep).toBeVisible();
+    expect(await stored(page, 'setup_intent')).toBeUndefined();
+    await powerStep.click();
+    await expect(page).toHaveURL(/setup=intent/);
+    await question.getByRole('button', { name: market === 'NL' ? solar : quarterHour, exact: true }).click();
+    await expect(page).toHaveURL(/setup=power/);
+    await expect.poll(() => stored(page, 'setup_intent')).toBe(market === 'NL' ? 'solar' : 'quarter-hour');
+    expect(await stored(page, 'capacity_period_minutes')).not.toBe(15);
+    expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
+    expect(await stored(page, 'price_optimization_settings')).toEqual({});
+
+    await page.goBack();
+    await expect(powerStep).toBeVisible();
+    await expect(page).not.toHaveURL(/setup=intent/);
+    await page.goForward();
+    await expect(page).toHaveURL(/setup=power/);
+    await reloadSavedSetup(page);
+    const meterStep = page.locator('#limits-panel .setup-journey');
+    await expect(meterStep).toContainText('Connect your meter');
+    await expect(meterStep).toContainText('No power readings yet');
+    await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+    await expect(page.locator('#stale-data-banner')).toBeVisible();
+    await page.getByRole('tab', { name: 'Overview', exact: true }).click();
+    await powerStep.click();
+    await expect(page).toHaveURL(/setup=power/);
+  });
+}
+
+test('an existing owner can change the setup goal without changing their setup', async ({ page }) => {
+  await seed(page, 'NL', true, true, 'flow', {
+    capacity_dry_run: false, managed_devices: { 'setup-pump': true },
+    controllable_devices: { 'setup-pump': true }, capacity_enabled: false,
+  });
+  await page.goto('/?page=settings/recommendations');
+  const keys = ['managed_devices', 'controllable_devices', 'capacity_enabled', 'capacity_period_minutes',
+    'capacity_limit_kw', 'capacity_dry_run', 'price_optimization_settings'];
+  await expect(page.locator('#setup-setup-path')).toHaveCount(0);
+  const previous = await Promise.all(keys.map((key) => stored(page, key)));
+  await page.getByRole('button', { name: 'Choose your setup goal', exact: true }).click();
+  await page.getByRole('button', { name: 'Coordinate my home battery', exact: true }).click();
+  await expect(page.locator('#setup-recommendations-root')).toBeVisible();
+  await expect.poll(() => stored(page, 'setup_intent')).toBe('battery');
+  expect(await Promise.all(keys.map((key) => stored(page, key)))).toEqual(previous);
+  await persistSetupFixture(page);
+  await page.goto('/?page=settings/setup-review&setup=review');
+  await expect(page.locator('#setup-review-root')).toContainText('Coordinate my home battery');
+});
 
 test('a solar home waiting for its first surplus keeps its setup context after reload and Back', async ({ page }) => {
   await seed(page);
@@ -390,6 +466,52 @@ test('Flemish period advice changes only the period and respects dismissal', asy
   await expect.poll(() => stored(page, 'capacity_period_minutes')).toBe(15);
   expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
   await expect(header.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+  await expect(page.locator('#settings-capacity-monthly-peak')).toContainText('No completed quarter yet');
+});
+
+test('the quarter-hour setup goal shows the measured peak and retries a cap save independently', async ({ page }, testInfo) => {
+  await seed(page, 'BE', false, false, null, {
+    setup_intent: 'quarter-hour', capacity_follow_month_peak: true,
+    ui_current_month_quarter_peak_kw: 11.2, ui_current_month_quarter_peak_source: 'meter',
+  });
+  await page.goto('/?page=settings/devices&setup=devices');
+  await choosePump(page);
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  const header = page.locator('#limits-panel .setup-journey');
+  await expect(header).toContainText('If your tariff charges for your highest 15-minute average');
+  await header.getByRole('button', { name: 'Use 15-minute average', exact: true }).click();
+  await expect.poll(() => stored(page, 'capacity_period_minutes')).toBe(15);
+  const peak = page.locator('#settings-capacity-monthly-peak');
+  await expect(peak).toBeVisible();
+  await expect(peak).toContainText('11.20 kW');
+  await expect(peak).toContainText('Reported by your meter.');
+  await expect(page.locator('#settings-capacity-reaction-label')).toContainText('This month PELS holds 11.2 kW');
+  await page.screenshot({ path: testInfo.outputPath('quarter-hour-setup.png'), fullPage: true, scale: 'css' });
+  expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
+
+  await page.evaluate(() => {
+    const { Homey } = window as unknown as {
+      Homey: { set: (key: string, value: unknown, cb: (error?: Error) => void) => void };
+    };
+    const set = Homey.set;
+    let fail = true;
+    Homey.set = (key, value, cb) => {
+      if (key === 'capacity_limit_kw' && fail) {
+        fail = false;
+        cb(new Error('Offline. Try again.'));
+        return;
+      }
+      set(key, value, cb);
+    };
+  });
+  const keep = header.getByRole('button', { name: 'Keep 10 kW', exact: true });
+  await keep.click();
+  await expect(page.locator('#toast')).toContainText('Offline. Try again.');
+  expect(await stored(page, 'capacity_period_minutes')).toBe(15);
+  expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
+  await expect(header.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+  await keep.click();
+  await expect.poll(() => stored(page, 'capacity_limit_kw')).toBe(10);
 });
 
 test('the Dutch Limits step turns off Capacity limit in one tap without confirming the hard cap', async ({ page }) => {
@@ -583,6 +705,7 @@ test('a fresh install goes from the Overview setup card to Start managing in one
   await expect(page.locator('#dry-run-banner')).toBeHidden();
 
   await setupCard.getByText('Devices', { exact: true }).click();
+  await page.getByRole('button', { name: 'Continue with general setup', exact: true }).click();
   await expect(page).toHaveURL(/setup=devices/);
   await choosePump(page);
   await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();

@@ -129,8 +129,9 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#setup-setup-path')).toBeVisible();
     await expect(page.locator('#setup-recommendations-root')).not.toContainText('No setup suggestions');
 
-    // A step row lands on the field it names.
+    // On the first setup step, the owner can skip the optional question.
     await page.locator('#setup-setup-path [data-setup-step="power"]').click();
+    await page.getByRole('button', { name: 'Continue with general setup', exact: true }).click();
     await expect(page.locator('#limits-panel')).toBeVisible();
     await expect(page.locator('#settings-power-source')).toBeInViewport();
   });
@@ -524,6 +525,7 @@ test.describe('Onboarding links', () => {
     await expect(devicesStep).toBeVisible();
     await expect(page.locator('#plan-cards .plan-card')).toHaveCount(0);
     await devicesStep.click();
+    await page.getByRole('button', { name: 'Continue with general setup', exact: true }).click();
     await expect(page.locator('#devices-panel')).toBeVisible();
   });
 

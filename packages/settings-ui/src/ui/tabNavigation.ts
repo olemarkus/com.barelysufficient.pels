@@ -308,10 +308,10 @@ export const showTab = (tabId: string, setup?: SetupJourneyStep) => {
 
 // Shows a panel in place of the current history entry, for a page that
 // replaces another (a closed Smart task landing on its fallback tab).
-export const replaceTab = (tabId: string) => {
+export const replaceTab = (tabId: string, setup?: SetupJourneyStep) => {
   if (isShellPanel(tabId)) {
     const entry: ShellHistoryState = { pelsShellPanel: tabId, pelsFrom: readShellHistoryState()?.pelsFrom ?? '' };
-    window.history.replaceState(entry, '', shellRouteUrl(tabId, window.location));
+    window.history.replaceState(entry, '', shellRouteUrl(tabId, window.location, setup));
   }
   renderPanel(tabId);
 };
@@ -324,6 +324,13 @@ export const navigateBackTo = (parentId: string) => {
     return;
   }
   showTab(parentId);
+};
+
+// A shared page can be opened from different parents. A direct link still has
+// a defined back destination when there is no in-app history entry.
+export const navigateBackToShellOrigin = (fallback: string): void => {
+  const origin = readShellHistoryState()?.pelsFrom;
+  navigateBackTo(origin && isShellPanel(origin) ? origin : fallback);
 };
 
 // The panel the page opens on: the one its URL names, else the Overview.

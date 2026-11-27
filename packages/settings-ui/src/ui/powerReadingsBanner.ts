@@ -13,6 +13,7 @@ import { getHomeScope, getShownPanelHomeId, subscribeToHomeScope } from './homeS
 import { isPlanUnmeasured } from './planMeasurementSignal.ts';
 import { isNoReadingsCarriedBySetupPath, publishSetupPower } from './setupPathFacts.ts';
 import { readUsagePower } from './usagePowerRead.ts';
+import { currentSetupJourney } from './setupJourneyState.ts';
 
 // A never-received fact always resolves banner content; this only keeps the type honest.
 const NO_READINGS_YET_FALLBACK = 'No power readings yet.';
@@ -64,7 +65,8 @@ const resolveMainBanner = ({ readings, source }: MainBannerRead): PowerReadingsB
 const paintSelectedBanner = (): void => {
   const homeId = getShownPanelHomeId();
   if (homeId === MAIN_HOME_ID) {
-    const content = mainRead && !isNoReadingsCarriedBySetupPath(mainRead.knownSingleHome)
+    const askingBeforeMeterSetup = mainRead?.readings.state === 'never' && currentSetupJourney() === 'intent';
+    const content = mainRead && !askingBeforeMeterSetup && !isNoReadingsCarriedBySetupPath(mainRead.knownSingleHome)
       ? resolveMainBanner(mainRead) : null;
     const useMeterPicker = mainRead?.readings.state === 'received' && mainRead.source === 'homey_energy';
     const anchor = useMeterPicker ? '#settings-homey-energy-meter' : '#settings-power-source';

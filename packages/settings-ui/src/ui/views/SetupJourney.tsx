@@ -61,6 +61,7 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
 
 type SetupGoalPickerProps = {
   choices: SetupGoalChoices;
+  preferSolar?: boolean;
   busy: boolean;
   onPrice: (id: string, enabled: boolean) => void;
   onNewSmartTask: (id: string) => void;
@@ -193,6 +194,8 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
           <MdTextButton type="button" aria-label={`Device settings for ${device.name}`}
             onClick={() => props.onOpen(device.id, 'top')}>Device settings</MdTextButton>
         </>}
+        {props.preferSolar && device.solar && <SolarGoal id={device.id} name={device.name} solar={device.solar}
+          onOpen={props.onOpen} />}
         {device.price && <>
           <label class="md-switch-row">
             <MdSwitch selected={device.price.enabled} disabled={props.busy}
@@ -216,7 +219,7 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
           <MdTextButton type="button" aria-label={`View the smart task for ${device.name}`}
             onClick={() => props.onOpenSmartTask(device.id)}>View task</MdTextButton>
         </>}
-        {device.solar && <SolarGoal id={device.id} name={device.name} solar={device.solar} onOpen={props.onOpen} />}
+        {!props.preferSolar && device.solar && <SolarGoal id={device.id} name={device.name} solar={device.solar} onOpen={props.onOpen} />}
         {device.battery && <BatteryGoalState id={device.id} name={device.name} goal={device.battery} busy={props.busy}
           onBatteryPlan={props.onBatteryPlan} onOpen={props.onOpen} />}
       </section>
@@ -248,9 +251,9 @@ export type SetupJourneyHeaderProps = {
   journeyActions: boolean;
   onContinue: () => void;
   onCheckMeter: () => void;
-  quarterHourAdvice: boolean;
+  quarterHourAdvice: string | null;
   onQuarterHour: () => void;
-  onDismissQuarterHour: () => void;
+  onDismissQuarterHour: (() => void) | null;
   capacityOffAction: boolean;
   onCapacityOff: () => void;
   hardCapChoice: SetupHardCapChoice | null;
@@ -276,10 +279,12 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
       </div>
     )}
     {props.quarterHourAdvice && <div>
-      <p class="pels-card-supporting">In Flanders? Use the 15-minute average for measured peaks.</p>
+      <p class="pels-card-supporting">{props.quarterHourAdvice}</p>
       <div class="setup-recommendation-card__actions">
         <MdTextButton type="button" disabled={props.busy} onClick={props.onQuarterHour}>Use 15-minute average</MdTextButton>
-        <MdTextButton type="button" disabled={props.busy} onClick={props.onDismissQuarterHour}>Dismiss</MdTextButton>
+        {props.onDismissQuarterHour && (
+          <MdTextButton type="button" disabled={props.busy} onClick={props.onDismissQuarterHour}>Dismiss</MdTextButton>
+        )}
       </div>
     </div>}
     {props.onReviewBatterySetup && (
@@ -350,6 +355,7 @@ const ReviewNoJobNote = ({ devices, hasGoalActions }: { devices: readonly SetupR
 export type SetupReviewProps = {
   path: SetupPath | null;
   activeMode: string | null;
+  intentLabel?: string;
   meterSummary: string | null;
   devices: readonly SetupReviewDevice[];
   busy: boolean;
@@ -374,6 +380,7 @@ const ReviewPanel = (props: SetupReviewProps & { path: SetupPath }) => {
         PELS shows what it would do without changing your devices. Start managing lets it act on the controls you set.
       </p>}
       <dl class="setup-journey__summary">
+        {props.intentLabel && <div><dt>Setup goal</dt><dd>{props.intentLabel}</dd></div>}
         {props.activeMode !== null && <div><dt>Active mode</dt><dd>{props.activeMode}</dd></div>}
         {props.path.steps.filter((step) => step.id !== 'devices').map((step) => (
           <div key={step.id}><dt>{step.title}</dt><dd>{step.id === 'power' && step.status === 'done' ? props.meterSummary ?? step.detail : step.detail}</dd></div>
