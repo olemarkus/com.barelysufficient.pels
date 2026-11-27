@@ -9,11 +9,14 @@ import { initHomeyHttpClient, resolveHomeyInstance } from './managerHomeyApi';
 import {
   fetchDevicesByIds as fetchDevicesByIdsFromSdk,
   fetchDevicesWithFallback,
+  readDevicesForDiagnostics,
   type DeviceFetchResult,
 } from './managerFetch';
 import { addPerfDuration } from '../../utils/perfCounters';
 
 const emitSdkDebug = getDebugEmitter('devices', 'devices');
+
+export type DeviceCollector<T> = (devices: AsyncIterable<HomeyDeviceLike>) => Promise<T>;
 
 /** Owns the Homey REST client and device realtime socket lifecycle. */
 export class DeviceHomeySdk {
@@ -86,6 +89,17 @@ export class DeviceHomeySdk {
     const start = Date.now();
     try {
       return await fetchDevicesWithFallback({ logger: this.logger });
+    } finally {
+      const durationMs = Date.now() - start;
+      addPerfDuration('device_fetch_ms', durationMs);
+      addPerfDuration('device_fetch_full_ms', durationMs);
+    }
+  }
+
+  async readDevicesForDiagnostics<T>(collect: DeviceCollector<T>): Promise<T> {
+    const start = Date.now();
+    try {
+      return await readDevicesForDiagnostics(this.logger, collect);
     } finally {
       const durationMs = Date.now() - start;
       addPerfDuration('device_fetch_ms', durationMs);

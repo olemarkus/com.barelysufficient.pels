@@ -3,7 +3,7 @@ import type { PelsHost } from '../../lib/app/pelsHost';
 import { SupportReportEvidenceSource } from '../../lib/diagnostics/supportReportEvidence';
 import { createSupportReportReads, type SupportReportApp } from '../../setup/appInit/createSupportReports';
 import { APP_MEMORY_REPORT_TITLE, readInstalledAppVersions, type InstalledAppVersions } from '../../lib/diagnostics/supportReportHomeyApps';
-import { SUPPORT_REPORT_MAX_HOMEY_DEVICES } from '../../lib/diagnostics/homeyDeviceSupportSection';
+import { SUPPORT_REPORT_MAX_HOMEY_DEVICES, type CollectHomeyDeviceInventory } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { SupportReportEvidence, SupportReportRequest } from '../../packages/contracts/src/supportReport';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
@@ -31,6 +31,8 @@ import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contract
 import type { ScheduleEntry, SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
 import type { AppMemoryUsageSampler } from '../../lib/diagnostics/appMemoryFootprint';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { parseHomeyDevicePayload } from '../../lib/device/transport/homeyDevicePayload';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const request: SupportReportRequest = {
@@ -74,6 +76,9 @@ const objectiveStore = (tasks: Record<string, unknown> = {}): ObjectiveSettingsS
   getKeys: () => ['capacity_limit_kw', ...Object.keys(tasks).map((id) => `deferred_objective.${id}`)],
   set: vi.fn(), unset: vi.fn(),
 });
+const fixtureInventory = (read: () => Promise<readonly HomeyDeviceLike[]>): CollectHomeyDeviceInventory => (
+  async (collect) => collect((async function* devices() { yield* await read(); })())
+);
 const noCycle = () => undefined;
 type HeatingObservations = Pick<HeatingShadowCollector, 'readDaily'>;
 const noHeating: HeatingObservations = { readDaily: () => undefined };
@@ -109,7 +114,7 @@ describe('configured power source', () => {
       ...meter, id: `other-${i}`,
     }));
     const readDevices = vi.fn(async () => [...devices, meter]);
-    host.deviceManager.getDevicesForDebug = readDevices;
+    host.deviceManager.readDevicesForDiagnostics = fixtureInventory(readDevices);
     const report = await source(host, settingsFor(energy)).capture(request, now);
 
     expect(values(report, 'Current power source')).toEqual({
@@ -122,7 +127,7 @@ describe('configured power source', () => {
 
   it('keeps the meter selection when the inventory cannot be read', async () => {
     const host = currentHost();
-    host.deviceManager.getDevicesForDebug = vi.fn().mockRejectedValue(new Error('inventory unavailable'));
+    host.deviceManager.readDevicesForDiagnostics = fixtureInventory(async () => { throw new Error('inventory unavailable'); });
     const report = await source(host, settingsFor(energy)).capture(request, now);
 
     expect(values(report, 'Current power source')).toEqual({
@@ -933,11 +938,11 @@ describe('device support request evidence', () => {
     },
     settings: { energy_value_on: 3000, password: 'secret' },
   };
-  const hostWithHomeyDevices = (read: () => Promise<unknown[]>) => pelsHostDouble({
+  const hostWithHomeyDevices = (read: () => Promise<readonly HomeyDeviceLike[]>) => pelsHostDouble({
     homeMembership: membership(),
     deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
       getSnapshotByDeviceId: vi.fn(() => undefined),
-      getDevicesForDebug: vi.fn(read) as NonNullable<PelsHost['deviceManager']>['getDevicesForDebug'],
+      readDevicesForDiagnostics: fixtureInventory(read),
     }),
     getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
   });
@@ -967,6 +972,24 @@ describe('device support request evidence', () => {
     expect(values(report, 'Current device observation and configuration')).toBeUndefined();
   });
 
+  it('describes a support subject beyond the roster limit', async () => {
+    const roster = Array.from({ length: SUPPORT_REPORT_MAX_HOMEY_DEVICES }, (_, index) => (
+      { ...relay, id: `device-${index}` }
+    ));
+    const report = await source(hostWithHomeyDevices(async () => [...roster, relay])).capture(supportRequest, now);
+    expect(values(report, 'Homey device')).toMatchObject({ id: relay.id, deviceSettings: relaySettings });
+    expect(values(report, 'Current Homey devices')?.leftOut).toBe(1);
+  });
+
+  it('treats a partial inventory containing the requested subject as unavailable', async () => {
+    const host = hostWithHomeyDevices(async () => []);
+    host.deviceManager.readDevicesForDiagnostics = (collect) => collect((async function* devices() {
+      yield relay;
+      throw new Error('truncated');
+    })());
+    await expect(source(host).capture(supportRequest, now)).rejects.toMatchObject({ code: 'capture_failed' });
+  });
+
   describe('the device list', () => {
     const appReport: SupportReportRequest = {
       subject: { kind: 'app', homeId: 'main' },
@@ -980,7 +1003,7 @@ describe('device support request evidence', () => {
         homeMembership: membership(),
         deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
           getSnapshotByDeviceId: vi.fn((id: string) => id === 'heater' ? deviceSnapshot() : undefined),
-          getDevicesForDebug: vi.fn(async () => [relay, managedHeater]) as NonNullable<PelsHost['deviceManager']>['getDevicesForDebug'],
+          readDevicesForDiagnostics: fixtureInventory(async () => [relay, managedHeater]),
         }),
         getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
       });
@@ -999,15 +1022,16 @@ describe('device support request evidence', () => {
     });
 
     it('preserves a charger current and distinguishes absent, unreadable and withheld values', async () => {
-      const charger = {
+      const charger = parseHomeyDevicePayload({
         ...relay, id: 'charger', ownerUri: 'homey:app:com.aminacharging', driverId: 'homey:app:com.aminacharging:amina-s',
         settings: {
           maxCurrent: 16, singlePhase: false, energy_value_off: 0, energy_value_on: null,
           load: '10.0.0.1', ipAddress: '192.0.2.2', accessToken: 'private-token',
           nested: { temperature: 18, ipAddress: '192.0.2.3' },
         },
-      };
-      const devices = [
+      });
+      if (!charger) throw new Error('invalid charger fixture');
+      const devices: HomeyDeviceLike[] = [
         charger,
         { ...relay, id: 'empty', settings: {} },
         { ...relay, id: 'unreadable', settings: {}, settingsUnavailable: true },
@@ -1112,7 +1136,7 @@ describe('device support request evidence', () => {
         readDeviceDiagnosticConfiguration: readConfiguration,
         deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
           getSnapshotByDeviceId: (id) => ({ ...deviceSnapshot(), id, managed: id !== 'device-2' }),
-          getDevicesForDebug: vi.fn(async () => devices),
+          readDevicesForDiagnostics: fixtureInventory(async () => devices),
         }),
       });
       const report = await source(host).capture(appReport, now, 'daily');
@@ -1133,7 +1157,7 @@ describe('device support request evidence', () => {
         homeMembership: { ...membership(), hasPendingOwnershipGeneration: () => true },
         readDeviceDiagnosticConfiguration: readConfiguration,
         deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
-          getSnapshotByDeviceId: () => deviceSnapshot(), getDevicesForDebug: vi.fn(async () => [managedHeater]),
+          getSnapshotByDeviceId: () => deviceSnapshot(), readDevicesForDiagnostics: fixtureInventory(async () => [managedHeater]),
         }),
       });
       const report = await source(host).capture(appReport, now, 'daily');

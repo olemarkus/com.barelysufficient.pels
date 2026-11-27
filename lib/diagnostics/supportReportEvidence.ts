@@ -20,7 +20,8 @@ import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 import type { DeviceObjectiveProfile } from '../../packages/contracts/src/objectiveProfileTypes';
 import {
-  describeHomeyDeviceForSupport, readHomeyDeviceInventory, reportHomeyDevices, type HomeyDeviceInventoryRead,
+  readHomeyDeviceInventory, reportHomeyDevices, type CollectHomeyDeviceInventory, type DeviceSupportSubject,
+  type HomeyDeviceInventoryRead,
 } from './homeyDeviceSupportSection';
 import {
   INSTALLED_APP_VERSIONS_TITLE, readAppMemorySection, reportInstalledAppVersions, type InstalledAppVersions,
@@ -37,7 +38,6 @@ import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntim
 import type { HomeMembershipPort } from '../home/membership';
 import type { DevicePlan } from '../plan/planTypes';
 import type { PowerSourceChoiceRead } from '../power/powerSource';
-import type { HomeyDeviceLike } from '../utils/types';
 import { selectSupportReportActivity, supportReportWindow } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
 import { LEARNED_RATES_REPORT_TITLE, reportLearnedRates } from './supportReportLearnedRates';
@@ -70,7 +70,7 @@ export type SupportReportReads = {
   /** No section for devices without current-based EV control; throws when the owner cannot be read. */
   getEvChargingCurrentDiagnostics(deviceId: string, nowMs: number): EvChargingCurrentDiagnostics | undefined;
   /** Every device on the Homey, whether or not PELS lists it. Rejects when Homey cannot be read. */
-  listHomeyDevices(): Promise<readonly HomeyDeviceLike[]>;
+  readHomeyDevices: CollectHomeyDeviceInventory;
   /** Installed versions from Homey's app manager. Rejects when Homey cannot be read. */
   readInstalledAppVersions(): Promise<InstalledAppVersions>;
   getHomeMembership(): Pick<HomeMembershipPort,
@@ -133,8 +133,6 @@ const readSection = (title: string, read: () => SupportReportSection | null): Se
   return section ? { state: 'available', section } : { state: 'unavailable', reason: `${title} is unavailable.` };
 };
 
-type DeviceSupportSubject = { name: string; section: SupportReportSection };
-
 /**
  * A device support request is about a device PELS may not list, so it reads
  * the device from Homey instead of PELS's snapshot. Without that read there is
@@ -142,13 +140,11 @@ type DeviceSupportSubject = { name: string; section: SupportReportSection };
  * device Homey no longer has is an invalid subject.
  */
 const resolveDeviceSupportSubject = (
-  deviceId: string,
   inventory: HomeyDeviceInventoryRead,
 ): DeviceSupportSubject => {
   if (inventory.state === 'unavailable') throw new SupportReportInputError('capture_failed');
-  const device = inventory.devices.find((entry) => entry.id === deviceId);
-  if (!device) throw new SupportReportInputError('invalid_subject');
-  return { name: device.name, section: describeHomeyDeviceForSupport(device) };
+  if (!inventory.supportSubject) throw new SupportReportInputError('invalid_subject');
+  return inventory.supportSubject;
 };
 
 const readInventoryConfiguration = (
@@ -170,7 +166,7 @@ const readHomeyDevicesSection = (
   host: SupportReportReads, subject: SupportReportSubject, inventory: HomeyDeviceInventoryRead,
 ): SectionRead => readSection('Current Homey devices', () => (
   inventory.state === 'available' ? reportHomeyDevices(
-    inventory.devices, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed),
+    inventory, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed),
     (deviceId) => readInventoryConfiguration(host, subject, deviceId),
   ) : null
 ));
@@ -551,9 +547,9 @@ export class SupportReportEvidenceSource {
     const { host } = this;
     const history = request.subject.homeId === MAIN_HOME_ID
       ? readOptional(() => host.getDeviceLogUiPayload()) : undefined;
-    const inventoryRead = readHomeyDeviceInventory(() => host.listHomeyDevices());
+    const inventoryRead = readHomeyDeviceInventory((collect) => host.readHomeyDevices(collect), request.subject);
     const supportSubject = request.subject.kind === 'device_support'
-      ? resolveDeviceSupportSubject(request.subject.deviceId, await inventoryRead) : null;
+      ? resolveDeviceSupportSubject(await inventoryRead) : null;
     const subject = resolveSubject(host, request.subject, history, capturedAtMs, supportSubject);
     const area = readArea(host, request.subject.homeId);
     const plan = request.subject.homeId === MAIN_HOME_ID

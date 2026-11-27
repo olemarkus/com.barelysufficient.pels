@@ -54,7 +54,7 @@ import {
 } from './transport/carAssociation';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
-import { DeviceHomeySdk } from './transport/deviceHomeySdk';
+import { DeviceHomeySdk, type DeviceCollector } from './transport/deviceHomeySdk';
 import type { CapabilityUpdateCallback, LiveFeedHealth } from './liveFeed';
 import { ObservationBridge } from './transport/observationBridge';
 import { SnapshotCommit } from './transport/snapshotCommit';
@@ -582,6 +582,7 @@ export class DeviceTransport {
         return runFetchLiveGenerationW(this.logger);
     }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return (await this.deviceSdk.fetchDevices()).devices; }
+    readDevicesForDiagnostics<T>(read: DeviceCollector<T>) { return this.deviceSdk.readDevicesForDiagnostics(read); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationBridge.state.getObservationState(), deviceId);
     }

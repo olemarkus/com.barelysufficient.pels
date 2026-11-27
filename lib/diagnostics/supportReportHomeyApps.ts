@@ -2,7 +2,7 @@ import type { SupportReportSection } from '../../packages/contracts/src/supportR
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { AppMemorySnapshot } from './appMemoryFootprint';
 import { requestHomeyAppsList, type HomeyAppManagerRuntime } from './homeyAppManagerRequest';
-import { SUPPORT_REPORT_MAX_HOMEY_DEVICES, type HomeyDeviceInventoryRead } from './homeyDeviceSupportSection';
+import type { HomeyDeviceInventoryRead } from './homeyDeviceSupportSection';
 
 export const INSTALLED_APP_VERSIONS_TITLE = 'Installed Homey app versions';
 
@@ -32,7 +32,7 @@ export const reportInstalledAppVersions = (
   inventory: HomeyDeviceInventoryRead, versions: InstalledAppVersions,
 ): SupportReportSection | null => {
   if (inventory.state === 'unavailable') return null;
-  const owners = new Set(inventory.devices.slice(0, SUPPORT_REPORT_MAX_HOMEY_DEVICES).map((device) => device.ownerUri));
+  const owners = new Set(inventory.roster.map((device) => device.ownerUri));
   const apps = [...owners].flatMap((ownerUri) => {
     const version = versions.get(ownerUri);
     return version === undefined ? [] : [{ ownerUri, version }];
