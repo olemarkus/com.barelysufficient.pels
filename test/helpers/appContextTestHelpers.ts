@@ -574,6 +574,7 @@ export function createInitializedAppContextMock(options: AppContextMockOptions =
       getCurrentStarvedDeviceCount: vi.fn(() => 0),
     } as never,
     deviceManager: {
+      meterInventory: { expectBootstrap: vi.fn(), finishBootstrap: vi.fn() },
       getSnapshot: vi.fn(() => []),
       getPeriodicStatusMetrics: vi.fn(() => null),
       isWaitingForCarAssociation: () => false,

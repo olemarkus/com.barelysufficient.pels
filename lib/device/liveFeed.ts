@@ -91,6 +91,7 @@ export type CapabilityUpdateCallback = (
 type FeedCallbacks = {
   onDeviceUpdate: (device: HomeyDeviceLike) => void;
   onDeviceInventoryChanged: () => Promise<void>;
+  onInventoryInvalidated?: () => void;
   onCapabilityUpdate?: CapabilityUpdateCallback;
 };
 
@@ -250,6 +251,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     });
 
     this.rootSocket.on('disconnect', (reason: string) => {
+      this.callbacks.onInventoryInvalidated?.();
       this.health.subscriptionState = 'disconnected';
       if (!this.stopped) {
         this.health.reconnectCount += 1;
@@ -320,6 +322,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     if (this.stopped) return;
     await this.emitSubscribeUri(sub, DEVICES_URI);
     if (this.stopped) return;
+    this.callbacks.onInventoryInvalidated?.();
     this.health.subscriptionState = 'subscribed';
     this.health.lastSuccessfulSubscriptionMs = Date.now();
     this.attachDeviceUpdateListener(sub);
@@ -409,6 +412,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       this.quietEmittedAt = null;
       if (eventName === DEVICE_CREATE_EVENT || eventName === DEVICE_DELETE_EVENT) {
         // The event invalidates inventory; the REST read validates its contents.
+        this.callbacks.onInventoryInvalidated?.();
         this.scheduleInventoryRefresh();
         if (eventName === DEVICE_DELETE_EVENT) {
           this.health.liveEventCount += 1;
@@ -447,6 +451,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       }
       const device = parseHomeyDevicePayload(data);
       if (device === null) {
+        this.callbacks.onInventoryInvalidated?.();
         this.health.ignoredLiveEventCount += 1;
         this.logger.structuredLog.info({
           component: 'devices', source: 'web_api_subscription',

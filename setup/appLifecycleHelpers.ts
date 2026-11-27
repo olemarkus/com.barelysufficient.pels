@@ -137,6 +137,7 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
   appContext.homeyEnergyHelpers.start();
   appContext.generationPollSource.start();
   priceCoordinator.startPriceRefresh();
+  appContext.deviceManager.meterInventory.expectBootstrap();
   const bootstrapSnapshotAndPlan = async (): Promise<void> => {
     let snapshotRefreshSucceeded = false;
     try {
@@ -147,6 +148,7 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
       await appContext.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
       snapshotRefreshSucceeded = true;
     } finally {
+      appContext.deviceManager.meterInventory.finishBootstrap();
       // Release the warmup gate as soon as the snapshot attempt completes,
       // success or failure. Releasing on failure prevents startup from
       // hanging on the gate's bounded timeout when the snapshot fetch threw

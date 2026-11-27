@@ -581,6 +581,7 @@ export class DeviceTransport {
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);
     }
+    get meterInventory() { return this.deviceSdk.meterInventory; }
     readDeviceInventory<T>(read: DeviceCollector<T>) { return this.deviceSdk.readDeviceInventory(read); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationBridge.state.getObservationState(), deviceId);

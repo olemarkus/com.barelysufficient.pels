@@ -5,10 +5,11 @@ import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import type { WeatherCollectorDeps } from '../../lib/weather/weatherCollectorDeps';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
-import { getRawDevice, getRawFromHomeyApi, readRawDeviceInventory } from '../../lib/device/transport/managerHomeyApi';
+import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
 import { resolveDeadlineMissSuppression } from '../../lib/weather/deadlineMissBudgetDay';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
+import { requireDeviceManager } from './contextGuards';
 import { readMainMeterSelection } from '../mainMeterSettings';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { readWholeHomeMeterScopeSignature } from '../weatherMeterScopeSignature';
@@ -64,7 +65,7 @@ export function createWeatherCollector(
     AppContext,
     'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'getCapacityScalars'
     | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
-    | 'dailyBudgetService' | 'getUserdataDatabase'
+    | 'dailyBudgetService' | 'getUserdataDatabase' | 'deviceManager'
   >,
   getDailyKwh: WeatherCollectorDeps['getDailyKwh'],
 ): WeatherCollector {
@@ -75,7 +76,7 @@ export function createWeatherCollector(
     recordBudgetDecision: (decision) => adviceHistory.record(decision),
     readBudgetDecisions: () => adviceHistory.read(),
     readDevice: (deviceId) => getRawDevice(deviceId),
-    readMeterInventory: (collect) => readRawDeviceInventory(collect, 'keyed'),
+    readMeterInventory: (collect) => requireDeviceManager(ctx).meterInventory.read(collect),
     fetchInsights: (path) => getRawFromHomeyApi(path),
     getDailyKwh,
     // PELS-managed = the controlled set the historical split is summed from.

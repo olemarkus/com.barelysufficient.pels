@@ -20,6 +20,7 @@ import {
   readRawDeviceInventory,
   logDeviceTransportRuntimeError,
 } from './managerHomeyApi';
+import { projectMeterDevice, type MeterInventoryPublisher } from './meterInventory';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
@@ -108,13 +109,15 @@ function logDeviceInventory(logger: Logger, validDevices: number, rejectedIds: r
   emitDeviceDebug({ event: 'manager_api_devices_returned', validDevices, invalidEntries: rejectedIds.length });
 }
 
-export async function fetchDevicesWithFallback({ logger }: { logger: Logger }): Promise<DeviceFetchResult> {
+export async function fetchDevicesWithFallback(
+  { logger, publish }: { logger: Logger; publish?: MeterInventoryPublisher },
+): Promise<DeviceFetchResult> {
   const { result: devices, rejectedPayloads } = await collectNormalizedInventory(logger, async (entries) => {
     const rows: HomeyDeviceLike[] = [];
     // eslint-disable-next-line functional/immutable-data -- Snapshot construction needs all valid devices.
     for await (const device of entries) rows.push(device);
     return rows;
-  });
+  }, publish);
   return { devices, fetchSource: 'raw_manager_devices', failedIds: [], rejectedPayloads };
 }
 
@@ -126,13 +129,18 @@ export async function readDeviceInventory<T>(
 
 function collectNormalizedInventory<T>(
   logger: Logger, collect: (devices: AsyncIterable<HomeyDeviceLike>) => Promise<T>,
+  publish?: MeterInventoryPublisher,
 ): Promise<{ result: T; rejectedPayloads: number }> {
   return readDeviceInventoryWithRetries(logger, async () => {
-    const { result, validDevices, rejectedIds } = await readRawDeviceInventory(async (entries) => {
+    let keyed = false;
+    const { result, validDevices, rejectedIds, metadata } = await readRawDeviceInventory(async (entries) => {
       const rejected: string[] = [];
+      const rows: ReturnType<typeof projectMeterDevice>[] = [];
       let valid = 0;
       async function* normalized(): AsyncGenerator<HomeyDeviceLike> {
         for await (const entry of entries) {
+          // eslint-disable-next-line functional/immutable-data -- Metadata belongs to this complete attempt.
+          if (publish && keyed) rows.push(projectMeterDevice(entry));
           const device = parseHomeyDevicePayload(entry);
           if (device === null) {
             /* eslint-disable-next-line functional/immutable-data -- Collect only IDs of rejected wire payloads. */
@@ -143,8 +151,9 @@ function collectNormalizedInventory<T>(
           }
         }
       }
-      return { result: await collect(normalized()), validDevices: valid, rejectedIds: rejected };
-    });
+      return { result: await collect(normalized()), validDevices: valid, rejectedIds: rejected, metadata: rows };
+    }, 'collection', (value) => { keyed = value; });
+    publish?.(keyed ? metadata : undefined);
     logDeviceInventory(logger, validDevices, rejectedIds);
     return { result, rejectedPayloads: rejectedIds.length };
   });
@@ -167,8 +176,9 @@ export function readRawDeviceForComparison(deviceId: string): Promise<HomeyDevic
 export async function fetchDevicesByIds(params: {
   deviceIds: string[];
   logger: Logger;
+  readFull?: () => Promise<DeviceFetchResult>;
 }): Promise<DeviceFetchResult> {
-  const { deviceIds, logger } = params;
+  const { deviceIds, logger, readFull = () => fetchDevicesWithFallback({ logger }) } = params;
   if (deviceIds.length === 0) {
     return { devices: [], fetchSource: 'targeted_by_id', failedIds: [], rejectedPayloads: 0 };
   }
@@ -222,7 +232,7 @@ export async function fetchDevicesByIds(params: {
       event: 'targeted_fetch_fallback_to_full',
       failures: failedIds.length,
     });
-    return fetchDevicesWithFallback({ logger });
+    return readFull();
   }
   if (failedIds.length > 0) {
     logger.structuredLog.warn({

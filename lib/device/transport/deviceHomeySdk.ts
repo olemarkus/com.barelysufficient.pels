@@ -12,6 +12,7 @@ import {
   readDeviceInventory,
   type DeviceFetchResult,
 } from './managerFetch';
+import { MeterInventory } from './meterInventory';
 import { addPerfDuration } from '../../utils/perfCounters';
 
 const emitSdkDebug = getDebugEmitter('devices', 'devices');
@@ -20,6 +21,7 @@ export type DeviceCollector<T> = (devices: AsyncIterable<HomeyDeviceLike>) => Pr
 
 /** Owns the Homey REST client and device realtime socket lifecycle. */
 export class DeviceHomeySdk {
+  readonly meterInventory = new MeterInventory(() => this.liveFeed?.getHealth().subscriptionState === 'subscribed');
   private ready = false;
   private liveFeed: DeviceLiveFeed | null = null;
 
@@ -35,6 +37,7 @@ export class DeviceHomeySdk {
 
   async initialize(): Promise<void> {
     if (this.ready) return;
+    this.meterInventory.start();
 
     const homeyInstance = resolveHomeyInstance(this.homey);
     if (
@@ -73,7 +76,11 @@ export class DeviceHomeySdk {
       homey: this.homey,
       logger: this.logger,
       callbacks: {
-        onDeviceUpdate: this.onDeviceUpdate,
+        onDeviceUpdate: (device) => {
+          this.meterInventory.observeDevice(device.id, device.capabilities);
+          this.onDeviceUpdate(device);
+        },
+        onInventoryInvalidated: () => this.meterInventory.invalidate(),
         onDeviceInventoryChanged: this.onDeviceInventoryChanged,
         onCapabilityUpdate: this.onCapabilityUpdate,
       },
@@ -88,12 +95,16 @@ export class DeviceHomeySdk {
   async fetchDevices(): Promise<DeviceFetchResult> {
     const start = Date.now();
     try {
-      return await fetchDevicesWithFallback({ logger: this.logger });
+      return await this.readFull();
     } finally {
       const durationMs = Date.now() - start;
       addPerfDuration('device_fetch_ms', durationMs);
       addPerfDuration('device_fetch_full_ms', durationMs);
     }
+  }
+
+  private readFull(): Promise<DeviceFetchResult> {
+    return this.meterInventory.withSnapshot((publish) => fetchDevicesWithFallback({ logger: this.logger, publish }));
   }
 
   async readDeviceInventory<T>(collect: DeviceCollector<T>): Promise<T> {
@@ -110,7 +121,7 @@ export class DeviceHomeySdk {
   async fetchDevicesByIds(deviceIds: string[]): Promise<DeviceFetchResult> {
     const start = Date.now();
     try {
-      return await fetchDevicesByIdsFromSdk({ deviceIds, logger: this.logger });
+      return await fetchDevicesByIdsFromSdk({ deviceIds, logger: this.logger, readFull: () => this.readFull() });
     } finally {
       const durationMs = Date.now() - start;
       addPerfDuration('device_fetch_ms', durationMs);
@@ -127,6 +138,7 @@ export class DeviceHomeySdk {
   }
 
   stop(): void {
+    this.meterInventory.stop();
     void this.liveFeed?.stop();
     this.liveFeed = null;
     this.ready = false;
