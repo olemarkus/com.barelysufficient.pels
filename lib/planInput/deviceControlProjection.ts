@@ -85,13 +85,15 @@ export class DeviceControlProjection {
     const device = readRuntimeDevice(this.configuration.get(deviceId), this.getObservedRecord(deviceId));
     if (!device) return undefined;
     return projectLifecycleFallbackDevice(decorateSnapshotWithDeviceControl(device, this.store,
-      this.isTemperatureControlDisabled(deviceId), !this.allowsTemperatureAdjustments(deviceId)));
+      this.isTemperatureControlDisabled(deviceId), false));
   }
 
-  decorateTargetSnapshotList<T extends DeviceControlProjectionSource>(devices: T[]): (T & DeviceControlDecoration)[] {
+  decorateTargetSnapshotList<T extends DeviceControlProjectionSource>(
+    devices: T[], purpose?: 'runtime_control',
+  ): (T & DeviceControlDecoration)[] {
     return devices.map((device) => decorateSnapshotWithDeviceControl(
       device, this.store, this.isTemperatureControlDisabled(device.id),
-      !this.allowsTemperatureAdjustments(device.id),
+      purpose !== 'runtime_control' && !this.allowsTemperatureAdjustments(device.id),
     ));
   }
 }

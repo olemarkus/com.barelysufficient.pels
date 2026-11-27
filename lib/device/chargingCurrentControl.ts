@@ -12,7 +12,7 @@ import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictS
 import { normalizeError } from '../utils/errorUtils';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { HomeyRequestInFlightError } from '../utils/homeyRequestInFlightError';
-import { isBuiltInControlInEffect, type UnusedBuiltInControl } from './builtInControlFlowGate';
+import type { UnusedBuiltInControl } from './builtInControlFlowGate';
 import {
   canSetChargingCurrent, hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
   installationPresetWattsPerAmp, resolveInstallationCurrentTargetPowerObservation,
@@ -169,7 +169,7 @@ export class ChargingCurrentControl {
   assertControlAllowed(device: HomeyDeviceLike, capabilityId?: string): void {
     if (capabilityId !== undefined) this.assertInstallationWrite(device.id, capabilityId);
     const connected = this.synchronizeTrust();
-    this.sessions.assertAllowed(device, this.setup(device.id), connected);
+    this.sessions.assertAllowed(device, () => this.setup(device.id), connected);
   }
 
   /**
@@ -197,14 +197,13 @@ export class ChargingCurrentControl {
   /**
    * Whether PELS sets this device's current itself: the owner selected built-in
    * control, the installed app offers a way to set it (`canSetChargingCurrent`)
-   * and no Flow is known to set the same current (`isBuiltInControlInEffect`).
+   * and no Flow is known to set the same current.
    * Otherwise the current goes through the owner's Flow, as with Flow control
    * selected.
    */
   routesBuiltIn(deviceId: string): boolean {
-    const setup = this.setup(deviceId);
     const device = this.findDevice(deviceId);
-    return this.routesBuiltInFor(device, setup, device && this.installations.accessOf(device));
+    return this.routesBuiltInFor(device, device && this.installations.accessOf(device));
   }
 
   /**
@@ -246,7 +245,7 @@ export class ChargingCurrentControl {
     const adapter = resolveChargingCurrentAdapter(device);
     if (!adapter || this.routesAutomaticWatts(device, access) || access === 'secondary') return false;
     if (access !== 'main' && hasSharedChargingInstallation(adapter, this.knownDevices())) return false;
-    return !this.routesBuiltInFor(device, this.setup(device.id), access)
+    return !this.routesBuiltInFor(device, access)
       && currentSettingFlows(adapter, this.flowWrites).size === 0;
   }
 
@@ -279,20 +278,16 @@ export class ChargingCurrentControl {
   }
 
   private routesBuiltInFor(
-    device: HomeyDeviceLike | undefined, setup: ChargingCurrentSetup, access: InstallationCurrentAccess,
+    device: HomeyDeviceLike | undefined, access: InstallationCurrentAccess, readSetup?: () => ChargingCurrentSetup,
   ): boolean {
-    if (device && this.routesAutomaticWatts(device, access)) return false;
-    if (access === 'secondary') return false;
-    const adapter = device && resolveChargingCurrentAdapter(device);
-    // A saved choice whose app now offers no current write (a read-only
-    // capability without an app action) routes nothing: the device leaves
-    // current stepping until the app is updated or a Flow is chosen.
-    if (adapter && (!canSetChargingCurrent(adapter)
-      || !this.permitsInstallationCurrent(adapter, setup, access))) return false;
-    return isBuiltInControlInEffect(
-      setup.method === 'built_in',
-      adapter !== undefined && currentSettingFlows(adapter, this.flowWrites).size > 0,
-    );
+    if (!device || access === 'secondary') return false;
+    const adapter = resolveChargingCurrentAdapter(device);
+    if (!adapter || !canSetChargingCurrent(adapter)) return false;
+    if (this.routesAutomaticWatts(device, access) || currentSettingFlows(adapter, this.flowWrites).size > 0) {
+      return false;
+    }
+    const setup = readSetup ? readSetup() : this.setup(device.id);
+    return setup.method === 'built_in' && this.permitsInstallationCurrent(adapter, setup, access);
   }
 
   private routesAutomaticWatts(device: HomeyDeviceLike, access: InstallationCurrentAccess): boolean {
@@ -302,7 +297,7 @@ export class ChargingCurrentControl {
   private currentRouteKey(): string {
     return JSON.stringify(this.knownDevices().map((device) => {
       const access = this.installations.accessOf(device);
-      return [device.id, access, this.routesBuiltInFor(device, this.setup(device.id), access)];
+      return [device.id, access, this.routesBuiltInFor(device, access)];
     }));
   }
 
@@ -319,11 +314,16 @@ export class ChargingCurrentControl {
   }
 
   projectControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
-    const setup = this.setup(source.id);
     const device = this.findDevice(source.id);
     const installation = device && this.installations.project(device);
-    const builtIn = this.routesBuiltInFor(device, setup, installation?.access);
-    const projected = this.sessions.project(withCurrentRoute(source, builtIn), setup);
+    // The route and session may both need the same setup within this projection.
+    let setup: ChargingCurrentSetup | undefined;
+    const readSetup = () => {
+      setup ??= this.setup(source.id);
+      return setup;
+    };
+    const builtIn = this.routesBuiltInFor(device, installation?.access, readSetup);
+    const projected = this.sessions.project(withCurrentRoute(source, builtIn), readSetup);
     return withChargingInstallation(projected, installation?.installation);
   }
 
@@ -386,7 +386,7 @@ export class ChargingCurrentControl {
     const device = this.findDevice(deviceId);
     if (!device || this.installations.accessOf(device) !== 'main') return undefined;
     const adapter = getDeviceAdapter(device);
-    return this.routesBuiltInFor(device, this.setup(deviceId), 'main')
+    return this.routesBuiltInFor(device, 'main')
       ? this.builtInInstallationLevelW(device) : adapter.installationLevelW(device);
   }
 

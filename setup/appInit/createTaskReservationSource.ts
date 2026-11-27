@@ -13,7 +13,7 @@ export function createTaskReservationSource(
   return new ObjectiveTaskReservationSource(
     taskEvaluationSource,
     createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),
-    () => ctx.getPlanInputSnapshot(),
+    () => ctx.getPlanInputSnapshot('runtime_control'),
     (device) => toPlanDevice(ctx, device),
   );
 }

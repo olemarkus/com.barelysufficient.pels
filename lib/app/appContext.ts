@@ -221,8 +221,8 @@ export type AppContext = {
   set lastNotifiedOperatingMode(value: string);
   /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */
   get planRebuildThrottle(): PlanRebuildThrottle;
-  /** Plan/executor runtime inputs joined from DeviceConfiguration and Observer. */
-  getPlanInputSnapshot(): PlanInputSnapshotDevice[];
+  /** Runtime device read. Opt out of the smart-task adjustment policy for control-only consumers. */
+  getPlanInputSnapshot(purpose?: 'runtime_control'): PlanInputSnapshotDevice[];
   /** Inventory metadata joined with accepted Observer state for consumers needing both. */
   getDeviceSurfaces(): DeviceSurfaces[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];

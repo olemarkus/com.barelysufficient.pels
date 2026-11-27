@@ -45,6 +45,26 @@ const isManagedFrom = (devices: DeviceSpec[]) => (id: string): boolean => (
 );
 
 describe('resolveControlledDailyKwh', () => {
+  it.each([
+    ['2026-03-16', 'insufficient_scope_history'], // 13 completed days
+    ['2026-03-15', 'no_devices'], // 14 completed days
+    ['2026-03-14', 'no_devices'], // 15 completed days
+    [undefined, 'no_devices'],
+  ])('checks local completed days since %s before reading inventory', async (meterScopeSinceDateKey, outcome) => {
+    const fetchInsights = buildFetch([]);
+    const result = await resolveControlledDailyKwh({
+      ...weatherApiReads(fetchInsights),
+      isManaged: () => true,
+      getControlledDailyKwh: () => undefined,
+      timeZone: OSLO,
+      // The UTC date is still March 29, after Oslo's spring DST change.
+      nowMs: Date.UTC(2026, 2, 29, 22),
+      meterScopeSinceDateKey,
+    });
+    expect(result.outcome).toBe(outcome);
+    expect(fetchInsights).toHaveBeenCalledTimes(outcome === 'insufficient_scope_history' ? 0 : 1);
+  });
+
   it('sums managed device meters and validates against the tracker controlled total', async () => {
     const devices: DeviceSpec[] = [
       { id: 'therm-1', managed: true, perDay: 25 },

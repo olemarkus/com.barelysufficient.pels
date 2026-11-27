@@ -57,7 +57,7 @@ const runSnapshotPrePass = (
   ctx: AppContext,
   options: BuildHomePlanDevicesOptions,
 ): ReturnType<AppContext['getPlanInputSnapshot']> => {
-  const snapshot = ctx.getPlanInputSnapshot();
+  const snapshot = ctx.getPlanInputSnapshot('runtime_control');
   releaseExternalOffHoldsForObservedOn({
     policy: ctx.externalOffHold,
     deviceIds: snapshot.map((device) => device.id),

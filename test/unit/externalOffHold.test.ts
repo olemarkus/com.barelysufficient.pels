@@ -8,6 +8,10 @@ import {
 } from '../../lib/observer/externalOffHold';
 import { createExternalOffHoldPolicy as createSettingsPolicy } from '../../lib/observer/externalOffHoldSettings';
 import { configuredLastResortFrom } from '../utils/configuredLastResortFixture';
+import {
+  isExternalOffHeldForObservedDevice,
+  resolveExternalOffHoldActive,
+} from '../../lib/planInput/externalOffHoldProjection';
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 
 import {
@@ -74,6 +78,29 @@ const build = (
   store: ExternalOffHoldSettingsStore,
   readOptIn: () => ExternalOffHoldOptInRead = () => optedIn({ a: true, b: true }),
 ) => createExternalOffHoldPolicy({ store, readOptIn });
+
+describe('external-off hold projection', () => {
+  it('skips the hold lookup without a binary axis or when the device is on', () => {
+    const readStoredHold = vi.fn(() => true);
+    expect(resolveExternalOffHoldActive(readStoredHold, {})).toBe(false);
+    expect(resolveExternalOffHoldActive(readStoredHold, { binaryControl: { on: true } })).toBe(false);
+    expect(readStoredHold).not.toHaveBeenCalled();
+  });
+
+  it('reads the hold for an off device or a missing executor observation', () => {
+    const readStoredHold = vi.fn(() => true);
+    expect(resolveExternalOffHoldActive(readStoredHold, { binaryControl: { on: false } })).toBe(true);
+    expect(resolveExternalOffHoldActive(readStoredHold, {
+      binaryControl: { on: true },
+      steppedLoadProfile: { steps: [
+        { id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 1000 },
+      ] },
+      selectedStepId: 'off',
+    })).toBe(true);
+    expect(isExternalOffHeldForObservedDevice(readStoredHold, undefined)).toBe(true);
+    expect(readStoredHold).toHaveBeenCalledTimes(3);
+  });
+});
 
 describe('external-off hold policy — a hold is a key', () => {
   it('reads opt-in evidence without migrating or writing holds, and preserves unavailable reads', () => {

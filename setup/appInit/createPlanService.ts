@@ -54,7 +54,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getSettleDevices: () => deviceManager.getBinaryCommandConfirmationSnapshot(),
     // The decorated devices carry their own ladder, so the settle evidence is a
     // pure projection off them — no profile lookup at the consumer.
-    getSteppedSettleDevices: () => buildSteppedSettleSnapshot(ctx.getPlanInputSnapshot()),
+    getSteppedSettleDevices: () => buildSteppedSettleSnapshot(ctx.getPlanInputSnapshot('runtime_control')),
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,

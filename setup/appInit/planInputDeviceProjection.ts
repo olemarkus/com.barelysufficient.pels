@@ -26,7 +26,7 @@ export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProje
     resolveManagedState: (deviceId) => ctx.resolveManagedState(deviceId),
     getLearnedPhaseFootprint: (deviceId) => ctx.capacityGuard?.phaseLearner.learnedFootprint(deviceId),
     isExternalOffHoldActive: (deviceId, device) => (
-      resolveExternalOffHoldActive(ctx.externalOffHold?.isHeld(deviceId) === true, device)
+      resolveExternalOffHoldActive(() => ctx.externalOffHold?.isHeld(deviceId) === true, device)
     ),
   };
 }

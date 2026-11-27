@@ -3,6 +3,7 @@ import type { ReadMeterInventory } from './weatherCollectorDeps';
 import type { Logger as PinoLogger } from 'pino';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fetchDeviceDailyKwh, meterCapabilityOf, quantileSorted } from './meterKwhBackfill';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import { applyControlledBackfill, CONTROLLED_BACKFILL_VERSION } from './weatherHistory';
 
 /**
@@ -50,6 +51,7 @@ export type ControlledKwhBackfillOutcome =
     complete: boolean;
   }
   | { outcome: 'no_devices' }
+  | { outcome: 'insufficient_scope_history' }
   | { outcome: 'not_validated'; overlapDays: number; medianRatio: number; devicesUsed: number };
 
 export type ControlledKwhBackfillDeps = {
@@ -62,11 +64,18 @@ export type ControlledKwhBackfillDeps = {
   getControlledDailyKwh: (dateKey: string) => number | undefined;
   timeZone: string;
   nowMs: number;
+  meterScopeSinceDateKey?: string;
 };
 
 export async function resolveControlledDailyKwh(
   deps: ControlledKwhBackfillDeps,
 ): Promise<ControlledKwhBackfillOutcome> {
+  // The scope transition day and the current local day cannot overlap.
+  if (deps.meterScopeSinceDateKey !== undefined
+    && getDateKeyInTimeZone(new Date(deps.nowMs), deps.timeZone)
+      < shiftDateKey(deps.meterScopeSinceDateKey, MIN_OVERLAP_DAYS + 1)) {
+    return { outcome: 'insufficient_scope_history' };
+  }
   const meters = await deps.readMeterInventory(listMeters);
   const managedMeters = meters.filter((meter) => deps.isManaged(meter.deviceId));
   if (managedMeters.length === 0) return { outcome: 'no_devices' };
@@ -171,10 +180,6 @@ export function applyControlledOutcome(params: {
     });
     // Deliberately do NOT latch on a failed/absent validation: a meter added
     // later, or a managed-set change, must still be adoptable on a future boot.
-    // The cost is one bounded read-only device sweep per app restart on a
-    // structurally-unvalidatable home (no terminal state) — accepted for a
-    // hidden, advisory feature; a managed-set-change re-attempt is the proper
-    // long-term off-ramp (deferred).
     return { state, dirty: false };
   }
   const applied = applyControlledBackfill(state, result.controlledDailyKwh);

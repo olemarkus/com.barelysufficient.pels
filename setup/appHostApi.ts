@@ -290,9 +290,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.getPlanInputSnapshot();
   }
 
-  /** Plan/executor input, composed only from their two owners. */
-  public getPlanInputSnapshot(): PlanInputSnapshotDevice[] {
-    return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.getRuntimeDevices());
+  /** Runtime control does not consume the adjustment policy used by smart-task eligibility. */
+  public getPlanInputSnapshot(purpose?: 'runtime_control'): PlanInputSnapshotDevice[] {
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.getRuntimeDevices(), purpose);
   }
 
   private getRuntimeDevices() {
@@ -308,7 +308,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
       this.context.observer.getObservedRecord(deviceId),
     );
     return device
-      ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device])[0]
+      ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device], 'runtime_control')[0]
       : undefined;
   }
 

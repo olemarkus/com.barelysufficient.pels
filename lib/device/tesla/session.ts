@@ -123,15 +123,16 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   observeRefusedWrite(): boolean { return false; }
   observeAcceptedWrite(): boolean { return false; }
 
-  assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
+  assertAllowed(device: HomeyDeviceLike, readSetup: () => ChargingCurrentSetup, connected: boolean): void {
     if (!isTeslaChargingDevice(device)) return;
     if (!connected) throw new Error('Tesla charging requires a connected Homey device feed.');
-    if (setup.confirmation !== 'vehicle' || !this.isAllowed(device.id)) {
+    if (readSetup().confirmation !== 'vehicle' || !this.isAllowed(device.id)) {
       throw new Error('Tesla charging requires a confirmed stationary AC charging session at home.');
     }
   }
 
-  project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
+  project(snapshot: TransportDeviceSnapshot, readSetup: () => ChargingCurrentSetup): TransportDeviceSnapshot {
+    const setup = readSetup();
     const evidence = this.homeEvidence(snapshot.id);
     const allowed = setup.confirmation === 'vehicle' && evidence !== undefined && isHomeEvidence(evidence);
     const controlAdapter = snapshot.controlAdapter && { ...snapshot.controlAdapter,

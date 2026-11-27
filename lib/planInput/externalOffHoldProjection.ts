@@ -4,18 +4,18 @@ import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/
 
 /** Shared planner/executor resolution for the stored "leave off" posture. */
 export const resolveExternalOffHoldActive = (
-  isHeld: boolean,
+  readStoredHold: () => boolean,
   device: ObservedCurrentStateInput,
 ): boolean => (
   device.binaryControl !== undefined
-  && isHeld
   && !resolveCurrentOn(device)
+  && readStoredHold()
 );
 
 /** An absent observation preserves the executor's hold conservatively. */
 export const isExternalOffHeldForObservedDevice = (
-  isHeld: boolean,
+  readStoredHold: () => boolean,
   observed: ProjectedObservedDeviceState | undefined,
 ): boolean => observed === undefined
-  ? isHeld
-  : resolveExternalOffHoldActive(isHeld, observed);
+  ? readStoredHold()
+  : resolveExternalOffHoldActive(readStoredHold, observed);

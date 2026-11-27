@@ -158,12 +158,12 @@ export class DeviceAdapterSessions {
   controls(snapshot: AdapterControlTarget): boolean {
     return this.sessions.some((session) => session.controls(snapshot));
   }
-  assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
-    for (const session of this.sessions) session.assertAllowed(device, setup, connected);
+  assertAllowed(device: HomeyDeviceLike, readSetup: () => ChargingCurrentSetup, connected: boolean): void {
+    for (const session of this.sessions) session.assertAllowed(device, readSetup, connected);
   }
-  project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
+  project(snapshot: TransportDeviceSnapshot, readSetup: () => ChargingCurrentSetup): TransportDeviceSnapshot {
     const session = this.sessions.find((candidate) => candidate.controls(snapshot));
-    if (session) return session.project(snapshot, setup);
+    if (session) return session.project(snapshot, readSetup);
     if (!snapshot.controlAdapter?.unavailableStatus) return snapshot;
     const { unavailableStatus: _previousStatus, ...controlAdapter } = snapshot.controlAdapter;
     return { ...snapshot, controlAdapter };
