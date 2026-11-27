@@ -21,7 +21,7 @@ export type DeviceCollector<T> = (devices: AsyncIterable<HomeyDeviceLike>) => Pr
 
 /** Owns the Homey REST client and device realtime socket lifecycle. */
 export class DeviceHomeySdk {
-  readonly meterInventory = new MeterInventory(() => this.liveFeed?.getHealth().subscriptionState === 'subscribed');
+  readonly meterInventory = new MeterInventory(() => this.liveFeed?.isHealthy() === true);
   private ready = false;
   private liveFeed: DeviceLiveFeed | null = null;
 

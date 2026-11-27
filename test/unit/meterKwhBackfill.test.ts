@@ -159,6 +159,8 @@ describe('resolveMeterDailyKwh', () => {
   it.each([
     ['device list', []],
     ['empty device list', {}],
+    ['mixed selected capabilities', { a: { id: 'han-1', capabilities: ['meter_power', 17] } }],
+    ['unknown row identity', { a: { id: '', capabilities: [] } }],
     ['selected device capabilities', { 'han-1': { id: 'han-1', capabilities: null } }],
   ])('treats malformed %s as a failed read', async (_label, devices) => {
     const fetchFromHomeyApi = buildFetch({ 'manager/devices/device': () => devices });

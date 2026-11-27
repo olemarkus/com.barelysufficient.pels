@@ -107,6 +107,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
   private readonly homeyInstance: ReturnType<typeof resolveHomeyInstance>;
 
   private rootSocket: SocketIOSocket | null = null;
+  private namespaceAttempt?: symbol;
   private namespacedSocket: SocketIOSocket | null = null;
   private stopped = false;
   private inventoryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -251,6 +252,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     });
 
     this.rootSocket.on('disconnect', (reason: string) => {
+      this.namespaceAttempt = undefined;
       this.callbacks.onInventoryInvalidated?.();
       this.health.subscriptionState = 'disconnected';
       if (!this.stopped) {
@@ -318,10 +320,18 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     }
     const sub = this.openNamespacedSocket(handshake.namespace);
     this.namespacedSocket = sub;
+    const attempt = Symbol();
+    this.namespaceAttempt = attempt;
+    sub.once('disconnect', () => {
+      if (this.namespaceAttempt !== attempt) return;
+      this.namespaceAttempt = undefined;
+      this.health.subscriptionState = 'disconnected';
+      this.callbacks.onInventoryInvalidated?.();
+    });
     await this.waitForNamespaceConnect(sub, handshake.namespace);
-    if (this.stopped) return;
+    if (this.stopped || this.namespaceAttempt !== attempt) return;
     await this.emitSubscribeUri(sub, DEVICES_URI);
-    if (this.stopped) return;
+    if (this.stopped || this.namespaceAttempt !== attempt) return;
     this.callbacks.onInventoryInvalidated?.();
     this.health.subscriptionState = 'subscribed';
     this.health.lastSuccessfulSubscriptionMs = Date.now();

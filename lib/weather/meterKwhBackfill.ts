@@ -1,3 +1,4 @@
+import type { MeterInventoryDevice } from '../utils/types';
 import type { ReadMeterInventory } from './weatherCollectorDeps';
 import { parseInsightsTimestamp } from './insightsTimestamp';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
@@ -122,21 +123,23 @@ export async function fetchDeviceDailyKwh(params: {
  */
 type CounterCollection = { imported: Map<number, number>; exported?: Map<number, number> };
 
-async function selectMeter(entries: AsyncIterable<unknown>, deviceId: string): Promise<MeterCandidate | undefined> {
-  let meter: { capabilities: unknown } | undefined;
+async function selectMeter(
+  entries: AsyncIterable<MeterInventoryDevice>, deviceId: string,
+): Promise<MeterCandidate | undefined> {
+  let meter: MeterInventoryDevice | undefined;
   let hasDevice = false;
   let malformed = false;
   for await (const entry of entries) {
     hasDevice = true;
-    if (!isUnknownRecord(entry) || typeof entry.id !== 'string' || entry.id === '') malformed = true;
-    else if (entry.id === deviceId) meter ??= { capabilities: entry.capabilities };
+    if (entry.id === null) malformed = true;
+    else if (entry.id === deviceId) meter ??= entry;
   }
   if (meter === undefined) {
     if (!hasDevice || malformed) throw new Error('Unreadable Homey device list');
     return undefined;
   }
   const capabilities = meter.capabilities;
-  if (!Array.isArray(capabilities) || !capabilities.every((capability) => typeof capability === 'string')) {
+  if (!meter.capabilitiesReadable) {
     throw new Error('Unreadable selected meter capabilities');
   }
   const capability = meterCapabilityOf(capabilities);

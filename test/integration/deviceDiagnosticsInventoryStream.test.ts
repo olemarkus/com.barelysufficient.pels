@@ -83,7 +83,7 @@ describe('full device inventory over the Homey HTTP transport', () => {
       `{"relay":${JSON.stringify(rawDevice('old'))},"relay":${JSON.stringify(rawDevice('new'))}}`,
     );
     await fetchDevicesWithFallback({ logger: testLogger, publish });
-    expect(publish.mock.calls).toEqual([[[{ id: 'new', capabilities: ['onoff'] }]]]);
+    expect(publish.mock.calls).toEqual([[[{ id: 'new', capabilities: ['onoff'], capabilitiesReadable: true }]]]);
     expect(requests).toHaveLength(2);
   });
 
