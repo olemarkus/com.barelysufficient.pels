@@ -95,20 +95,15 @@ export const resolveSoleCumulativeMeter = (
  * report shows only what has published; a second meter whose app is still
  * starting is absent from it but present here.
  */
-export const resolveRegistryMeterCandidates = (rawDevices: unknown): string[] => {
-  const entries = Array.isArray(rawDevices) ? rawDevices : Object.values(asUnknownRecord(rawDevices) ?? {});
-  const ids = new Set<string>();
-  for (const raw of entries) {
-    const device = asUnknownRecord(raw);
-    if (device === null || !isCanonicalHomeyDeviceId(device.id)) continue;
-    const cumulative = asUnknownRecord(device.energy)?.cumulative === true
-      || asUnknownRecord(device.energyObj)?.cumulative === true;
-    const capabilities: unknown[] = Array.isArray(device.capabilities) ? device.capabilities : [];
-    const sensorMeter = device.class === 'sensor' && capabilities.includes('measure_power');
-    if (cumulative || sensorMeter) ids.add(device.id);
-  }
-  return [...ids];
-};
+export function registryMeterCandidateId(raw: unknown): string | undefined {
+  const device = asUnknownRecord(raw);
+  if (device === null || !isCanonicalHomeyDeviceId(device.id)) return undefined;
+  const cumulative = asUnknownRecord(device.energy)?.cumulative === true
+    || asUnknownRecord(device.energyObj)?.cumulative === true;
+  const sensorMeter = device.class === 'sensor'
+    && Array.isArray(device.capabilities) && device.capabilities.includes('measure_power');
+  return cumulative || sensorMeter ? device.id : undefined;
+}
 
 /**
  * The boot-time adoption's census: the sole cumulative meter the live report
@@ -121,12 +116,12 @@ export const resolveRegistryMeterCandidates = (rawDevices: unknown): string[] =>
  */
 export const resolveSoleMeterAdoptionCandidate = (
   liveReport: unknown,
-  rawDevices: unknown,
+  registryMeters: ReadonlySet<string>,
   excluded: ReadonlySet<string> = new Set(),
 ): SoleCumulativeMeterResolution => {
   const live = resolveSoleCumulativeMeter(liveReport, excluded);
   if (live.state !== 'resolved') return live;
-  const registry = resolveRegistryMeterCandidates(rawDevices).filter((id) => !excluded.has(id));
+  const registry = [...registryMeters].filter((id) => !excluded.has(id));
   if (registry.some((id) => id !== live.meterDeviceId)) return { state: 'unresolvable', reason: 'ambiguous' };
   if (!registry.includes(live.meterDeviceId)) return { state: 'unresolvable', reason: 'registry_mismatch' };
   return live;

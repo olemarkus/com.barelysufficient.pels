@@ -42,7 +42,7 @@ export const createSupportReportReads = (
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
   getEvChargingCurrentDiagnostics: (deviceId, nowMs) => (
     requireDeviceManager(app).getEvChargingCurrentDiagnostics(deviceId, nowMs)),
-  readHomeyDevices: (collect) => requireDeviceManager(app).readDevicesForDiagnostics(collect),
+  readHomeyDevices: (collect) => requireDeviceManager(app).readDeviceInventory(collect),
   readInstalledAppVersions: readAppVersions,
   getHomeMembership: () => requireHomeMembership(app),
   getLatestDevicePlan: () => requirePlanService(app).getLatestPlanSnapshot(),

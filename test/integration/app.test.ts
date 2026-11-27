@@ -1,3 +1,5 @@
+import { inventoryRead } from '../helpers/inventoryRead';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { Mock } from 'vitest';
 import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
@@ -3327,19 +3329,23 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(app.homeyEnergyHelpers['pollInterval']).toBeUndefined();
   });
 
+  const flowInventory = (devices: readonly HomeyDeviceLike[]) => ({ readDeviceInventory: inventoryRead(devices) });
+
   it('reuses a short-lived cache for flow-backed device autocomplete', async () => {
     const app = createApp();
-    const getDevicesForDebug = vi.fn().mockResolvedValue([
-      { id: 'dev-1', name: 'Heater' },
-      { id: 'dev-2', name: 'Garage Charger' },
+    const transport = flowInventory([
+      { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Heater' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Garage Charger' },
     ]);
-    app.deviceManager = partialDouble<MyApp['deviceManager']>({ getDevicesForDebug });
+    const readDeviceInventory = vi.spyOn(transport, 'readDeviceInventory');
+    app.deviceManager = partialDouble<MyApp['deviceManager']>(transport);
 
     const first = await app.flowBacked.getHomeyDevicesForFlow();
     const second = await app.flowBacked.getHomeyDevicesForFlow();
 
     expect(first).toEqual(second);
-    expect(getDevicesForDebug).toHaveBeenCalledTimes(1);
+    expect(first[0]).toEqual({ id: 'dev-1', name: 'Heater', zone: 'Unknown', capabilities: [], deviceClassKey: null });
+    expect(readDeviceInventory).toHaveBeenCalledTimes(1);
   });
 
   it('keeps snapshot refresh trigger fanout best-effort when one flow-backed trigger fails', async () => {
@@ -3355,7 +3361,7 @@ describe('periodic snapshot refresh scheduling', () => {
     };
     app.deviceManager = deviceTransportDouble({
       getSnapshot: vi.fn().mockReturnValue([]),
-      getDevicesForDebug: vi.fn().mockResolvedValue([
+      ...flowInventory([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
       ]),
@@ -3432,7 +3438,7 @@ describe('periodic snapshot refresh scheduling', () => {
           available: true,
         },
       ]),
-      getDevicesForDebug: vi.fn().mockResolvedValue([
+      ...flowInventory([
         { ...HOMEY_DEVICE_FIELDS,
           id: 'zaptec-1',
           name: 'Zaptec Go',
@@ -3502,7 +3508,7 @@ describe('periodic snapshot refresh scheduling', () => {
           available: true,
         },
       ]),
-      getDevicesForDebug: vi.fn().mockResolvedValue([
+      ...flowInventory([
         { ...HOMEY_DEVICE_FIELDS,
           id: 'zaptec-native-1',
           name: 'Zaptec Go',
@@ -3574,7 +3580,7 @@ describe('periodic snapshot refresh scheduling', () => {
           available: true,
         },
       ]),
-      getDevicesForDebug: vi.fn().mockResolvedValue([
+      ...flowInventory([
         { ...HOMEY_DEVICE_FIELDS,
           id: 'zaptec-active-1',
           name: 'Zaptec Go',

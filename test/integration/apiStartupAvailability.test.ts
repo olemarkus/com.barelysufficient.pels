@@ -1,3 +1,4 @@
+import { inventoryRead } from '../helpers/inventoryRead';
 import type Homey from 'homey';
 import api from '../../api';
 import type { DeviceTransportPort } from '../../lib/device/deviceTransport';
@@ -24,7 +25,7 @@ it('rejects an unwired inventory transport instead of reporting no devices', asy
 
 it('preserves a genuinely empty inventory after the transport is available', async () => {
   const host = pelsHostDouble({ deviceManager: partialDouble<DeviceTransportPort>({
-    getDevicesForDebug: async () => [],
+    readDeviceInventory: inventoryRead([]),
     getZoneTree: () => null,
   }) });
   await expect(api.homey_devices({ homey: partialDouble<Homey.App['homey']>({ app: partialDouble<Homey.App>(host) }) }))

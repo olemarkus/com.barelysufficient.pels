@@ -1,3 +1,4 @@
+import type { ReadMeterInventory } from './weatherCollectorDeps';
 import { parseInsightsTimestamp } from './insightsTimestamp';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
@@ -55,6 +56,7 @@ export type MeterKwhBackfillOutcome =
   | { outcome: 'no_candidates' | 'no_usable_history' | 'unreadable_history' };
 
 export type MeterKwhBackfillDeps = {
+  readMeterInventory: ReadMeterInventory;
   /** Read-only GET against the Homey Web API (path without leading slash). */
   fetchFromHomeyApi: (path: string) => Promise<unknown>;
   /** Daily tracker totals for diagnostic comparison when the two series overlap. */
@@ -66,8 +68,7 @@ export type MeterKwhBackfillDeps = {
 };
 
 export async function resolveMeterDailyKwh(deps: MeterKwhBackfillDeps): Promise<MeterKwhBackfillOutcome> {
-  const devices = await deps.fetchFromHomeyApi('manager/devices/device');
-  const meter = selectMeter(devices, deps.restrictToDeviceId);
+  const meter = await deps.readMeterInventory((entries) => selectMeter(entries, deps.restrictToDeviceId));
   if (meter === undefined) return { outcome: 'no_candidates' };
   const todayKey = getDateKeyInTimeZone(new Date(deps.nowMs), deps.timeZone);
   const { collection, complete } = await collectMeterPoints(meter, deps.fetchFromHomeyApi, todayKey, deps.timeZone);
@@ -121,16 +122,17 @@ export async function fetchDeviceDailyKwh(params: {
  */
 type CounterCollection = { imported: Map<number, number>; exported?: Map<number, number> };
 
-function selectMeter(devices: unknown, deviceId: string): MeterCandidate | undefined {
-  if (!isUnknownRecord(devices) || Object.keys(devices).length === 0) {
-    throw new Error('Unreadable Homey device list');
+async function selectMeter(entries: AsyncIterable<unknown>, deviceId: string): Promise<MeterCandidate | undefined> {
+  let meter: { capabilities: unknown } | undefined;
+  let hasDevice = false;
+  let malformed = false;
+  for await (const entry of entries) {
+    hasDevice = true;
+    if (!isUnknownRecord(entry) || typeof entry.id !== 'string' || entry.id === '') malformed = true;
+    else if (entry.id === deviceId) meter ??= { capabilities: entry.capabilities };
   }
-  const listed = Object.values(devices);
-  const meter = listed.find((device) => isUnknownRecord(device) && device.id === deviceId);
-  if (!isUnknownRecord(meter)) {
-    if (listed.some((device) => !isUnknownRecord(device) || typeof device.id !== 'string' || device.id === '')) {
-      throw new Error('Unreadable Homey device list');
-    }
+  if (meter === undefined) {
+    if (!hasDevice || malformed) throw new Error('Unreadable Homey device list');
     return undefined;
   }
   const capabilities = meter.capabilities;

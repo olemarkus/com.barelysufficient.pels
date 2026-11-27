@@ -33,7 +33,7 @@ import {
 import { TransportObservationState } from '../../lib/device/transport/transportObservationState';
 import {
   getRawDevice,
-  getRawDevices,
+  readRawDeviceInventory,
   hasRestClient,
   logDeviceTransportRuntimeError,
   setRawCapabilityValue,
@@ -51,6 +51,12 @@ import {
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+
+async function collectRows(rows: AsyncIterable<unknown>): Promise<unknown[]> {
+  const result: unknown[] = [];
+  for await (const row of rows) result.push(row);
+  return result;
+}
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -269,18 +275,18 @@ describe('device manager support helpers', () => {
 
     const mockGet = vi.fn().mockResolvedValue([{ id: 'direct' }]);
     setRestClient({ get: mockGet, put: vi.fn() });
-    await expect(getRawDevices('devices')).resolves.toEqual([{ id: 'direct' }]);
+    await expect(readRawDeviceInventory(collectRows)).resolves.toEqual([{ id: 'direct' }]);
 
     mockGet.mockResolvedValue({ wrapped: { id: 'wrapped' } });
-    await expect(getRawDevices('devices')).resolves.toEqual({ wrapped: { id: 'wrapped' } });
+    await expect(readRawDeviceInventory(collectRows)).resolves.toEqual([{ id: 'wrapped' }]);
 
     mockGet.mockResolvedValue([]);
-    await expect(getRawDevices('devices')).resolves.toEqual([]);
+    await expect(readRawDeviceInventory(collectRows)).resolves.toEqual([]);
     mockGet.mockResolvedValue({});
-    await expect(getRawDevices('devices')).resolves.toEqual({});
+    await expect(readRawDeviceInventory(collectRows)).resolves.toEqual([]);
 
     const uninitialized = await importUninitializedHomeyApi();
-    await expect(uninitialized.getRawDevices('devices')).rejects.toThrow('REST client not initialized');
+    await expect(uninitialized.readRawDeviceInventory(collectRows)).rejects.toThrow('REST client not initialized');
 
     const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     writeErrorToStderr('device manager failed', new Error('boom'));
@@ -304,7 +310,7 @@ describe('device manager support helpers', () => {
   it.each([null, undefined, 'unreadable', 0, true])('rejects an unreadable device inventory envelope (%s)', async (response) => {
     mockRestClient.get.mockResolvedValueOnce(response);
 
-    await expect(getRawDevices('devices')).rejects.toThrow('Invalid response for device inventory');
+    await expect(readRawDeviceInventory(collectRows)).rejects.toThrow('Invalid response for device inventory');
   });
 
   it('announces a re-anchored window even when the peak reads the same', () => {

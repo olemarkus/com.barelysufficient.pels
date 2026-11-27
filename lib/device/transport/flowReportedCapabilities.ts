@@ -179,9 +179,28 @@ export function getFlowReportedDeviceIds(state: FlowReportedCapabilitiesByDevice
   return Object.keys(state ?? {});
 }
 
+/** Only these fields survive in the Flow device cache between autocomplete and action calls. */
+export type FlowInventoryDevice = Pick<HomeyDeviceLike, 'id' | 'name' | 'zone' | 'capabilities'> & {
+  deviceClassKey: string | null;
+};
+
+export function projectFlowInventoryDevice(device: HomeyDeviceLike): FlowInventoryDevice {
+  return {
+    id: device.id, name: device.name, zone: device.zone, capabilities: getCapabilities(device),
+    deviceClassKey: resolveDeviceClassKey(device),
+  };
+}
+
+export async function collectFlowInventory(devices: AsyncIterable<HomeyDeviceLike>): Promise<FlowInventoryDevice[]> {
+  const rows: FlowInventoryDevice[] = [];
+  // eslint-disable-next-line functional/immutable-data -- Only Flow fields survive the inventory read.
+  for await (const device of devices) rows.push(projectFlowInventoryDevice(device));
+  return rows;
+}
+
 export function getFlowRefreshRequestedDeviceIds(
   state: FlowReportedCapabilitiesByDevice,
-  devices: HomeyDeviceLike[],
+  devices: FlowInventoryDevice[],
   candidateDeviceIds: readonly string[],
 ): string[] {
   const deviceById = new Map(devices.map((device) => [device.id, device]));
@@ -193,10 +212,9 @@ export function getFlowRefreshRequestedDeviceIds(
     const device = deviceById.get(deviceId);
     if (!device) return false;
 
-    const deviceClassKey = resolveDeviceClassKey(device);
+    const { deviceClassKey, capabilities } = device;
     if (!deviceClassKey) return false;
 
-    const capabilities = getCapabilities(device);
     const targetCapabilityIds = capabilities.includes('target_temperature')
       ? ['target_temperature']
       : [];

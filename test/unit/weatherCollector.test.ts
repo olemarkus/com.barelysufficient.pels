@@ -1,3 +1,4 @@
+import { weatherApiReads } from '../helpers/inventoryRead';
 import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector, type WeatherCollectorDeps } from '../../lib/weather/weatherCollector';
 import type { MetDaySummaryWithCoverage, MetForecastFetchResult } from '../../lib/weather/metForecast';
@@ -41,6 +42,7 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
       name: 'Weather',
       capabilitiesObj: { measure_temperature: { value: deviceId === 'fc-1' ? -7 : 3.5 } },
     })),
+    readMeterInventory: weatherApiReads((path) => deps.fetchInsights(path)).readMeterInventory,
     fetchInsights: vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] })),
     getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5, budgetCounted: 42.5 })),
     getDaySuppression: vi.fn(() => ({})),

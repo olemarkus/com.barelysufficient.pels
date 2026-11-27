@@ -91,7 +91,7 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
 /**
  * Guards against a transient empty SDK read clobbering a populated snapshot.
  *
- * `fetchDevicesWithFallback` normalizes an empty `getRawDevices` result into a
+ * `fetchDevicesWithFallback` normalizes an empty inventory into a
  * successful empty list, so the retry loop never engages. If we committed that
  * unconditionally, committing `[]` would wipe a previously-populated snapshot.
  *

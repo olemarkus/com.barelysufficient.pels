@@ -1,3 +1,4 @@
+import { inventoryRead } from '../helpers/inventoryRead';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { PelsDeviceDebugState } from '../../setup/appDebugTypes';
@@ -25,11 +26,12 @@ const buildDeviceManager = (params: {
     snapshot = [],
     observedSources = null,
   } = params;
-  return withGetSnapshotByDeviceId({
-    getDevicesForDebug: vi.fn().mockResolvedValue(devices),
+  const manager = {
+    readDeviceInventory: inventoryRead(devices),
     getSnapshot: vi.fn().mockReturnValue(snapshot as TargetDeviceSnapshot[]),
     getDebugObservedSources: vi.fn().mockReturnValue(observedSources),
-  }) as unknown as DeviceTransport;
+  };
+  return withGetSnapshotByDeviceId(manager) as unknown as DeviceTransport;
 };
 
 type DumpSectionEvent = { dumpId?: string; section?: string; payload?: string };
@@ -83,7 +85,7 @@ describe('appDebugHelpers', () => {
   it('logs a failed Homey device list as a structured event and answers none', async () => {
     const app = {
       deviceManager: {
-        getDevicesForDebug: vi.fn().mockRejectedValue({ reason: 'boom' }),
+        readDeviceInventory: vi.fn().mockRejectedValue({ reason: 'boom' }),
         getZoneTree: vi.fn(() => null),
       },
     };
@@ -207,11 +209,11 @@ describe('appDebugHelpers', () => {
   });
 
   it('rejects without reading the device list while the report lists nothing yet', async () => {
-    const getDevicesForDebug = vi.fn().mockResolvedValue([]);
+    const readDeviceInventory = vi.fn().mockResolvedValue([]);
     setRestClient({ get: vi.fn().mockResolvedValue({ items: [] }), put: vi.fn() });
-    const app = { deviceManager: { getDevicesForDebug }, error: vi.fn() };
+    const app = { deviceManager: { readDeviceInventory }, error: vi.fn() };
     await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toThrow('lists no devices yet');
-    expect(getDevicesForDebug).not.toHaveBeenCalled();
+    expect(readDeviceInventory).not.toHaveBeenCalled();
   });
 
   it('rejects when the device list comes back empty, since no device item can be classed', async () => {
@@ -220,7 +222,7 @@ describe('appDebugHelpers', () => {
       get: vi.fn().mockResolvedValue({ items: [{ type: 'device', id: 'sub', values: { W: 800 } }] }),
       put: vi.fn(),
     });
-    const app = { deviceManager: { getDevicesForDebug: vi.fn().mockResolvedValue([]) }, error: vi.fn() };
+    const app = { deviceManager: { readDeviceInventory: inventoryRead([]) }, error: vi.fn() };
     await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toThrow('Homey device list unavailable');
   });
 
@@ -230,7 +232,7 @@ describe('appDebugHelpers', () => {
       put: vi.fn(),
     });
     const failure = new Error('Homey device inventory could not be read');
-    const app = { deviceManager: { getDevicesForDebug: vi.fn().mockRejectedValue(failure) } };
+    const app = { deviceManager: { readDeviceInventory: vi.fn().mockRejectedValue(failure) } };
     await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toBe(failure);
   });
 

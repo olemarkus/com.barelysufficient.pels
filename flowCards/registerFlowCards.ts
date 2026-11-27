@@ -7,7 +7,7 @@ import type {
   HomeBatteryControlCapability,
 } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV2 } from '../packages/contracts/src/deferredObjectiveActivePlans';
-import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
+import type { FlowHomeyLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
@@ -15,7 +15,7 @@ import { registerEvCarAssociationCards } from './evCarAssociationCards';
 import type { SettingsUiRecommendationCarsRead } from '../packages/contracts/src/settingsUi/carLink';
 import type { HeadroomCardQuery, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { ObservedHeadroom } from '../lib/power/lastTotalPower';
-import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
+import type { FlowInventoryDevice, FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/device/flowBackedCapabilityReport';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
@@ -120,7 +120,7 @@ export type FlowCardDeps = SmartTaskCommandPort & {
    */
   normalizeTemperatureTarget: (deviceId: string, temperatureC: number) => number;
   refreshSnapshot: (options?: { emitFlowBackedRefresh?: boolean }) => Promise<void>;
-  getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
+  getHomeyDevicesForFlow: () => Promise<FlowInventoryDevice[]>;
   reportFlowBackedCapability: (
     deviceId: string,
     capabilityId: FlowReportedCapabilityId,

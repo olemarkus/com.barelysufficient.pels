@@ -1,3 +1,4 @@
+import { weatherApiReads } from '../helpers/inventoryRead';
 import type { Logger as PinoLogger } from 'pino';
 import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { applyControlledOutcome, resolveControlledDailyKwh } from '../../lib/weather/controlledKwhBackfill';
@@ -51,7 +52,7 @@ describe('resolveControlledDailyKwh', () => {
       { id: 'fridge', managed: false, perDay: 100 }, // unmanaged → excluded from the sum
     ];
     const result = await resolveControlledDailyKwh({
-      fetchFromHomeyApi: buildFetch(devices),
+      ...weatherApiReads(buildFetch(devices)),
       isManaged: isManagedFrom(devices),
       getControlledDailyKwh: trackerControlled,
       timeZone: OSLO,
@@ -73,7 +74,7 @@ describe('resolveControlledDailyKwh', () => {
       { id: 'relay', managed: true, perDay: undefined }, // metered capability but empty log
     ];
     const result = await resolveControlledDailyKwh({
-      fetchFromHomeyApi: buildFetch(devices),
+      ...weatherApiReads(buildFetch(devices)),
       isManaged: isManagedFrom(devices),
       getControlledDailyKwh: trackerControlled,
       timeZone: OSLO,
@@ -89,7 +90,7 @@ describe('resolveControlledDailyKwh', () => {
   it('returns not_validated when the summed meters disagree with the tracker controlled', async () => {
     const devices: DeviceSpec[] = [{ id: 'therm-1', managed: true, perDay: 12 }]; // 12 vs tracker 40 → 0.3
     const result = await resolveControlledDailyKwh({
-      fetchFromHomeyApi: buildFetch(devices),
+      ...weatherApiReads(buildFetch(devices)),
       isManaged: isManagedFrom(devices),
       getControlledDailyKwh: trackerControlled,
       timeZone: OSLO,
@@ -103,7 +104,7 @@ describe('resolveControlledDailyKwh', () => {
   it('returns no_devices when nothing managed has a cumulative meter', async () => {
     const devices: DeviceSpec[] = [{ id: 'fridge', managed: false, perDay: 30 }];
     const result = await resolveControlledDailyKwh({
-      fetchFromHomeyApi: buildFetch(devices),
+      ...weatherApiReads(buildFetch(devices)),
       isManaged: isManagedFrom(devices),
       getControlledDailyKwh: trackerControlled,
       timeZone: OSLO,
@@ -121,7 +122,7 @@ describe('resolveControlledDailyKwh', () => {
       return dayIndex % 2 === 0 ? 60 : 26.7; // median of {40/60, 40/26.7} ≈ 1.0
     };
     const result = await resolveControlledDailyKwh({
-      fetchFromHomeyApi: buildFetch(devices),
+      ...weatherApiReads(buildFetch(devices)),
       isManaged: isManagedFrom(devices),
       getControlledDailyKwh: noisyTracker,
       timeZone: OSLO,

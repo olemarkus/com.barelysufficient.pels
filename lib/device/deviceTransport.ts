@@ -581,8 +581,7 @@ export class DeviceTransport {
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);
     }
-    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return (await this.deviceSdk.fetchDevices()).devices; }
-    readDevicesForDiagnostics<T>(read: DeviceCollector<T>) { return this.deviceSdk.readDevicesForDiagnostics(read); }
+    readDeviceInventory<T>(read: DeviceCollector<T>) { return this.deviceSdk.readDeviceInventory(read); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationBridge.state.getObservationState(), deviceId);
     }

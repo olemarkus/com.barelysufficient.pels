@@ -1,8 +1,8 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type Homey from 'homey';
-import { initHomeyHttpClient } from '../../lib/device/transport/managerHomeyApi';
-import { fetchDevicesWithFallback, readDevicesForDiagnostics } from '../../lib/device/transport/managerFetch';
+import { initHomeyHttpClient, readRawDeviceInventory } from '../../lib/device/transport/managerHomeyApi';
+import { fetchDevicesWithFallback, readDeviceInventory } from '../../lib/device/transport/managerFetch';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { getLogger } from '../../lib/logging/logger';
 
@@ -22,7 +22,7 @@ async function collectDevices(devices: AsyncIterable<HomeyDeviceLike>) {
 
 const expected = (id: string, name = id) => ({ id, name, driverId: 'homey:app:com.example.relay:switch' });
 
-describe('diagnostics inventory over the Homey HTTP transport', () => {
+describe('full device inventory over the Homey HTTP transport', () => {
   let server: http.Server;
   let respond: (response: http.ServerResponse) => void;
   let requests: { method?: string; path?: string; authorization?: string }[];
@@ -61,7 +61,7 @@ describe('diagnostics inventory over the Homey HTTP transport', () => {
       response.write(bytes.subarray(0, split));
       setImmediate(() => response.end(bytes.subarray(split)));
     };
-    await expect(readDevicesForDiagnostics(testLogger, collectDevices)).resolves.toEqual([
+    await expect(readDeviceInventory(testLogger, collectDevices)).resolves.toEqual([
       expected('device-1', name),
     ]);
     expect(requests).toEqual([
@@ -71,13 +71,13 @@ describe('diagnostics inventory over the Homey HTTP transport', () => {
 
   it('accepts the legacy top-level device array', async () => {
     respond = (response) => response.end(JSON.stringify([rawDevice('relay'), rawDevice('meter')]));
-    await expect(readDevicesForDiagnostics(testLogger, collectDevices)).resolves.toEqual([
+    await expect(readDeviceInventory(testLogger, collectDevices)).resolves.toEqual([
       expected('relay'), expected('meter'),
     ]);
     expect(requests).toHaveLength(1);
   });
 
-  it('keeps the normal buffered fetch contract', async () => {
+  it('keeps the full snapshot fetch contract', async () => {
     respond = (response) => response.end(JSON.stringify({
       relay: rawDevice('relay'), malformed: { id: 'malformed' },
     }));
@@ -90,6 +90,29 @@ describe('diagnostics inventory over the Homey HTTP transport', () => {
     expect(requests).toHaveLength(1);
   });
 
+  it.each(['null', '[]', JSON.stringify([rawDevice('relay')]), ''])(
+    'keeps a keyed-only reader empty for %s', async (body) => {
+      respond = (response) => response.end(body);
+      const count = await readRawDeviceInventory(async (entries) => {
+        let rows = 0;
+        for await (const _entry of entries) rows += 1;
+        return rows;
+      }, 'keyed');
+      expect(count).toBe(0);
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it('counts rejected rows only on the completed full snapshot attempt', async () => {
+    respond = (response) => response.end(
+      `{"bad":{"id":"bad"},"relay":${JSON.stringify(rawDevice('old'))},"relay":${JSON.stringify(rawDevice('new'))}}`,
+    );
+    await expect(fetchDevicesWithFallback({ logger: testLogger })).resolves.toMatchObject({
+      devices: [expected('new')], rejectedPayloads: 1, failedIds: [],
+    });
+    expect(requests).toHaveLength(2);
+  });
+
   it('restarts projection after a partial successful-status response', async () => {
     const collector = vi.fn(collectDevices);
     respond = (response) => {
@@ -98,7 +121,7 @@ describe('diagnostics inventory over the Homey HTTP transport', () => {
         : JSON.stringify({ complete: rawDevice('complete') });
       response.end(body);
     };
-    await expect(readDevicesForDiagnostics(testLogger, collector)).resolves.toEqual([expected('complete')]);
+    await expect(readDeviceInventory(testLogger, collector)).resolves.toEqual([expected('complete')]);
     expect(collector).toHaveBeenCalledTimes(2);
     expect(requests).toHaveLength(2);
   });
@@ -114,7 +137,7 @@ describe('diagnostics inventory over the Homey HTTP transport', () => {
       response.write('unavailable');
       setImmediate(() => response.destroy());
     };
-    await expect(readDevicesForDiagnostics(testLogger, collector)).resolves.toEqual([expected('relay')]);
+    await expect(readDeviceInventory(testLogger, collector)).resolves.toEqual([expected('relay')]);
     expect(requests).toHaveLength(2);
     expect(collector).toHaveBeenCalledOnce();
   });
@@ -125,7 +148,7 @@ describe('diagnostics inventory over the Homey HTTP transport', () => {
       response.end(`{"relay":${JSON.stringify(rawDevice('obsolete'))},"relay":${JSON.stringify(rawDevice('relay'))},`
         + `"2":${JSON.stringify(rawDevice('second'))},"1":${JSON.stringify(rawDevice('first'))}}`);
     };
-    await expect(readDevicesForDiagnostics(testLogger, collector)).resolves.toEqual([
+    await expect(readDeviceInventory(testLogger, collector)).resolves.toEqual([
       expected('first'), expected('second'), expected('relay'),
     ]);
     expect(collector).toHaveBeenCalledTimes(2);

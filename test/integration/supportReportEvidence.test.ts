@@ -114,7 +114,7 @@ describe('configured power source', () => {
       ...meter, id: `other-${i}`,
     }));
     const readDevices = vi.fn(async () => [...devices, meter]);
-    host.deviceManager.readDevicesForDiagnostics = fixtureInventory(readDevices);
+    host.deviceManager.readDeviceInventory = fixtureInventory(readDevices);
     const report = await source(host, settingsFor(energy)).capture(request, now);
 
     expect(values(report, 'Current power source')).toEqual({
@@ -127,7 +127,7 @@ describe('configured power source', () => {
 
   it('keeps the meter selection when the inventory cannot be read', async () => {
     const host = currentHost();
-    host.deviceManager.readDevicesForDiagnostics = fixtureInventory(async () => { throw new Error('inventory unavailable'); });
+    host.deviceManager.readDeviceInventory = fixtureInventory(async () => { throw new Error('inventory unavailable'); });
     const report = await source(host, settingsFor(energy)).capture(request, now);
 
     expect(values(report, 'Current power source')).toEqual({
@@ -986,7 +986,7 @@ describe('device support request evidence', () => {
     homeMembership: membership(),
     deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
       getSnapshotByDeviceId: vi.fn(() => undefined),
-      readDevicesForDiagnostics: fixtureInventory(read),
+      readDeviceInventory: fixtureInventory(read),
     }),
     getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
   });
@@ -1027,7 +1027,7 @@ describe('device support request evidence', () => {
 
   it('treats a partial inventory containing the requested subject as unavailable', async () => {
     const host = hostWithHomeyDevices(async () => []);
-    host.deviceManager.readDevicesForDiagnostics = (collect) => collect((async function* devices() {
+    host.deviceManager.readDeviceInventory = (collect) => collect((async function* devices() {
       yield relay;
       throw new Error('truncated');
     })());
@@ -1047,7 +1047,7 @@ describe('device support request evidence', () => {
         homeMembership: membership(),
         deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
           getSnapshotByDeviceId: vi.fn((id: string) => id === 'heater' ? deviceSnapshot() : undefined),
-          readDevicesForDiagnostics: fixtureInventory(async () => [relay, managedHeater]),
+          readDeviceInventory: fixtureInventory(async () => [relay, managedHeater]),
         }),
         getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
       });
@@ -1180,7 +1180,7 @@ describe('device support request evidence', () => {
         readDeviceDiagnosticConfiguration: readConfiguration,
         deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
           getSnapshotByDeviceId: (id) => ({ ...deviceSnapshot(), id, managed: id !== 'device-2' }),
-          readDevicesForDiagnostics: fixtureInventory(async () => devices),
+          readDeviceInventory: fixtureInventory(async () => devices),
         }),
       });
       const report = await source(host).capture(appReport, now, 'daily');
@@ -1201,7 +1201,7 @@ describe('device support request evidence', () => {
         homeMembership: { ...membership(), hasPendingOwnershipGeneration: () => true },
         readDeviceDiagnosticConfiguration: readConfiguration,
         deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
-          getSnapshotByDeviceId: () => deviceSnapshot(), readDevicesForDiagnostics: fixtureInventory(async () => [managedHeater]),
+          getSnapshotByDeviceId: () => deviceSnapshot(), readDeviceInventory: fixtureInventory(async () => [managedHeater]),
         }),
       });
       const report = await source(host).capture(appReport, now, 'daily');
