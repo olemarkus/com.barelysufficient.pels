@@ -589,9 +589,9 @@ test('a fresh install goes from the Overview setup card to Start managing in one
 
   await expect(page).toHaveURL(/setup=hardCap/);
   await expect(page.locator('#dry-run-banner')).toBeHidden();
-  await page.locator('#settings-capacity-keep').click();
-  await expect.poll(() => stored(page, 'capacity_limit_kw')).toBe(10);
   const limitsHeader = page.locator('#limits-panel .setup-journey');
+  await limitsHeader.getByRole('button', { name: 'Keep 10 kW' }).click();
+  await expect.poll(() => stored(page, 'capacity_limit_kw')).toBe(10);
   await expect(limitsHeader.getByRole('button', { name: /^(Continue|Review setup)$/ })).toBeEnabled();
   await limitsHeader.getByRole('button', { name: /^(Continue|Review setup)$/ }).click();
 
