@@ -907,5 +907,8 @@
   },
   "3.53.0": {
     "en": "Overview now explains why an EV charger is waiting to start and which Smart task missed its target, and stepped device cards show the charging level or step the device reports. A last-resort relay resumes before other devices once there is room for its full maximum, and it follows Leave off until turned on again. If its maximum can never fit your limit, its card says so and other devices no longer wait for it.\n\nPeblar chargers switch phases using the measured voltage and finish a charging session before PELS hands phase control back. Turning off a charge target keeps the Charge before the battery level is known choice. Setup asks for current Homey Energy prices, offers main fuse protection in the Netherlands and explains relays that need a power reading. PELS backs up its own data daily, and support reports include the settings of supported devices."
+  },
+  "3.53.1": {
+    "en": "Home batteries with Managed by PELS and Power-limit control on now stay in PELS control: without a price plan, PELS charges them from solar surplus in your priority order and keeps them idle otherwise, and they rejoin after a restart without being handed back. Plan charging with PELS still adds price-aware charging and discharging.\n\nWhen you change the meter that measures a device, PELS learns its running power again, and you can import the last hour from that meter's history. Devices that only adjust a setpoint now resume in priority order, a metering socket's power reading no longer depends on its switch, and support reports use less memory in homes with many devices."
   }
 }
