@@ -22,17 +22,18 @@ import type { UserdataDatabase } from '../store/userdataDatabase';
 
 export const LOG_TAIL_RETENTION_HOURS = 48;
 export const LOG_TAIL_MAX_LINES_PER_EVENT_HOUR = 20;
+export const LOG_TAIL_HOUR_MS = 60 * 60 * 1000;
 /** A ceiling on rows whatever the mix of events, so a pathological day cannot grow the file. */
 export const LOG_TAIL_MAX_ROWS = 6_000;
 /** Lines held while another store's transaction is open; that is a few at most. */
 const MAX_HELD_LINES = 200;
+const MAX_HELD_OVERFLOW_KEYS = 200;
 /**
  * Expiry and the row ceiling run once per this many writes, not with every
  * line: at the ceiling each line would otherwise delete a row as it inserts one.
  * The table can hold this many rows over {@link LOG_TAIL_MAX_ROWS} meanwhile.
  */
 const TRIM_EVERY_WRITES = 100;
-const HOUR_MS = 60 * 60 * 1000;
 /** A key's event is the key up to its device (`event` or `event|device`); `?` is a JSON array of events. */
 const EVENT_NOT_OMITTED = "substr(key, 1, instr(key || '|', '|') - 1) NOT IN (SELECT value FROM json_each(?))";
 
@@ -46,12 +47,17 @@ export type LogTailRead = {
   leftOut: number;
 };
 
+type LogTailHour = {
+  kept: Map<string, number>;
+  dropped: Map<string, number>;
+};
+
 export type LogTailStore = {
   append(entry: LogTailEntry): void;
   /** `dropped` lines of `key` left out so far in the hour starting at `hourStartMs`. */
   recordOverflow(hourStartMs: number, key: string, dropped: number): void;
-  /** How many lines of each key are kept since `fromMs`, to resume the per-hour cap after a restart. */
-  countSince(fromMs: number): Map<string, number>;
+  /** The retained rows and last persisted overflow checkpoints for one UTC hour. */
+  readHour(hourStartMs: number): LogTailHour;
   /** The newest kept lines in the window whose JSON fits `maxBytes`, oldest first, without lines of `omittedEvents`. */
   read(fromMs: number, toMs: number, maxBytes: number, omittedEvents: readonly string[]): LogTailRead;
 };
@@ -100,7 +106,8 @@ export const createLogTailStore = (db: UserdataDatabase): LogTailStore => {
   const overflow = db.prepare('INSERT INTO log_tail_overflow (hour_ms, key, dropped) VALUES (?, ?, ?) '
     + 'ON CONFLICT (hour_ms, key) DO UPDATE SET dropped = MAX(dropped, excluded.dropped)');
   const expireOverflow = db.prepare('DELETE FROM log_tail_overflow WHERE hour_ms < ?');
-  const counts = db.prepare('SELECT key, COUNT(*) AS lines FROM log_tail WHERE at_ms >= ? GROUP BY key');
+  const counts = db.prepare('SELECT key, COUNT(*) AS lines FROM log_tail WHERE at_ms >= ? AND at_ms < ? GROUP BY key');
+  const checkpoints = db.prepare('SELECT key, dropped FROM log_tail_overflow WHERE hour_ms = ?');
   const inReadWindow = `at_ms >= ? AND at_ms <= ? AND ${EVENT_NOT_OMITTED}`;
   // The newest lines first, with the running size of every line up to each.
   const newest = db.prepare('SELECT at_ms, level, line FROM (SELECT seq, at_ms, level, line, '
@@ -110,53 +117,75 @@ export const createLogTailStore = (db: UserdataDatabase): LogTailStore => {
   const loadOverflow = db.prepare('SELECT hour_ms, key, dropped FROM log_tail_overflow '
     + `WHERE hour_ms >= ? AND hour_ms <= ? AND ${EVENT_NOT_OMITTED} ORDER BY hour_ms, key`);
   let held: LogTailEntry[] = [];
+  const heldOverflow = new Map<string, SupportReportLogOverflow>();
   // The first write trims: the app may have been down longer than retention.
   let writesSinceTrim = TRIM_EVERY_WRITES;
   const quietly = <T>(work: () => T, fallback: T): T => {
     try { return work(); } catch { return fallback; } // See the note above.
   };
-  const write = (entries: readonly LogTailEntry[]): void => db.transaction(() => {
-    for (const entry of entries) insert.run(entry.atMs, entry.level, entry.key, entry.line);
-    writesSinceTrim += 1;
-    if (writesSinceTrim < TRIM_EVERY_WRITES) return;
-    writesSinceTrim = 0;
-    const newestAtMs = entries.at(-1)?.atMs ?? 0;
-    expire.run(newestAtMs - LOG_TAIL_RETENTION_HOURS * HOUR_MS);
-    cap.run(LOG_TAIL_MAX_ROWS);
-  });
+  const flush = (): void => {
+    if (db.inTransaction() || (held.length === 0 && heldOverflow.size === 0)) return;
+    const entries = held;
+    held = [];
+    const lastEntry = entries.at(-1);
+    const trim = lastEntry !== undefined && writesSinceTrim + 1 >= TRIM_EVERY_WRITES;
+    quietly(() => {
+      db.transaction(() => {
+        for (const entry of entries) insert.run(entry.atMs, entry.level, entry.key, entry.line);
+        for (const checkpoint of heldOverflow.values()) {
+          overflow.run(checkpoint.hourStartMs, checkpoint.key, checkpoint.dropped);
+          expireOverflow.run(checkpoint.hourStartMs - LOG_TAIL_RETENTION_HOURS * LOG_TAIL_HOUR_MS);
+        }
+        if (trim) {
+          expire.run(lastEntry.atMs - LOG_TAIL_RETENTION_HOURS * LOG_TAIL_HOUR_MS);
+          cap.run(LOG_TAIL_MAX_ROWS);
+        }
+      });
+      heldOverflow.clear();
+      if (lastEntry) writesSinceTrim = trim ? 0 : writesSinceTrim + 1;
+    }, undefined);
+  };
   return {
     append: (entry) => {
-      if (db.inTransaction()) {
-        if (held.length < MAX_HELD_LINES) held = [...held, entry];
-        return;
-      }
-      const entries = held.length === 0 ? [entry] : [...held, entry];
-      held = [];
-      quietly(() => write(entries), undefined);
+      if (!db.inTransaction() || held.length < MAX_HELD_LINES) held = [...held, entry];
+      flush();
     },
     recordOverflow: (hourStartMs, key, dropped) => {
-      if (db.inTransaction()) return;
-      quietly(() => db.transaction(() => {
-        overflow.run(hourStartMs, key, dropped);
-        expireOverflow.run(hourStartMs - LOG_TAIL_RETENTION_HOURS * HOUR_MS);
-      }), undefined);
+      const checkpointKey = `${hourStartMs}|${key}`;
+      const previous = heldOverflow.get(checkpointKey);
+      if (previous || heldOverflow.size < MAX_HELD_OVERFLOW_KEYS) {
+        heldOverflow.set(checkpointKey, { hourStartMs, key, dropped: Math.max(dropped, previous?.dropped ?? 0) });
+      }
+      flush();
     },
-    countSince: (fromMs) => quietly(() => new Map(counts.all(fromMs).flatMap((row): Array<[string, number]> => (
-      typeof row.key === 'string' && typeof row.lines === 'number' ? [[row.key, row.lines]] : []
-    ))), new Map<string, number>()),
+    readHour: (hourStartMs) => {
+      flush();
+      return quietly(() => ({
+        kept: new Map(counts.all(hourStartMs, hourStartMs + LOG_TAIL_HOUR_MS).flatMap(
+          (row): Array<[string, number]> => (
+            typeof row.key === 'string' && typeof row.lines === 'number' ? [[row.key, row.lines]] : []
+          ),
+        )),
+        dropped: new Map(checkpoints.all(hourStartMs).flatMap((row): Array<[string, number]> => (
+          typeof row.key === 'string' && typeof row.dropped === 'number' ? [[row.key, row.dropped]] : []
+        ))),
+      }), { kept: new Map(), dropped: new Map() });
+    },
     read: (windowFromMs, toMs, maxBytes, omittedEvents) => {
       // Expiry runs only every so many writes, so a read leaves out what it would have removed.
-      const fromMs = Math.max(windowFromMs, toMs - LOG_TAIL_RETENTION_HOURS * HOUR_MS);
+      const fromMs = Math.max(windowFromMs, toMs - LOG_TAIL_RETENTION_HOURS * LOG_TAIL_HOUR_MS);
       const omitted = JSON.stringify(omittedEvents);
       const rows = newest.all(fromMs, toMs, omitted, maxBytes);
       const total = inWindow.get(fromMs, toMs, omitted)?.lines;
       return {
         // A damaged row is left out of the report, not counted as left out for size.
         lines: rows.flatMap(toLine),
-        overflow: loadOverflow.all(fromMs - HOUR_MS, toMs, omitted).flatMap((row): SupportReportLogOverflow[] => (
-          typeof row.hour_ms === 'number' && typeof row.key === 'string' && typeof row.dropped === 'number'
-            ? [{ hourStartMs: row.hour_ms, key: row.key, dropped: row.dropped }] : []
-        )),
+        overflow: loadOverflow.all(fromMs - LOG_TAIL_HOUR_MS, toMs, omitted).flatMap(
+          (row): SupportReportLogOverflow[] => (
+            typeof row.hour_ms === 'number' && typeof row.key === 'string' && typeof row.dropped === 'number'
+              ? [{ hourStartMs: row.hour_ms, key: row.key, dropped: row.dropped }] : []
+          ),
+        ),
         leftOut: typeof total === 'number' ? Math.max(0, total - rows.length) : 0,
       };
     },

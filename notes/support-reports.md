@@ -86,14 +86,22 @@ error line, never debug, in the userdata database for up to 48 hours and 6,000 l
 trimmed every 100 writes rather than with each line.
 The info level writes a few hundred kilobytes a day; the opt-in debug topics can write
 megabytes an hour. A flood is cut at 20 lines of one event for one device per hour,
-and the cut lines are counted in memory and written when the count doubles and when
-the hour ends, so a flood costs a handful of writes and a report still says the lines
-happened. Lines are written as they happen, because Homey exits the process before
-`onUninit` runs; lines from the start of a boot wait in memory until the database
-opens, and a line logged while another store holds a transaction waits for the next
-write. A report carries the kept lines of its window, read newest first up to 2 MiB
+and overflow checkpoints record the cut count as it doubles and when the hour ends.
+Rebuild completions, realtime capability changes, and sustained hard-cap alert
+dispatches get a cumulative allowance of 17, 18, 19, and 20 rows as the hour
+progresses. Rebuilds and capability changes reserve the last available slot for a
+failed rebuild or a change that PELS did not classify as an echo of its own write.
+Lines are written as they happen because Homey exits the process before
+`onUninit` runs. The recorder applies saved quotas and overflow checkpoints before
+replaying buffered startup lines at their original times. Lines and checkpoints
+wait for the active transaction to finish before they are written.
+A report carries the kept lines of its window, read newest first up to 2 MiB
 so the app never builds more in memory than that, and says how many older ones it
-left out. A busy home's day is about 1 MiB. A day's report about the whole app also leaves out each
+left out. It folds identical call-rate, Flow-conflict, and device-health summaries
+within the same scope and UTC hour into first and last timestamps and a count of
+retained occurrences. If the report has to trim a summary, its first timestamp
+determines the trim order and its entire count contributes to the size omission
+total. A busy home's day is about 1 MiB. A day's report about the whole app also leaves out each
 command PELS sent, its acknowledgement and a stepped device's reported level
 (`DAY_REPORT_OMITTED_LOG_EVENTS`): its activity already records the states they led
 to, and on a busy home those lines alone pushed the morning out of the daily report

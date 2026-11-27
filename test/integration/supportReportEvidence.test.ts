@@ -620,6 +620,50 @@ describe('support report car link evidence', () => {
 });
 
 describe('support report log', () => {
+  it('folds identical summaries within each scope and hour after selecting the report window', async () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    try {
+      const store = createLogTailStore(db);
+      const boundary = now - (now % hour);
+      const capturedAt = boundary + 10_000;
+      const event = 'periodic_device_health_summary';
+      const add = (atMs: number, lineEvent: string, homeId: string, available: number, level = 30) => {
+        store.append({ atMs, level, key: lineEvent, line: JSON.stringify({ event: lineEvent, homeId, available }) });
+      };
+      add(capturedAt - 24 * hour - 1, event, 'main', 3);
+      add(capturedAt - 24 * hour, event, 'main', 3);
+      add(boundary - 1, event, 'main', 3);
+      add(boundary, event, 'main', 3);
+      add(boundary + 1, event, 'annex', 3);
+      add(boundary + 2, 'overshoot_entered', 'main', 3);
+      add(boundary + 3, 'overshoot_entered', 'main', 3);
+      add(boundary + 4, event, 'main', 3);
+      add(boundary + 5, event, 'main', 2);
+      add(boundary + 6, event, 'main', 2, 40);
+      add(boundary + 7, event, 'main', 2);
+      const host = pelsHostDouble({ ...currentHost(), getUserdataDatabase: () => db });
+      const report = await source(host).capture(
+        { ...request, historyWindow: 'day', occurredAtMs: capturedAt },
+        capturedAt,
+      );
+      if (report.log.state !== 'available') throw new Error('Expected the log');
+      expect(report.log.lines.map(({ atMs, repeated }) => [atMs, repeated])).toEqual([
+        [capturedAt - 24 * hour, undefined],
+        [boundary - 1, undefined],
+        [boundary, { count: 2, lastAtMs: boundary + 4 }],
+        [boundary + 1, undefined],
+        [boundary + 2, undefined],
+        [boundary + 3, undefined],
+        [boundary + 5, undefined],
+        [boundary + 6, undefined],
+        [boundary + 7, undefined],
+      ]);
+      expect(store.read(boundary, capturedAt, 100_000, []).lines).toHaveLength(8);
+    } finally {
+      db.close();
+    }
+  });
+
   it('leaves the commands its activity records out of a day report about the whole app, and says so', async () => {
     const db = openUserdataDatabase(IN_MEMORY_DATABASE);
     try {

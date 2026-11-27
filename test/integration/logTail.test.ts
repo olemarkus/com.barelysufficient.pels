@@ -83,12 +83,82 @@ describe('the log PELS keeps for problem reports', () => {
     vi.useFakeTimers({ now: NOW });
     const { db, store, logger } = attached();
     for (let index = 0; index < LOG_TAIL_MAX_LINES_PER_EVENT_HOUR; index += 1) logger.error({ event: 'crash_loop' });
+    logger.error({ event: 'crash_loop' });
     const restarted = new LogTailRecorder();
     const restartedLogger = loggerWith(restarted);
     restartedLogger.error({ event: 'crash_loop' });
     restarted.attach(createLogTailStore(db));
     restartedLogger.error({ event: 'crash_loop' });
-    expect(store.read(NOW - HOUR_MS, NOW, BUDGET, []).lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR + 1);
+    const read = store.read(NOW - HOUR_MS, NOW, BUDGET, []);
+    expect(read.lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR);
+    expect(read.overflow).toEqual([{ hourStartMs: NOW - (NOW % HOUR_MS), key: 'crash_loop', dropped: 3 }]);
+  });
+
+  it.each([
+    ['plan_rebuild_completed', { failed: false }, { failed: true }],
+    ['realtime_capability_drift', { deviceId: 'heater', pelsEcho: true }, { deviceId: 'heater', pelsEcho: false }],
+  ] as const)('keeps late protected evidence for %s after a flood', (event, ordinary, protectedEvidence) => {
+    const start = NOW - (NOW % HOUR_MS);
+    vi.useFakeTimers({ now: start });
+    const { store, logger } = attached();
+    for (let index = 0; index < 24; index += 1) logger.info({ event, ...ordinary });
+    expect(store.read(start, start, BUDGET, []).lines).toHaveLength(16);
+
+    vi.setSystemTime(start + HOUR_MS / 4);
+    logger.info({ event, ...ordinary });
+    expect(store.read(start, Date.now(), BUDGET, []).lines).toHaveLength(17);
+
+    vi.setSystemTime(start + HOUR_MS - 1_000);
+    logger.info({ event, ...ordinary });
+    logger.info({ event, ...ordinary });
+    logger.info({ event, ...ordinary });
+    logger.info({ event, ...protectedEvidence });
+    const { lines } = store.read(start, Date.now(), BUDGET, []);
+    expect(lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR);
+    expect(lines.at(-1)).toMatchObject({ atMs: Date.now(), entry: { event, ...protectedEvidence } });
+  });
+
+  it('carries unused alert quota forward without reserving an alert slot', () => {
+    const start = NOW - (NOW % HOUR_MS);
+    vi.useFakeTimers({ now: start + HOUR_MS / 4 });
+    const { store, logger } = attached();
+    const event = 'hard_cap_shortfall_sustained_alert_triggered';
+    for (let index = 0; index < 24; index += 1) logger.info({ event });
+    expect(store.read(start, Date.now(), BUDGET, []).lines).toHaveLength(18);
+    vi.setSystemTime(start + 3 * HOUR_MS / 4);
+    for (let index = 0; index < 3; index += 1) logger.info({ event });
+    expect(store.read(start, Date.now(), BUDGET, []).lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR);
+  });
+
+  it('replays startup lines from both sides of an hour boundary against their original hour', () => {
+    const boundary = NOW + HOUR_MS / 2;
+    vi.useFakeTimers({ now: boundary - 1 });
+    const { db, logger } = attached();
+    for (let index = 0; index < LOG_TAIL_MAX_LINES_PER_EVENT_HOUR; index += 1) logger.info({ event: 'status' });
+    const restarted = new LogTailRecorder();
+    const restartedLogger = loggerWith(restarted);
+    restartedLogger.info({ event: 'status' });
+    vi.setSystemTime(boundary);
+    restartedLogger.info({ event: 'status' });
+    const store = createLogTailStore(db);
+    restarted.attach(store);
+    const read = store.read(boundary - HOUR_MS, boundary, BUDGET, []);
+    expect(read.lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR + 1);
+    expect(read.lines.at(-1)?.atMs).toBe(boundary);
+    expect(read.overflow).toEqual([{ hourStartMs: boundary - HOUR_MS, key: 'status', dropped: 1 }]);
+  });
+
+  it('flushes overflow recorded inside another store transaction on the next write', () => {
+    vi.useFakeTimers({ now: NOW });
+    const { db, logger } = attached();
+    for (let index = 0; index < LOG_TAIL_MAX_LINES_PER_EVENT_HOUR; index += 1) logger.info({ event: 'status' });
+    db.transaction(() => {
+      logger.info({ event: 'status' });
+      logger.info({ event: 'status' });
+    });
+    logger.info({ event: 'after' });
+    expect(createLogTailStore(db).read(NOW - HOUR_MS, NOW, BUDGET, []).overflow)
+      .toEqual([{ hourStartMs: NOW - (NOW % HOUR_MS), key: 'status', dropped: 2 }]);
   });
 
   it('reads the newest lines that fit the budget and says how many older ones it left out', () => {

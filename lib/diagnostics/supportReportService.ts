@@ -99,7 +99,7 @@ const leaveOutMore = (
     log: log.state === 'available' && leftOutLines.length > 0 ? {
       ...log,
       lines: log.lines.filter((line) => !goes.has(line)),
-      leftOutForSize: log.leftOutForSize + leftOutLines.length,
+      leftOutForSize: log.leftOutForSize + leftOutLines.reduce((sum, line) => sum + (line.repeated?.count ?? 1), 0),
     } : log,
     activity: activity.state === 'available' && activityLeftOut > 0 ? {
       ...activity,

@@ -1,36 +1,48 @@
 /**
- * Feeds PELS's own log lines into the log tail (`logTailStore.ts`).
+ * Feeds PELS's info and higher structured logs into the kept log tail.
  *
- * The root logger exists before the userdata database opens, so lines from the
- * start of a boot wait in memory until a store is attached. Every structured
- * line passes through here; only info and above are kept.
- *
- * A flood is cut per hour at {@link LOG_TAIL_MAX_LINES_PER_EVENT_HOUR} lines of
- * one event for one device, so one device's flood cannot hide another device's
- * lines of the same event. The cut lines are counted in memory and written when
- * the count doubles and when the hour ends: a flood costs a handful of writes,
- * not one per line.
+ * Selected event streams keep most of an opening burst, with one more slot
+ * opening each quarter hour. Overflow checkpoints are written when
+ * this boot's count doubles and when the hour ends.
  */
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
-import { LOG_TAIL_MAX_LINES_PER_EVENT_HOUR, type LogTailEntry, type LogTailStore } from './logTailStore';
+import {
+  LOG_TAIL_HOUR_MS, LOG_TAIL_MAX_LINES_PER_EVENT_HOUR, type LogTailEntry, type LogTailStore,
+} from './logTailStore';
 
-/** Pino's info level; debug lines are left to the opt-in debug topics. */
+/** Pino's info level. Debug lines are left to the opt-in debug topics. */
 const PINO_INFO_LEVEL = 30;
-/** Lines held before the database opens: a boot logs a few dozen. */
+/** Lines held before the database opens. A boot normally logs a few dozen. */
 const MAX_PENDING_LINES = 500;
-const HOUR_MS = 60 * 60 * 1000;
+const QUARTERS_PER_HOUR = 4;
+const QUARTER_HOUR_MS = LOG_TAIL_HOUR_MS / QUARTERS_PER_HOUR;
 
-/** What the per-hour cap counts: the event, and its device when the line names one. */
-const keyOf = (line: string): string => {
+type LogAdmission = 'regular' | 'paced' | 'below_reserve';
+
+const admissionFor = (event: string, entry: Record<string, unknown>): LogAdmission => {
+  switch (event) {
+    case 'plan_rebuild_completed':
+      return entry.failed === true ? 'paced' : 'below_reserve';
+    case 'realtime_capability_drift':
+      return entry.pelsEcho === false ? 'paced' : 'below_reserve';
+    case 'hard_cap_shortfall_sustained_alert_triggered':
+      return 'paced';
+    default:
+      return 'regular';
+  }
+};
+
+/** The admission key is the event and its device when the payload names one. */
+const classify = (line: string): { key: string; admission: LogAdmission } => {
   try {
-    const parsed: unknown = JSON.parse(line);
-    if (!isUnknownRecord(parsed)) return 'unnamed';
-    const event = typeof parsed.event === 'string' ? parsed.event : 'unnamed';
-    // Car-link lines name their charger rather than a device.
-    const device = typeof parsed.deviceId === 'string' ? parsed.deviceId : parsed.chargerId;
-    return typeof device === 'string' ? `${event}|${device}` : event;
+    const entry: unknown = JSON.parse(line);
+    if (!isUnknownRecord(entry)) return { key: 'unnamed', admission: 'regular' };
+    const event = typeof entry.event === 'string' ? entry.event : 'unnamed';
+    const device = typeof entry.deviceId === 'string' ? entry.deviceId : entry.chargerId;
+    const key = typeof device === 'string' ? `${event}|${device}` : event;
+    return { key, admission: admissionFor(event, entry) };
   } catch {
-    return 'unparsed';
+    return { key: 'unparsed', admission: 'regular' };
   }
 };
 
@@ -38,58 +50,69 @@ const isPowerOfTwo = (count: number): boolean => Number.isInteger(Math.log2(coun
 
 export class LogTailRecorder {
   private store: LogTailStore | null = null;
-  private pending: LogTailEntry[] = [];
+  private pending: Array<Omit<LogTailEntry, 'key'>> = [];
   private hourStartMs = -1;
-  private readonly linesThisHour = new Map<string, number>();
-  private readonly droppedThisHour = new Map<string, number>();
+  private linesThisHour = new Map<string, number>();
+  private savedOverflow = new Map<string, number>();
+  private readonly droppedThisBoot = new Map<string, number>();
 
-  /** One complete JSON log line at a Pino level. Never throws. */
+  /** One complete JSON log line at a Pino level. The logging destination guards this callback. */
   observe(level: number, line: string): void {
     if (level < PINO_INFO_LEVEL) return;
-    const atMs = Date.now();
-    const key = keyOf(line);
-    this.rollHour(atMs - (atMs % HOUR_MS));
-    const kept = this.linesThisHour.get(key) ?? 0;
-    if (kept >= LOG_TAIL_MAX_LINES_PER_EVENT_HOUR) {
-      const dropped = (this.droppedThisHour.get(key) ?? 0) + 1;
-      this.droppedThisHour.set(key, dropped);
-      if (isPowerOfTwo(dropped)) this.store?.recordOverflow(this.hourStartMs, key, dropped);
-      return;
-    }
-    this.linesThisHour.set(key, kept + 1);
-    const entry = { atMs, level, key, line };
-    if (this.store) this.store.append(entry);
+    const entry = { atMs: Date.now(), level, line };
+    if (this.store) this.keep(this.store, entry);
     else if (this.pending.length < MAX_PENDING_LINES) this.pending.push(entry);
   }
 
-  /** Hands the waiting lines and counts to the store, and resumes this hour's cap from what it kept. */
+  /** Replay startup lines through the same quota as live lines, at their original times. */
   attach(store: LogTailStore): void {
-    for (const entry of this.pending) store.append(entry);
-    this.pending = [];
     this.store = store;
-    if (this.hourStartMs < 0) return;
-    for (const [key, lines] of store.countSince(this.hourStartMs)) {
-      this.linesThisHour.set(key, Math.max(lines, this.linesThisHour.get(key) ?? 0));
-    }
-    this.flushOverflow();
+    for (const entry of this.pending) this.keep(store, entry);
+    this.pending = [];
   }
 
-  /** Before the database closes; lines after it are not kept. */
   detach(): void {
-    this.flushOverflow();
+    if (!this.store) return;
+    this.flushOverflow(this.store);
+    this.hourStartMs = -1;
     this.store = null;
   }
 
-  private rollHour(hourStartMs: number): void {
-    if (hourStartMs === this.hourStartMs) return;
-    this.flushOverflow();
-    this.hourStartMs = hourStartMs;
-    this.linesThisHour.clear();
-    this.droppedThisHour.clear();
+  private keep(store: LogTailStore, entry: Omit<LogTailEntry, 'key'>): void {
+    const { key, admission } = classify(entry.line);
+    this.rollHour(store, entry.atMs - (entry.atMs % LOG_TAIL_HOUR_MS));
+
+    const kept = this.linesThisHour.get(key) ?? 0;
+    const quarter = Math.floor((entry.atMs - this.hourStartMs) / QUARTER_HOUR_MS);
+    const laterSlots = admission === 'regular' ? 0 : QUARTERS_PER_HOUR - 1 - quarter;
+    const reserve = admission === 'below_reserve' ? 1 : 0;
+    const limit = LOG_TAIL_MAX_LINES_PER_EVENT_HOUR - laterSlots - reserve;
+    if (kept < limit) {
+      this.linesThisHour.set(key, kept + 1);
+      store.append({ ...entry, key });
+      return;
+    }
+
+    const dropped = (this.droppedThisBoot.get(key) ?? 0) + 1;
+    this.droppedThisBoot.set(key, dropped);
+    if (isPowerOfTwo(dropped)) this.checkpoint(store, key, dropped);
   }
 
-  private flushOverflow(): void {
-    if (!this.store) return;
-    for (const [key, dropped] of this.droppedThisHour) this.store.recordOverflow(this.hourStartMs, key, dropped);
+  private rollHour(store: LogTailStore, hourStartMs: number): void {
+    if (hourStartMs === this.hourStartMs) return;
+    this.flushOverflow(store);
+    this.hourStartMs = hourStartMs;
+    const saved = store.readHour(hourStartMs);
+    this.linesThisHour = saved.kept;
+    this.savedOverflow = saved.dropped;
+    this.droppedThisBoot.clear();
+  }
+
+  private flushOverflow(store: LogTailStore): void {
+    for (const [key, dropped] of this.droppedThisBoot) this.checkpoint(store, key, dropped);
+  }
+
+  private checkpoint(store: LogTailStore, key: string, dropped: number): void {
+    store.recordOverflow(this.hourStartMs, key, (this.savedOverflow.get(key) ?? 0) + dropped);
   }
 }
