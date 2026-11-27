@@ -153,6 +153,7 @@ describe('manual support reporting', () => {
     const live = evidence();
     const lines = Array.from({ length: 2_000 }, (_, index) => ({
       atMs: now - 2_000 + index, level: 'info' as const, entry: { event: `line-${index}`, filler: incompressibleText(400) },
+      ...(index === 0 ? { repeated: { count: 10, lastAtMs: now - 1_900 } } : {}),
     }));
     live.log = { state: 'available', lines, overflow: [], fromMs: now - 3_600_000, toMs: now, leftOutForSize: 0, omittedEvents: [] };
     const service = new SupportReportService({ capture: async () => live }, transport());
@@ -161,8 +162,8 @@ describe('manual support reporting', () => {
     const { log } = carried(prepared);
     if (log.state !== 'available') throw new Error('Expected the log');
     const { leftOutForSize } = log;
-    expect(leftOutForSize).toBeGreaterThan(0);
-    expect(log.lines[0]?.entry.event).toBe(`line-${leftOutForSize}`);
+    expect(leftOutForSize).toBeGreaterThanOrEqual(10);
+    expect(log.lines[0]?.entry.event).toBe(`line-${leftOutForSize - 9}`);
     expect(log.lines.at(-1)?.entry.event).toBe('line-1999');
   });
 

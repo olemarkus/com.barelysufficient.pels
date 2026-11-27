@@ -32,6 +32,7 @@ import {
   type DeviceDiagnosticConfiguration, type DeviceDiagnosticConfigurationRead,
 } from './deviceDiagnosticConfiguration';
 import type { LogTailRead } from './logTailStore';
+import { foldSupportReportLog } from './supportReportLog';
 import type { AppMemorySnapshot } from './appMemoryFootprint';
 import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
@@ -496,7 +497,8 @@ const readLog = (
   const omittedEvents = omittedLogEvents(request);
   const read = readOptional(() => host.readLogTail(fromMs, toMs, SUPPORT_REPORT_LOG_BUDGET_BYTES, omittedEvents));
   return read ? {
-    state: 'available', lines: read.lines, overflow: read.overflow, fromMs, toMs, leftOutForSize: read.leftOut,
+    state: 'available', lines: foldSupportReportLog(read.lines), overflow: read.overflow,
+    fromMs, toMs, leftOutForSize: read.leftOut,
     omittedEvents,
   } : { state: 'unavailable', reason: 'The kept log could not be read.' };
 };

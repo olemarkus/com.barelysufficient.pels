@@ -88,11 +88,13 @@ export type SupportReportDeviceEvents =
   }
   | { state: 'unavailable'; reason: string };
 
-/** One of PELS's own structured log lines, as it was written. */
+/** One of PELS's own structured log lines, optionally representing a run of identical summaries. */
 export type SupportReportLogLine = {
   atMs: number;
   level: 'info' | 'warn' | 'error' | 'fatal';
   entry: { readonly [key: string]: SupportReportValue };
+  /** Retained occurrences only, including the first at `atMs`. Recorder overflow is counted separately. */
+  repeated?: { count: number; lastAtMs: number };
 };
 
 /**
