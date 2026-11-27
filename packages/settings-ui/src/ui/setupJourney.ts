@@ -52,8 +52,13 @@ import { type SettingsUiPlanPayload } from '../../../contracts/src/settingsUi/pl
 import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { readActiveRecommendation, dismissSetupRecommendation } from './recommendations.ts';
+import { readSetupQuarterHourAdvice } from './setupQuarterHourAdvice.ts';
 import { resolveSetupGoalChoices } from './setupGoals.ts';
+import { setupGoalsHeaderDetail } from './setupGoalsRender.ts';
+import {
+  loadSetupIntent, readSetupIntent, SETUP_INTENT_CHANGED, SETUP_INTENT_LABELS,
+} from './setupIntent.ts';
+import { paintSetupIntentQuestion, saveAndContinueSetupIntent } from './setupIntentNavigation.ts';
 import { followsPrices, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import {
@@ -87,7 +92,7 @@ let statuses = new Map<string, string>();
 let liveReadGeneration = 0;
 
 const PANEL_BY_STEP: Record<SetupJourneyStep, string> = {
-  power: 'limits', devices: 'devices', hardCap: 'limits',
+  intent: 'setup-review', power: 'limits', devices: 'devices', hardCap: 'limits',
   prices: 'electricity-prices', goals: 'devices', priorities: 'modes', review: 'setup-review',
 };
 
@@ -255,11 +260,13 @@ const paintReview = (): void => {
   const path = readSetupReview();
   const devices = readReviewDevices();
   const goals = resolveSetupGoalChoices();
+  const intent = readSetupIntent();
   const retryAvailable = state.devicesReadState === 'unavailable'
     || state.deferredObjectiveSettingsReadState === 'unavailable';
   render(h(SetupReview, {
     path,
     devices,
+    intentLabel: intent === null || intent === 'general' ? undefined : SETUP_INTENT_LABELS[intent],
     activeMode: state.loadedModeHomeId === MAIN_HOME_ID ? state.activeMode : null,
     meterSummary: meterSummary(),
     busy: actionBusy || setupSavePending(),
@@ -295,25 +302,12 @@ const mountHeader = (panelId: string): HTMLElement | null => {
   return mount;
 };
 
-// The price source is the home's, so the page names it once, and says once
-// when solar control is still on its way.
-const goalsHeaderDetail = (): string => {
-  const choices = resolveSetupGoalChoices();
-  const intro = choices.state === 'ready' && !choices.hasActions
-    ? 'See what PELS needs for each device.'
-    : 'Optional. You can change each choice later on its device page.';
-  const source = choices.state === 'ready' && choices.hasActions && choices.priceSource !== null
-    ? ` PELS uses your prices from ${choices.priceSource}.` : '';
-  const solar = solarPending() ? ` ${solarPendingNote()}` : '';
-  return `${intro}${source}${solar}`;
-};
-
 const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): string | null => {
   if (step === 'power') {
     const reading = fact?.status === 'done' ? meterSummary() : null;
     return reading ?? fact?.detail ?? 'Reading meter settings…';
   }
-  if (step === 'goals') return goalsHeaderDetail();
+  if (step === 'goals') return setupGoalsHeaderDetail();
   if (step === 'priorities') return `Optional. In ${state.activeMode}, the top device keeps running longest. `
     + (countSetupBatteryPlansOn() >= 2 ? 'Batteries higher in the list are also planned first. ' : '')
     + 'Drag to change the order, or continue with the current order. You can change it later in Modes.';
@@ -408,7 +402,6 @@ const readReviewBatterySetupAction = (step: SetupJourneyStep): (() => void) | un
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
   const fact = path?.steps.find((candidate) => candidate.id === step);
   const market = readSetupMarket();
-  const advice = step === 'hardCap' ? readActiveRecommendation('market:flanders-capacity-period') : null;
   const hardCapChoice = resolveHardCapHeaderChoice(step, fact, market);
   return {
     onReviewBatterySetup: readReviewBatterySetupAction(step),
@@ -425,16 +418,13 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     journeyActions: step !== 'goals' || !setupFinished(path),
     onContinue: continueSetup,
     onCheckMeter: () => showTab('limits', 'power'),
-    quarterHourAdvice: advice !== null,
+    ...readSetupQuarterHourAdvice(step, paintJourney),
     onQuarterHour: () => { void runAction(() => saveCapacityPeriodSettings(15)); },
     simulationExitStep: simulationExitStep(path),
     onOpenSimulation: () => showTab('simulation'),
     capacityOffAction: offersCapacityOff(step, fact),
     onCapacityOff: () => { void runAction(saveCapacityOffSettings); },
     hardCapChoice,
-    onDismissQuarterHour: () => {
-      if (advice) void dismissSetupRecommendation(advice).then(paintJourney);
-    },
   };
 };
 
@@ -446,6 +436,12 @@ const paintJourney = (): void => {
   for (const mount of document.querySelectorAll<HTMLElement>('.setup-journey-root')) mount.hidden = true;
   if (!step) return;
   if (step === 'review') { paintReview(); return; }
+  if (step === 'intent') {
+    paintSetupIntentQuestion(actionBusy || setupSavePending(), error, (intent) => {
+      void runAction(() => saveAndContinueSetupIntent(intent));
+    });
+    return;
+  }
   if (step === 'goals') goalsShown = true;
   if (step === 'priorities') {
     if (state.loadedModeHomeId === MAIN_HOME_ID) prioritiesShown = true;
@@ -473,12 +469,13 @@ const formatMeterReading = (kw: number, stamp: number): string => {
 };
 
 const refreshLivePreview = async (): Promise<void> => {
-  if (!currentStep()) return;
+  const step = currentStep();
+  if (!step || step === 'intent') return;
   const generation = ++liveReadGeneration;
   const [powerRead, planRead] = await Promise.allSettled([
     getPowerReadModel(), getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH),
   ]);
-  if (generation !== liveReadGeneration || !currentStep()) return;
+  if (generation !== liveReadGeneration || currentStep() !== step) return;
   if (powerRead.status === 'fulfilled') {
     const power = powerRead.value;
     const kw = power.status.state === 'live' ? power.status.status.powerNowKw : null;
@@ -517,6 +514,8 @@ export const initSetupJourney = (): void => {
   document.addEventListener(CHARGING_SETUP_UPDATED, repaintJourney);
   document.addEventListener(WHOLE_HOME_METER_CHANGED, paintJourney);
   void loadSetupBatteryPlans();
+  document.addEventListener(SETUP_INTENT_CHANGED, repaintJourney);
+  void loadSetupIntent();
   document.addEventListener('pels:tab-shown', () => {
     error = null;
     const step = currentStep();

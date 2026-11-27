@@ -2668,6 +2668,10 @@ The Overview and Setup & recommendations show `Set up PELS` while essential
 configuration is incomplete. `resolveSetupPath` derives progress from accepted
 settings. No tour-completed flag is persisted.
 
+- An optional first question asks `What did you install PELS for?`. Its answer
+  orders the existing choices and names the owner's goal in Review. It never
+  assigns a job or saves a limit. `Choose your setup goal` in Setup &
+  recommendations opens the same question during or after setup.
 - Journey: **Connect the meter → choose one suitable device → confirm relevant
   settings → preview and activate**. Reuse the settings pages with progress,
   `Back to setup`, and `Continue`; the final action is `Review setup`.

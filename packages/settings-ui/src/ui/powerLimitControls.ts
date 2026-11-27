@@ -1,3 +1,4 @@
+import { currentSetupJourney } from './setupJourneyState.ts';
 import {
   isCapacityPeriodMinutes,
   resolveCapacityPeriodMinutes,
@@ -158,14 +159,21 @@ export const syncCapacityLimitControls = (scalars: CapacityScalarSettings): void
     settingsGridImportLimitInput.value = String(scalars.gridImportLimitKw);
   }
   syncPowerLimitSwitches(scalars);
-  if (settingsCapacityLimitInput) settingsCapacityLimitInput.value = String(limitKw);
-  if (settingsCapacityMarginInput) settingsCapacityMarginInput.value = String(marginKw);
+  // An independent period write or refresh must not erase a cap or margin the
+  // owner is still editing in guided setup. A newly accepted value wins.
+  const editingHardCap = currentSetupJourney() === 'hardCap';
+  if (settingsCapacityLimitInput && (!editingHardCap || shownScalars?.limitKw !== limitKw)) {
+    settingsCapacityLimitInput.value = String(limitKw);
+  }
+  if (settingsCapacityMarginInput && (!editingHardCap || shownScalars?.marginKw !== marginKw)) {
+    settingsCapacityMarginInput.value = String(marginKw);
+  }
   if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
   if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
   syncFollowMonthPeakControl(scalars);
   shownScalars = scalars;
   renderMonthPeakHold();
-  renderMarginAlert(getMarginVsLimitError(limitKw, marginKw));
+  refreshLimitsValidationHints();
 };
 
 /** The month-peak switch, offered with the 15-minute period only. */

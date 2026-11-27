@@ -166,7 +166,7 @@ const headerProps = (overrides: Partial<SetupJourneyHeaderProps> = {}): SetupJou
   journeyActions: true,
   onContinue: vi.fn(),
   onCheckMeter: vi.fn(),
-  quarterHourAdvice: false,
+  quarterHourAdvice: null,
   onQuarterHour: vi.fn(),
   onDismissQuarterHour: vi.fn(),
   capacityOffAction: false,

@@ -187,6 +187,9 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
     {props.setupPath.state === 'open' && (
       <SetupPathCard path={props.setupPath.path} surface="setup" />
     )}
+    <MdTextButton type="button" data-settings-target="setup-review" data-setup-journey="intent">
+      Choose your setup goal
+    </MdTextButton>
     {props.readiness === 'loading' && (
       <p class="muted setup-recommendations-loading">Checking your configuration…</p>
     )}

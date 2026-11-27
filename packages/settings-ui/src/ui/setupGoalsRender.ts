@@ -1,4 +1,6 @@
 import { render } from 'preact';
+import { settingsPowerSourceSelect } from './dom.ts';
+import { resolveSolarSurplusPending, resolveSolarSurplusPendingNote } from './state.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import { buildDeadlineHref, followDeadlineHref } from './deadlineUrls.ts';
 import { retrySetupDeviceReads } from './setupDevices.ts';
@@ -10,6 +12,7 @@ import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenSmartTaskCreateFromSetup } from './smartTaskCreate.ts';
 import { showToastError } from './toast.ts';
 import { SetupGoalPicker } from './views/SetupJourney.tsx';
+import { prioritizeSetupGoalChoices, readSetupIntent } from './setupIntent.ts';
 
 /**
  * A Smart task saved from this page keeps the price source as Price-based
@@ -21,11 +24,27 @@ export const keepPriceSourceForSetupTask = (): void => {
     .catch((error) => showToastError(error, 'Failed to save the price source.'));
 };
 
+export const setupGoalsHeaderDetail = (): string => {
+  const choices = resolveSetupGoalChoices();
+  const intro = choices.state === 'ready' && !choices.hasActions
+    ? 'See what PELS needs for each device.'
+    : 'Optional. You can change each choice later on its device page.';
+  const source = choices.state === 'ready' && choices.hasActions && choices.priceSource !== null
+    ? ` PELS uses your prices from ${choices.priceSource}.` : '';
+  if (!resolveSolarSurplusPending()) return `${intro}${source}`;
+  const solar = resolveSolarSurplusPendingNote(settingsPowerSourceSelect?.value === 'flow');
+  const meanwhile = readSetupIntent() === 'solar' && choices.state === 'ready' && choices.hasActions
+    ? ' You can set up a Smart task, Price-based control or a battery plan below where offered.' : '';
+  return `${intro}${source} ${solar}${meanwhile}`;
+};
+
 /** `Choose what PELS does`, drawn where the device list goes; `rerender` repaints it after a save. */
 export const renderSetupGoals = (target: HTMLElement, rerender: () => void): void => {
   if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();
+  const intent = readSetupIntent();
   render(SetupGoalPicker({
-    choices: resolveSetupGoalChoices(),
+    choices: prioritizeSetupGoalChoices(resolveSetupGoalChoices(), intent),
+    preferSolar: intent === 'solar',
     busy: setupSavePending(),
     onPrice: (id, enabled) => {
       // The device's choice lands first: keeping the source fires a reload of

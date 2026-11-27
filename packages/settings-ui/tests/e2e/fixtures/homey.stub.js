@@ -1033,7 +1033,8 @@
         configured: Object.prototype.hasOwnProperty.call(settings, 'capacity_limit_kw'),
       },
       capacityPeak: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
-        ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw, source: 'tracked' }
+        ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw,
+          source: settings.ui_current_month_quarter_peak_source === 'meter' ? 'meter' : 'tracked' }
         : { state: 'no_completed_quarter' },
       // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
       // a solarpanel device in the snapshot AND the homey_energy power source

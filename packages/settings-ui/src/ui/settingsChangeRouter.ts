@@ -114,6 +114,7 @@ import {
   SETUP_RECOMMENDATION_DISMISSALS,
 } from './recommendations.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
+import { reloadSetupIntentIfChanged } from './setupIntent.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { applyDeferredObjectiveActivePlansPush } from './deferredObjectiveActivePlans.ts';
@@ -525,6 +526,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
   invalidateSettingCache(key);
+  reloadSetupIntentIfChanged(key);
   notifyInverterCurtailmentSettingChanged(key);
   notifySchedulesSettingChanged(key);
   // Main capacity settings retain the runtime's last-good values when absent.
@@ -628,6 +630,7 @@ const reloadDeviceSettingIfKey = (key: string): void => {
 
 export const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
+  reloadSetupIntentIfChanged(key);
   notifyInverterCurtailmentSettingChanged(key);
   notifySchedulesSettingChanged(key);
   notifyDeviceOverrideSettingChanged(key);

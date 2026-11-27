@@ -152,7 +152,7 @@ export const isBelgianHourly = (
 ): boolean => market.state === 'resolved' && market.country === 'BE' && periodMinutes === 60;
 
 /** The capacity limit in force, whether alone or beside a grid import limit. */
-const resolveSetupCapacityLimit = (hardCap: SetupHardCap): SetupCapacityLimit | null => {
+export const resolveSetupCapacityLimit = (hardCap: SetupHardCap): SetupCapacityLimit | null => {
   if (hardCap.state === 'disabled') return null;
   if (hardCap.state !== 'grid') return hardCap;
   return hardCap.capacity.state === 'off' ? null : hardCap.capacity;
