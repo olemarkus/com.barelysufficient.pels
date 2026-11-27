@@ -20,7 +20,7 @@ import { resolveManagedState, resolveHomeExhibitsSolar, resolveHomeHasDrivableBa
 import { gridCompaniesForCounty } from './gridCompanies.ts';
 import { readPriceSchemeInForce, savePriceScheme } from './priceSettingsPersistence.ts';
 import { createNorwayPriceHandlers } from './norwayPriceHandlers.ts';
-import { resolvePriceSetupOffer } from './priceSetupOffer.ts';
+import { resolvePriceAreaConflict, resolvePriceSetupOffer } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
   resolveNorwayChoices,
@@ -154,6 +154,7 @@ const renderElectricityPrices = () => {
     sourceAssumption: resolvePriceSourceAssumption(configState.priceSetup, configState.priceScheme),
     norwayChoices: resolveNorwayChoices(configState.priceSetup),
     priceSetupOffer: resolvePriceSetupOffer(configState.priceSetupSuggestion, configState.priceSetup),
+    priceAreaConflict: resolvePriceAreaConflict(configState.priceSetupSuggestion, configState.priceSetup),
     // Prosumer gate: any home that exhibits solar — a managed solar device OR
     // material exhibited grid export (a meter-only / string-inverter home) — OR
     // an already-enabled export config, so an enabled user is never stranded

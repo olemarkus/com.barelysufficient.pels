@@ -135,7 +135,8 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#settings-power-source')).toBeInViewport();
   });
 
-  test('the Limits stage asks for a hard cap once a device may be limited', async ({ page }) => {
+  test('the Limits stage offers the hard cap choice on the first screen', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
     // Readings arriving, devices managed and limitable (the default fixture),
     // but no hard cap ever saved: the built-in 10 kW is now being enforced on
     // those devices, so this is the moment the owner needs to see it.
@@ -156,7 +157,23 @@ test.describe('Onboarding links', () => {
     await expect(hardCap).toContainText('10 kW hard cap (hourly average) until you set yours');
 
     await hardCap.click();
-    await expect(page.locator('#limits-panel')).toBeVisible();
+    const progress = page.getByRole('region', { name: 'Setup progress' });
+    const keep = progress.getByRole('button', { name: 'Keep 10 kW' });
+    const change = progress.getByRole('button', { name: 'Change hard cap' });
+    const advance = progress.getByRole('button', { name: /^(Continue|Review setup)$/ });
+    await expect(progress).toContainText('hourly average grid import');
+    await expect(advance).toBeDisabled();
+    await expect(keep).toBeInViewport({ ratio: 1 });
+    await expect(change).toBeInViewport({ ratio: 1 });
+
+    await change.click();
+    const hardCapField = page.getByRole('textbox', { name: 'Hard cap', exact: true });
+    await expect(hardCapField).toBeFocused();
+    await hardCapField.fill('10,0');
+    await expect(keep).toBeEnabled();
+    await hardCapField.fill('10');
+    await keep.click();
+    await expect(advance).toBeEnabled();
   });
 
   test('automatic priorities complete setup without asking the owner to confirm an order', async ({ page }) => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parsePriceSetupSuggestion,
   priceSetupNeedsSuggestion,
+  resolvePriceAreaConflict,
   resolvePriceSetupOffer,
 } from '../src/ui/priceSetupOffer.ts';
 import type {
@@ -28,6 +29,9 @@ const TENSIO_NO3: PriceSetupSuggestion = {
   priceArea: { kind: 'from_homey_energy', area: 'NO3' },
   powerhour: { kind: 'none' },
 };
+const CONFLICT: PriceSetupSuggestion = {
+  ...TENSIO_NO3, priceArea: { kind: 'conflict', homeyEnergyArea: 'NO1', locationArea: 'NO3' },
+};
 const NOTHING: PriceSetupSuggestion = {
   gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' },
 };
@@ -35,6 +39,16 @@ const NOTHING: PriceSetupSuggestion = {
 describe('parsePriceSetupSuggestion', () => {
   it('accepts a whole suggestion', () => {
     expect(parsePriceSetupSuggestion(TENSIO_NO3)).toEqual(TENSIO_NO3);
+  });
+
+  it('accepts an area conflict only when both codes are Norwegian and distinct', () => {
+    expect(parsePriceSetupSuggestion(CONFLICT)).toEqual(CONFLICT);
+    for (const locationArea of ['NO1', 'NO6', 'NO3\n', null]) {
+      expect(parsePriceSetupSuggestion({
+        ...CONFLICT,
+        priceArea: { kind: 'conflict', homeyEnergyArea: 'NO1', locationArea },
+      })).toEqual({ ...CONFLICT, priceArea: { kind: 'none' } });
+    }
   });
 
   it('reads whether Power by the Hour has a price device', () => {
@@ -93,6 +107,16 @@ describe('resolvePriceSetupOffer', () => {
       gridCompany: TENSIO_OFFERED,
       priceArea: 'NO3',
     });
+  });
+
+  it('keeps a conflicting area out of the bulk offer and prompts only before an explicit choice', () => {
+    expect(resolvePriceSetupOffer(CONFLICT, norwayRead())).toEqual({
+      kind: 'grid_company',
+      gridCompany: TENSIO_OFFERED,
+    });
+    expect(resolvePriceAreaConflict(CONFLICT, norwayRead())).toEqual(CONFLICT.priceArea);
+    expect(resolvePriceAreaConflict(CONFLICT, norwayRead({ priceArea: { value: 'NO3', chosen: true } })))
+      .toBeNull();
   });
 
   it('never offers over a choice the owner made', () => {

@@ -1,6 +1,6 @@
 import type { ContinuousBatteryPlanConfigs } from '../../../contracts/src/continuousBatteryPlan.ts';
 import { getChosenWholeHomeMeterName, WHOLE_HOME_METER_CHANGED } from './homeyEnergyMeter.ts';
-import { settingsPowerSourceSelect } from './dom.ts';
+import { settingsCapacityLimitInput, settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
 import { CHARGING_SETUP_UPDATED, FINISH_CHARGING_SETUP, VEHICLE_CHARGING_SETUP_HINT,
   vehicleChargingConsentMissing } from './chargingSetupFacts.ts';
@@ -18,7 +18,7 @@ import { selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange, readSetupLimitsInForce,
-  isSetupDeviceLimitable,
+  isSetupDeviceLimitable, readUnchosenSetupHardCap,
 } from './setupPathFacts.ts';
 import type { SetupStep, SetupPath } from './setupPathModel.ts';
 import { isMainFuseMarket, nextSetupStep } from './setupPathModel.ts';
@@ -28,15 +28,17 @@ import {
 } from './setupJourneyState.ts';
 import {
   REVIEW_DEVICE_NO_JOB, SetupJourneyHeader, SetupReview, type SetupReviewDevice, type SetupJourneyHeaderProps,
+  type SetupHardCapChoice,
 } from './views/SetupJourney.tsx';
 import { renderDevices } from './devices.ts';
 import { setEditingMode } from './modes.ts';
 import { chargingPriorityGroup, orderModePriorityDevices, rankDisplayedModePriorities } from './modePriorityDisplay.ts';
 import {
   loadCapacitySettings, loadStaleDataStatus, saveSimulationModeSettings, saveCapacityPeriodSettings,
-  saveCapacityOffSettings,
+  autoSaveSettingsLimits, saveCapacityOffSettings,
 } from './capacity.ts';
 import { flushDebouncedSettingSaves } from './utils.ts';
+import { formatHardCapKw } from './monthPeakHoldCopy.ts';
 import { resolveSolarSetupAction, retrySetupDeviceReads } from './setupDevices.ts';
 import { getPowerReadModel } from './power.ts';
 import { getApiReadModel, invalidateApiCache } from './homey.ts';
@@ -318,8 +320,12 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
   return fact?.detail ?? null;
 };
 
-const OPTIONAL_MAIN_FUSE_DETAIL = 'Optional. Set your main fuse to protect each phase. '
-  + 'One phase can overload even when solar on another offsets its draw.';
+const optionalMainFuseDetail = (step: SetupJourneyStep, path: SetupPath | null): string | null => (
+  step === 'hardCap' && path?.offersMainFuse
+    ? 'Optional. Set your main fuse to protect each phase. '
+      + 'One phase can overload even when solar on another offsets its draw.'
+    : null
+);
 
 // Dutch and French households pay by connection or subscription size, so the
 // open Limits step offers the way out its detail explains, in one tap. A new
@@ -359,14 +365,47 @@ const canContinueSetup = (step: SetupJourneyStep, fact: SetupStep | undefined): 
   step === 'goals' || step === 'priorities' || fact?.status === 'done' || fact?.status === 'unchecked'
 );
 
+const canKeepHardCap = (limitKw: number): boolean => {
+  const value = settingsCapacityLimitInput?.value.trim();
+  return Boolean(value) && Number(value) === limitKw;
+};
+
+const focusHardCap = (): void => {
+  settingsCapacityLimitInput?.scrollIntoView({ block: 'center' });
+  settingsCapacityLimitInput?.focus({ preventScroll: true });
+};
+
+const resolveHardCapHeaderChoice = (
+  step: SetupJourneyStep, fact: SetupStep | undefined, market: ReturnType<typeof readSetupMarket>,
+): SetupHardCapChoice | null => {
+  if (step !== 'hardCap' || (fact?.status !== 'next' && fact?.status !== 'later') || isMainFuseMarket(market)) {
+    return null;
+  }
+  const hardCap = readUnchosenSetupHardCap();
+  if (hardCap === null) return null;
+  const { runningLimitKw, periodMinutes } = hardCap;
+  const label = formatHardCapKw(runningLimitKw);
+  const period = periodMinutes === 15 ? '15-minute' : 'hourly';
+  return {
+    label,
+    detail: `PELS uses ${label} as the hard cap for your ${period} average grid import.`,
+    canKeep: canKeepHardCap(runningLimitKw),
+    onKeep: () => {
+      if (canKeepHardCap(runningLimitKw)) void autoSaveSettingsLimits();
+    },
+    onChange: focusHardCap,
+  };
+};
+
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
   const fact = path?.steps.find((candidate) => candidate.id === step);
   const market = readSetupMarket();
   const advice = step === 'hardCap' ? readActiveRecommendation('market:flanders-capacity-period') : null;
+  const hardCapChoice = resolveHardCapHeaderChoice(step, fact, market);
   return {
     title: headerTitle(step),
     progress: headerProgress(step, path),
-    detail: step === 'hardCap' && path?.offersMainFuse ? OPTIONAL_MAIN_FUSE_DETAIL : headerDetail(step, fact),
+    detail: hardCapChoice?.detail ?? optionalMainFuseDetail(step, path) ?? headerDetail(step, fact),
     busy: actionBusy || setupSavePending(),
     // The optional page never holds the journey back.
     canContinue: canContinueSetup(step, fact),
@@ -383,6 +422,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     onOpenSimulation: () => showTab('simulation'),
     capacityOffAction: offersCapacityOff(step, fact),
     onCapacityOff: () => { void runAction(saveCapacityOffSettings); },
+    hardCapChoice,
     onDismissQuarterHour: () => {
       if (advice) void dismissSetupRecommendation(advice).then(paintJourney);
     },
@@ -462,6 +502,9 @@ const retrySetupReview = async (): Promise<void> => {
 };
 
 export const initSetupJourney = (): void => {
+  settingsCapacityLimitInput?.addEventListener('input', () => {
+    if (currentStep() === 'hardCap') paintJourney();
+  });
   document.addEventListener(CHARGING_SETUP_UPDATED, repaintJourney);
   document.addEventListener(WHOLE_HOME_METER_CHANGED, paintJourney);
   void loadSetupBatteryPlans();

@@ -162,6 +162,10 @@ export const publishSetupHardCapRead = (
   notify();
 };
 
+export const readUnchosenSetupHardCap = (): Extract<SetupCapacityLimit, { state: 'unset' }> | null => (
+  hardCap.state === 'ready' && hardCap.value.state === 'unset' ? hardCap.value : null
+);
+
 const resolveSetupCapacity = (configured: boolean, running: CapacityScalarSettings): SetupCapacityLimit => {
   const { limitKw, marginKw, periodMinutes } = running;
   return configured

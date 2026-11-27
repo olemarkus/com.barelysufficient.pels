@@ -186,13 +186,13 @@ export type PriceSetupRead =
   | { readonly state: 'unavailable' };
 
 /**
- * The Norway price settings PELS found for the hub's location, for the owner to
- * confirm. Each part is looked up only while the owner has not chosen it: the
- * grid company whose area the hub is in, with the county it was found in, and
- * the price area Homey Energy uses for the hub. `none` is a part with nothing
- * to offer: chosen already, a hub not known to be in Norway, a location no grid
- * company covers, or a lookup that failed. PELS writes none of it until the
- * owner confirms.
+ * The Norway price settings PELS found for the owner to confirm. Each part is
+ * looked up only while the owner has not chosen it: the grid company and county
+ * from the hub's location, and the price area from Homey Energy. A conflict
+ * means Homey Energy's configured and location-derived areas disagree.
+ * `none` means there is no suggestion for that part. The owner may have already
+ * chosen it, the hub may be outside Norway or outside a grid company's area,
+ * or the lookup may have failed. PELS writes settings only after confirmation.
  */
 export type NorwayPriceSetupSuggestion = {
   readonly gridCompany:
@@ -205,6 +205,7 @@ export type NorwayPriceSetupSuggestion = {
     | { readonly kind: 'none' };
   readonly priceArea:
     | { readonly kind: 'from_homey_energy'; readonly area: string }
+    | { readonly kind: 'conflict'; readonly homeyEnergyArea: string; readonly locationArea: string }
     | { readonly kind: 'none' };
 };
 

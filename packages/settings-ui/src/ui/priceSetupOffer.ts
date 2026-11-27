@@ -7,11 +7,11 @@ import {
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { gridCompanies } from './gridCompanies.ts';
+import { isPriceArea } from './priceSettingsPersistence.ts';
 import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const ORGANIZATION_NUMBER = /^\d{9}$/;
 const COUNTY_CODE = /^\d{2}$/;
-const PRICE_AREA = /^NO[1-5]$/;
 
 const NO_SUGGESTION: PriceSetupSuggestion = {
   gridCompany: { kind: 'none' },
@@ -37,11 +37,22 @@ const parseGridCompany = (value: unknown): PriceSetupSuggestion['gridCompany'] =
   };
 };
 
+const isPriceAreaCode = (value: unknown): value is string => (
+  typeof value === 'string' && isPriceArea(value)
+);
+
 const parsePriceArea = (value: unknown): PriceSetupSuggestion['priceArea'] => {
   const area = asUnknownRecord(value);
-  return area?.kind === 'from_homey_energy' && typeof area.area === 'string' && PRICE_AREA.test(area.area)
-    ? { kind: 'from_homey_energy', area: area.area }
-    : { kind: 'none' };
+  if (area?.kind === 'from_homey_energy' && isPriceAreaCode(area.area)) {
+    return { kind: 'from_homey_energy', area: area.area };
+  }
+  if (area?.kind === 'conflict') {
+    const { homeyEnergyArea, locationArea } = area;
+    if (isPriceAreaCode(homeyEnergyArea) && isPriceAreaCode(locationArea) && homeyEnergyArea !== locationArea) {
+      return { kind: 'conflict', homeyEnergyArea, locationArea };
+    }
+  }
+  return { kind: 'none' };
 };
 
 const parsePowerhour = (value: unknown): PriceSetupSuggestion['powerhour'] => {
@@ -86,6 +97,17 @@ type OfferedGridCompany = {
   /** The county to save with it, or the one the owner chose, which it is in. */
   readonly county: { readonly kind: 'set'; readonly code: string } | { readonly kind: 'kept' };
 };
+
+export type PriceAreaConflict = Extract<PriceSetupSuggestion['priceArea'], { kind: 'conflict' }>;
+
+export const resolvePriceAreaConflict = (
+  suggestion: PriceSetupSuggestion,
+  read: PriceSetupRead,
+): PriceAreaConflict | null => (
+  read.state === 'resolved' && !read.setup.norway.priceArea.chosen && suggestion.priceArea.kind === 'conflict'
+    ? suggestion.priceArea
+    : null
+);
 
 /**
  * What the page offers to fill in from the hub's location: only settings the

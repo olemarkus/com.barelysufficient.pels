@@ -14,3 +14,8 @@ export const beginManagedControlIntent = (deviceId: string): number => {
 export const isCurrentManagedControlIntent = (deviceId: string, generation: number): boolean => (
   generationByDeviceId.get(deviceId) === generation
 );
+
+export const captureManagedControlIntent = (deviceId: string): (() => boolean) => {
+  const generation = generationByDeviceId.get(deviceId);
+  return () => generationByDeviceId.get(deviceId) === generation;
+};

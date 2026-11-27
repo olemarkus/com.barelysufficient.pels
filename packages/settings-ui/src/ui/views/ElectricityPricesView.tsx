@@ -39,7 +39,8 @@ import {
   type NorwayChoices,
   type PriceSourceAssumption,
 } from '../priceSetupStatus.ts';
-import type { PriceSetupOffer } from '../priceSetupOffer.ts';
+import type { PriceAreaConflict, PriceSetupOffer } from '../priceSetupOffer.ts';
+import { COUNTIES } from '../gridCompanies.ts';
 import {
   EXPORT_FIXED_LIMIT,
   EXPORT_SPOT_FACTOR_MAX,
@@ -94,7 +95,7 @@ export type ElectricityPricesHandlers = {
   onCountyChange: (code: string) => void;
   onOrganizationChange: (orgNumber: string) => void;
   onTariffGroupChange: (group: string) => void;
-  /** Save everything the location suggestion offers, as the owner's choice. */
+  /** Save everything in the bulk offer, as the owner's choice. */
   onUsePriceSetupOffer: (offer: PriceSetupOffer) => void;
   onRefreshPrices: () => void;
   onRefreshGridTariff: () => void;
@@ -125,8 +126,9 @@ export type ElectricityPricesViewProps = {
   sourceAssumption: PriceSourceAssumption;
   /** Which Norway settings the owner chose, so the page never presents a default as theirs. */
   norwayChoices: NorwayChoices;
-  /** The Norway settings found for the hub's location that the owner has not chosen yet. */
+  /** The Norway settings the owner can confirm together. */
   priceSetupOffer: PriceSetupOffer;
+  priceAreaConflict: PriceAreaConflict | null;
   // Export (feed-in) price section. Prosumer-gated by the orchestrator: shown
   // when the home has a managed solar device OR export pricing is already on
   // (never strand an enabled user behind the gate).
@@ -493,24 +495,6 @@ const schemeNote = (scheme: PriceScheme, hasGridCompany: boolean): string | null
   return null;
 };
 
-const COUNTIES: ReadonlyArray<{ code: string; name: string }> = [
-  { code: '03', name: 'Oslo' },
-  { code: '11', name: 'Rogaland' },
-  { code: '15', name: 'Møre og Romsdal' },
-  { code: '18', name: 'Nordland' },
-  { code: '31', name: 'Østfold' },
-  { code: '32', name: 'Akershus' },
-  { code: '33', name: 'Buskerud' },
-  { code: '34', name: 'Innlandet' },
-  { code: '39', name: 'Vestfold' },
-  { code: '40', name: 'Telemark' },
-  { code: '42', name: 'Agder' },
-  { code: '46', name: 'Vestland' },
-  { code: '50', name: 'Trøndelag' },
-  { code: '55', name: 'Troms' },
-  { code: '56', name: 'Finnmark' },
-];
-
 /** What PELS prices with in place of a setting the owner never chose. */
 const NotChosenHint = ({ text }: { text: string }) => (
   <small class="field__hint field__hint--alert">{text}</small>
@@ -527,8 +511,7 @@ const PRICE_AREAS: ReadonlyArray<{ code: string; label: string }> = [
 const countyName = (code: string): string => COUNTIES.find((county) => county.code === code)?.name ?? code;
 
 /**
- * The settings PELS found for the hub's location, for the owner to confirm in
- * one tap. Nothing is saved until they do.
+ * Compatible suggestions the owner can confirm in one tap.
  */
 const PriceSetupOfferBlock = ({ offer, onUse }: {
   offer: PriceSetupOffer;
@@ -546,14 +529,17 @@ const PriceSetupOfferBlock = ({ offer, onUse }: {
   if (offer.kind !== 'grid_company') rows.push({ label: 'Price area', value: offer.priceArea });
   return (
     <>
-      <p class="pels-card-supporting">Suggested from your Homey’s location:</p>
+      <p class="pels-card-supporting">Suggested settings</p>
       <div class="price-config-source-status" id="electricity-prices-location-suggestion">
         {rows.map((row) => <StatusRow key={row.label} label={row.label} value={row.value} />)}
       </div>
       {/* Attribution both map sources' licences ask for (NLOD, CC BY 4.0). */}
       {offer.kind !== 'price_area' && (
-        <small class="field__hint">Grid company and county from NVE and Kartverket map data.</small>
+        <small class="field__hint">
+          Grid company and county based on your Homey’s location, using NVE and Kartverket map data.
+        </small>
       )}
+      {offer.kind !== 'grid_company' && <small class="field__hint">Price area from Homey Energy.</small>}
       <div class="form__actions">
         <MdOutlinedButton type="button" onClick={() => onUse(offer)}>
           {rows.length > 1 ? 'Use these' : 'Use this'}
@@ -563,9 +549,45 @@ const PriceSetupOfferBlock = ({ offer, onUse }: {
   );
 };
 
-const NorwaySection = ({
-  config, handlers, gridCompanyOptions, norwayChoices, priceSetupOffer, showSetupGoals, priceSetupSuggestionPending,
-}: ElectricityPricesViewProps) => {
+const renderNorwayPriceAreaField = (
+  props: ElectricityPricesViewProps, assumedArea: string | null, areaConflictText: string | null,
+) => (
+  <div class="field">
+    <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
+    <MdFilledSelect
+      value={assumedArea === null ? props.config.priceArea : NOT_CHOSEN}
+      aria-labelledby="electricity-prices-price-area-label"
+      onChange={(e) => {
+        const next = readValue(e);
+        if (next !== NOT_CHOSEN) props.handlers.onPriceAreaChange(next);
+      }}
+    >
+      {assumedArea !== null && (
+        <MdSelectOption value={NOT_CHOSEN} displayText="Select price area" typeaheadText="Select price area">
+          <div slot="headline">Select price area</div>
+        </MdSelectOption>
+      )}
+      {PRICE_AREAS.map((area) => (
+        <MdSelectOption key={area.code} value={area.code} displayText={area.label} typeaheadText={area.label}>
+          <div slot="headline">{area.label}</div>
+        </MdSelectOption>
+      ))}
+    </MdFilledSelect>
+    {!props.showSetupGoals && areaConflictText && <NotChosenHint text={areaConflictText} />}
+    {!props.showSetupGoals && assumedArea !== null && <NotChosenHint text={`Not chosen yet. PELS uses ${assumedArea}.`} />}
+    <small class="field__hint">
+      {'Your electricity price area ('}
+      <a href="https://www.hvakosterstrommen.no/" target="_blank" rel="noopener noreferrer">hvakosterstrommen.no</a>
+      {').'}
+    </small>
+  </div>
+);
+
+const NorwaySection = (props: ElectricityPricesViewProps) => {
+  const {
+    config, handlers, gridCompanyOptions, norwayChoices, priceSetupOffer, priceAreaConflict,
+    showSetupGoals, priceSetupSuggestionPending,
+  } = props;
   // What PELS prices with in place of each setting the owner never chose.
   const choices = norwayChoices.kind === 'resolved' ? norwayChoices.choices : null;
   const assumedCounty = choices && !choices.county.chosen ? choices.county.value : null;
@@ -707,37 +729,10 @@ const NorwaySection = ({
       )}
 
   </>;
-  const areaFields = <>
-      <div class="field">
-        <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
-        <MdFilledSelect
-          value={assumedArea === null ? config.priceArea : NOT_CHOSEN}
-          aria-labelledby="electricity-prices-price-area-label"
-          onChange={(e) => {
-            const next = readValue(e);
-            if (next !== NOT_CHOSEN) handlers.onPriceAreaChange(next);
-          }}
-        >
-          {assumedArea !== null && (
-            <MdSelectOption value={NOT_CHOSEN} displayText="Select price area" typeaheadText="Select price area">
-              <div slot="headline">Select price area</div>
-            </MdSelectOption>
-          )}
-          {PRICE_AREAS.map((area) => (
-            <MdSelectOption key={area.code} value={area.code} displayText={area.label} typeaheadText={area.label}>
-              <div slot="headline">{area.label}</div>
-            </MdSelectOption>
-          ))}
-        </MdFilledSelect>
-        {!showSetupGoals && assumedArea !== null && <NotChosenHint text={`Not chosen yet. PELS uses ${assumedArea}.`} />}
-        <small class="field__hint">
-          {'Your electricity price area ('}
-          <a href="https://www.hvakosterstrommen.no/" target="_blank" rel="noopener noreferrer">hvakosterstrommen.no</a>
-          {').'}
-        </small>
-      </div>
-
-  </>;
+  const areaConflictText = priceAreaConflict === null ? null
+    : `Homey Energy uses ${priceAreaConflict.homeyEnergyArea}. `
+      + `Your Homey’s location suggests ${priceAreaConflict.locationArea}. Choose your price area.`;
+  const areaFields = renderNorwayPriceAreaField(props, assumedArea, areaConflictText);
   const surchargeField = (
       <label class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
@@ -767,7 +762,7 @@ const NorwaySection = ({
       <summary class="smart-task-edit__permissions-summary">
         <div>
           <span class="plan-card__title">Location and grid tariff</span>
-          <p class="pels-card-supporting">{locationSummary}</p>
+          <p class="pels-card-supporting">{areaConflictText ?? locationSummary}</p>
         </div>
         <ExpandMoreIcon class="disclosure-chevron" />
       </summary>

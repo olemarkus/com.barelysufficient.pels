@@ -79,6 +79,7 @@ const buildProps = (
   market: { state: 'unavailable' },
   norwayChoices: { kind: 'unknown' },
   priceSetupOffer: { kind: 'none' },
+  priceAreaConflict: null,
   showExportSection: false,
   showSolarForecastSection: false,
   ...overrides,
@@ -934,6 +935,8 @@ describe('ElectricityPricesView, suggestion from the hub\'s location', () => {
     expect(box?.textContent).toContain('TENSIO TS AS');
     expect(box?.textContent).toContain('Trøndelag');
     expect(box?.textContent).toContain('NO3');
+    expect(mount.textContent).toContain('based on your Homey’s location');
+    expect(mount.textContent).toContain('Price area from Homey Energy.');
     const use = Array.from(mount.querySelectorAll('md-outlined-button'))
       .find((button) => button.textContent === 'Use these') as HTMLElement | undefined;
     use?.click();
@@ -946,7 +949,7 @@ describe('ElectricityPricesView, suggestion from the hub\'s location', () => {
     renderElectricityPricesView(mount, buildProps());
 
     expect(mount.querySelector('#electricity-prices-location-suggestion')).toBeNull();
-    expect(mount.textContent).not.toContain('Suggested from your Homey');
+    expect(mount.textContent).not.toContain('Suggested settings');
   });
 });
 
@@ -1252,6 +1255,39 @@ describe('ElectricityPricesView, focused setup', () => {
       .find((button) => button.textContent === 'Use these') as HTMLElement;
     use.click();
     expect(onUsePriceSetupOffer).toHaveBeenCalledWith(offer);
+  });
+
+  it('shows the conflicting sources in collapsed setup and leaves the area to the selector', async () => {
+    const onUsePriceSetupOffer = vi.fn();
+    const onPriceAreaChange = vi.fn();
+    const gridOnly = { kind: 'grid_company' as const, gridCompany: offer.gridCompany };
+    const mount = mountSetup({
+      priceSetupOffer: gridOnly,
+      priceAreaConflict: { kind: 'conflict', homeyEnergyArea: 'NO1', locationArea: 'NO3' },
+      handlers: buildHandlers({ onUsePriceSetupOffer, onPriceAreaChange }),
+    });
+    const details = mount.querySelector('details')!;
+    await act(() => {
+      details.open = false;
+      details.dispatchEvent(new Event('toggle'));
+    });
+
+    const summary = details.querySelector('summary')!;
+    expect(details.open).toBe(false);
+    expect(summary.textContent).toContain('Homey Energy uses NO1. Your Homey’s location suggests NO3.');
+    const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+      .find((button) => button.textContent === 'Use these') as HTMLElement;
+    use.click();
+    expect(onUsePriceSetupOffer).toHaveBeenCalledWith(gridOnly);
+    expect(onPriceAreaChange).not.toHaveBeenCalled();
+
+    details.open = true;
+    const area = details.querySelector<HTMLElement & { value: string }>(
+      'md-filled-select[aria-labelledby="electricity-prices-price-area-label"]',
+    )!;
+    area.value = 'NO3';
+    area.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onPriceAreaChange).toHaveBeenCalledWith('NO3');
   });
 
   it.each([

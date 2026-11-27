@@ -57,7 +57,7 @@ import {
   refreshLimitsValidationHints,
   refreshPowerLimitControls, isGridImportLimitIncomplete,
   refreshStaleDataBanner,
-  saveSettingsLimitsSettings,
+  autoSaveSettingsLimits,
   saveCapacityPeriodSettings,
   saveSimulationModeSettings,
   syncDryRunBannerVisibility,
@@ -242,7 +242,7 @@ const initTabHandlers = () => {
   });
 };
 
-const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void>): void => {
+const initPowerLimitSwitchHandlers = (): void => {
   settingsGridImportEnabledInput?.addEventListener('change', () => {
     refreshPowerLimitControls();
     if (isGridImportLimitIncomplete()) { settingsGridImportLimitInput?.focus(); return; }
@@ -258,17 +258,7 @@ const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void
 };
 
 const initLimitsAndSimulationHandlers = () => {
-  const autoSaveSettingsLimits = async () => {
-    // The field's own hint says what is missing; a save now would only fail.
-    if (isGridImportLimitIncomplete()) { refreshPowerLimitControls(); return; }
-    try {
-      await saveSettingsLimitsSettings();
-    } catch (error) {
-      await logSettingsError('Failed to save limits and safety settings', error, 'autoSaveSettingsLimits');
-      await showToastError(error, 'Failed to save limits and safety settings.');
-    }
-  };
-  initPowerLimitSwitchHandlers(autoSaveSettingsLimits);
+  initPowerLimitSwitchHandlers();
   settingsCapacityLimitInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
