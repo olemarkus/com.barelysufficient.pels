@@ -1,8 +1,10 @@
-import type { SupportReportSection, SupportReportValue } from '../../packages/contracts/src/supportReport';
+import type {
+  SupportReportSection, SupportReportSubject, SupportReportValue,
+} from '../../packages/contracts/src/supportReport';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceDiagnosticConfigurationRead } from './deviceDiagnosticConfiguration';
-import { chargingInstallationGroups } from '../device/chargingCurrentAdapter';
+import { chargingInstallationGroups, resolveChargingCurrentAdapter } from '../device/chargingCurrentAdapter';
 import { getDeviceAdapter, readDeviceIntegrationReportSettings } from '../device/deviceAdapterRegistry';
 import { readHomeyEnergyReportSettings } from '../device/deviceReportSettings';
 import { toCapabilityTimestampMs } from '../device/managerControl';
@@ -76,15 +78,31 @@ const describeSettings = (device: HomeyDeviceLike): SupportReportValue => {
 
 const optionalText = (value: unknown): SupportReportValue => (typeof value === 'string' ? toReportValue(value) : null);
 
+export type DeviceSupportSubject = { name: string; section: SupportReportSection };
+
+type ProjectedHomeyInventory = {
+  roster: readonly ReturnType<typeof describeRosterDevice>[];
+  identities: ReadonlyMap<string, Pick<HomeyDeviceLike, 'name' | 'ownerUri'>>;
+  installations: ReturnType<typeof chargingInstallationGroups>;
+  supportSubject: DeviceSupportSubject | null;
+  leftOut: number;
+};
+
 export type HomeyDeviceInventoryRead =
-  | { state: 'available'; devices: readonly HomeyDeviceLike[] }
+  | ({ state: 'available' } & ProjectedHomeyInventory)
   | { state: 'unavailable' };
 
+export type CollectHomeyDeviceInventory = <T>(
+  collect: (devices: AsyncIterable<HomeyDeviceLike>) => Promise<T>,
+) => Promise<T>;
+
 export const readHomeyDeviceInventory = async (
-  list: () => Promise<readonly HomeyDeviceLike[]>,
+  read: CollectHomeyDeviceInventory,
+  subject: SupportReportSubject,
 ): Promise<HomeyDeviceInventoryRead> => {
   try {
-    return { state: 'available', devices: await list() };
+    const projected = await read((devices) => projectHomeyDeviceInventory(devices, subject));
+    return { state: 'available', ...projected };
   } catch {
     return { state: 'unavailable' };
   }
@@ -92,7 +110,7 @@ export const readHomeyDeviceInventory = async (
 
 /** Only the identifying fields needed to associate a configured meter with its integration. */
 export const describeSupportReportMeter = (inventory: HomeyDeviceInventoryRead, deviceId: string) => {
-  const device = inventory.state === 'available' ? inventory.devices.find((entry) => entry.id === deviceId) : undefined;
+  const device = inventory.state === 'available' ? inventory.identities.get(deviceId) : undefined;
   return {
     deviceId,
     ...(device ? { name: toReportValue(device.name), ownerUri: toReportValue(device.ownerUri) } : {}),
@@ -124,45 +142,73 @@ export const describeHomeyDeviceForSupport = (device: HomeyDeviceLike): SupportR
 /** The most devices one report lists, far more than a home has; it says how many it left out. */
 export const SUPPORT_REPORT_MAX_HOMEY_DEVICES = 500;
 
+const describeRosterDevice = (device: HomeyDeviceLike) => ({
+  id: device.id,
+  name: toReportValue(device.name),
+  class: device.class,
+  ownerUri: device.ownerUri,
+  driverId: device.driverId,
+  available: device.available,
+  deviceSettings: describeSettings(device),
+  ...(device.capabilities.includes('target_temperature') ? {
+    targetTemperature: describeCapability(device.capabilitiesObj.target_temperature, 'target_temperature'),
+  } : {}),
+  ...describeFirmware(device),
+});
+
 /**
- * Every device on the Homey and the app that provides it, managed by PELS or
- * not. A log names a device by id only, and how a device behaves when PELS
- * writes to it depends on that app. `isManaged` is `undefined` for a device
- * PELS does not hold. A charger whose current is set for its whole
- * installation names that installation by number, with how many chargers
- * share it.
+ * Retain report fields as each device arrives. Meter and subject lookups and
+ * installation counts include devices beyond the visible roster.
  */
+async function projectHomeyDeviceInventory(
+  devices: AsyncIterable<HomeyDeviceLike>, subject: SupportReportSubject,
+): Promise<ProjectedHomeyInventory> {
+  const roster: ReturnType<typeof describeRosterDevice>[] = [];
+  const identities = new Map<string, Pick<HomeyDeviceLike, 'name' | 'ownerUri'>>();
+  const installationByDeviceId = new Map<string, string>();
+  let count = 0;
+  let supportSubject: DeviceSupportSubject | null = null;
+  for await (const device of devices) {
+    count += 1;
+    if (!identities.has(device.id)) identities.set(device.id, { name: device.name, ownerUri: device.ownerUri });
+    const scope = resolveChargingCurrentAdapter(device)?.scope;
+    if (scope?.kind === 'installation') installationByDeviceId.set(device.id, scope.installationId);
+    if (subject.kind === 'device_support' && device.id === subject.deviceId && !supportSubject) {
+      supportSubject = { name: device.name, section: describeHomeyDeviceForSupport(device) };
+    }
+    if (roster.length < SUPPORT_REPORT_MAX_HOMEY_DEVICES) {
+      // eslint-disable-next-line functional/immutable-data -- the roster is local to this scan
+      roster.push(describeRosterDevice(device));
+    }
+  }
+  return {
+    roster,
+    identities,
+    installations: chargingInstallationGroups(installationByDeviceId),
+    supportSubject,
+    leftOut: count - roster.length,
+  };
+}
+
+/** Add PELS configuration to the projected Homey roster when capturing the report. */
 export const reportHomeyDevices = (
-  devices: readonly HomeyDeviceLike[],
+  inventory: ProjectedHomeyInventory,
   isManaged: (deviceId: string) => boolean | undefined,
   readConfiguration: (deviceId: string) => DeviceDiagnosticConfigurationRead | undefined,
-): SupportReportSection => {
-  const installations = chargingInstallationGroups(devices);
-  return {
-    title: 'Current Homey devices',
-    values: {
-      devices: devices.slice(0, SUPPORT_REPORT_MAX_HOMEY_DEVICES).map((device) => {
-        const managed = isManaged(device.id);
-        const configuration = readConfiguration(device.id);
-        const chargingInstallation = installations.get(device.id);
-        return {
-          id: device.id,
-          name: toReportValue(device.name),
-          class: device.class,
-          ownerUri: device.ownerUri,
-          driverId: device.driverId,
-          available: device.available,
-          deviceSettings: describeSettings(device),
-          ...(device.capabilities.includes('target_temperature') ? {
-            targetTemperature: describeCapability(device.capabilitiesObj.target_temperature, 'target_temperature'),
-          } : {}),
-          ...describeFirmware(device),
-          ...(managed === undefined ? {} : { managed }),
-          ...(configuration === undefined ? {} : { configuration }),
-          ...(chargingInstallation === undefined ? {} : { chargingInstallation }),
-        };
-      }),
-      leftOut: Math.max(0, devices.length - SUPPORT_REPORT_MAX_HOMEY_DEVICES),
-    },
-  };
-};
+): SupportReportSection => ({
+  title: 'Current Homey devices',
+  values: {
+    devices: inventory.roster.map((row) => {
+      const managed = isManaged(row.id);
+      const configuration = readConfiguration(row.id);
+      const chargingInstallation = inventory.installations.get(row.id);
+      return {
+        ...row,
+        ...(managed === undefined ? {} : { managed }),
+        ...(configuration === undefined ? {} : { configuration }),
+        ...(chargingInstallation === undefined ? {} : { chargingInstallation }),
+      };
+    }),
+    leftOut: inventory.leftOut,
+  },
+});

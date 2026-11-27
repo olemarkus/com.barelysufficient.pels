@@ -55,18 +55,13 @@ export type ChargingInstallationGroup = {
 };
 
 /**
- * The chargers among `devices` whose current is set for their installation,
- * each with the installation it shares. Installations are numbered rather than
+ * The chargers whose current is set for their installation, each with the
+ * installation it shares. Installations are numbered rather than
  * named, so a report shows which chargers share one without the vendor's id.
  */
 export function chargingInstallationGroups(
-  devices: readonly HomeyDeviceLike[],
+  installationByDeviceId: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, ChargingInstallationGroup> {
-  const installationByDeviceId = new Map<string, string>();
-  for (const device of devices) {
-    const scope = resolveChargingCurrentAdapter(device)?.scope;
-    if (scope?.kind === 'installation') installationByDeviceId.set(device.id, scope.installationId);
-  }
   const numbers = new Map<string, number>();
   const counts = new Map<string, number>();
   for (const installationId of installationByDeviceId.values()) {

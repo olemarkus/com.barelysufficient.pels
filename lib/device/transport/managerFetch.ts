@@ -19,6 +19,7 @@ import {
   getEnergyLiveReport,
   getRawDevice,
   getRawDevices,
+  readRawDevicesForDiagnostics,
   logDeviceTransportRuntimeError,
 } from './managerHomeyApi';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
@@ -62,10 +63,12 @@ export type DeviceFetchResult = {
 const REJECTED_PAYLOAD_REPEAT_MS = 60 * 60 * 1000;
 const lastRejectedPayloadWarning = new WeakMap<Logger, LogDedupeEntry>();
 
+const rejectedDeviceId = (entry: unknown): string => (
+  isUnknownRecord(entry) && typeof entry.id === 'string' ? entry.id : 'unknown'
+);
+
 /** A rejected device is gone from PELS, so an owner's log has to say which one. */
-function warnRejectedDevicePayloads(logger: Logger, rejected: readonly unknown[]): void {
-  const deviceIds = rejected
-    .map((entry) => (isUnknownRecord(entry) && typeof entry.id === 'string' ? entry.id : 'unknown'));
+function warnRejectedDevicePayloads(logger: Logger, deviceIds: readonly string[]): void {
   if (deviceIds.length === 0) {
     lastRejectedPayloadWarning.delete(logger);
     return;
@@ -80,29 +83,11 @@ function warnRejectedDevicePayloads(logger: Logger, rejected: readonly unknown[]
 
 const DEVICE_FETCH_RETRY_DELAYS_MS = [2000, 4000, 8000, 16000];
 
-export async function fetchDevicesWithFallback(params: {
-  logger: Logger;
-}): Promise<DeviceFetchResult> {
-  const { logger } = params;
+async function readDeviceInventoryWithRetries<T>(logger: Logger, read: () => Promise<T>): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= DEVICE_FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      const devices = await getRawDevices(DEVICES_API_PATH);
-      const rawList = Array.isArray(devices) ? devices : Object.values(devices || {});
-      const parsed = rawList.map(parseHomeyDevicePayload);
-      const list = parsed.filter((device) => device !== null);
-      warnRejectedDevicePayloads(logger, rawList.filter((_, index) => parsed[index] === null));
-      emitDeviceDebug({
-        event: 'manager_api_devices_returned',
-        validDevices: list.length,
-        invalidEntries: rawList.length - list.length,
-      });
-      return {
-        devices: list,
-        fetchSource: 'raw_manager_devices',
-        failedIds: [],
-        rejectedPayloads: rawList.length - list.length,
-      };
+      return await read();
     } catch (error) {
       lastError = error;
       if (attempt < DEVICE_FETCH_RETRY_DELAYS_MS.length) {
@@ -118,6 +103,56 @@ export async function fetchDevicesWithFallback(params: {
     lastError,
   );
   throw lastError;
+}
+
+function logDeviceInventory(logger: Logger, validDevices: number, rejectedIds: readonly string[]): void {
+  warnRejectedDevicePayloads(logger, rejectedIds);
+  emitDeviceDebug({ event: 'manager_api_devices_returned', validDevices, invalidEntries: rejectedIds.length });
+}
+
+export function fetchDevicesWithFallback(params: {
+  logger: Logger;
+}): Promise<DeviceFetchResult> {
+  const { logger } = params;
+  return readDeviceInventoryWithRetries(logger, async () => {
+    const devices = await getRawDevices(DEVICES_API_PATH);
+    const rawList = Array.isArray(devices) ? devices : Object.values(devices);
+    const parsed = rawList.map(parseHomeyDevicePayload);
+    const list = parsed.filter((device) => device !== null);
+    logDeviceInventory(logger, list.length, rawList.filter((_, index) => parsed[index] === null).map(rejectedDeviceId));
+    return {
+      devices: list,
+      fetchSource: 'raw_manager_devices',
+      failedIds: [],
+      rejectedPayloads: rawList.length - list.length,
+    };
+  });
+}
+
+export function readDevicesForDiagnostics<T>(
+  logger: Logger, collect: (devices: AsyncIterable<HomeyDeviceLike>) => Promise<T>,
+): Promise<T> {
+  return readDeviceInventoryWithRetries(logger, async () => {
+    const { result, validDevices, rejectedIds } = await readRawDevicesForDiagnostics(async (entries) => {
+      const rejected: string[] = [];
+      let valid = 0;
+      async function* normalized(): AsyncGenerator<HomeyDeviceLike> {
+        for await (const entry of entries) {
+          const device = parseHomeyDevicePayload(entry);
+          if (device === null) {
+            /* eslint-disable-next-line functional/immutable-data -- Collect only IDs of rejected wire payloads. */
+            rejected.push(rejectedDeviceId(entry));
+          } else {
+            valid += 1;
+            yield device;
+          }
+        }
+      }
+      return { result: await collect(normalized()), validDevices: valid, rejectedIds: rejected };
+    });
+    logDeviceInventory(logger, validDevices, rejectedIds);
+    return result;
+  });
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */

@@ -7,6 +7,7 @@ import { HomeyHttpStatusError } from '../../utils/homeyHttpStatusError';
 import { getLogger } from '../../logging/logger';
 import { bindCurrentContext } from '../../logging/alsContext';
 import { countHomeyApiCall } from './homeyApiCallCount';
+import { bufferedDeviceInventoryRequired, readDeviceInventoryEntries } from './deviceInventoryStream';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
 export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
@@ -112,9 +113,12 @@ function logLateFailure(params: {
 
 export type RestClient = {
   get: (path: string) => Promise<unknown>;
+  readDeviceInventory?: <T>(collect: DeviceInventoryCollector<T>) => Promise<T>;
   post?: (path: string, body: unknown) => Promise<unknown>;
   put: (path: string, body: unknown) => Promise<unknown>;
 };
+
+type DeviceInventoryCollector<T> = (entries: AsyncIterable<unknown>) => Promise<T>;
 
 // The active REST client, set during init.
 let restClient: RestClient | null = null;
@@ -150,6 +154,7 @@ export async function initHomeyHttpClient(homey: Homey.App): Promise<void> {
 
   restClient = {
     get: (path) => homeyHttpGet(baseUrl, token, `/api/${path}`),
+    readDeviceInventory: (collect) => homeyReadDeviceInventory(baseUrl, token, collect),
     post: (path, body) => homeyHttpPost(baseUrl, token, `/api/${path}`, body),
     put: (path, body) => homeyHttpPut(baseUrl, token, `/api/${path}`, body),
   };
@@ -168,6 +173,31 @@ export async function getRawDevices(
   if (Array.isArray(data)) return data as RawHomeyDeviceLike[];
   if (typeof data === 'object' && data !== null) return data as Record<string, RawHomeyDeviceLike>;
   throw new Error('Invalid response for device inventory');
+}
+
+async function collectDeviceInventory<T>(
+  entries: AsyncIterable<unknown>, collect: DeviceInventoryCollector<T>,
+): Promise<T> {
+  let ended = false;
+  async function* read(): AsyncGenerator<unknown> {
+    yield* entries;
+    ended = true;
+  }
+  const result = await collect(read());
+  if (!ended) throw new Error('Device inventory collector ended before the response');
+  return result;
+}
+
+async function* readBufferedDeviceInventory(): AsyncGenerator<unknown> {
+  const entries = await getRawDevices(DEVICES_API_PATH);
+  yield* Array.isArray(entries) ? entries : Object.values(entries);
+}
+
+/** Project a complete inventory. Replaced REST clients may supply an already-buffered response. */
+export function readRawDevicesForDiagnostics<T>(collect: DeviceInventoryCollector<T>): Promise<T> {
+  return restClient?.readDeviceInventory
+    ? restClient.readDeviceInventory(collect)
+    : collectDeviceInventory(readBufferedDeviceInventory(), collect);
 }
 
 export async function getRawDevice(
@@ -254,6 +284,41 @@ function isHomeyAppWrapper(value: unknown): value is { homey: Homey.App['homey']
 
 // ── HTTP helpers ────────────────────────────────────────────────────────────
 
+async function readResponseBody(response: http.IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of response) {
+    /* eslint-disable-next-line functional/immutable-data -- The fallback and HTTP errors need their complete body. */
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function* readBufferedInventoryResponse(response: http.IncomingMessage): AsyncGenerator<unknown> {
+  const entries: unknown = JSON.parse(await readResponseBody(response));
+  if (Array.isArray(entries)) {
+    yield* entries;
+    return;
+  }
+  if (typeof entries !== 'object' || entries === null) throw new Error('Invalid response for device inventory');
+  yield* Object.values(entries);
+}
+
+async function homeyReadDeviceInventory<T>(
+  baseUrl: string, token: string, collect: DeviceInventoryCollector<T>,
+): Promise<T> {
+  const path = `/api/${DEVICES_API_PATH}`;
+  try {
+    return await homeyHttpRequest('GET', baseUrl, token, path, undefined, (response) => (
+      collectDeviceInventory(readDeviceInventoryEntries(response), collect)
+    ));
+  } catch (error) {
+    if (error !== bufferedDeviceInventoryRequired) throw error;
+  }
+  return homeyHttpRequest('GET', baseUrl, token, path, undefined, (response) => (
+    collectDeviceInventory(readBufferedInventoryResponse(response), collect)
+  ));
+}
+
 function homeyHttpGet(baseUrl: string, token: string, urlPath: string): Promise<unknown> {
   return homeyHttpRequest('GET', baseUrl, token, urlPath);
 }
@@ -267,11 +332,19 @@ function homeyHttpPut(baseUrl: string, token: string, urlPath: string, body: unk
 }
 
 function homeyHttpRequest(
+  method: string, baseUrl: string, token: string, urlPath: string, body?: unknown,
+): Promise<unknown>;
+function homeyHttpRequest<T>(
+  method: string, baseUrl: string, token: string, urlPath: string, body: undefined,
+  readResponse: (response: http.IncomingMessage) => Promise<T>,
+): Promise<T>;
+function homeyHttpRequest(
   method: string,
   baseUrl: string,
   token: string,
   urlPath: string,
   body?: unknown,
+  readResponse?: (response: http.IncomingMessage) => Promise<unknown>,
 ): Promise<unknown> {
   countHomeyApiCall(method, urlPath);
   return new Promise((resolve, reject) => {
@@ -300,6 +373,16 @@ function homeyHttpRequest(
     };
 
     const req = requestModule.request(options, (res) => {
+      if (readResponse) {
+        const result = res.statusCode && res.statusCode < 400
+          ? readResponse(res)
+          : readResponseBody(res).then((bodyText) => { throw new HomeyHttpStatusError(res.statusCode, bodyText); });
+        void result.then(resolve, (error: unknown) => {
+          res.destroy();
+          reject(error);
+        });
+        return;
+      }
       const chunks: Buffer[] = [];
       /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -346,6 +429,10 @@ function homeyHttpRequest(
       if (abandoned) return;
       abandoned = true;
       reject(new HomeyRequestTimeoutError(method, urlPath));
+      if (readResponse) {
+        req.destroy();
+        return;
+      }
       // Deliberately NOT destroyed here. Abandoning the socket is what made the
       // owning app's real answer unobservable: a cloud-backed device can take
       // 22-60 s to reply `HTTP 500 "Failed to change the settings."`, and
