@@ -630,10 +630,7 @@ describe('device manager support helpers', () => {
     setRestClient({ get: mockGet, put: vi.fn() });
     const logger = createLogger();
 
-    const result = await fetchDevicesByIds({
-      deviceIds: ['a', 'b'],
-      logger,
-    });
+    const result = await fetchDevicesByIds(['a', 'b'], logger);
 
     expect(result.fetchSource).toBe('targeted_by_id');
     expect(result.devices).toEqual(devices);
@@ -641,10 +638,7 @@ describe('device manager support helpers', () => {
 
   it('fetchDevicesByIds returns empty list for empty IDs', async () => {
     const logger = createLogger();
-    const result = await fetchDevicesByIds({
-      deviceIds: [],
-      logger,
-    });
+    const result = await fetchDevicesByIds([], logger);
     expect(result.devices).toEqual([]);
     expect(result.fetchSource).toBe('targeted_by_id');
   });
@@ -664,10 +658,7 @@ describe('device manager support helpers', () => {
     setRestClient({ get: mockGet, put: vi.fn() });
     const logger = createLogger();
 
-    const result = await fetchDevicesByIds({
-      deviceIds: ['a', 'b'],
-      logger,
-    });
+    const result = await fetchDevicesByIds(['a', 'b'], logger);
 
     expect(result.fetchSource).toBe('targeted_by_id');
     expect(result.devices).toEqual([deviceA]);
@@ -701,10 +692,7 @@ describe('device manager support helpers', () => {
     setRestClient({ get: mockGet, put: vi.fn() });
     const logger = createLogger();
 
-    const result = await fetchDevicesByIds({
-      deviceIds: ['a', 'b'],
-      logger,
-    });
+    const result = await fetchDevicesByIds(['a', 'b'], logger);
 
     expect(result.fetchSource).toBe('raw_manager_devices');
     expect(result.devices).toHaveLength(3);

@@ -121,7 +121,7 @@ export class DeviceHomeySdk {
   async fetchDevicesByIds(deviceIds: string[]): Promise<DeviceFetchResult> {
     const start = Date.now();
     try {
-      return await fetchDevicesByIdsFromSdk({ deviceIds, logger: this.logger, readFull: () => this.readFull() });
+      return await fetchDevicesByIdsFromSdk(deviceIds, this.logger, () => this.readFull());
     } finally {
       const durationMs = Date.now() - start;
       addPerfDuration('device_fetch_ms', durationMs);
