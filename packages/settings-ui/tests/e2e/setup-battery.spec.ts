@@ -7,8 +7,9 @@ import { setMdValue } from './fixtures/materialWeb';
 // `Choose what PELS does` offers its plan.
 const SCREENSHOT_DIR = process.env.PELS_SETUP_BATTERY_SCREENSHOT_DIR;
 
-const seedBatteryHome = async (page: Page, { hasPrices = true, hasCharger = false } = {}) => {
-  await page.addInitScript(({ hasPrices, hasCharger }) => {
+const seedBatteryHome = async (page: Page, { hasPrices = true, hasCharger = false, checkEligibility = false } = {}) => {
+  await page.addInitScript(({ hasPrices, hasCharger, checkEligibility }) => {
+    let keyConfigured = false;
     const battery = {
       id: 'setup-battery', name: 'Thuisbatterij', zone: 'Garage', available: true,
       deviceClass: 'battery', deviceType: 'onoff', isEvCharger: false, isBatteryOrSolar: true,
@@ -16,6 +17,13 @@ const seedBatteryHome = async (page: Page, { hasPrices = true, hasCharger = fals
       canSetControl: true, powerCapable: true, capabilities: ['measure_power', 'measure_battery'], targets: [],
       measuredPowerKw: 0, expectedPowerKw: 2.5, expectedPowerSource: 'default',
     };
+    const additionalBatteries = checkEligibility ? [{
+      ...battery, id: 'cloud-battery', name: 'Cloud battery', batteryControl: 'controlled_through_local_device',
+      managed: true, binaryControllable: false,
+    }, {
+      ...battery, id: 'observe-battery', name: 'Observe-only battery', batteryControl: 'observe_only',
+      managed: true, binaryControllable: false,
+    }] : [];
     const charger = {
       id: 'optional-ev', name: 'Optional EV', deviceClass: 'evcharger', deviceType: 'onoff',
       isEvCharger: true, isBatteryOrSolar: false, available: true, powerCapable: true, canSetControl: true,
@@ -47,12 +55,23 @@ const seedBatteryHome = async (page: Page, { hasPrices = true, hasCharger = fals
       continuousBatteryPlans: () => ({ [battery.id]: planRead() }),
       apiHandlers: {
         'GET /ui_devices': () => ({
-          devices: [{ ...battery, managed: true, binaryControllable: false }, ...(hasCharger ? [charger] : [])],
+          devices: [{
+            ...battery,
+            managed: true,
+            binaryControllable: false,
+            batteryUsesHomeyApiKey: checkEligibility,
+            batteryControl: checkEligibility && !keyConfigured ? 'needs_homey_api_key' : 'drivable',
+          }, ...additionalBatteries, ...(hasCharger ? [charger] : [])],
           inverterDevices: [],
           continuousBatteryPlans: { [battery.id]: planRead() },
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: true, hasExhibitedExport: true, surplusPoolReachable: true,
         }),
+        'GET /ui_charging_access': () => ({ configured: keyConfigured, state: keyConfigured ? 'ready' : 'not_configured' }),
+        'PUT /ui_charging_access': () => {
+          keyConfigured = true;
+          return { configured: true, state: 'ready' };
+        },
         'GET /ui_prices': () => ({
           combinedPrices: { priceUnit: 'EUR/kWh' },
           priceTimeline: hasPrices
@@ -61,7 +80,7 @@ const seedBatteryHome = async (page: Page, { hasPrices = true, hasCharger = fals
         }),
       },
     };
-  }, { hasPrices, hasCharger });
+  }, { hasPrices, hasCharger, checkEligibility });
 };
 
 const stored = (page: Page, key: string) => page.evaluate((key) => (
@@ -120,6 +139,35 @@ for (const width of [320, 360, 480]) {
       await expect(page.locator('#setup-review-root')).toContainText('Plan charging with PELS on');
       await expectNoSideScroll(page);
     });
+  });
+}
+
+for (const width of [320, 480]) {
+  test(`battery eligibility and key setup at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedBatteryHome(page, { checkEligibility: true });
+    await page.goto('/?page=settings/devices&setup=devices');
+    const header = page.locator('#devices-panel .setup-journey');
+    await header.getByRole('button', { name: 'Review battery setup', exact: true }).click();
+    const card = page.locator('#device-card-list [data-device-id="setup-battery"]');
+    await expect(card).toContainText('Add a Homey API key with Flow permission');
+    await expect(card.getByRole('switch')).toHaveCount(0);
+    const deviceList = page.locator('#device-card-list');
+    await expect(deviceList.locator('[data-device-id="cloud-battery"]')).toContainText('local network device');
+    await expect(deviceList.locator('[data-device-id="observe-battery"]')).toContainText('PELS can only observe this battery.');
+    await expectNoSideScroll(page);
+    await page.screenshot({ path: testInfo.outputPath('battery-eligibility.png'), scale: 'css', fullPage: true });
+    await card.getByRole('button', { name: 'Device settings for Thuisbatterij' }).click();
+    const key = page.locator('#device-detail-battery-api-key');
+    await expect(key).toBeVisible();
+    await setMdValue(page, '#device-detail-battery-api-key md-filled-text-field', 'fixture-key');
+    await key.getByRole('button', { name: 'Save key' }).click();
+    await expect(key).toContainText('Manage API key');
+    await page.getByRole('button', { name: 'Close device details' }).click();
+    await expect(card).toContainText('Ready to configure');
+    await expect(card.getByRole('switch', { name: 'Plan charging with PELS for Thuisbatterij' })).toBeVisible();
+    await expectNoSideScroll(page);
+    await page.screenshot({ path: testInfo.outputPath('battery-ready.png'), scale: 'css', fullPage: true });
   });
 }
 

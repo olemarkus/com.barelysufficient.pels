@@ -7,25 +7,27 @@ import { readHomeMembership } from './homeScope.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
 import { hasOpenSmartTask, resolveManagedState, state } from './state.ts';
 
-/**
- * The devices PELS manages in the Main home: the ones setup configures and the
- * Overview counts. A home battery counts by its own Managed setting
- * (`battery_control_devices`, absent = on), not `managed_devices`.
- */
-export type MainHomeManagedDevices =
+export type MainHomeDevices =
   | { state: 'loading' | 'unavailable' }
   | { state: 'ready'; devices: readonly SettingsUiDeviceListItem[] };
 
-export const readMainHomeManagedDevices = (): MainHomeManagedDevices => {
+export const readMainHomeDevices = (): MainHomeDevices => {
   const membership = readHomeMembership();
   if (state.devicesReadState === 'unavailable') return { state: 'unavailable' };
   if (!state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
   if (membership.state === 'unavailable') return { state: 'unavailable' };
   return {
     state: 'ready',
-    devices: state.latestDevices.filter((device) => resolveManagedState(device.id)
-      && (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID),
+    devices: state.latestDevices.filter((device) =>
+      (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID),
   };
+};
+
+/** A battery's own Managed setting determines whether it is in the managed roster. */
+export const readMainHomeManagedDevices = (): MainHomeDevices => {
+  const read = readMainHomeDevices();
+  if (read.state !== 'ready') return read;
+  return { state: 'ready', devices: read.devices.filter((device) => resolveManagedState(device.id)) };
 };
 
 /**

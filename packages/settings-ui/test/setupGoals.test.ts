@@ -202,6 +202,9 @@ describe('Choose what PELS does', () => {
       const { goals, state } = await load();
       manageBattery(state);
       expect(batteryGoal(goals)).toEqual({ state: 'loading' });
+      expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: false });
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
       expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: true });
     });
 
@@ -296,6 +299,22 @@ describe('Choose what PELS does', () => {
       expect(facts.readSetupReview()?.steps.find((step) => step.id === 'prices')?.status).toBe('next');
     });
 
+    it('keeps an accepted device-page save over an older return refresh', async () => {
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      const { goals, state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      let finishRead: (value: Record<string, unknown>) => void = () => {};
+      savedPlans.mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+      const refresh = plans.loadSetupBatteryPlans();
+      plans.acceptSetupBatteryPlans({
+        battery: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, usableCapacityKWh: 5.12 },
+      });
+      finishRead({});
+      await refresh;
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true, capacityKWh: 5.12 });
+    });
+
     it('accepts a device-page save without losing its Prices requirement to a failed read', async () => {
       const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
       const { goals, facts, state } = await load();
@@ -325,14 +344,52 @@ describe('Choose what PELS does', () => {
       expect(batteryGoal(goals)).toEqual({
         state: 'blocked',
         reason: 'Add a Homey API key with Flow permission to let PELS execute the battery plan.',
+        focus: 'battery-api-key',
       });
+      expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: false });
+      state.latestDevices = [battery];
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready' });
+      expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: true });
     });
 
-    it('is left out once the owner turned its Managed off', async () => {
+    it('includes a battery whose owner turned Managed off and points to the switch', async () => {
       const { goals, state } = await load();
       manageBattery(state);
       state.batteryControl = { status: 'resolved', devices: { battery: false } };
-      expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
+      expect(batteryGoal(goals)).toMatchObject({ state: 'blocked', focus: 'managed' });
+      expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: false });
+    });
+
+    it('explains local and observe-only batteries without offering a plan', async () => {
+      const { goals, state } = await load({ 'area-battery': 'garage' });
+      manageBattery(state, { ...battery, batteryControl: 'controlled_through_local_device' });
+      state.latestDevices.push(
+        { ...battery, id: 'observe-only', batteryControl: 'observe_only' },
+        { ...battery, id: 'area-battery' },
+      );
+      expect(ready(goals.resolveSetupGoalChoices())).toMatchObject([
+        { id: 'battery', battery: { state: 'observe_only', reason: expect.stringContaining('local network device') } },
+        { id: 'observe-only', battery: { state: 'observe_only' } },
+      ]);
+      expect(goals.resolveSetupGoalChoices()).toMatchObject({ hasActions: false });
+    });
+
+    it('rejects a stale enable but allows an existing plan to be turned off', async () => {
+      const { state } = await load();
+      manageBattery(state, { ...battery, batteryControl: 'needs_homey_api_key' });
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      await expect(plans.saveSetupBatteryPlan('battery', true, 5.12)).rejects.toThrow('Review battery setup');
+      expect(savePlan).not.toHaveBeenCalled();
+
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      plans.acceptSetupBatteryPlans({
+        battery: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, usableCapacityKWh: 5.12, priceUnit: 'EUR/kWh' },
+      });
+      await plans.saveSetupBatteryPlan('battery', false, null);
+      expect(savePlan).toHaveBeenCalledWith('battery', expect.objectContaining({ enabled: false }));
     });
 
     it('saves the plan on with the entered capacity, in the current price unit and with no wear allowance', async () => {
