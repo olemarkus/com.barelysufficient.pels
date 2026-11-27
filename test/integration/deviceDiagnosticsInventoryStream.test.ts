@@ -77,6 +77,16 @@ describe('full device inventory over the Homey HTTP transport', () => {
     expect(requests).toHaveLength(1);
   });
 
+  it('publishes keyed discovery metadata only for the complete HTTP response', async () => {
+    const publish = vi.fn();
+    respond = (response) => response.end(
+      `{"relay":${JSON.stringify(rawDevice('old'))},"relay":${JSON.stringify(rawDevice('new'))}}`,
+    );
+    await fetchDevicesWithFallback({ logger: testLogger, publish });
+    expect(publish.mock.calls).toEqual([[[{ id: 'new', capabilities: ['onoff'] }]]]);
+    expect(requests).toHaveLength(2);
+  });
+
   it('keeps the full snapshot fetch contract', async () => {
     respond = (response) => response.end(JSON.stringify({
       relay: rawDevice('relay'), malformed: { id: 'malformed' },

@@ -113,9 +113,13 @@ function logLateFailure(params: {
   });
 }
 
+type InventoryRoot = (keyed: boolean) => void;
+
 export type RestClient = {
   get: (path: string) => Promise<unknown>;
-  readDeviceInventory?: <T>(collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape) => Promise<T>;
+  readDeviceInventory?: <T>(
+    collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape, onRoot?: InventoryRoot,
+  ) => Promise<T>;
   post?: (path: string, body: unknown) => Promise<unknown>;
   put: (path: string, body: unknown) => Promise<unknown>;
 };
@@ -156,7 +160,7 @@ export async function initHomeyHttpClient(homey: Homey.App): Promise<void> {
 
   restClient = {
     get: (path) => homeyHttpGet(baseUrl, token, `/api/${path}`),
-    readDeviceInventory: (collect, shape) => homeyReadDeviceInventory(baseUrl, token, collect, shape),
+    readDeviceInventory: (collect, shape, onRoot) => homeyReadDeviceInventory(baseUrl, token, collect, shape, onRoot),
     post: (path, body) => homeyHttpPost(baseUrl, token, `/api/${path}`, body),
     put: (path, body) => homeyHttpPut(baseUrl, token, `/api/${path}`, body),
   };
@@ -180,9 +184,11 @@ async function collectDeviceInventory<T>(
   return result;
 }
 
-async function* readBufferedDeviceInventory(shape: DeviceInventoryShape): AsyncGenerator<unknown> {
+async function* readBufferedDeviceInventory(
+  shape: DeviceInventoryShape, onRoot?: InventoryRoot,
+): AsyncGenerator<unknown> {
   const entries = await getRawFromHomeyApi(DEVICES_API_PATH);
-  yield* bufferedDeviceEntries(entries, shape);
+  yield* bufferedDeviceEntries(entries, shape, onRoot);
 }
 
 /**
@@ -190,11 +196,11 @@ async function* readBufferedDeviceInventory(shape: DeviceInventoryShape): AsyncG
  * may restart the read to preserve Homey's key enumeration order and last duplicate value.
  */
 export function readRawDeviceInventory<T>(
-  collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape = 'collection',
+  collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape = 'collection', onRoot?: InventoryRoot,
 ): Promise<T> {
   return restClient?.readDeviceInventory
-    ? restClient.readDeviceInventory(collect, shape)
-    : collectDeviceInventory(readBufferedDeviceInventory(shape), collect);
+    ? restClient.readDeviceInventory(collect, shape, onRoot)
+    : collectDeviceInventory(readBufferedDeviceInventory(shape, onRoot), collect);
 }
 
 export async function getRawDevice(
@@ -291,12 +297,13 @@ async function readResponseBody(response: http.IncomingMessage): Promise<string>
 }
 
 async function* readBufferedInventoryResponse(
-  response: http.IncomingMessage, shape: DeviceInventoryShape,
+  response: http.IncomingMessage, shape: DeviceInventoryShape, onRoot?: InventoryRoot,
 ): AsyncGenerator<unknown> {
-  yield* bufferedDeviceEntries(JSON.parse(await readResponseBody(response)), shape);
+  yield* bufferedDeviceEntries(JSON.parse(await readResponseBody(response)), shape, onRoot);
 }
 
-function bufferedDeviceEntries(entries: unknown, shape: DeviceInventoryShape): unknown[] {
+function bufferedDeviceEntries(entries: unknown, shape: DeviceInventoryShape, onRoot?: InventoryRoot): unknown[] {
+  onRoot?.(entries !== null && typeof entries === 'object' && !Array.isArray(entries));
   if (shape === 'keyed' && (entries === null || typeof entries !== 'object' || Array.isArray(entries))) return [];
   if (Array.isArray(entries)) return entries;
   if (typeof entries !== 'object' || entries === null) throw new Error('Invalid response for device inventory');
@@ -304,18 +311,19 @@ function bufferedDeviceEntries(entries: unknown, shape: DeviceInventoryShape): u
 }
 
 async function homeyReadDeviceInventory<T>(
-  baseUrl: string, token: string, collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape,
+  baseUrl: string, token: string, collect: DeviceInventoryCollector<T>,
+  shape: DeviceInventoryShape, onRoot?: InventoryRoot,
 ): Promise<T> {
   const path = `/api/${DEVICES_API_PATH}`;
   try {
     return await homeyHttpRequest('GET', baseUrl, token, path, undefined, (response) => (
-      collectDeviceInventory(readDeviceInventoryEntries(response, shape), collect)
+      collectDeviceInventory(readDeviceInventoryEntries(response, shape, onRoot), collect)
     ));
   } catch (error) {
     if (error !== bufferedDeviceInventoryRequired) throw error;
   }
   return homeyHttpRequest('GET', baseUrl, token, path, undefined, (response) => (
-    collectDeviceInventory(readBufferedInventoryResponse(response, shape), collect)
+    collectDeviceInventory(readBufferedInventoryResponse(response, shape, onRoot), collect)
   ));
 }
 

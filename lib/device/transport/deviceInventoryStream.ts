@@ -22,7 +22,7 @@ class DeviceInventoryScanner {
   private escaped = false;
   private depth = 0;
 
-  constructor(private readonly shape: DeviceInventoryShape) {}
+  constructor(private readonly shape: DeviceInventoryShape, private readonly onRoot?: (keyed: boolean) => void) {}
 
   *read(chunk: string): Generator<unknown> {
     let start = this.state === 'key' || this.state === 'value' || this.state === 'scalar' ? 0 : -1;
@@ -78,6 +78,7 @@ class DeviceInventoryScanner {
   }
 
   private startCollection(char: string): Boundary {
+    this.onRoot?.(char === '{');
     if (char !== '{' && char !== '[') {
       if (this.shape === 'collection') throw invalidInventory();
       this.state = 'scalar';
@@ -154,9 +155,9 @@ class DeviceInventoryScanner {
 
 /** Accept Homey's ID-keyed object and its older array representation. */
 export async function* readDeviceInventoryEntries(
-  chunks: AsyncIterable<Buffer>, shape: DeviceInventoryShape = 'collection',
+  chunks: AsyncIterable<Buffer>, shape: DeviceInventoryShape = 'collection', onRoot?: (keyed: boolean) => void,
 ): AsyncGenerator<unknown> {
-  const scanner = new DeviceInventoryScanner(shape);
+  const scanner = new DeviceInventoryScanner(shape, onRoot);
   const decoder = new StringDecoder('utf8');
   for await (const chunk of chunks) yield* scanner.read(decoder.write(chunk));
   yield* scanner.read(decoder.end());
