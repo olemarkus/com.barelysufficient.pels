@@ -173,12 +173,11 @@ export function readRawDeviceForComparison(deviceId: string): Promise<HomeyDevic
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export async function fetchDevicesByIds(params: {
-  deviceIds: string[];
-  logger: Logger;
-  readFull?: () => Promise<DeviceFetchResult>;
-}): Promise<DeviceFetchResult> {
-  const { deviceIds, logger, readFull = () => fetchDevicesWithFallback({ logger }) } = params;
+export async function fetchDevicesByIds(
+  deviceIds: string[],
+  logger: Logger,
+  readFull: () => Promise<DeviceFetchResult> = () => fetchDevicesWithFallback({ logger }),
+): Promise<DeviceFetchResult> {
   if (deviceIds.length === 0) {
     return { devices: [], fetchSource: 'targeted_by_id', failedIds: [], rejectedPayloads: 0 };
   }
