@@ -224,7 +224,8 @@ const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
   if (prices.state !== 'ready') return { state: 'unread' };
   const { respondToPrices, budgetShapesByPrice, status } = prices.value;
   const configs = batteryPlans.state === 'ready' ? batteryPlans.value : null;
-  const batteryUsesPrices = managedIds.some((id) => isHomeBatteryDeviceId(id) && configs?.[id]?.enabled === true);
+  const batteryUsesPrices = managedIds.some((id) => isHomeBatteryDeviceId(id)
+    && isSetupDeviceLimitable(id) && configs?.[id]?.enabled === true);
   const used = batteryUsesPrices || (respondToPrices && (budgetShapesByPrice || managedIds.some(usesPrices)));
   if (!used) return { state: 'unused' };
   return { state: 'used', complete: status.state === 'complete', summary: status.summary };
@@ -279,8 +280,8 @@ const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
     .map((device) => device.id));
   const managedIds = [...knownIds].filter(resolveManagedState);
   // An unread battery plan must not let Review offer activation without its Prices step.
-  if (managedIds.some(isHomeBatteryDeviceId) && batteryPlans.state !== 'ready') return { state: batteryPlans.state };
   const limitableIds = managedIds.filter(isSetupDeviceLimitable);
+  if (batteryPlans.state !== 'ready' && limitableIds.some(isHomeBatteryDeviceId)) return { state: batteryPlans.state };
   const actionableIds = managedIds.filter(isSetupDeviceActionable);
   return { state: 'ready', value: {
     power: power.value,

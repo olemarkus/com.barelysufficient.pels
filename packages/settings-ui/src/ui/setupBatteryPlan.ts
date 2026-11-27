@@ -10,7 +10,8 @@ import { resolveBatteryPlanControlBlock } from './deviceDetail/continuousBattery
 import {
   loadBatteryPlanPriceUnit, loadSavedContinuousBatteryPlanConfigs, saveContinuousBatteryPlanConfig,
 } from './deviceDetail/continuousBatteryPlanTransport.ts';
-import { state } from './state.ts';
+import { resolveManagedState, state } from './state.ts';
+import type { DeviceDetailFocus } from './cardActivation.ts';
 import { publishSetupBatteryPlans, publishSetupBatteryPlansUnavailable } from './setupPathFacts.ts';
 
 /**
@@ -76,9 +77,10 @@ const readSavedConfig = (deviceId: string): ContinuousBatteryPlanConfig | null =
 );
 
 export type SetupBatteryGoal =
-  | { state: 'loading' | 'unavailable' }
-  /** Why PELS cannot run this battery's plan, in the device page's words. */
-  | { state: 'blocked'; reason: string }
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'blocked'; reason: string; focus: DeviceDetailFocus }
+  | { state: 'observe_only'; reason: string }
   /**
    * `capacityKWh` is the saved usable capacity, `null` while none was ever
    * saved; `simulating` while Simulation mode holds back battery commands;
@@ -90,8 +92,44 @@ export type SetupBatteryGoal =
 /** The battery row's state, or `null` for a device that is not a home battery. */
 export const resolveSetupBatteryGoal = (device: SettingsUiDeviceListItem): SetupBatteryGoal | null => {
   if (!isHomeBatteryClassKey(device.deviceClass)) return null;
+  switch (device.batteryControl) {
+    case 'controlled_through_local_device':
+      return {
+        state: 'observe_only',
+        reason: 'Add or select the battery’s local network device in Homey to let PELS control it.',
+      };
+    case 'observe_only':
+    case 'not_battery':
+      return { state: 'observe_only', reason: 'This Homey device does not offer battery control.' };
+    case 'watch_only':
+      return { state: 'observe_only', reason: 'The battery app did not accept control.' };
+    case 'needs_local_api':
+      return { state: 'blocked', reason: 'Turn on Local API in the battery’s own app.', focus: 'battery' };
+    case 'recovery_required':
+      return {
+        state: 'blocked',
+        reason: 'Restore the battery’s own control before setting up a plan.',
+        focus: 'battery-recovery',
+      };
+    case 'not_reporting':
+      return {
+        state: 'blocked',
+        reason: 'Open the battery’s Homey app and check that it reports power and charge level.',
+        focus: 'battery',
+      };
+    case 'needs_homey_api_key':
+      return {
+        state: 'blocked',
+        reason: 'Add a Homey API key with Flow permission to let PELS execute the battery plan.',
+        focus: 'battery-api-key',
+      };
+    case 'drivable':
+      break;
+  }
   const reason = resolveBatteryPlanControlBlock(device);
-  if (reason !== '') return { state: 'blocked', reason };
+  if (reason !== '') {
+    return { state: 'blocked', reason, focus: resolveManagedState(device.id) ? 'power-limit' : 'managed' };
+  }
   if (saved.state !== 'ready') return { state: saved.state };
   const config = readSavedConfig(device.id);
   const othersPlanned = Object.entries(saved.configs).some(([id, other]) => id !== device.id && other.enabled);
@@ -110,6 +148,28 @@ export const countSetupBatteryPlansOn = (): number => (
 
 /** Whether the battery's plan is saved on; `false` while the map has not been read. */
 export const isSetupBatteryPlanOn = (deviceId: string): boolean => readSavedConfig(deviceId)?.enabled === true;
+
+const prepareEnabledBatteryPlan = async (
+  deviceId: string, capacityKWh: number | null, base: ContinuousBatteryPlanConfig,
+): Promise<ContinuousBatteryPlanConfig> => {
+  if (capacityKWh === null) throw new Error('Enter the battery’s usable capacity first.');
+  const priceUnit = await loadBatteryPlanPriceUnit();
+  const device = state.latestDevices.find(({ id }) => id === deviceId);
+  if (!base.enabled && (!device || resolveSetupBatteryGoal(device)?.state !== 'ready')) {
+    throw new Error('Battery control is unavailable. Review battery setup and try again.');
+  }
+  const unitless = !isBatteryPlanUnitSettled(base);
+  if (!unitless && base.priceUnit.trim().toLowerCase() !== priceUnit.trim().toLowerCase()) {
+    throw new Error('The electricity price unit changed. Review the wear allowance on the battery’s device page.');
+  }
+  return {
+    ...base,
+    enabled: true,
+    usableCapacityKWh: capacityKWh,
+    priceUnit,
+    wearCostPerKWh: unitless ? 0 : base.wearCostPerKWh,
+  };
+};
 
 /**
  * Turn the battery's plan on with this usable capacity, or off. Turning it on
@@ -131,19 +191,8 @@ export const saveSetupBatteryPlan = async (
   if (!enabled) {
     if (current !== null) accepted = await saveContinuousBatteryPlanConfig(deviceId, { ...current, enabled: false });
   } else {
-    if (capacityKWh === null) throw new Error('Enter the battery’s usable capacity first.');
-    const priceUnit = await loadBatteryPlanPriceUnit();
-    const unitless = !isBatteryPlanUnitSettled(base);
-    if (!unitless && base.priceUnit.trim().toLowerCase() !== priceUnit.trim().toLowerCase()) {
-      throw new Error('The electricity price unit changed. Review the wear allowance on the battery’s device page.');
-    }
-    accepted = await saveContinuousBatteryPlanConfig(deviceId, {
-      ...base,
-      enabled: true,
-      usableCapacityKWh: capacityKWh,
-      priceUnit,
-      wearCostPerKWh: unitless ? 0 : base.wearCostPerKWh,
-    });
+    const config = await prepareEnabledBatteryPlan(deviceId, capacityKWh, base);
+    accepted = await saveContinuousBatteryPlanConfig(deviceId, config);
   }
   if (accepted !== null) {
     // A successful save supersedes any earlier read, even if the follow-up fails.

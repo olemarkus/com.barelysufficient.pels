@@ -158,15 +158,21 @@ const BatteryGoalState = ({ id, name, goal, busy, onBatteryPlan, onOpen }: Omit<
 }) => {
   if (goal.state === 'ready') {
     // Keyed by the saved capacity, so a capacity that arrives or changes refills the field.
-    return <BatteryGoal key={`${id}:${goal.capacityKWh ?? ''}`} id={id} name={name} goal={goal} busy={busy}
-      onBatteryPlan={onBatteryPlan} onOpen={onOpen} />;
+    return <>
+      <p class="pels-card-supporting">{goal.enabled ? 'Battery plan is on' : 'Ready to configure'}</p>
+      <BatteryGoal key={`${id}:${goal.capacityKWh ?? ''}`} id={id} name={name} goal={goal} busy={busy}
+        onBatteryPlan={onBatteryPlan} onOpen={onOpen} />
+    </>;
   }
   if (goal.state === 'loading') return <p class="pels-card-supporting">Loading battery plan…</p>;
+  if (goal.state === 'observe_only') return <>
+    <p class="pels-card-supporting">PELS can only observe this battery.</p>
+    <p class="pels-card-supporting">{goal.reason}</p>
+  </>;
+  if (goal.state === 'unavailable') return <p class="pels-card-supporting">Battery plan settings could not be read.</p>;
   return <>
-    <p class="pels-card-supporting">
-      {goal.state === 'blocked' ? goal.reason : 'Battery plan settings could not be read.'}
-    </p>
-    <MdTextButton type="button" aria-label={`Device settings for ${name}`} onClick={() => onOpen(id, 'top')}>
+    <p class="pels-card-supporting">Needs setup. {goal.reason}</p>
+    <MdTextButton type="button" aria-label={`Device settings for ${name}`} onClick={() => onOpen(id, goal.focus)}>
       Device settings
     </MdTextButton>
   </>;
@@ -235,6 +241,7 @@ export type SetupJourneyHeaderProps = {
   canContinue: boolean;
   error: string | null;
   meterHelp: boolean;
+  onReviewBatterySetup?: () => void;
   fluviusHelp: boolean;
   continueLabel: string;
   /** `false` on `Choose what PELS does` once setup is finished: there is no journey to go back to or on with. */
@@ -275,6 +282,9 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
         <MdTextButton type="button" disabled={props.busy} onClick={props.onDismissQuarterHour}>Dismiss</MdTextButton>
       </div>
     </div>}
+    {props.onReviewBatterySetup && (
+      <MdTextButton type="button" disabled={props.busy} onClick={props.onReviewBatterySetup}>Review battery setup</MdTextButton>
+    )}
     {props.meterHelp && <MdTextButton type="button" onClick={props.onCheckMeter}>Check meter</MdTextButton>}
     {props.fluviusHelp && <a href="https://www.fluvius.be/nl/meters-en-meterstanden/maak-je-meter-slim" target="_blank" rel="noopener noreferrer">Activate the Fluvius P1 port</a>}
     {props.simulationExitStep !== null && <div>

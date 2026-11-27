@@ -165,6 +165,9 @@ const REVEALED_ROW_IDS: Partial<Record<DeviceDetailFocus, string>> = {
   'control-contest': 'device-detail-control-contest-notice',
   'expected-power': 'device-detail-expected-power-row',
   levels: 'device-detail-stepped-section',
+  battery: 'device-detail-battery-list',
+  'battery-api-key': 'device-detail-battery-api-key',
+  'battery-recovery': 'device-detail-battery-recovery',
 };
 
 /** Land on the row a deep link names; `top` leaves the page where it opened. */

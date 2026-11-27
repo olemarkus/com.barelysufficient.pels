@@ -31,6 +31,7 @@ import {
   type SetupHardCapChoice,
 } from './views/SetupJourney.tsx';
 import { renderDevices } from './devices.ts';
+import { refreshDevicesForUi } from './uiRefreshTasks.ts';
 import { setEditingMode } from './modes.ts';
 import { chargingPriorityGroup, orderModePriorityDevices, rankDisplayedModePriorities } from './modePriorityDisplay.ts';
 import {
@@ -136,7 +137,7 @@ const openSetupGoals = (): void => {
 const goalsComeNext = (): boolean => {
   if (goalsShown) return false;
   const choices = resolveSetupGoalChoices();
-  return choices.state === 'ready' && choices.hasActions;
+  return choices.state === 'ready' && (choices.hasActions || choices.devices.some(({ battery }) => battery !== null));
 };
 
 const mainFuseComesNext = (path: SetupPath): boolean => {
@@ -196,7 +197,7 @@ const describeDeviceJobs = (device: SettingsUiDeviceListItem): string | null => 
   const jobs = [
     supportsTemperatureControlDevice(device) ? 'Follows mode temperatures' : null,
     isSetupDeviceLimitable(device.id) && limitControlActs(device) ? 'Power-limit control on' : null,
-    isSetupBatteryPlanOn(device.id) ? 'Plan charging with PELS on' : null,
+    isSetupDeviceLimitable(device.id) && isSetupBatteryPlanOn(device.id) ? 'Plan charging with PELS on' : null,
     followsPrices(device) ? 'Price-based control on' : null,
     hasOpenSmartTask(device.id) ? 'Smart task set' : null,
     solar?.configured ? solar.label : null,
@@ -397,12 +398,20 @@ const resolveHardCapHeaderChoice = (
   };
 };
 
+const readReviewBatterySetupAction = (step: SetupJourneyStep): (() => void) | undefined => {
+  if (step !== 'devices') return undefined;
+  const choices = resolveSetupGoalChoices();
+  if (choices.state === 'ready' && choices.devices.some(({ battery }) => battery !== null)) return openSetupGoals;
+  return undefined;
+};
+
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
   const fact = path?.steps.find((candidate) => candidate.id === step);
   const market = readSetupMarket();
   const advice = step === 'hardCap' ? readActiveRecommendation('market:flanders-capacity-period') : null;
   const hardCapChoice = resolveHardCapHeaderChoice(step, fact, market);
   return {
+    onReviewBatterySetup: readReviewBatterySetupAction(step),
     title: headerTitle(step),
     progress: headerProgress(step, path),
     detail: hardCapChoice?.detail ?? optionalMainFuseDetail(step, path) ?? headerDetail(step, fact),
@@ -534,6 +543,10 @@ export const initSetupJourney = (): void => {
     notifySetupPathChange();
   });
   document.addEventListener('device-detail-closed', () => {
+    if (currentStep() === 'goals') {
+      refreshDevicesForUi();
+      void loadSetupBatteryPlans();
+    }
     if (state.devicesLoaded) renderDevices(state.latestDevices);
     paintJourney();
   });

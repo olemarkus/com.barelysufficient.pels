@@ -4,13 +4,13 @@ import { resolveDefaultSmartTaskKind } from '../../../shared-domain/src/smartTas
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { namePriceSource } from './afterSetupRecommendations.ts';
 import { readAfterSetupFacts } from './afterSetupFacts.ts';
-import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
+import { isSmartTaskCapable, readMainHomeDevices } from './mainHomeDevices.ts';
 import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
 import { resolveSolarSetupAction, type SolarSetupAction } from './setupDevices.ts';
 import { resolveSetupBatteryGoal, type SetupBatteryGoal } from './setupBatteryPlan.ts';
 import { formatOpenSmartTaskLine } from './smartTaskSummary.ts';
-import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state.ts';
+import { hasOpenSmartTask, resolveManagedState, resolveSurplusControlAvailable, state } from './state.ts';
 
 /**
  * `Choose what PELS does`: the optional setup page between the limits and the
@@ -65,30 +65,36 @@ const readPricedSource = () => {
 };
 
 export const resolveSetupGoalChoices = (): SetupGoalChoices => {
-  const managed = readMainHomeManagedDevices();
-  if (managed.state !== 'ready') return managed;
+  const roster = readMainHomeDevices();
+  if (roster.state !== 'ready') return roster;
   const respondsToPrices = readSetupRespondsToPrices() === true;
   const solarReady = resolveSurplusControlAvailable();
   const priced = readPricedSource();
-  const devices = managed.devices.flatMap((device): SetupGoalChoice[] => {
+  const devices = roster.devices.flatMap((device): SetupGoalChoice[] => {
+    const name = formatDisplayDeviceName(device.name);
+    const battery = resolveSetupBatteryGoal(device);
+    if (battery) {
+      return [{ id: device.id, name, price: null, smartTask: null, solar: null, battery, noGoalReason: null }];
+    }
+    if (!resolveManagedState(device.id)) return [];
     const price = respondsToPrices && supportsTemperatureAdjustments(device)
       ? { enabled: state.priceOptimizationSettings[device.id]?.enabled === true }
       : null;
     const smartTask = resolveSmartTask(device);
     const solar = solarReady ? resolveSolarSetupAction(device) : null;
-    const battery = resolveSetupBatteryGoal(device);
     let noGoalReason: SetupGoalChoice['noGoalReason'] = null;
-    if (!price && !smartTask && !solar && !battery) {
+    if (!price && !smartTask && !solar) {
       if (resolveDefaultSmartTaskKind(device) !== 'energy') return [];
       noGoalReason = 'needs_live_power';
     }
     return [{
-      id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar, battery, noGoalReason,
+      id: device.id, name, price, smartTask, solar, battery: null, noGoalReason,
     }];
   });
   return {
     state: 'ready',
-    hasActions: devices.some((device) => device.noGoalReason === null),
+    hasActions: devices.some(({ battery, price, smartTask, solar }) =>
+      battery?.state === 'ready' || price !== null || smartTask !== null || solar !== null),
     priceSource: priced ? namePriceSource(priced.scheme) : null,
     devices,
   };

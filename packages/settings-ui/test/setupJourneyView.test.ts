@@ -144,7 +144,9 @@ describe('Choose what PELS does, battery row', () => {
 
   it('says why PELS cannot plan the battery instead of offering the switch', () => {
     const { root } = renderPicker([battery({
-      battery: { state: 'blocked', reason: 'Turn on Power-limit control to let PELS execute the battery plan.' },
+      battery: {
+        state: 'blocked', reason: 'Turn on Power-limit control to let PELS execute the battery plan.', focus: 'power-limit',
+      },
     })]);
     expect(root.querySelector('md-switch')).toBeNull();
     expect(root.textContent).toContain('Turn on Power-limit control to let PELS execute the battery plan.');
