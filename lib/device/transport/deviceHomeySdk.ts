@@ -9,7 +9,7 @@ import { initHomeyHttpClient, resolveHomeyInstance } from './managerHomeyApi';
 import {
   fetchDevicesByIds as fetchDevicesByIdsFromSdk,
   fetchDevicesWithFallback,
-  readDevicesForDiagnostics,
+  readDeviceInventory,
   type DeviceFetchResult,
 } from './managerFetch';
 import { addPerfDuration } from '../../utils/perfCounters';
@@ -96,10 +96,10 @@ export class DeviceHomeySdk {
     }
   }
 
-  async readDevicesForDiagnostics<T>(collect: DeviceCollector<T>): Promise<T> {
+  async readDeviceInventory<T>(collect: DeviceCollector<T>): Promise<T> {
     const start = Date.now();
     try {
-      return await readDevicesForDiagnostics(this.logger, collect);
+      return await readDeviceInventory(this.logger, collect);
     } finally {
       const durationMs = Date.now() - start;
       addPerfDuration('device_fetch_ms', durationMs);

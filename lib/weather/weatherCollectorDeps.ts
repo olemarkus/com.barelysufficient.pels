@@ -12,6 +12,9 @@ import type { WeatherHistoryStore } from './weatherHistoryStore';
 import type { DailyKwhTotals } from './weatherMeterScope';
 import type { MetForecastFetchResult } from './metForecast';
 
+/** Visit the entries of Homey's ID-keyed device registry for meter discovery. */
+export type ReadMeterInventory = <T>(collect: (devices: AsyncIterable<unknown>) => Promise<T>) => Promise<T>;
+
 /**
  * Injected collaborators for `WeatherCollector`. Split into its own module to
  * keep the collector under its size budget. Every outward seam (SDK reads, Web
@@ -21,7 +24,8 @@ import type { MetForecastFetchResult } from './metForecast';
 export type WeatherCollectorDeps = {
   store: WeatherHistoryStore;
   readDevice: (deviceId: string) => Promise<RawHomeyDeviceLike>;
-  /** Read-only GET against the Homey Web API (Insights backfills + meter discovery). */
+  readMeterInventory: ReadMeterInventory;
+  /** Read-only GET against the Homey Insights Web API. */
   fetchInsights: (path: string) => Promise<unknown>;
   /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
   getDailyKwh: (dateKey: string) => DailyKwhTotals;

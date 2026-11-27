@@ -39,6 +39,7 @@ const METER_SETTINGS_RETRY_MS = 60_000;
  */
 export type WeatherBackfillDeps = Pick<
   WeatherCollectorDeps,
+  | 'readMeterInventory'
   | 'fetchInsights'
   | 'getDailyKwh'
   | 'getNowMs'
@@ -261,6 +262,7 @@ export class WeatherBackfillChain {
     const generationAtLaunch = this.host.currentRunGeneration();
     const scopeAtLaunch = state.meterScopeSignature;
     void resolveMeterDailyKwh({
+      readMeterInventory: this.deps.readMeterInventory,
       fetchFromHomeyApi: this.deps.fetchInsights,
       getDailyKwh: (dateKey) => this.readScopeDailyKwh(dateKey),
       restrictToDeviceId: mainMeter.meterDeviceId,
@@ -395,6 +397,7 @@ export class WeatherBackfillChain {
     this.controlledRunning = true;
     const generationAtLaunch = this.host.currentRunGeneration();
     void resolveControlledDailyKwh({
+      readMeterInventory: this.deps.readMeterInventory,
       fetchFromHomeyApi: this.deps.fetchInsights,
       isManaged: this.deps.isManagedDevice,
       getControlledDailyKwh: (dateKey) => this.readScopeDailyKwh(dateKey).controlled,

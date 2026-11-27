@@ -60,7 +60,7 @@ export type ZoneTree = Record<string, ZoneTreeNode>;
 // members.
 const DANGEROUS_RECORD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/** Record-or-array payload tolerance, mirroring `getRawDevices`; junk → null. */
+/** Record-or-array payload tolerance, mirroring the device inventory; junk → null. */
 const toRawZoneEntries = (data: unknown): unknown[] | null => {
   if (Array.isArray(data)) return data;
   if (isUnknownRecord(data)) return Object.values(data);
@@ -85,7 +85,7 @@ const toZoneTreeNode = (value: unknown): ZoneTreeNode | null => {
 };
 
 /**
- * Fetch and normalize the zone tree. Mirrors `getRawDevices` transport
+ * Fetch and normalize the zone tree. Mirrors the device inventory transport
  * discipline (same REST client, record-or-array payload tolerance) but never
  * throws outward: any failure — including an empty payload or one where every
  * entry is malformed — returns `null` so the caller retains its cached tree.

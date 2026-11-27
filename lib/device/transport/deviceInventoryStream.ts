@@ -3,7 +3,10 @@ import { StringDecoder } from 'node:string_decoder';
 /** Valid JSON whose object enumeration semantics require the ordinary buffered reader. */
 export const bufferedDeviceInventoryRequired = new Error('Device inventory requires buffered object enumeration');
 
-type State = 'root' | 'first' | 'entry' | 'key' | 'colon' | 'value' | 'done';
+/** Keyed readers only recognize a registry object. Other valid responses yield no entries. */
+export type DeviceInventoryShape = 'collection' | 'keyed';
+
+type State = 'root' | 'first' | 'entry' | 'key' | 'colon' | 'value' | 'scalar' | 'done';
 type Boundary = 'none' | 'start' | 'after-colon' | 'key' | 'value';
 
 const whitespace = (char: string): boolean => char === ' ' || char === '\t' || char === '\r' || char === '\n';
@@ -19,8 +22,10 @@ class DeviceInventoryScanner {
   private escaped = false;
   private depth = 0;
 
+  constructor(private readonly shape: DeviceInventoryShape) {}
+
   *read(chunk: string): Generator<unknown> {
-    let start = this.state === 'key' || this.state === 'value' ? 0 : -1;
+    let start = this.state === 'key' || this.state === 'value' || this.state === 'scalar' ? 0 : -1;
     for (let index = 0; index < chunk.length; index += 1) {
       switch (this.scan(chunk.charAt(index))) {
         case 'start':
@@ -33,10 +38,12 @@ class DeviceInventoryScanner {
           this.readKey(chunk.slice(start, index + 1));
           start = -1;
           break;
-        case 'value':
-          yield this.parse(chunk.slice(start, index));
+        case 'value': {
+          const entry = this.parse(chunk.slice(start, index));
+          if (this.shape === 'collection' || this.close === '}') yield entry;
           start = -1;
           break;
+        }
         default:
           break;
       }
@@ -50,9 +57,8 @@ class DeviceInventoryScanner {
     if (whitespace(char)) return 'none';
     switch (this.state) {
       case 'root':
-        if (char !== '{' && char !== '[') throw invalidInventory();
-        this.close = char === '{' ? '}' : ']';
-        this.state = 'first';
+        return this.startCollection(char);
+      case 'scalar':
         return 'none';
       case 'colon':
         if (char !== ':') throw invalidInventory();
@@ -69,6 +75,17 @@ class DeviceInventoryScanner {
       default:
         throw invalidInventory();
     }
+  }
+
+  private startCollection(char: string): Boundary {
+    if (char !== '{' && char !== '[') {
+      if (this.shape === 'collection') throw invalidInventory();
+      this.state = 'scalar';
+      return 'start';
+    }
+    this.close = char === '{' ? '}' : ']';
+    this.state = 'first';
+    return 'none';
   }
 
   private startEntry(char: string): Boundary {
@@ -109,6 +126,11 @@ class DeviceInventoryScanner {
   }
 
   finish(): void {
+    if (this.state === 'scalar') {
+      this.parse('');
+      return;
+    }
+    if (this.shape === 'keyed' && this.state === 'root') return;
     if (this.state !== 'done') throw invalidInventory();
   }
 
@@ -131,8 +153,10 @@ class DeviceInventoryScanner {
 }
 
 /** Accept Homey's ID-keyed object and its older array representation. */
-export async function* readDeviceInventoryEntries(chunks: AsyncIterable<Buffer>): AsyncGenerator<unknown> {
-  const scanner = new DeviceInventoryScanner();
+export async function* readDeviceInventoryEntries(
+  chunks: AsyncIterable<Buffer>, shape: DeviceInventoryShape = 'collection',
+): AsyncGenerator<unknown> {
+  const scanner = new DeviceInventoryScanner(shape);
   const decoder = new StringDecoder('utf8');
   for await (const chunk of chunks) yield* scanner.read(decoder.write(chunk));
   yield* scanner.read(decoder.end());

@@ -621,13 +621,21 @@ describe('fetchLiveMeterItems', () => {
 describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
   const logger = makeLogger();
 
+  function stubInventory(read: () => ReturnType<typeof mockHomeyInstance.api.get>) {
+    const get = mockHomeyInstance.api.get;
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation((path) => (
+      path === 'manager/devices/device' ? read() : get(path)
+    ));
+  }
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it('stays cold on an empty raw read, and warms on a read that listed a device', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
-    const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([]);
+    const rawDevices = vi.fn().mockResolvedValue([]);
+    stubInventory(rawDevices);
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
@@ -651,10 +659,11 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
 
   it('goes cold again once an empty-read streak commits []', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
-    const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([{ ...HOMEY_DEVICE_FIELDS,
+    const rawDevices = vi.fn().mockResolvedValue([{ ...HOMEY_DEVICE_FIELDS,
       id: 'heater-1', name: 'Heater', class: 'heater', capabilities: ['onoff', 'measure_power'],
       capabilitiesObj: { onoff: { value: true }, measure_power: { value: 1800 } }, available: true, ready: true,
     }]);
+    stubInventory(rawDevices);
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,

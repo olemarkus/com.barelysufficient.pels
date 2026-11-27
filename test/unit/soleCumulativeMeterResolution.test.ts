@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  resolveRegistryMeterCandidates,
+  registryMeterCandidateId,
   resolveSoleCumulativeMeter,
   resolveSoleMeterAdoptionCandidate,
 } from '../../lib/device/soleCumulativeMeter';
@@ -131,10 +131,10 @@ describe('resolveSoleCumulativeMeter id grammar', () => {
   });
 });
 
-describe('resolveRegistryMeterCandidates', () => {
+describe('registryMeterCandidateId', () => {
   const sensorMeter = (id: string) => ({ id, name: id, class: 'sensor', capabilities: ['measure_power'] });
 
-  it('counts cumulative-marked devices and sensor-class power reporters, once each, from a map or a list', () => {
+  it('recognizes cumulative meters and sensor-class power reporters', () => {
     const devices = {
       pulse: { id: 'pulse', name: 'Pulse', class: 'other', energy: { cumulative: true } },
       em: sensorMeter('em'),
@@ -142,29 +142,28 @@ describe('resolveRegistryMeterCandidates', () => {
       thermo: { id: 'thermo', name: 'Thermo', class: 'sensor', capabilities: ['measure_temperature'] },
       idless: { class: 'sensor', capabilities: ['measure_power'] },
     };
-    expect(resolveRegistryMeterCandidates(devices)).toEqual(['pulse', 'em']);
-    expect(resolveRegistryMeterCandidates(Object.values(devices))).toEqual(['pulse', 'em']);
-    expect(resolveRegistryMeterCandidates({ obj: { id: 'obj', energyObj: { cumulative: true } } })).toEqual(['obj']);
-    expect(resolveRegistryMeterCandidates(null)).toEqual([]);
+    expect(Object.values(devices).map(registryMeterCandidateId)).toEqual(['pulse', 'em', undefined, undefined, undefined]);
+    expect(registryMeterCandidateId({ id: 'obj', energyObj: { cumulative: true } })).toBe('obj');
+    expect(registryMeterCandidateId(null)).toBeUndefined();
   });
 
   it('adopts only when the registry corroborates the live sole meter and knows no other', () => {
     const live = { items: [{ type: 'cumulative', id: 'pulse', values: { W: 1200 } }] };
-    expect(resolveSoleMeterAdoptionCandidate(live, { pulse: sensorMeter('pulse') }))
+    expect(resolveSoleMeterAdoptionCandidate(live, new Set(['pulse'])))
       .toEqual({ state: 'resolved', meterDeviceId: 'pulse' });
     // A registry that does not list the live meter as a meter has not
     // corroborated it: a partial read looks exactly like this. Not an answer.
-    expect(resolveSoleMeterAdoptionCandidate(live, { pulse: { id: 'pulse', class: 'other' } }))
+    expect(resolveSoleMeterAdoptionCandidate(live, new Set()))
       .toEqual({ state: 'unresolvable', reason: 'registry_mismatch' });
-    expect(resolveSoleMeterAdoptionCandidate(live, { plug: { id: 'plug', name: 'Plug', class: 'socket' } }))
+    expect(resolveSoleMeterAdoptionCandidate(live, new Set()))
       .toEqual({ state: 'unresolvable', reason: 'registry_mismatch' });
     // A second meter the registry knows but that has not published yet.
-    expect(resolveSoleMeterAdoptionCandidate(live, { pulse: sensorMeter('pulse'), em: sensorMeter('em') }))
+    expect(resolveSoleMeterAdoptionCandidate(live, new Set(['pulse', 'em'])))
       .toEqual({ state: 'unresolvable', reason: 'ambiguous' });
-    expect(resolveSoleMeterAdoptionCandidate(live, { em: sensorMeter('em') }))
+    expect(resolveSoleMeterAdoptionCandidate(live, new Set(['em'])))
       .toEqual({ state: 'unresolvable', reason: 'ambiguous' });
     // A live verdict that is not resolved never consults the registry.
-    expect(resolveSoleMeterAdoptionCandidate({ items: [] }, { pulse: sensorMeter('pulse') }))
+    expect(resolveSoleMeterAdoptionCandidate({ items: [] }, new Set(['pulse'])))
       .toEqual({ state: 'unresolvable', reason: 'none_found' });
   });
   it('selects the sole Main candidate while leaving meter-area devices out of the census', () => {
@@ -172,11 +171,11 @@ describe('resolveRegistryMeterCandidates', () => {
       { type: 'cumulative', id: 'pulse', values: { W: 1200 } },
       { type: 'cumulative', id: 'area', values: { W: 600 } },
     ] };
-    const registry = { pulse: sensorMeter('pulse'), area: sensorMeter('area') };
+    const registry = new Set(['pulse', 'area']);
 
     expect(resolveSoleMeterAdoptionCandidate(live, registry, new Set(['area'])))
       .toEqual({ state: 'resolved', meterDeviceId: 'pulse' });
-    expect(resolveSoleMeterAdoptionCandidate(live, { ...registry, em: sensorMeter('em') }, new Set(['area'])))
+    expect(resolveSoleMeterAdoptionCandidate(live, new Set([...registry, 'em']), new Set(['area'])))
       .toEqual({ state: 'unresolvable', reason: 'ambiguous' });
   });
 

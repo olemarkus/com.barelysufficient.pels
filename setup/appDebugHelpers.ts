@@ -6,12 +6,11 @@ import { captureDeviceDiagnosticConfiguration } from '../lib/diagnostics/deviceD
 import { captureDeviceDebugPlan } from '../lib/diagnostics/deviceDebugPlan';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { readHomeyEnergyMeters } from '../lib/device/homeyEnergyMeters';
-import { readHomeyDeviceList } from '../lib/device/homeyDeviceInventory';
+import { readHomeyDeviceList, readInventoryDevice } from '../lib/device/homeyDeviceInventory';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUi/power';
 import type { HomeyDeviceListEntry } from '../packages/contracts/src/settingsUi/homeyDevices';
-import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
+import { readRawDeviceForComparison } from '../lib/device/transport/managerFetch';
 import type { HomeyDeviceLike } from '../lib/utils/types';
-import { parseHomeyDevicePayload } from '../lib/device/transport/homeyDevicePayload';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../lib/utils/logUtils';
 import { getLogger } from '../lib/logging/logger';
@@ -39,31 +38,6 @@ import {
 const debugLogger = getLogger('devices/debug-dump');
 const inventoryLogger = getLogger('devices/inventory');
 
-const getRawManagerDeviceEntry = async (params: {
-  deviceId: string;
-}): Promise<HomeyDeviceLike | null> => {
-  const { deviceId } = params;
-  try {
-    const devices = await getRawDevices(DEVICES_API_PATH);
-    const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-    for (const entry of list) {
-      const device = parseHomeyDevicePayload(entry);
-      if (device?.id === deviceId) return device;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-export async function getHomeyDevicesForDebug(params: {
-  deviceManager: DeviceTransportPort;
-}): Promise<HomeyDeviceLike[]> {
-  const { deviceManager } = params;
-  if (!deviceManager) return [];
-  return deviceManager.getDevicesForDebug();
-}
-
 /** Every Homey device with its zone name, for the full-inventory pickers (`homey_devices`). */
 export async function listHomeyDevicesFromApp(
   app: Pick<AppContext, 'deviceManager'>,
@@ -81,7 +55,7 @@ export async function getHomeyEnergyMetersFromApp(
 ): Promise<HomeyEnergyMeterEntry[]> {
   const { deviceManager } = app;
   if (!deviceManager) throw new Error('DeviceTransport must be initialized before use.');
-  return readHomeyEnergyMeters(() => deviceManager.getDevicesForDebug());
+  return readHomeyEnergyMeters(deviceManager);
 }
 
 /**
@@ -138,15 +112,14 @@ export async function logHomeyDeviceForDebug(params: {
   } = params;
   if (!deviceId) return false;
 
-  let devices: HomeyDeviceLike[];
+  let device: HomeyDeviceLike | undefined;
   try {
-    devices = await getHomeyDevicesForDebug({ deviceManager });
+    device = await readInventoryDevice(deviceManager, deviceId);
   } catch (err) {
     error('Failed to fetch Homey devices for debug', normalizeError(err));
     return false;
   }
 
-  const device = devices.find((entry) => entry.id === deviceId);
   const safeDeviceId = sanitizeLogValue(deviceId);
   if (!device) {
     debugLogger.info({ event: 'homey_device_dump_device_not_found', deviceId: safeDeviceId });
@@ -183,7 +156,7 @@ export async function logHomeyDeviceForDebug(params: {
     dump.homey.energyApproximation = buildUnavailableSection(normalizeError(err).message);
   }
 
-  const rawManagerEntry = await getRawManagerDeviceEntry({ deviceId });
+  const rawManagerEntry = await readRawDeviceForComparison(deviceId).catch(() => null);
 
   if (typeof getPelsDeviceState === 'function') {
     try {

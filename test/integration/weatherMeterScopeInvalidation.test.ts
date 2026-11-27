@@ -1,3 +1,4 @@
+import { weatherApiReads } from '../helpers/inventoryRead';
 import type Homey from 'homey';
 import type { Logger as PinoLogger } from 'pino';
 import { MockSettings } from '../mocks/homey';
@@ -117,6 +118,7 @@ const buildHarness = (
     }),
     // Never resolves: keeps the re-armed meter backfill observably in flight
     // instead of racing the assertions with its no-source completion.
+    readMeterInventory: weatherApiReads(overrides.fetchInsights ?? (() => new Promise(() => {}))).readMeterInventory,
     fetchInsights: () => new Promise(() => {}),
     getDailyKwh: () => ({ total: 18, budgetCounted: 18 }),
     isManagedDevice: () => false,

@@ -1,3 +1,4 @@
+import { inventoryRead } from '../helpers/inventoryRead';
 import type { Logger as PinoLogger } from 'pino';
 import { MockSettings } from '../mocks/homey';
 import { createWeatherHistoryStore, type WeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
@@ -29,6 +30,7 @@ const buildCollector = (
     name: 'Outdoor',
     capabilitiesObj: { measure_temperature: { value: -3.5 } },
   }),
+  readMeterInventory: inventoryRead([]),
   fetchInsights: async () => ({ step: 6 * 60 * 60 * 1000, values: [] }),
   getDailyKwh: () => ({ total: 18, budgetCounted: 18 }),
   isManagedDevice: () => false,

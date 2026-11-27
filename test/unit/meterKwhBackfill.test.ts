@@ -1,3 +1,4 @@
+import { weatherApiReads } from '../helpers/inventoryRead';
 import { dailyKwhFromCounterPoints, resolveMeterDailyKwh } from '../../lib/weather/meterKwhBackfill';
 
 const OSLO = 'Europe/Oslo';
@@ -62,7 +63,7 @@ describe('resolveMeterDailyKwh', () => {
   it('reconstructs pre-tracker days and reports agreement on overlapping days', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -83,7 +84,7 @@ describe('resolveMeterDailyKwh', () => {
       'manager/devices/device': () => ({ 'thermo-1': DEVICES['thermo-1'] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'thermo-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'thermo-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toMatchObject({
       outcome: 'resolved',
@@ -100,7 +101,7 @@ describe('resolveMeterDailyKwh', () => {
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toEqual({ outcome: 'unreadable_history' });
   });
@@ -110,7 +111,7 @@ describe('resolveMeterDailyKwh', () => {
       'manager/devices/device': () => ({ lamp: DEVICES.lamp }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toEqual({ outcome: 'no_candidates' });
   });
@@ -120,7 +121,7 @@ describe('resolveMeterDailyKwh', () => {
       'resolution=last3Months': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -139,7 +140,7 @@ describe('resolveMeterDailyKwh', () => {
       }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toMatchObject({ outcome: 'resolved', complete });
     if (result.outcome === 'resolved') expect(Object.keys(result.dailyKwh)).toHaveLength(DAY_COUNT);
@@ -150,7 +151,7 @@ describe('resolveMeterDailyKwh', () => {
       'meter_power': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toEqual({ outcome: 'no_usable_history' });
   });
@@ -162,7 +163,7 @@ describe('resolveMeterDailyKwh', () => {
   ])('treats malformed %s as a failed read', async (_label, devices) => {
     const fetchFromHomeyApi = buildFetch({ 'manager/devices/device': () => devices });
     await expect(resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     })).rejects.toThrow('Unreadable');
   });
 
@@ -179,7 +180,7 @@ describe('resolveMeterDailyKwh', () => {
       }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -199,7 +200,7 @@ describe('resolveMeterDailyKwh', () => {
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -212,7 +213,7 @@ describe('resolveMeterDailyKwh', () => {
       'resolution=lastYear': () => ({ step: 24 * HOUR_MS, values: counterValues() }),
     });
     const coarse = await resolveMeterDailyKwh({
-      fetchFromHomeyApi: tooCoarse, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(tooCoarse), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(coarse.outcome).toBe('resolved');
     if (coarse.outcome === 'resolved') expect(coarse.complete).toBe(false);
@@ -221,7 +222,7 @@ describe('resolveMeterDailyKwh', () => {
       'resolution=lastYear': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const empty = await resolveMeterDailyKwh({
-      fetchFromHomeyApi: legitimatelyEmpty, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(legitimatelyEmpty), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(empty.outcome).toBe('resolved');
     if (empty.outcome === 'resolved') expect(empty.complete).toBe(true);
@@ -232,7 +233,7 @@ describe('resolveMeterDailyKwh', () => {
       'resolution=thisYear': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -249,7 +250,7 @@ describe('resolveMeterDailyKwh', () => {
       }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: () => ({}), restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toMatchObject({ outcome: 'resolved', complete: true });
   });
@@ -261,7 +262,7 @@ describe('resolveMeterDailyKwh', () => {
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -277,7 +278,7 @@ describe('resolveMeterDailyKwh', () => {
       'han-1:meter_power.exported': () => ({ step: 6 * HOUR_MS, values }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -291,7 +292,7 @@ describe('resolveMeterDailyKwh', () => {
   ])('writes nothing when the export series is %s', async (_label, readExport) => {
     const fetchFromHomeyApi = buildFetch({ 'han-1:meter_power.exported': readExport });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toEqual({ outcome: 'unreadable_history' });
   });
@@ -304,7 +305,7 @@ describe('resolveMeterDailyKwh', () => {
       'han-1:meter_power.exported': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -334,7 +335,7 @@ describe('resolveMeterDailyKwh', () => {
       return gross === undefined ? {} : { total: gross - EXPORT_PER_DAY };
     };
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: netTracker, restrictToDeviceId: 'bidi-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: netTracker, restrictToDeviceId: 'bidi-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -359,7 +360,7 @@ describe('resolveMeterDailyKwh', () => {
       return gross === undefined ? {} : { total: gross - EXPORT_PER_DAY };
     };
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: netTracker, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
+      ...weatherApiReads(fetchFromHomeyApi), getDailyKwh: netTracker, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;

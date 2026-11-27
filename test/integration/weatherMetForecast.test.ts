@@ -1,3 +1,4 @@
+import { inventoryRead } from '../helpers/inventoryRead';
 import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
@@ -117,6 +118,7 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       readDevice: async (deviceId) => ({
         id: deviceId, name: 'Outdoor', capabilitiesObj: { measure_temperature: { value: 1 } },
       }),
+      readMeterInventory: inventoryRead([]),
       fetchInsights: async () => ({ step: 6 * HOUR_MS, values: [] }),
       getDailyKwh: () => ({}),
       getDaySuppression: () => ({}),
@@ -204,6 +206,7 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       readDevice: async (deviceId) => ({
         id: deviceId, name: 'Outdoor', capabilitiesObj: { measure_temperature: { value: 1 } },
       }),
+      readMeterInventory: inventoryRead([]),
       fetchInsights: async () => ({ step: 6 * HOUR_MS, values: [] }),
       getDailyKwh: () => ({}),
       getDaySuppression: () => ({}),

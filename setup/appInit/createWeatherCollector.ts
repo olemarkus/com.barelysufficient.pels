@@ -5,7 +5,7 @@ import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import type { WeatherCollectorDeps } from '../../lib/weather/weatherCollectorDeps';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
-import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
+import { getRawDevice, getRawFromHomeyApi, readRawDeviceInventory } from '../../lib/device/transport/managerHomeyApi';
 import { resolveDeadlineMissSuppression } from '../../lib/weather/deadlineMissBudgetDay';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
@@ -75,6 +75,7 @@ export function createWeatherCollector(
     recordBudgetDecision: (decision) => adviceHistory.record(decision),
     readBudgetDecisions: () => adviceHistory.read(),
     readDevice: (deviceId) => getRawDevice(deviceId),
+    readMeterInventory: (collect) => readRawDeviceInventory(collect, 'keyed'),
     fetchInsights: (path) => getRawFromHomeyApi(path),
     getDailyKwh,
     // PELS-managed = the controlled set the historical split is summed from.

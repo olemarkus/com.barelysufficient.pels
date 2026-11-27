@@ -15,11 +15,9 @@ import {
   type LiveMeterItem,
 } from '../managerEnergy';
 import {
-  DEVICES_API_PATH,
   getEnergyLiveReport,
   getRawDevice,
-  getRawDevices,
-  readRawDevicesForDiagnostics,
+  readRawDeviceInventory,
   logDeviceTransportRuntimeError,
 } from './managerHomeyApi';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
@@ -110,30 +108,27 @@ function logDeviceInventory(logger: Logger, validDevices: number, rejectedIds: r
   emitDeviceDebug({ event: 'manager_api_devices_returned', validDevices, invalidEntries: rejectedIds.length });
 }
 
-export function fetchDevicesWithFallback(params: {
-  logger: Logger;
-}): Promise<DeviceFetchResult> {
-  const { logger } = params;
-  return readDeviceInventoryWithRetries(logger, async () => {
-    const devices = await getRawDevices(DEVICES_API_PATH);
-    const rawList = Array.isArray(devices) ? devices : Object.values(devices);
-    const parsed = rawList.map(parseHomeyDevicePayload);
-    const list = parsed.filter((device) => device !== null);
-    logDeviceInventory(logger, list.length, rawList.filter((_, index) => parsed[index] === null).map(rejectedDeviceId));
-    return {
-      devices: list,
-      fetchSource: 'raw_manager_devices',
-      failedIds: [],
-      rejectedPayloads: rawList.length - list.length,
-    };
+export async function fetchDevicesWithFallback({ logger }: { logger: Logger }): Promise<DeviceFetchResult> {
+  const { result: devices, rejectedPayloads } = await collectNormalizedInventory(logger, async (entries) => {
+    const rows: HomeyDeviceLike[] = [];
+    // eslint-disable-next-line functional/immutable-data -- Snapshot construction needs all valid devices.
+    for await (const device of entries) rows.push(device);
+    return rows;
   });
+  return { devices, fetchSource: 'raw_manager_devices', failedIds: [], rejectedPayloads };
 }
 
-export function readDevicesForDiagnostics<T>(
+export async function readDeviceInventory<T>(
   logger: Logger, collect: (devices: AsyncIterable<HomeyDeviceLike>) => Promise<T>,
 ): Promise<T> {
+  return (await collectNormalizedInventory(logger, collect)).result;
+}
+
+function collectNormalizedInventory<T>(
+  logger: Logger, collect: (devices: AsyncIterable<HomeyDeviceLike>) => Promise<T>,
+): Promise<{ result: T; rejectedPayloads: number }> {
   return readDeviceInventoryWithRetries(logger, async () => {
-    const { result, validDevices, rejectedIds } = await readRawDevicesForDiagnostics(async (entries) => {
+    const { result, validDevices, rejectedIds } = await readRawDeviceInventory(async (entries) => {
       const rejected: string[] = [];
       let valid = 0;
       async function* normalized(): AsyncGenerator<HomeyDeviceLike> {
@@ -151,7 +146,20 @@ export function readDevicesForDiagnostics<T>(
       return { result: await collect(normalized()), validDevices: valid, rejectedIds: rejected };
     });
     logDeviceInventory(logger, validDevices, rejectedIds);
-    return result;
+    return { result, rejectedPayloads: rejectedIds.length };
+  });
+}
+
+/** Independent second read of the listed device for the diagnostic comparison. */
+export function readRawDeviceForComparison(deviceId: string): Promise<HomeyDeviceLike | null> {
+  return readRawDeviceInventory(async (entries) => {
+    let match: HomeyDeviceLike | null = null;
+    for await (const entry of entries) {
+      if (match !== null) continue;
+      const device = parseHomeyDevicePayload(entry);
+      if (device?.id === deviceId) match = device;
+    }
+    return match;
   });
 }
 

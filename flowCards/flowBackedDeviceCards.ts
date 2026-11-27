@@ -1,9 +1,7 @@
 import type { BinaryControlCapabilityId } from '../packages/contracts/src/types';
-import type { HomeyDeviceLike } from '../lib/utils/types';
-import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
+import type { FlowInventoryDevice, FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/device/flowBackedCapabilityReport';
 import { resolveFlowAugmentedDeviceType } from '../lib/device/transport/flowReportedCapabilities';
-import { getCapabilities, resolveDeviceClassKey } from '../lib/device/transport/managerHelpers';
 import { incPerfCounter } from '../lib/utils/perfCounters';
 import { readFlowDeviceArg, readFlowRawArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
@@ -174,7 +172,7 @@ function parseAutocompleteStringValue(rawValue: unknown): string {
 function emitFlowBackedCapabilityReportLog(
   deps: FlowCardDeps,
   cardId: string,
-  device: HomeyDeviceLike,
+  device: FlowInventoryDevice,
   capabilityId: FlowReportedCapabilityId,
   value: boolean,
   reportOutcome: FlowBackedCapabilityReportOutcome,
@@ -237,7 +235,7 @@ function getYesNoAutocompleteOptions(query: string): Array<{ id: string; name: s
 }
 
 function buildFlowBackedDeviceAutocompleteOptions(
-  devices: HomeyDeviceLike[],
+  devices: FlowInventoryDevice[],
   query: string,
   target: FlowBackedCardTarget,
   options: {
@@ -248,7 +246,7 @@ function buildFlowBackedDeviceAutocompleteOptions(
   const { requiredMissingCapabilityId } = options;
   const filteredDevices = devices.filter((
     device,
-  ): device is HomeyDeviceLike => (
+  ): device is FlowInventoryDevice => (
     isSupportedFlowBackedDevice(device, target)
     && (!requiredMissingCapabilityId || !isCapabilityProvidedNatively({
       device,
@@ -285,7 +283,7 @@ async function requireSupportedFlowBackedDevice(
   deps: FlowCardDeps,
   deviceId: string,
   target: FlowBackedCardTarget,
-): Promise<HomeyDeviceLike> {
+): Promise<FlowInventoryDevice> {
   const devices = await deps.getHomeyDevicesForFlow();
   const device = devices.find((entry) => entry.id === deviceId);
   if (!device || !isSupportedFlowBackedDevice(device, target)) {
@@ -294,17 +292,16 @@ async function requireSupportedFlowBackedDevice(
   return device;
 }
 
-function isSupportedFlowBackedDevice(device: HomeyDeviceLike, target: FlowBackedCardTarget): boolean {
+function isSupportedFlowBackedDevice(device: FlowInventoryDevice, target: FlowBackedCardTarget): boolean {
   const category = resolveFlowBackedDeviceCategory(device);
   if (target === 'binary') return category === 'binary';
   if (target === 'evcharger') return category === 'evcharger';
   return category === 'binary' || category === 'evcharger';
 }
 
-function resolveFlowBackedDeviceCategory(device: HomeyDeviceLike): FlowBackedCardTarget | 'unsupported' {
-  const deviceClassKey = resolveDeviceClassKey(device);
+function resolveFlowBackedDeviceCategory(device: FlowInventoryDevice): FlowBackedCardTarget | 'unsupported' {
+  const { deviceClassKey, capabilities } = device;
   if (!deviceClassKey) return 'unsupported';
-  const capabilities = getCapabilities(device);
   const targetCapabilityIds = capabilities.filter((capabilityId) => capabilityId.startsWith('target_temperature'));
   return resolveFlowAugmentedDeviceType({
     deviceClassKey,
@@ -314,12 +311,11 @@ function resolveFlowBackedDeviceCategory(device: HomeyDeviceLike): FlowBackedCar
 
 
 function isCapabilityProvidedNatively(params: {
-  device: HomeyDeviceLike;
+  device: FlowInventoryDevice;
   capabilityId: FlowReportedCapabilityId;
 }): boolean {
   const { device, capabilityId } = params;
   if (capabilityId === 'alarm_generic.car_connected') return false;
-  const capabilities = getCapabilities(device);
-  return capabilities.includes(capabilityId);
+  return device.capabilities.includes(capabilityId);
 }
 

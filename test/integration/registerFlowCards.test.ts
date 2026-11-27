@@ -1,3 +1,4 @@
+import { projectFlowInventoryDevice } from '../../lib/device/transport/flowReportedCapabilities';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
@@ -1878,7 +1879,7 @@ describe('registerFlowCards', () => {
       })),
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -1908,7 +1909,7 @@ describe('registerFlowCards', () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging', 'alarm_generic.car_connected'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -1934,7 +1935,7 @@ describe('registerFlowCards', () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -1956,12 +1957,12 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('uses raw Homey devices for flow-backed device autocomplete', async () => {
+  it('uses the Homey inventory for flow-backed device autocomplete', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Garage Charger', zoneName: 'Garage', class: 'evcharger', capabilities: ['evcharger_charging'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Attic Relay', class: 'socket', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -1975,7 +1976,7 @@ describe('registerFlowCards', () => {
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Wallbox', zone: 'Garage', class: 'socket', capabilities: ['onoff'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Wallbox', zone: 'Driveway', class: 'socket', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -2014,7 +2015,7 @@ describe('registerFlowCards', () => {
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -2028,7 +2029,7 @@ describe('registerFlowCards', () => {
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -2042,7 +2043,7 @@ describe('registerFlowCards', () => {
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay', class: 'socket', capabilities: [] },
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Native Relay', class: 'socket', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -2057,7 +2058,7 @@ describe('registerFlowCards', () => {
         { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: [] },
         { ...HOMEY_DEVICE_FIELDS, id: 'ev-2', name: 'Native Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'socket-1', name: 'Socket', class: 'socket', capabilities: [] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -2095,7 +2096,7 @@ describe('registerFlowCards', () => {
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Thermostat', class: 'heater', capabilities: ['target_temperature', 'measure_temperature'] },
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-3', name: 'Mystery', class: 'light', capabilities: ['onoff'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);
@@ -2108,7 +2109,7 @@ describe('registerFlowCards', () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Thermostat', class: 'heater', capabilities: ['target_temperature', 'measure_temperature'] },
-      ]),
+      ].map(projectFlowInventoryDevice)),
     });
 
     registerFlowCards(deps);

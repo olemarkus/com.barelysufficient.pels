@@ -13,8 +13,9 @@ import {
   EXPECTED_OVERRIDE_EQUALS_EPSILON_KW,
   type ExpectedOverrideAuthority,
 } from './expectedPowerOverrideState';
-import type { HomeyDeviceLike } from '../utils/types';
 import {
+  collectFlowInventory,
+  type FlowInventoryDevice,
   getFlowRefreshRequestedDeviceIds,
   getFlowReportedDeviceIds,
   isFlowReportedObservationCapabilityId,
@@ -113,8 +114,8 @@ export type FlowBackedDeviceStateDeps = {
 
 export class FlowBackedDeviceState {
   private flowBackedCardsAvailable?: boolean;
-  private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
-  private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
+  private flowDeviceAutocompleteCache?: { devices: FlowInventoryDevice[]; fetchedAtMs: number };
+  private flowDeviceAutocompleteRequest?: Promise<FlowInventoryDevice[]>;
 
   /** True until a settings read has told us which figures are already stored. */
   private expectedPowerOverridesUnread = true;
@@ -423,7 +424,7 @@ export class FlowBackedDeviceState {
     transport.dispatchObservedStateForDevice(deviceId, capabilityId);
   }
 
-  async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
+  async getHomeyDevicesForFlow(): Promise<FlowInventoryDevice[]> {
     const nowMs = Date.now();
     const cached = this.flowDeviceAutocompleteCache;
     if (cached && nowMs - cached.fetchedAtMs < FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS) {
@@ -433,9 +434,9 @@ export class FlowBackedDeviceState {
       return this.flowDeviceAutocompleteRequest;
     }
     this.flowDeviceAutocompleteRequest = (async () => {
-      const devices = await (this.deps.getDeviceManager()?.getDevicesForDebug() ?? []);
+      const devices = await (this.deps.getDeviceManager()?.readDeviceInventory(collectFlowInventory) ?? []);
       this.flowDeviceAutocompleteCache = {
-        devices: [...devices],
+        devices,
         fetchedAtMs: Date.now(),
       };
       return this.flowDeviceAutocompleteCache.devices;

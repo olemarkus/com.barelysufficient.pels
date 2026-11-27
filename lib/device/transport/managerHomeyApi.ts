@@ -7,7 +7,9 @@ import { HomeyHttpStatusError } from '../../utils/homeyHttpStatusError';
 import { getLogger } from '../../logging/logger';
 import { bindCurrentContext } from '../../logging/alsContext';
 import { countHomeyApiCall } from './homeyApiCallCount';
-import { bufferedDeviceInventoryRequired, readDeviceInventoryEntries } from './deviceInventoryStream';
+import {
+  bufferedDeviceInventoryRequired, readDeviceInventoryEntries, type DeviceInventoryShape,
+} from './deviceInventoryStream';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
 export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
@@ -113,7 +115,7 @@ function logLateFailure(params: {
 
 export type RestClient = {
   get: (path: string) => Promise<unknown>;
-  readDeviceInventory?: <T>(collect: DeviceInventoryCollector<T>) => Promise<T>;
+  readDeviceInventory?: <T>(collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape) => Promise<T>;
   post?: (path: string, body: unknown) => Promise<unknown>;
   put: (path: string, body: unknown) => Promise<unknown>;
 };
@@ -154,7 +156,7 @@ export async function initHomeyHttpClient(homey: Homey.App): Promise<void> {
 
   restClient = {
     get: (path) => homeyHttpGet(baseUrl, token, `/api/${path}`),
-    readDeviceInventory: (collect) => homeyReadDeviceInventory(baseUrl, token, collect),
+    readDeviceInventory: (collect, shape) => homeyReadDeviceInventory(baseUrl, token, collect, shape),
     post: (path, body) => homeyHttpPost(baseUrl, token, `/api/${path}`, body),
     put: (path, body) => homeyHttpPut(baseUrl, token, `/api/${path}`, body),
   };
@@ -163,16 +165,6 @@ export async function initHomeyHttpClient(homey: Homey.App): Promise<void> {
 /** Set the REST client directly (used by test mocks). */
 export function setRestClient(client: RestClient): void {
   restClient = client;
-}
-
-export async function getRawDevices(
-  path: string,
-): Promise<Record<string, RawHomeyDeviceLike> | RawHomeyDeviceLike[]> {
-  if (!restClient) throw new Error('REST client not initialized — call initHomeyHttpClient first');
-  const data = await restClient.get(path);
-  if (Array.isArray(data)) return data as RawHomeyDeviceLike[];
-  if (typeof data === 'object' && data !== null) return data as Record<string, RawHomeyDeviceLike>;
-  throw new Error('Invalid response for device inventory');
 }
 
 async function collectDeviceInventory<T>(
@@ -188,16 +180,21 @@ async function collectDeviceInventory<T>(
   return result;
 }
 
-async function* readBufferedDeviceInventory(): AsyncGenerator<unknown> {
-  const entries = await getRawDevices(DEVICES_API_PATH);
-  yield* Array.isArray(entries) ? entries : Object.values(entries);
+async function* readBufferedDeviceInventory(shape: DeviceInventoryShape): AsyncGenerator<unknown> {
+  const entries = await getRawFromHomeyApi(DEVICES_API_PATH);
+  yield* bufferedDeviceEntries(entries, shape);
 }
 
-/** Project a complete inventory. Replaced REST clients may supply an already-buffered response. */
-export function readRawDevicesForDiagnostics<T>(collect: DeviceInventoryCollector<T>): Promise<T> {
+/**
+ * Collect a complete registry. Keep results local to each collector invocation: an unusual map
+ * may restart the read to preserve Homey's key enumeration order and last duplicate value.
+ */
+export function readRawDeviceInventory<T>(
+  collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape = 'collection',
+): Promise<T> {
   return restClient?.readDeviceInventory
-    ? restClient.readDeviceInventory(collect)
-    : collectDeviceInventory(readBufferedDeviceInventory(), collect);
+    ? restClient.readDeviceInventory(collect, shape)
+    : collectDeviceInventory(readBufferedDeviceInventory(shape), collect);
 }
 
 export async function getRawDevice(
@@ -293,29 +290,32 @@ async function readResponseBody(response: http.IncomingMessage): Promise<string>
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function* readBufferedInventoryResponse(response: http.IncomingMessage): AsyncGenerator<unknown> {
-  const entries: unknown = JSON.parse(await readResponseBody(response));
-  if (Array.isArray(entries)) {
-    yield* entries;
-    return;
-  }
+async function* readBufferedInventoryResponse(
+  response: http.IncomingMessage, shape: DeviceInventoryShape,
+): AsyncGenerator<unknown> {
+  yield* bufferedDeviceEntries(JSON.parse(await readResponseBody(response)), shape);
+}
+
+function bufferedDeviceEntries(entries: unknown, shape: DeviceInventoryShape): unknown[] {
+  if (shape === 'keyed' && (entries === null || typeof entries !== 'object' || Array.isArray(entries))) return [];
+  if (Array.isArray(entries)) return entries;
   if (typeof entries !== 'object' || entries === null) throw new Error('Invalid response for device inventory');
-  yield* Object.values(entries);
+  return Object.values(entries);
 }
 
 async function homeyReadDeviceInventory<T>(
-  baseUrl: string, token: string, collect: DeviceInventoryCollector<T>,
+  baseUrl: string, token: string, collect: DeviceInventoryCollector<T>, shape: DeviceInventoryShape,
 ): Promise<T> {
   const path = `/api/${DEVICES_API_PATH}`;
   try {
     return await homeyHttpRequest('GET', baseUrl, token, path, undefined, (response) => (
-      collectDeviceInventory(readDeviceInventoryEntries(response), collect)
+      collectDeviceInventory(readDeviceInventoryEntries(response, shape), collect)
     ));
   } catch (error) {
     if (error !== bufferedDeviceInventoryRequired) throw error;
   }
   return homeyHttpRequest('GET', baseUrl, token, path, undefined, (response) => (
-    collectDeviceInventory(readBufferedInventoryResponse(response), collect)
+    collectDeviceInventory(readBufferedInventoryResponse(response, shape), collect)
   ));
 }
 

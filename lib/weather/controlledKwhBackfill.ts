@@ -1,3 +1,4 @@
+import type { ReadMeterInventory } from './weatherCollectorDeps';
 import type { Logger as PinoLogger } from 'pino';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
@@ -52,6 +53,7 @@ export type ControlledKwhBackfillOutcome =
   | { outcome: 'not_validated'; overlapDays: number; medianRatio: number; devicesUsed: number };
 
 export type ControlledKwhBackfillDeps = {
+  readMeterInventory: ReadMeterInventory;
   /** Read-only GET against the Homey Web API (path without leading slash). */
   fetchFromHomeyApi: (path: string) => Promise<unknown>;
   /** Whether PELS manages (controls) a device — the flat managed predicate from the factory. */
@@ -65,8 +67,8 @@ export type ControlledKwhBackfillDeps = {
 export async function resolveControlledDailyKwh(
   deps: ControlledKwhBackfillDeps,
 ): Promise<ControlledKwhBackfillOutcome> {
-  const devices = await deps.fetchFromHomeyApi('manager/devices/device');
-  const managedMeters = listManagedMeters(devices, deps.isManaged);
+  const meters = await deps.readMeterInventory(listMeters);
+  const managedMeters = meters.filter((meter) => deps.isManaged(meter.deviceId));
   if (managedMeters.length === 0) return { outcome: 'no_devices' };
 
   const controlledDailyKwh = new Map<string, number>();
@@ -116,17 +118,15 @@ export async function resolveControlledDailyKwh(
 
 type ManagedMeter = { deviceId: string; capability: string };
 
-function listManagedMeters(devicesResponse: unknown, isManaged: (deviceId: string) => boolean): ManagedMeter[] {
-  if (!isUnknownRecord(devicesResponse)) return [];
-  return Object.values(devicesResponse).flatMap((device) => {
-    if (!isUnknownRecord(device)) return [];
-    const deviceId = device.id;
-    if (typeof deviceId !== 'string' || deviceId.length === 0) return [];
-    if (!isManaged(deviceId)) return [];
-    const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
-    const capability = meterCapabilityOf(capabilities);
-    return capability === undefined ? [] : [{ deviceId, capability }];
-  });
+async function listMeters(devices: AsyncIterable<unknown>): Promise<ManagedMeter[]> {
+  const meters: ManagedMeter[] = [];
+  for await (const device of devices) {
+    if (!isUnknownRecord(device) || typeof device.id !== 'string' || device.id.length === 0) continue;
+    const capability = Array.isArray(device.capabilities) ? meterCapabilityOf(device.capabilities) : undefined;
+    // eslint-disable-next-line functional/immutable-data -- Keep only meter identities for the ownership check.
+    if (capability !== undefined) meters.push({ deviceId: device.id, capability });
+  }
+  return meters;
 }
 
 function validateAgainstTrackerControlled(

@@ -1,3 +1,4 @@
+import { weatherApiReads } from '../helpers/inventoryRead';
 import { resolveMeterDailyKwh } from '../../lib/weather/meterKwhBackfill';
 
 const OSLO = 'Europe/Oslo';
@@ -44,7 +45,7 @@ describe('selected meter kWh at the Insights boundary', () => {
   it('reads only the selected meter even when another meter better matches the tracker', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi,
+      ...weatherApiReads(fetchFromHomeyApi),
       getDailyKwh: trackerKwh,
       restrictToDeviceId: 'thermo-1',
       timeZone: OSLO,
@@ -62,7 +63,7 @@ describe('selected meter kWh at the Insights boundary', () => {
   it('reports agreement with the tracker for the selected meter', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi,
+      ...weatherApiReads(fetchFromHomeyApi),
       getDailyKwh: trackerKwh,
       restrictToDeviceId: 'han-1',
       timeZone: OSLO,
@@ -78,7 +79,7 @@ describe('selected meter kWh at the Insights boundary', () => {
   it('reports no_candidates when the admitted meter exposes no cumulative capability', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi,
+      ...weatherApiReads(fetchFromHomeyApi),
       getDailyKwh: trackerKwh,
       restrictToDeviceId: 'lamp',
       timeZone: OSLO,

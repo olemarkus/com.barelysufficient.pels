@@ -2,16 +2,24 @@ import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import { parseHomeyDevicePayload } from './homeyDevicePayload';
 import type { SoleMeterAdoptionCensus } from '../../power/soleMeterAdoption';
-import { resolveSoleCumulativeMeter, resolveSoleMeterAdoptionCandidate } from '../soleCumulativeMeter';
-import { DEVICES_API_PATH, getEnergyLiveReport, getRawDevices } from './managerHomeyApi';
+import {
+  registryMeterCandidateId, resolveSoleCumulativeMeter, resolveSoleMeterAdoptionCandidate,
+} from '../soleCumulativeMeter';
+import { getEnergyLiveReport, readRawDeviceInventory } from './managerHomeyApi';
 
 const moduleLogger = getLogger('device/sole-meter-census');
 
 /** At least one entry is a device record; a keyed error body or an empty payload is not a registry. */
-const holdsDeviceRecords = (rawDevices: Record<string, unknown> | unknown[]): boolean => (
-  (Array.isArray(rawDevices) ? rawDevices : Object.values(rawDevices))
-    .some((entry) => parseHomeyDevicePayload(entry) !== null)
-);
+async function collectRegistry(entries: AsyncIterable<unknown>) {
+  let hasDevice = false;
+  const meters = new Set<string>();
+  for await (const entry of entries) {
+    hasDevice ||= parseHomeyDevicePayload(entry) !== null;
+    const id = registryMeterCandidateId(entry);
+    if (id !== undefined) meters.add(id);
+  }
+  return { hasDevice, meters };
+}
 
 /**
  * The boot-time adoption's census over one LIVE energy report and one device
@@ -36,12 +44,12 @@ export async function censusSoleMeterAdoptionCandidate(
     if (excludedForReport === null) return { state: 'unavailable' };
     const live = resolveSoleCumulativeMeter(report, excludedForReport);
     if (live.state !== 'resolved') return live;
-    const devices = await getRawDevices(DEVICES_API_PATH);
-    if (!holdsDeviceRecords(devices)) return { state: 'unavailable' };
+    const { hasDevice, meters } = await readRawDeviceInventory(collectRegistry);
+    if (!hasDevice) return { state: 'unavailable' };
     // Area ownership may have changed while the Homey reads were in flight.
     const excluded = readExcluded();
     if (excluded === null) return { state: 'unavailable' };
-    return resolveSoleMeterAdoptionCandidate(report, devices, excluded);
+    return resolveSoleMeterAdoptionCandidate(report, meters, excluded);
   } catch (error) {
     moduleLogger.error({ event: 'sole_meter_census_read_failed', err: normalizeError(error) });
     return { state: 'unavailable' };

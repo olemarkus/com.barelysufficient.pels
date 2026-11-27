@@ -28,25 +28,38 @@ export const zoneNameField = (zoneTree: ZoneTree | null, zoneId: string | undefi
  * it. The zone name comes from the transport's zone tree: the local Web API
  * names a device's zone only by id.
  */
-export const listHomeyDevices = (
-  devices: readonly HomeyDeviceLike[],
-  zoneTree: ZoneTree | null,
-): HomeyDeviceListEntry[] => devices.map((device) => {
+const pickerEntry = (device: HomeyDeviceLike) => {
   const capabilities = readCapabilityIds(device);
   return {
     id: device.id,
     name: device.name,
     class: device.class,
-    zoneName: zoneNameOf(zoneTree, resolveZoneId(device)) ?? null,
+    zoneId: resolveZoneId(device),
     hasTemperature: capabilities.includes('measure_temperature'),
     hasPower: hasPowerCapability(capabilities),
   };
-});
+};
 
-/**
- * The full inventory read from the transport: the devices Homey lists now,
- * named by the zone tree the transport last fetched (none before its first).
- */
-export const readHomeyDeviceList = async (
-  transport: Pick<DeviceTransportPort, 'getDevicesForDebug' | 'getZoneTree'>,
-): Promise<HomeyDeviceListEntry[]> => listHomeyDevices(await transport.getDevicesForDebug(), transport.getZoneTree());
+export async function readHomeyDeviceList(
+  transport: Pick<DeviceTransportPort, 'readDeviceInventory' | 'getZoneTree'>,
+): Promise<HomeyDeviceListEntry[]> {
+  const entries = await transport.readDeviceInventory(async (devices) => {
+    const rows: ReturnType<typeof pickerEntry>[] = [];
+    // eslint-disable-next-line functional/immutable-data -- Only compact picker fields survive each entry.
+    for await (const device of devices) rows.push(pickerEntry(device));
+    return rows;
+  });
+  const zones = transport.getZoneTree();
+  return entries.map(({ zoneId, ...entry }) => ({ ...entry, zoneName: zoneNameOf(zones, zoneId) ?? null }));
+}
+
+/** The dump's first source is the normal transport inventory. Retain just its first matching device. */
+export function readInventoryDevice(transport: Pick<DeviceTransportPort, 'readDeviceInventory'>, id: string) {
+  return transport.readDeviceInventory(async (devices) => {
+    let match: HomeyDeviceLike | undefined;
+    for await (const device of devices) {
+      if (device.id === id) match ??= device;
+    }
+    return match;
+  });
+}
