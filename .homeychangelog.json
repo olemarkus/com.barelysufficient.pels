@@ -910,5 +910,8 @@
   },
   "3.53.1": {
     "en": "Home batteries with Managed by PELS and Power-limit control on now stay in PELS control: without a price plan, PELS charges them from solar surplus in your priority order and keeps them idle otherwise, and they rejoin after a restart without being handed back. Plan charging with PELS still adds price-aware charging and discharging.\n\nWhen you change the meter that measures a device, PELS learns its running power again, and you can import the last hour from that meter's history. Devices that only adjust a setpoint now resume in priority order, a metering socket's power reading no longer depends on its switch, and support reports use less memory in homes with many devices."
+  },
+  "3.53.2": {
+    "en": "Setup now shows the hard cap PELS uses for your grid import, with one step to keep it or change it. When the price area set in Homey Energy and the one from your Homey's location disagree, Electricity prices shows both so you can pick the right one. Turning on Managed by PELS for a device during setup now waits until PELS has taken it over.\n\nSupport reports keep the most recent log lines instead of only the earliest ones, and PELS reads your Homey's device list using less memory."
   }
 }
