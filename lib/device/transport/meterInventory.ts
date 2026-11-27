@@ -1,15 +1,18 @@
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
+import type { MeterInventoryDevice } from '../../utils/types';
 import { readRawDeviceInventory } from './managerHomeyApi';
 
-type MeterDevice = { id: string | null; capabilities: (string | null)[] | null };
-export type MeterInventoryPublisher = (rows: MeterDevice[] | undefined) => void;
+export type MeterInventoryPublisher = (rows: MeterInventoryDevice[] | undefined) => void;
 
-export function projectMeterDevice(raw: unknown): MeterDevice {
+export function projectMeterDevice(raw: unknown): MeterInventoryDevice {
   const entry = isUnknownRecord(raw) ? raw : {};
-  const caps: unknown = entry.capabilities;
+  const rawCaps: unknown = entry.capabilities;
+  const capabilities: string[] = Array.isArray(rawCaps)
+    ? rawCaps.filter((cap): cap is string => typeof cap === 'string') : [];
   return {
-    id: typeof entry.id === 'string' ? entry.id : null,
-    capabilities: Array.isArray(caps) ? caps.map((cap) => (typeof cap === 'string' ? cap : null)) : null,
+    id: typeof entry.id === 'string' && entry.id.length > 0 ? entry.id : null,
+    capabilities,
+    capabilitiesReadable: Array.isArray(rawCaps) && capabilities.length === rawCaps.length,
   };
 }
 
@@ -17,16 +20,17 @@ export function projectMeterDevice(raw: unknown): MeterDevice {
 const WAIT_LIMIT_MS = 120_000;
 // Without a registry subscription Homey cannot invalidate metadata between full snapshots.
 const DISCONNECTED_FRESHNESS_MS = 30_000;
-async function* metadataEntries(rows: MeterDevice[]): AsyncGenerator<MeterDevice> { yield* rows; }
+async function* metadataEntries(rows: MeterInventoryDevice[]): AsyncGenerator<MeterInventoryDevice> { yield* rows; }
 
-function sameCapabilities(left: MeterDevice['capabilities'] | undefined, right: readonly string[]): boolean {
-  return left != null && left.length === right.length && right.every((cap, index) => cap === left[index]);
+function sameCapabilities(device: MeterInventoryDevice | undefined, right: readonly string[]): boolean {
+  return device?.capabilitiesReadable === true && device.capabilities.length === right.length
+    && right.every((cap, index) => cap === device.capabilities[index]);
 }
 
 /** Device discovery metadata shared by weather backfills. Live control reads always use the device API. */
 export class MeterInventory {
-  private cached?: { rows: MeterDevice[]; byId: Map<string | null, MeterDevice>; receivedAt: number };
-  private pending?: Promise<MeterDevice[]>;
+  private cached?: { rows: MeterInventoryDevice[]; byId: Map<string | null, MeterInventoryDevice>; receivedAt: number };
+  private pending?: Promise<MeterInventoryDevice[]>;
   private bootstrap?: Promise<void>;
   private release?: () => void;
   private revision = 0;
@@ -81,7 +85,7 @@ export class MeterInventory {
       if (!rows) { this.invalidate(); return; }
       const byId = new Map(rows.map((row) => [row.id, row]));
       for (const [id, caps] of this.observed ?? []) {
-        if (!sameCapabilities(byId.get(id)?.capabilities, caps)) {
+        if (!sameCapabilities(byId.get(id), caps)) {
           this.invalidate();
           return;
         }
@@ -99,7 +103,7 @@ export class MeterInventory {
   }
 
   observeDevice(id: string, caps: string[]): void {
-    if (this.cached && !sameCapabilities(this.cached.byId.get(id)?.capabilities, caps)) this.invalidate();
+    if (this.cached && !sameCapabilities(this.cached.byId.get(id), caps)) this.invalidate();
     this.observed?.set(id, caps);
   }
 
@@ -111,7 +115,7 @@ export class MeterInventory {
     this.finishBootstrap();
   }
 
-  async read<T>(collect: (entries: AsyncIterable<unknown>) => Promise<T>): Promise<T> {
+  async read<T>(collect: (entries: AsyncIterable<MeterInventoryDevice>) => Promise<T>): Promise<T> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await this.waitForBootstrap();
       if (this.stopped) throw new Error('Device inventory unavailable after shutdown');
@@ -126,7 +130,7 @@ export class MeterInventory {
     throw new Error('Device inventory changed during discovery');
   }
 
-  private async readOnce(): Promise<{ rows: MeterDevice[]; revision: number }> {
+  private async readOnce(): Promise<{ rows: MeterInventoryDevice[]; revision: number }> {
     this.pending ??= this.load();
     const pending = this.pending;
     const revision = this.revision;
@@ -141,11 +145,11 @@ export class MeterInventory {
     }
   }
 
-  private async load(): Promise<MeterDevice[]> {
+  private async load(): Promise<MeterInventoryDevice[]> {
     const publish = this.publisher();
     let keyed = false;
     const rows = await readRawDeviceInventory(async (entries) => {
-      const result: MeterDevice[] = [];
+      const result: MeterInventoryDevice[] = [];
       for await (const entry of entries) result.push(projectMeterDevice(entry));
       return result;
     }, 'keyed', (value) => { keyed = value; });

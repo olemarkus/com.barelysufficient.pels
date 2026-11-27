@@ -67,6 +67,22 @@ describe('resolveControlledDailyKwh', () => {
     expect(result.complete).toBe(true);
   });
 
+  it('uses a known meter capability in a partial list and skips a device without an identity', async () => {
+    const devices = [{ id: 'heater', managed: true, perDay: 40 }];
+    const fetchInsights = buildFetch(devices);
+    const result = await resolveControlledDailyKwh({
+      ...weatherApiReads(async (path) => (path === 'manager/devices/device' ? {
+        heater: { id: 'heater', capabilities: ['meter_power', 3] },
+        unknown: { id: '', capabilities: ['meter_power'] },
+      } : fetchInsights(path))),
+      isManaged: () => true,
+      getControlledDailyKwh: trackerControlled,
+      timeZone: OSLO,
+      nowMs: NOW_MS,
+    });
+    expect(result).toMatchObject({ outcome: 'resolved', devicesUsed: 1, devicesMissingMeter: 0 });
+  });
+
   it('counts a managed device with no meter history as missing, still using the rest', async () => {
     const devices: DeviceSpec[] = [
       { id: 'therm-1', managed: true, perDay: 25 },

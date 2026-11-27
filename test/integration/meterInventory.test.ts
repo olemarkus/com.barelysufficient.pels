@@ -19,7 +19,8 @@ const raw = (id: string, capabilities: unknown[]) => ({ id, capabilities, privat
 describe('meter discovery shares complete inventories', () => {
   const registry = { meter: raw('meter', ['meter_power']), relay: raw('relay', ['onoff', { invalid: true }]) };
   const projected = [
-    { id: 'meter', capabilities: ['meter_power'] }, { id: 'relay', capabilities: ['onoff', null] },
+    { id: 'meter', capabilities: ['meter_power'], capabilitiesReadable: true },
+    { id: 'relay', capabilities: ['onoff'], capabilitiesReadable: false },
   ];
   let inventory: MeterInventory;
   let get: ReturnType<typeof vi.fn<(path: string) => Promise<unknown>>>;

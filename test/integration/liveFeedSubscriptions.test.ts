@@ -15,6 +15,7 @@ const settle = async (): Promise<void> => {
 describe('device live feed subscriptions', () => {
   let sockets: ReturnType<typeof createLiveFeedSocketHarness>;
   let feed: DeviceLiveFeed;
+  const onInventoryInvalidated = vi.fn();
   const onCapabilityUpdate = vi.fn();
   const onDeviceUpdate = vi.fn();
   const onDeviceInventoryChanged = vi.fn<() => Promise<void>>();
@@ -27,7 +28,7 @@ describe('device live feed subscriptions', () => {
     feed = createDeviceLiveFeed({
       homey: new Homey.App(),
       logger: { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('live-feed-test') },
-      callbacks: { onDeviceUpdate, onCapabilityUpdate, onDeviceInventoryChanged },
+      callbacks: { onDeviceUpdate, onCapabilityUpdate, onDeviceInventoryChanged, onInventoryInvalidated },
     });
     await feed.start();
   });
@@ -37,6 +38,21 @@ describe('device live feed subscriptions', () => {
     onDeviceUpdate.mockClear();
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it('keeps a quiet namespace healthy and invalidates discovery when only that namespace disconnects', async () => {
+    onInventoryInvalidated.mockClear();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(feed.isHealthy()).toBe(true);
+    expect(onInventoryInvalidated).not.toHaveBeenCalled();
+    sockets.namespace.socket.disconnect();
+    sockets.namespace.events.emit('disconnect', 'io server disconnect');
+    expect(sockets.root.connected).toBe(true);
+    expect(feed.getHealth().subscriptionState).toBe('disconnected');
+    expect(onInventoryInvalidated).toHaveBeenCalledOnce();
+    sockets.reconnect();
+    await settle();
+    expect(feed.isHealthy()).toBe(true);
   });
 
   it('passes a device added after boot through the update path', async () => {

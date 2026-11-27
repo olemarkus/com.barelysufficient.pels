@@ -10,6 +10,13 @@ export type Logger = {
     structuredLog: import('../logging/logger').Logger;
 };
 
+/** Registry discovery retains valid names from a partial list and records whether absence is conclusive. */
+export type MeterInventoryDevice = {
+    readonly id: string | null;
+    readonly capabilities: readonly string[];
+    readonly capabilitiesReadable: boolean;
+};
+
 export type FlowAutocompleteResult = { id: string; name: string };
 
 export type FlowCard = {

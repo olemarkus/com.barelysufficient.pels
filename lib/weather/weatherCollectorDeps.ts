@@ -7,13 +7,15 @@ import type {
   WeatherDaySuppression,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
-import type { RawHomeyDeviceLike } from '../utils/types';
+import type { MeterInventoryDevice, RawHomeyDeviceLike } from '../utils/types';
 import type { WeatherHistoryStore } from './weatherHistoryStore';
 import type { DailyKwhTotals } from './weatherMeterScope';
 import type { MetForecastFetchResult } from './metForecast';
 
 /** Visit the entries of Homey's ID-keyed device registry for meter discovery. */
-export type ReadMeterInventory = <T>(collect: (devices: AsyncIterable<unknown>) => Promise<T>) => Promise<T>;
+export type ReadMeterInventory = <T>(
+  collect: (devices: AsyncIterable<MeterInventoryDevice>) => Promise<T>,
+) => Promise<T>;
 
 /**
  * Injected collaborators for `WeatherCollector`. Split into its own module to

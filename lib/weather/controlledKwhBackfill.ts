@@ -1,7 +1,7 @@
+import type { MeterInventoryDevice } from '../utils/types';
 import type { ReadMeterInventory } from './weatherCollectorDeps';
 import type { Logger as PinoLogger } from 'pino';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { fetchDeviceDailyKwh, meterCapabilityOf, quantileSorted } from './meterKwhBackfill';
 import { applyControlledBackfill, CONTROLLED_BACKFILL_VERSION } from './weatherHistory';
 
@@ -118,11 +118,11 @@ export async function resolveControlledDailyKwh(
 
 type ManagedMeter = { deviceId: string; capability: string };
 
-async function listMeters(devices: AsyncIterable<unknown>): Promise<ManagedMeter[]> {
+async function listMeters(devices: AsyncIterable<MeterInventoryDevice>): Promise<ManagedMeter[]> {
   const meters: ManagedMeter[] = [];
   for await (const device of devices) {
-    if (!isUnknownRecord(device) || typeof device.id !== 'string' || device.id.length === 0) continue;
-    const capability = Array.isArray(device.capabilities) ? meterCapabilityOf(device.capabilities) : undefined;
+    if (device.id === null) continue;
+    const capability = meterCapabilityOf(device.capabilities);
     // eslint-disable-next-line functional/immutable-data -- Keep only meter identities for the ownership check.
     if (capability !== undefined) meters.push({ deviceId: device.id, capability });
   }
