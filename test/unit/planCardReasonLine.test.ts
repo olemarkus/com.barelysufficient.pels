@@ -232,6 +232,12 @@ describe('resolveHeldCardReasonLine', () => {
       )).toBe('Waiting for solar surplus');
     });
 
+    it('names the surplus a tracking device needs to start', () => {
+      expect(resolveHeldCardReasonLine(
+        { code: PLAN_REASON_CODES.awaitingSolarSurplus, needKw: 4.14 },
+      )).toBe('Waiting for 4.1 kW of solar surplus');
+    });
+
     it('keeps the external-off recourse', () => {
       expect(resolveHeldCardReasonLine({ code: PLAN_REASON_CODES.externalOffHold }))
         .toBe('Turned off elsewhere — turn it on to resume');

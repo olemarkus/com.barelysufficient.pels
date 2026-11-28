@@ -1217,6 +1217,7 @@ keeps the word for what PELS holds it to do.
 | Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |
 | Device page, priority hint, battery above other devices | `Devices below it are limited first, so it protects only those above it.` |
 | Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.` |
+| Device page, priority hint, with Power limits off (no limit to hold: its place decides only when it gets spare solar) | last: `Last in the list, it stores the spare solar the devices above it leave.`; above other devices: `It stores spare solar before the devices below it get any.`; Power-limit control off: `Turn on Power-limit control to let it store spare solar when its turn comes.` |
 | Modes page note, under a list holding a battery PELS can drive (none for a battery it can only watch) | `<battery>: <priority hint for its place in this list>`, e.g. `Sessy battery: last in the list, it covers the whole house before any device is limited.`; one per such battery |
 
 In **Simulation mode** PELS plans the battery as live control would but sends
@@ -1267,8 +1268,10 @@ THREE per-device surplus controls share the `surplusWilling` opt-in; the label n
 | Temperature card reason while lifted | `Raised to use your solar power` |
 | Dump-load or tracking card reason while running on surplus | `On to use your solar power` |
 | Dump-load or tracking card reason while held off | `Waiting for solar surplus` |
+| Tracking card reason while held off (EV charger, other stepped device): names the surplus its lowest running step needs, the allocator's own floor | `Waiting for 4.1 kW of solar surplus` |
+| Overview hero, devices waiting for solar surplus (never counted as held back) | `1 device is waiting for solar surplus.`; beside devices a limit holds, `Holding back 3 devices, 1 waiting for solar surplus, 2 so the house stays under 12.0 kW.` |
 
-Sources: `lib/plan/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
+Sources: `lib/plan/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` and `formatAwaitingSolarSurplusNeedStatus` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
 
 **A target a price level moved.** While the price level is what holds a
 temperature device's planned target off its mode target, the running or idle
@@ -2708,7 +2711,15 @@ settings. No tour-completed flag is persisted.
   change the order: the top device keeps running longest. Changes save
   automatically.`
 - The checklist keeps noun titles and done / next / later status icons.
-  Devices says `Choose one device to start`. A received reading says `Meter
+  Devices says `Choose one device to start`. Its device hint for a power
+  device is `PELS may lower or pause this device.`; for an EV charger with
+  Power limits off, where nothing lowers it, `PELS can charge it on solar
+  surplus or by a set time.` (without solar, `PELS can charge it by a set
+  time.`). The optional priority step reads `Choose what stays on longest`
+  while a limit is in force; with Power limits off in a home with solar,
+  `Choose what gets spare solar first` / `Optional. In Home, the top device
+  gets spare solar first. …`; with neither, setup skips it and the order
+  stays in Modes (`setupPriorityStep.ts`). A received reading says `Meter
   connected`; freshness remains the global no-readings banner's responsibility.
 - **Detail lines state facts.** Devices never says "Turn on Limit": a device
   that cannot be limited, or that the owner chose not to limit, is a finished

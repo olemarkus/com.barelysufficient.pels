@@ -257,7 +257,9 @@ describe('surplus tracking — the variable claimant', () => {
       // bug that made a solar stop land somewhere a capacity stop never would.
       const state = createPlanEngineState();
       resolve({ state, signedNetKw: -0.5, nowTs: 0, devices: [buildTracker()] });
-      expect(state.surplusTrackingByDevice[CHARGER_ID]).toEqual({ kind: 'stopped' });
+      // It carries only the floor the gate priced, so the card can name what
+      // the device needs ("Waiting for 1.3 kW of solar surplus").
+      expect(state.surplusTrackingByDevice[CHARGER_ID]).toEqual({ kind: 'stopped', needKw: 1.25 });
     });
 
     it('keeps a rung it already holds on the bare pool — the reserve only buys a HIGHER one', () => {

@@ -73,11 +73,12 @@ describe('surplus tracking ceiling — the hold', () => {
     return resolveSurplusHold([device], state, new Set());
   };
 
-  it('holds a device the allocator stopped, and says why', () => {
-    const result = hold(buildTracker(), { kind: 'stopped' });
+  it('holds a device the allocator stopped, and says what it needs', () => {
+    const result = hold(buildTracker(), { kind: 'stopped', needKw: 4.14 });
     expect(result.holdIds.has(CHARGER)).toBe(true);
     expect(result.reasonById.get(CHARGER)).toEqual({
       code: PLAN_REASON_CODES.awaitingSolarSurplus,
+      needKw: 4.14,
     });
   });
 
@@ -96,7 +97,7 @@ describe('surplus tracking ceiling — the hold', () => {
     // The hold says only THAT the device stops. It deliberately hands the
     // shedding plan no step target, so materialization reaches the configured
     // shed behaviour and a solar stop lands exactly where a capacity stop does.
-    const result = hold(buildTracker(), { kind: 'stopped' });
+    const result = hold(buildTracker(), { kind: 'stopped', needKw: 1.25 });
     expect(result).not.toHaveProperty('stepTargetById');
   });
 
@@ -107,14 +108,14 @@ describe('surplus tracking ceiling — the hold', () => {
     // bypasses never execute. The hold itself has to honour the boost, or a
     // low-battery charger stays off until the sun comes back.
     const boosted = buildTracker({ boostRequested: true } as Partial<PlanInputDevice>);
-    const result = hold(boosted, { kind: 'stopped' });
+    const result = hold(boosted, { kind: 'stopped', needKw: 1.25 });
     expect(result.holdIds.has(CHARGER)).toBe(false);
   });
 
   it('never holds a device an active smart task governs', () => {
     const device = buildTracker();
     const state = createPlanEngineState();
-    state.surplusTrackingByDevice[device.id] = { kind: 'stopped' };
+    state.surplusTrackingByDevice[device.id] = { kind: 'stopped', needKw: 1.25 };
     const result = resolveSurplusHold([device], state, new Set([CHARGER]));
     expect(result.holdIds.has(CHARGER)).toBe(false);
   });

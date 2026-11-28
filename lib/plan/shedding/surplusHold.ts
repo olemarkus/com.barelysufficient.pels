@@ -45,8 +45,9 @@ import {
  * ∪ admittedDeviceIds`. A device an active smart task governs is never
  * surplus-held, so the two standing postures cannot fight over one device.
  *
- * The per-device reason is the stable `awaitingSolarSurplus` code (no embedded
- * numbers/timestamps — rebuild-storm class, f1550cea); `normalizeShedReasons`
+ * The per-device reason is the stable `awaitingSolarSurplus` code (no per-cycle
+ * numbers/timestamps, rebuild-storm class, f1550cea; a stopped tracking device
+ * adds the allocator's floor, which moves only with its ladder). `normalizeShedReasons`
  * adopts it for held ids like the `deferredObjectiveAvoid` pattern, so a fresh
  * capacity/shortfall shed decision still wins the reason.
  */
@@ -69,10 +70,22 @@ export function resolveSurplusHold(
     if (excludeIds.has(device.id)) continue;
     if (!isSurplusHeldDevice(device, state)) continue;
     holdIds.add(device.id);
-    reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingSolarSurplus });
+    reasonById.set(device.id, buildSurplusHoldReason(device, state));
   }
   return { holdIds, reasonById };
 }
+
+// A stopped tracking device carries the allocator's floor so its card can name
+// what it needs; a binary dump load has no floor to name.
+const buildSurplusHoldReason = (
+  device: PlanInputDevice,
+  state: Pick<PlanEngineState, 'surplusTrackingByDevice'>,
+): DeviceReason => {
+  const decision = device.surplusOnly === true ? undefined : state.surplusTrackingByDevice[device.id];
+  return decision?.kind === 'stopped'
+    ? { code: PLAN_REASON_CODES.awaitingSolarSurplus, needKw: decision.needKw }
+    : { code: PLAN_REASON_CODES.awaitingSolarSurplus };
+};
 
 /**
  * Is this device currently held by a surplus posture? THE single definition,

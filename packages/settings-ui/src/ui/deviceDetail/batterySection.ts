@@ -83,14 +83,25 @@ export const renderDeviceDetailBattery = (device: SettingsUiDeviceDetailItem | n
 /**
  * What the battery's place means, true for where it is: only last in the list
  * does it cover the whole house before any device is limited, and only with
- * Power-limit control on does its place protect anything at all.
+ * Power-limit control on does its place protect anything at all. With no power
+ * limit in force its place decides only when it gets spare solar, so the hint
+ * says that; until the limits have been read it names the limit too, as
+ * `resolveBatteryManagedHint` does.
  */
 export const resolveBatteryPriorityHint = (
   position: { rank: number; total: number },
   powerLimitOn: boolean,
 ): string => {
+  const noLimit = readSetupLimitsInForce() === false;
   if (!powerLimitOn) {
-    return 'Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.';
+    return noLimit
+      ? 'Turn on Power-limit control to let it store spare solar when its turn comes.'
+      : 'Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.';
+  }
+  if (noLimit) {
+    return position.rank === position.total
+      ? 'Last in the list, it stores the spare solar the devices above it leave.'
+      : 'It stores spare solar before the devices below it get any.';
   }
   return position.rank === position.total
     ? 'Last in the list, it covers the whole house before any device is limited.'

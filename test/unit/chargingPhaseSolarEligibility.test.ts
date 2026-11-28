@@ -37,7 +37,8 @@ it('qualifies a phase solar allocation with the normal gate and keeps eligibilit
   };
   allocate(initialRead, off, -2.5, 0);
   expect(state.chargingPhaseCycle.hasSolarOffer('charger')).toBe(false);
-  expect(state.surplusTrackingByDevice.charger).toEqual({ kind: 'stopped' });
+  // Waiting on the gate's own figure, the single-phase floor it offered (1 x 6 A).
+  expect(state.surplusTrackingByDevice.charger).toEqual({ kind: 'stopped', needKw: 1.38 });
   allocate(initialRead, off, -2.5, SURPLUS_ABSORB_SETTLE_MS);
   expect(state.chargingPhaseCycle.hasSolarOffer('charger')).toBe(true);
   expect(state.surplusEligibilityByDevice.charger?.eligible).toBe(true);

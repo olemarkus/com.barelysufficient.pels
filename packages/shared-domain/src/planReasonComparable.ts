@@ -50,6 +50,9 @@ export type ComparablePlanReason =
   // The charge target the owner set: configuration, so it changes only on a real
   // transition (the owner editing it), and is folded in like a holder's name.
   | (ComparablePlanReasonBase & { targetPercent: number })
+  // A tracking device's surplus floor: priced from its ladder, so it moves only
+  // on a real transition. Absent for a binary dump load, keeping its shape.
+  | (ComparablePlanReasonBase & { needW?: number })
   // The relay's maximum and the ceiling it does not fit: configuration only.
   | (ComparablePlanReasonBase & { maximumW: number; limitW: number; limit: 'capacity' | 'grid' })
   | (ComparablePlanReasonBase & {
@@ -202,9 +205,16 @@ function withReserveHolder<T extends ComparablePlanReason>(comparable: T, reason
   return { ...comparable, reserveHolderName: reason.reserveHolderName };
 }
 
+// A stopped tracking device's surplus floor (`awaitingSolarSurplus.needKw`),
+// folded in only when present so a binary dump load keeps its code-only shape.
+function withSurplusNeed(comparable: ComparablePlanReason, reason: CodeOnlyReason): ComparablePlanReason {
+  if (reason.code !== PLAN_REASON_CODES.awaitingSolarSurplus || reason.needKw === undefined) return comparable;
+  return { ...comparable, needW: quantizeKwToW(reason.needKw) };
+}
+
 export function buildComparableDeviceReason(reason: DeviceReason | undefined): ComparablePlanReason {
   if (!reason) return { code: PLAN_REASON_CODES.none };
-  if (isCodeOnlyReason(reason)) return { code: reason.code };
+  if (isCodeOnlyReason(reason)) return withSurplusNeed({ code: reason.code }, reason);
   if (isDetailComparableReason(reason)) return { code: reason.code, detail: reason.detail };
   if (isHolderOnlyComparableReason(reason)) return withReserveHolder({ code: reason.code }, reason);
 

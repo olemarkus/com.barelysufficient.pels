@@ -414,6 +414,13 @@ Priority order (first matching condition wins):
    within today's budget.` — the budget variant names the constraint instead
    of a kW number, because under budget pacing the kW tick is not the thing
    holding devices back.
+   A device waiting for solar surplus on its own posture (hold cause
+   `solar_surplus`) is never held back by a limit: freeing room would not start
+   it. Alone it reads `1 device is waiting for solar surplus.` (positive),
+   joined with an all-task sentence when smart tasks hold the rest, and beside
+   devices a limit holds the blend names it: `Holding back 3 devices, 1 waiting
+   for solar surplus, 2 so the house stays under 12.0 kW.` Rule 0 does not
+   count it as held back for the grid either.
 4. Restoring: `Bringing 1 device back online. Power has stayed under the safe pace.`
 5. Projected over budget: `On pace to overshoot this hour’s energy budget.`
    Fires when no devices are being limited or resumed but the projected hour

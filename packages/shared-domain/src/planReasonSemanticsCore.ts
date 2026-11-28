@@ -261,7 +261,11 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveBatteryDischarge }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveWaitingForPlan }
-  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
+  // `needKw` is the export a surplus-TRACKING device's lowest running step
+  // needs, as the surplus allocator priced it (`SurplusTrackingDecision`). A
+  // binary dump load has no such floor and omits it. Priced from the ladder (or
+  // the phase option the gate offered), so it moves only on a real transition.
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus; needKw?: number }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.chargeTargetReached; targetPercent: number }
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }

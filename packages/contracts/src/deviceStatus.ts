@@ -68,7 +68,12 @@ export type DeviceStatus = {
   override?: true;
   /** The phase this device is held for, when a phase is what holds it. */
   heldForPhase?: 'L1' | 'L2' | 'L3';
-  holdCause: 'smart_task' | 'smart_task_done' | 'daily_budget' | null;
+  /**
+   * What holds a limited device when it is not a power limit alone: its smart
+   * task, today's budget, or its own "on solar surplus" posture
+   * (`solar_surplus`), which a limit coming off would not lift.
+   */
+  holdCause: 'smart_task' | 'smart_task_done' | 'daily_budget' | 'solar_surplus' | null;
   /**
    * Built-in current control is selected, but the charger's installed app no
    * longer offers a way to set the current: PELS only switches the charger until

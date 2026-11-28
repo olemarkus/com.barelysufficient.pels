@@ -84,7 +84,7 @@ Some things to know:
 - **Your hard cap and daily budget still come first.** The surplus setting can only ever lower the level PELS would otherwise pick, never raise it past a capacity decision.
 - **A smart task wins.** If the device has a [smart task](./smart-tasks.md) with a deadline, the task's schedule decides while it is running — a deadline you asked for is not something "use only your own sun" should quietly miss.
 - **It moves in steps, not smoothly**, and it waits a couple of minutes between increases so a passing cloud does not change your charging current every few seconds. Decreases are immediate.
-- The card reads **"Waiting for solar surplus"** while PELS is holding the device back.
+- While PELS is holding the device back, the card names the surplus its lowest level needs, for example **"Waiting for 4.1 kW of solar surplus"**.
 
 ### Big flexible loads use the freed-up power
 

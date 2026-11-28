@@ -301,6 +301,10 @@ export type DecisionSentenceInput = {
   // its ready-by time (reason code `deferredObjectiveSatisfied`). Task-owned like
   // the cheaper-hours bucket, but never "waiting for cheaper hours".
   smartTaskDoneCount?: number;
+  // Subset of `limitedCount` held off by its own "on solar surplus" posture
+  // (reason code `awaitingSolarSurplus`). No limit holds these: freeing grid
+  // room would not start them, so they are never counted as held back.
+  solarSurplusWaitingCount?: number;
   // Subset of `limitedCount` whose hold is attributed to today's daily budget
   // pacing (reason code `dailyBudget`). When the whole limited set falls into
   // this bucket and no smart-task waiting is in play, frame the hold as
@@ -360,6 +364,16 @@ const countTaskHeld = (input: DecisionSentenceInput): number => (
   (input.deferredObjectiveAvoidCount ?? 0) + (input.smartTaskDoneCount ?? 0)
 );
 
+// Limited devices no power limit holds: their smart tasks, or their own wait
+// for solar surplus. Grid room would not run them.
+const countPostureHeld = (input: DecisionSentenceInput): number => (
+  countTaskHeld(input) + (input.solarSurplusWaitingCount ?? 0)
+);
+
+const formatSolarWaitingSentence = (count: number): string => (
+  `${formatDevices(count)} ${count === 1 ? 'is' : 'are'} waiting for solar surplus.`
+);
+
 const formatTaskHoldClauses = (avoidCount: number, doneCount: number): string => [
   ...(avoidCount > 0 ? [`${avoidCount} waiting for cheaper hours`] : []),
   ...(doneCount > 0 ? [`${doneCount} held until a smart task’s ready-by time`] : []),
@@ -369,7 +383,7 @@ const formatTaskHoldClauses = (avoidCount: number, doneCount: number): string =>
 // hero states (today's budget, or the safe pace). Without a safe pace no limit
 // holds them, and the clause stays out rather than guess one.
 const formatPowerHoldClause = (input: DecisionSentenceInput): string => {
-  const powerHeldCount = input.limitedCount - countTaskHeld(input);
+  const powerHeldCount = input.limitedCount - countPostureHeld(input);
   if (powerHeldCount <= 0) return '';
   if ((input.dailyBudgetLimitedCount ?? 0) === powerHeldCount) return `${powerHeldCount} to stay within today’s budget`;
   if (input.safePaceKw === null) return '';
@@ -381,21 +395,36 @@ const formatPowerHoldClause = (input: DecisionSentenceInput): string => {
 const resolveSmartTaskHoldSentence = (input: DecisionSentenceInput): DecisionSentenceResult | null => {
   const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
   const doneCount = input.smartTaskDoneCount ?? 0;
-  if (avoidCount + doneCount === 0) return null;
+  const solarCount = input.solarSurplusWaitingCount ?? 0;
+  if (avoidCount + doneCount + solarCount === 0) return null;
   const { limitedCount } = input;
-  const devicesText = formatDevices(limitedCount);
-  if (avoidCount + doneCount < limitedCount) {
-    const clauses = [formatTaskHoldClauses(avoidCount, doneCount), formatPowerHoldClause(input)]
-      .filter((clause) => clause !== '').join(', ');
-    return { text: `Holding back ${devicesText}, ${clauses}.`, positive: false };
+  if (avoidCount + doneCount + solarCount < limitedCount) {
+    const clauses = [
+      formatTaskHoldClauses(avoidCount, doneCount),
+      solarCount > 0 ? `${solarCount} waiting for solar surplus` : '',
+      formatPowerHoldClause(input),
+    ].filter((clause) => clause !== '').join(', ');
+    return { text: `Holding back ${formatDevices(limitedCount)}, ${clauses}.`, positive: false };
   }
-  if (doneCount === 0) return { text: `Waiting for cheaper hours before running ${devicesText}.`, positive: true };
+  // Every limited device waits on its own posture, so nothing is held back.
+  const taskSentence = resolveAllTaskHeldSentence(avoidCount, doneCount);
+  const sentences = [solarCount > 0 ? formatSolarWaitingSentence(solarCount) : null, taskSentence]
+    .filter((sentence): sentence is string => sentence !== null);
+  return { text: sentences.join(' '), positive: true };
+};
+
+// Every task-held device, when smart tasks hold them all (or all beside the
+// solar waits): `null` with none.
+const resolveAllTaskHeldSentence = (avoidCount: number, doneCount: number): string | null => {
+  const taskCount = avoidCount + doneCount;
+  if (taskCount === 0) return null;
+  const devicesText = formatDevices(taskCount);
+  if (doneCount === 0) return `Waiting for cheaper hours before running ${devicesText}.`;
   if (avoidCount === 0) {
-    const holder = limitedCount === 1 ? 'its smart task’s ready-by time' : 'their smart tasks’ ready-by times';
-    return { text: `Holding ${devicesText} until ${holder}.`, positive: true };
+    const holder = taskCount === 1 ? 'its smart task’s ready-by time' : 'their smart tasks’ ready-by times';
+    return `Holding ${devicesText} until ${holder}.`;
   }
-  const clauses = formatTaskHoldClauses(avoidCount, doneCount);
-  return { text: `Smart tasks are holding ${devicesText}, ${clauses}.`, positive: true };
+  return `Smart tasks are holding ${devicesText}, ${formatTaskHoldClauses(avoidCount, doneCount)}.`;
 };
 
 // Pick the most-specific "actively limiting" decision sentence for rule 4 of
@@ -403,10 +432,12 @@ const resolveSmartTaskHoldSentence = (input: DecisionSentenceInput): DecisionSen
 // SonarJS / ESLint cognitive-complexity caps.
 //
 // Precedence (highest first):
-//   - All limited devices are held by their smart tasks → calm task framing
-//     ("Waiting for cheaper hours", the ready-by hold for a done task, or both
-//     counted). positive: true.
-//   - Some limited devices are held by their smart tasks → blended comma-join.
+//   - All limited devices are held by their smart tasks or wait for solar
+//     surplus → calm framing ("1 device is waiting for solar surplus.",
+//     "Waiting for cheaper hours", the ready-by hold for a done task, or
+//     several counted). positive: true. No limit holds these, so "Holding back"
+//     never names them alone.
+//   - Some limited devices are held that way → blended comma-join.
 //   - All limited devices are daily-budget pacing → "to stay within today's
 //     budget" framing.
 //   - Otherwise → existing capacity-defense wording (safe-pace clause when
@@ -531,9 +562,9 @@ const resolveGridImportDecisionSentence = (input: DecisionSentenceInput): Decisi
   if (capacityControlOffCount > 0) {
     return { text: `Grid import is high. ${formatControlOffDrawing(capacityControlOffCount)}`, positive: false };
   }
-  // A device its own smart task holds would stay off with room to spare, so it
-  // is not held back for the grid.
-  const gridHeldCount = input.limitedCount - countTaskHeld(input);
+  // A device its own smart task or solar wait holds would stay off with room to
+  // spare, so it is not held back for the grid.
+  const gridHeldCount = input.limitedCount - countPostureHeld(input);
   if (gridHeldCount > 0) {
     return {
       text: `Grid import is high. Holding back ${formatDevices(gridHeldCount)}. ${OTHER_APPLIANCES_RECOURSE}`,
