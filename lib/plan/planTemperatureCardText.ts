@@ -11,8 +11,10 @@ import {
 import { resolveHeldCardReasonLine } from './planCardReasonLine';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
+import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
-import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type { ManualTemperatureHold, PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type { DeviceStatusInput } from './deviceStatusInput';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
@@ -88,7 +90,36 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
 };
 
 // ─── Reason line ─────────────────────────────────────────────────────────────
-//
+
+function formatManualTemperatureHold(hold: ManualTemperatureHold, targetKept: boolean): string {
+  const temperature = `${formatTemperatureTarget(hold.targetC)} °C`;
+  const target = targetKept ? `Kept at ${temperature}` : `Manual target ${temperature}`;
+  const change = hold.releasesOnPriceLevelChange ? 'the price level or mode changes' : 'the mode changes';
+  if (!hold.releasesOnSmartTask) return `${target} until ${change}.`;
+  const conjunction = hold.releasesOnPriceLevelChange ? ', or' : ' or';
+  return `${target} until ${change}${conjunction} a Smart task is set.`;
+}
+
+/** Preserve the device's limiting reason and name the manual target beside it. */
+export function withManualTemperatureHoldReason(
+  device: DeviceStatusInput, reason: DeviceStatus['reason'], dryRun: boolean,
+): DeviceStatus['reason'] {
+  const { manualTemperatureHold: hold, temperature, execution } = device;
+  if (!hold || !temperature || !execution.available) return reason;
+  const targetKept = !dryRun && temperature.currentTarget === hold.targetC
+    && temperature.plannedTarget === hold.targetC;
+  const holdText = formatManualTemperatureHold(hold, targetKept);
+  if (reason === null) return { text: holdText };
+  const separator = /[.!?]$/u.test(reason.text) ? ' ' : '. ';
+  const addition = `${separator}${holdText}`;
+  const { countdown } = reason;
+  return {
+    ...reason,
+    text: reason.text + addition,
+    ...(countdown?.kind === 'in_text' ? { countdown: { ...countdown, suffix: countdown.suffix + addition } } : {}),
+  };
+}
+
 // The held-card line itself lives in `planCardReasonLine.ts`, shared with the
 // stepped and generic cards. This module only decides WHEN a temperature card
 // shows one (the intent-kind and temperature-evidence gates below).

@@ -129,6 +129,7 @@ export class TemperatureAdjustmentObserver {
     snapshot: TransportDeviceSnapshot | undefined,
     event: ObservedControlStateChangedEvent,
   ): ExternalTemperatureAdjustment | undefined {
+    if (event.pelsEcho) return undefined;
     const changed = event.changes?.some((change) => change.capabilityId === 'target_temperature'
       && change.previousValue !== 'unknown' && change.previousValue !== 'absent'
       && change.previousValue !== change.nextValue);

@@ -48,7 +48,7 @@ Power limiting still applies: if PELS needs the power, it lowers the thermostat 
 
 The temporary temperature also takes priority over a Smart task on the thermostat. The task stays, but it does not set the temperature or hold the thermostat back until the time is up; then it carries on with the hours left before its ready-by time. If the ready-by time passes in the meantime, the task ends and the thermostat stays at the temporary temperature.
 
-Running the card again replaces the temperature and starts the time again. The card works with **When the temperature changes outside PELS** set to **Return to mode target** or **Save as current mode target**, and is not available with **Keep the new temperature**.
+Running the card again replaces the temperature and starts the time again. The card works with **Return to mode target**, **Save as current mode target**, and **Keep until the next change**. Starting a timed override clears any existing hold from **Keep until the next change**. The card is unavailable with **Keep the new temperature**.
 
 ## Hand the thermostat to a Flow
 

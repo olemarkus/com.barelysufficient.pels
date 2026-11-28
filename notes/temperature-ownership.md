@@ -2,7 +2,7 @@
 
 **Default ownership, 2026-08-26; explicit opt-in extended 2026-09-08.**
 The per-device **When the temperature changes outside PELS** choice selects one
-of three policies:
+of four policies:
 
 - **Return to mode target** (default): external setpoint changes are observations; PELS
   continues to apply the current mode target with its normal adjustments.
@@ -30,10 +30,23 @@ of three policies:
   meter-area members out.
   Temperature Smart tasks require full temperature control and cannot be created
   with this policy.
+- **Keep until the next change**: the temperature policy owner holds the latest
+  admitted outside setpoint in memory. The resolver uses it as the unadjusted
+  target until a plan sees a governing mode or price-level change or an active
+  Smart task. A Smart task waiting for its run window is already active. A
+  timed override supersedes the hold. Changes reported during setpoint limiting
+  or mode preparation do not start a hold. An existing hold takes priority
+  over mode preparation until one of its usual release events. Restarting PELS
+  clears the hold.
+  Capacity control still resolves the same axes, including the configured
+  setpoint limit. The live write fence admits the held value and an explicitly
+  classified limit write, so a queued ordinary write cannot replace a newly
+  observed choice.
 
 **Observation → mode owner → next meter-driven plan.** `TemperatureAdjustmentObserver`
 classifies command echoes in the device observation path, with no plan comparison.
-`ObservedTemperatureModeUpdates` applies the opt-in and persists the mode edit.
+`ObservedTemperatureModeUpdates` applies the selected policy to that event:
+it persists a mode edit or keeps the setpoint in memory for the resolver.
 The executor and drift detector never edit a mode. Under Save as current mode
 target a live write fence (`ObservedTemperatureModeUpdates.allowsTarget`) accepts
 the normalized saved target and the normalized configured limits — both the

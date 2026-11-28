@@ -44,7 +44,7 @@ export type ModePreparationPlanDevice = {
   targetC: number;
 } & (
   | { state: 'estimated'; startAtMs: number }
-  | { state: 'waiting_to_start' | 'preparing' | 'smart_task' | 'override' | 'unavailable' }
+  | { state: 'waiting_to_start' | 'preparing' | 'smart_task' | 'override' | 'manual_temperature_hold' | 'unavailable' }
 );
 
 export type ModePreparationPlan =

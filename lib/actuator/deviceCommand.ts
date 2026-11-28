@@ -39,6 +39,8 @@ export type DeviceCommand =
     deviceId: string;
     /** Producer-resolved target family used by policy fences before transport routing. */
     target: 'temperature';
+    /** A resolved limit can still be applied during a manual temperature hold. */
+    purpose: 'plan' | 'limit';
     value: number;
   }
   | {

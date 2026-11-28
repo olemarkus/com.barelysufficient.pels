@@ -54,9 +54,25 @@ export type PriceTargetShift =
 
 export type PreparedModeTarget = { targetC: number; mode: string; at: string };
 
+export type ManualTemperatureHold = {
+  targetC: number;
+  releasesOnPriceLevelChange: boolean;
+  releasesOnSmartTask: boolean;
+};
+
+/** The price level relevant to this device's planned temperature. */
+export type TemperaturePlanPriceLevel = 'cheap' | 'normal' | 'expensive' | 'unknown' | 'not_applied';
+
+export type ResolveManualTemperatureHold = (
+  deviceId: string,
+  priceLevel: TemperaturePlanPriceLevel,
+  timedOverrideActive: boolean,
+) => ManualTemperatureHold | undefined;
+
 export type TemperatureSetpoints = {
   /** The destination mode being applied early, while preparation is active. */
   modePreparation?: PreparedModeTarget;
+  manualTemperatureHold?: ManualTemperatureHold;
   /**
    * A temperature override while one is in force; otherwise the active
    * mode's target for the device, or its own setpoint when the mode has none.

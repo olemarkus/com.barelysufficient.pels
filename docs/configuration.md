@@ -169,11 +169,38 @@ Notes:
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
 - A NIBE heat pump paired with the NIBE myUplink app (**Nibe heatpumps**) is a temperature device in PELS once the app shows a room temperature: from the BT50 room sensor on F-series pumps, or the controlling myUplink zone on S-series pumps. PELS sets the room setpoint the app shows as **Target temperature**. An F-series pump follows that setpoint through its room sensor.
 - A Stiebel Eltron heat pump paired with the Stiebel Eltron Heat Pumps app appears in PELS as two devices: the heat pump itself, for room heating, and a second device with the same name followed by **hot water**, for the hot-water tank. Each has its own target temperature, so PELS can heat hot water in cheap hours, or lower it to stay under your limit, without touching the room temperature. Make the community registers visible on your ISG, then turn on **ISG supports community registers** in the heat pump's device settings, as the Stiebel app describes, so each device gets its own power reading. Without it neither device has a power reading, and PELS manages them for mode and price only.
-- Set **When the temperature changes outside PELS** to **Keep the new temperature** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and, for a device with power levels such as a compatible water heater, lowering it a level at a time. Saved temperature settings are kept and apply again when you switch back to **Return to mode target**.
 - **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and supported EV chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off: PELS cannot stop a Flow, and the two would override each other. The switch cannot be turned on while that Flow exists, and if it was on, PELS pauses built-in control until the Flow is gone. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, select **Check again**, then turn on **Use built-in device control**. A Flow that only reads the device, turns it on and off, reports battery level, or adjusts an unrelated setting is not a built-in-control conflict. Battery reporting should remain only when no car is selected for that charger; otherwise PELS flags the ignored action separately.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
 - **Power when running** is how much PELS assumes the device draws while it runs, and it decides how much power PELS frees up before resuming it. The field shows the figure PELS is using now and says where it came from — measured by PELS, read from the device, from Homey, or a rough estimate until PELS knows the running draw. Enter watts only if the draw stays steady while the device is on. Leave the estimate automatic if the draw varies. Stepped loads use their configured power per step. Last-resort relays use their configured maximum power draw. If the figure looks wrong and you would rather fix it at the source, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
 - For EV current-control setup, see [Configure an EV Charger](/ev-charger).
+
+### When the temperature changes outside PELS
+
+Choose how PELS responds to target temperature changes made on the device, in
+Homey, or from another app or Flow.
+
+- **Return to mode target** (default) applies the current mode target with its
+  usual adjustments.
+- **Keep the new temperature** hands the target to you or another automation.
+  PELS still shows the measured temperature and setpoint, and can limit power
+  with on/off controls or power levels where available. Your saved targets and
+  adjustments apply again when you switch back to **Return to mode target**.
+- **Save as current mode target** saves the changed temperature for the active
+  mode. Price and solar adjustments pause under this choice. Power limiting
+  still applies, including by temperature where configured.
+- **Keep until the next change** holds the changed temperature until the mode
+  changes, the price level changes for a device that responds to prices, or a
+  Smart task is set for the device. For example, if PELS lowers the target during
+  expensive hours, turn the thermostat up and PELS will keep your target until
+  the next applicable change. While held, the target stays at your chosen
+  temperature without price or solar adjustments. The device card shows the hold.
+
+Power limiting still applies during a hold, including by setpoint. When a limit
+lifts, PELS can return to the held temperature if the hold is still in effect.
+Changes made while PELS is limiting the device's temperature or preparing it
+for a mode change do not start a hold. Starting a timed temperature override or
+restarting PELS clears the hold. With an active Smart task, the only choice you
+can switch to is **Return to mode target**.
 
 ### Leave off until turned on again
 
@@ -196,10 +223,9 @@ not start it either; turn the device on once, and PELS runs it on surplus again.
 On the Overview the device reads **Off** with *Turned off elsewhere — turn it
 on to resume*.
 
-It covers on and off only. For a thermostat, PELS keeps setting the temperature
-it would set anyway, even while it is leaving the device off; only **Keep the
-new temperature** (under *When the temperature changes outside PELS*) stops
-that.
+It covers on and off only. While the thermostat is off, PELS follows the separate
+[**When the temperature changes outside PELS**](#when-the-temperature-changes-outside-pels)
+setting for its target temperature.
 
 A smart task wins over this setting. In the hours the task books, PELS can turn
 the device on for it when there is available power, and once the device is on, the

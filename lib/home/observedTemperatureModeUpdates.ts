@@ -1,11 +1,15 @@
 import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
 import {
-  TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, homeScopedSettingsKey,
+  MAIN_HOME_ID, TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, homeScopedSettingsKey,
 } from '../utils/settingsKeys';
 import {
   readTemperatureControlModes, type TemperatureControlModes,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
 import { isWritableModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
+import type {
+  ResolveManualTemperatureHold, TemperaturePlanPriceLevel,
+} from '../../packages/planner-types/src/temperatureSetpoints';
+import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { getLogger } from '../logging/logger';
@@ -25,9 +29,33 @@ type ControlModesRead =
   | { state: 'unavailable' }
   | { state: 'resolved'; modes: TemperatureControlModes };
 
-/** Owns observation-origin edits to a device's active mode, including persistence. */
+type ManualTemperaturePlan = {
+  homeId: string;
+  mode: string;
+  priceLevel: TemperaturePlanPriceLevel;
+};
+
+type ManualTemperatureState =
+  | { kind: 'planned'; plan: ManualTemperaturePlan }
+  | { kind: 'held'; plan: ManualTemperaturePlan; targetC: number };
+
+const resolvePriceBaseline = (
+  current: ManualTemperaturePlan, previous: ManualTemperaturePlan | undefined,
+): TemperaturePlanPriceLevel => (
+  current.priceLevel === 'unknown' && previous?.homeId === current.homeId && previous.priceLevel !== 'not_applied'
+    ? previous.priceLevel : current.priceLevel
+);
+
+const priceLevelChanged = (
+  previous: TemperaturePlanPriceLevel, current: TemperaturePlanPriceLevel,
+): boolean => previous !== 'not_applied' && previous !== 'unknown'
+  && current !== 'not_applied' && current !== 'unknown' && previous !== current;
+
+/** Owns the temperature policies that adopt a setpoint observed outside PELS. */
 export class ObservedTemperatureModeUpdates {
   private readonly pendingSettings = new Map<string, { serialized: string; count: number }>();
+
+  private readonly manualTemperatures = new Map<string, ManualTemperatureState>();
 
   private controlModes: ControlModesRead = { state: 'unavailable' };
 
@@ -46,6 +74,7 @@ export class ObservedTemperatureModeUpdates {
     /** A temperature override while it is in force, as stored, or `null`. */
     private readonly readTemporaryTemperatureC: (deviceId: string) => number | null,
     private readonly readPreparedTemperatureC: (deviceId: string) => number | null,
+    private readonly readSmartTaskInProgress: (deviceId: string) => SmartTaskInProgressRead,
   ) {}
 
   /** Policy reads retain the last good value across transient SDK gaps. */
@@ -77,10 +106,14 @@ export class ObservedTemperatureModeUpdates {
    * shed-behaviour producer's, so a limit the planner derives is one the fence
    * admits. A queued price or solar offset is neither.
    */
-  allowsTarget(deviceId: string, value: number): boolean {
+  allowsTarget(deviceId: string, value: number, purpose: 'plan' | 'limit'): boolean {
     const read = this.readControlModes();
     if (read.state !== 'resolved' || read.modes[deviceId] === 'external') return false;
-    if (read.modes[deviceId] !== 'update_mode') return true;
+    if (read.modes[deviceId] === 'hold_until_change') return this.allowsManualHoldTarget(deviceId, value, purpose);
+    return read.modes[deviceId] !== 'update_mode' || this.allowsAdoptedModeTarget(deviceId, value);
+  }
+
+  private allowsAdoptedModeTarget(deviceId: string, value: number): boolean {
     if (this.readLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
       return true;
     }
@@ -104,6 +137,67 @@ export class ObservedTemperatureModeUpdates {
     }
   }
 
+  /**
+   * Capture the policy once for this build. A hold is compared with the last
+   * planned mode and price level, so a boundary PELS has not planned yet can
+   * still end a hold even if the adjustment arrived just after the boundary.
+   */
+  beginManualTemperaturePlan(homeId: string, mode: string): ResolveManualTemperatureHold {
+    const read = this.readControlModes();
+    return (deviceId, priceLevel, timedOverrideActive) => {
+      if (read.state !== 'resolved' || read.modes[deviceId] !== 'hold_until_change') return undefined;
+      return this.resolveManualTemperatureHold(deviceId, { homeId, mode, priceLevel }, timedOverrideActive);
+    };
+  }
+
+  private resolveManualTemperatureHold(
+    deviceId: string, current: ManualTemperaturePlan, timedOverrideActive: boolean,
+  ): ReturnType<ResolveManualTemperatureHold> {
+    const previous = this.manualTemperatures.get(deviceId);
+    const plan = { ...current, priceLevel: resolvePriceBaseline(current, previous?.plan) };
+    if (previous?.kind !== 'held' || this.manualHoldEnded(deviceId, previous.plan, plan, timedOverrideActive)) {
+      this.manualTemperatures.set(deviceId, { kind: 'planned', plan });
+      return undefined;
+    }
+    this.manualTemperatures.set(deviceId, { ...previous, plan });
+    return {
+      targetC: previous.targetC,
+      releasesOnPriceLevelChange: current.priceLevel !== 'not_applied',
+      releasesOnSmartTask: current.homeId === MAIN_HOME_ID,
+    };
+  }
+
+  private manualHoldEnded(
+    deviceId: string, previous: ManualTemperaturePlan, plan: ManualTemperaturePlan, timedOverrideActive: boolean,
+  ): boolean {
+    return previous.homeId !== plan.homeId || previous.mode !== plan.mode
+      || priceLevelChanged(previous.priceLevel, plan.priceLevel)
+      || timedOverrideActive || !this.isManaged(deviceId)
+      || this.readTaskState(deviceId, plan.homeId) === 'in_progress';
+  }
+
+  private readTaskState(deviceId: string, homeId: string): SmartTaskInProgressRead {
+    return homeId === MAIN_HOME_ID ? this.readSmartTaskInProgress(deviceId) : 'none';
+  }
+
+  hasManualTemperatureHold(deviceId: string): boolean {
+    return this.manualTemperatures.get(deviceId)?.kind === 'held';
+  }
+
+  private allowsManualHoldTarget(deviceId: string, value: number, purpose: 'plan' | 'limit'): boolean {
+    const hold = this.manualTemperatures.get(deviceId);
+    if (hold?.kind !== 'held') return true;
+    const active = this.resolveDeviceMode(deviceId);
+    if (!this.isManaged(deviceId) || (active.state === 'resolved' && active.homeId !== hold.plan.homeId)) {
+      this.manualTemperatures.delete(deviceId);
+      return true;
+    }
+    // Only the resolver releases on a mode or price change. Until then an
+    // ordinary queued command must still agree with the hold.
+    const overrideC = this.readTemporaryTemperatureC(deviceId);
+    return purpose === 'limit' || value === this.normalizeTarget(deviceId, overrideC ?? hold.targetC);
+  }
+
   private readControlModes(): ControlModesRead {
     try {
       const raw = this.settings.get(TEMPERATURE_CONTROL_MODES);
@@ -122,6 +216,7 @@ export class ObservedTemperatureModeUpdates {
   /** Consume our own notifications, including deferred/coalesced SDK delivery.
    * A different persisted value belongs to another editor and takes the ordinary path. */
   consumeSettingChange(key: string): boolean {
+    if (key === TEMPERATURE_CONTROL_MODES) this.pruneManualTemperaturePlans();
     const pending = this.pendingSettings.get(key);
     if (!pending) return false;
     try {
@@ -139,9 +234,17 @@ export class ObservedTemperatureModeUpdates {
     return true;
   }
 
+  private pruneManualTemperaturePlans(): void {
+    const read = this.readControlModes();
+    if (read.state !== 'resolved') return;
+    for (const deviceId of this.manualTemperatures.keys()) {
+      if (read.modes[deviceId] !== 'hold_until_change') this.manualTemperatures.delete(deviceId);
+    }
+  }
+
   accept(adjustment: ExternalTemperatureAdjustment): void {
     try {
-      this.update(adjustment);
+      this.acceptExternalAdjustment(adjustment);
     } catch (error) {
       getLogger('home/temperature-mode').error({
         event: 'observed_temperature_mode_update_failed', deviceId: adjustment.deviceId, err: error,
@@ -149,30 +252,36 @@ export class ObservedTemperatureModeUpdates {
     }
   }
 
-  /**
-   * Whether this adjustment is one the owner meant as a preference.
-   *
-   * Policy and management first. Then: a change made while PELS has the device
-   * limited is a reaction to the limit, not a new preference — saving it would
-   * turn "I nudged the thermostat back up during a peak" into the mode's target
-   * for good. Not adopted, so the executor sees observed and desired disagree
-   * and converges the device back onto its limit: ordinary drift, like any
-   * other external change. The same holds while a temperature override is in
-   * force: the change is aimed at the override, which ends by itself, and the
-   * mode's target is what the device returns to afterwards.
-   */
-  private adopts(adjustment: ExternalTemperatureAdjustment): boolean {
-    // A fresh read, not the retained policy: adopting PERSISTS a target, and a
-    // write is not something to base on a policy this read could not confirm.
-    const modes = readTemperatureControlModes(this.settings.get(TEMPERATURE_CONTROL_MODES));
-    if (modes === null || modes[adjustment.deviceId] !== 'update_mode') return false;
-    if (!this.isManaged(adjustment.deviceId)) return false;
-    const skipped = this.skipReason(adjustment.deviceId);
-    if (skipped === null) return true;
-    getLogger('home/temperature-mode').info({ event: skipped, ...adjustment });
-    return false;
+  private acceptExternalAdjustment(adjustment: ExternalTemperatureAdjustment): void {
+    const { deviceId } = adjustment;
+    // Starting a hold or persisting a target requires a fresh policy read.
+    const mode = readTemperatureControlModes(this.settings.get(TEMPERATURE_CONTROL_MODES))?.[deviceId];
+    if (mode !== 'update_mode' && mode !== 'hold_until_change') return;
+    if (!this.isManaged(deviceId)) return;
+    const skipped = this.skipReason(deviceId);
+    if (skipped !== null) {
+      if (mode === 'update_mode') getLogger('home/temperature-mode').info({ event: skipped, ...adjustment });
+      return;
+    }
+    if (mode === 'update_mode') this.update(adjustment);
+    else this.startManualHold(adjustment);
   }
 
+  private startManualHold(adjustment: ExternalTemperatureAdjustment): void {
+    const { deviceId, temperature } = adjustment;
+    const active = this.resolveDeviceMode(deviceId);
+    if (active.state !== 'resolved' || active.mode === null || this.readTaskState(deviceId, active.homeId) !== 'none') {
+      return;
+    }
+    const previous = this.manualTemperatures.get(deviceId)?.plan;
+    const plan: ManualTemperaturePlan = previous?.homeId === active.homeId
+      ? previous : { homeId: active.homeId, mode: active.mode, priceLevel: 'unknown' };
+    this.manualTemperatures.set(deviceId, {
+      kind: 'held', targetC: this.normalizeTarget(deviceId, temperature), plan,
+    });
+  }
+
+  /** A device can report a clamped or rounded answer to its active limit. */
   private skipReason(deviceId: string): string | null {
     if (this.isLimited(deviceId)) return 'observed_temperature_mode_update_skipped_while_limited';
     if (this.readTemporaryTemperatureC(deviceId) !== null) {
@@ -185,7 +294,6 @@ export class ObservedTemperatureModeUpdates {
   }
 
   private update(adjustment: ExternalTemperatureAdjustment): void {
-    if (!this.adopts(adjustment)) return;
     // Bind the edit to this resolved mode before touching persistence. This
     // operation is synchronous: a queued mode change cannot retarget the edit.
     const active = this.resolveDeviceMode(adjustment.deviceId);

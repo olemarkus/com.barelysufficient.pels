@@ -35,7 +35,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
   it('passes a semantic temperature target to transport', async () => {
     const transport = buildTransport();
     const actuator = createDeviceActuator(transport);
-    await actuator.apply({ kind: 'target', deviceId: 'th1', target: 'temperature', value: 5 });
+    await actuator.apply({ kind: 'target', deviceId: 'th1', target: 'temperature', purpose: 'plan', value: 5 });
     expect(transport.requestTemperatureTarget).toHaveBeenCalledWith('th1', 5);
   });
 
@@ -45,7 +45,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     });
     const actuator = createDeviceActuator(transport);
     await expect(actuator.apply({
-      kind: 'target', deviceId: 'd', target: 'temperature', value: 5,
+      kind: 'target', deviceId: 'd', target: 'temperature', purpose: 'plan', value: 5,
     })).rejects.toThrow('write failed');
   });
 
@@ -154,7 +154,7 @@ it('resolves binary timeouts without changing target or storage failures', async
   await expect(actuator.apply({ kind: 'binary', deviceId: 's1', desired: true })).resolves.toEqual({
     kind: 'binary', requested: true, acknowledged: false, err: timeout,
   });
-  await expect(actuator.apply({ kind: 'target', deviceId: 's1', target: 'temperature', value: 20 }))
+  await expect(actuator.apply({ kind: 'target', deviceId: 's1', target: 'temperature', purpose: 'plan', value: 20 }))
     .rejects.toBe(timeout);
   await expect(actuator.apply({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: 's1', setpointW: 1000 })).rejects.toBe(timeout);
 });

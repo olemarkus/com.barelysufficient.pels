@@ -2,6 +2,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import type { ResolveOperatingModeForDevice } from '../../lib/home/homeModeDeviceRead';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
+import { bindSmartTaskInProgressRead } from './smartTaskHomeScope';
 import { bindTemporaryTemperatureRead } from './temperatureSetpointsSeam';
 
 export function createObservedTemperatureModeUpdates(
@@ -22,5 +23,6 @@ export function createObservedTemperatureModeUpdates(
     (deviceId) => ctx.getShedLimitTemperaturesC(deviceId),
     bindTemporaryTemperatureRead(ctx),
     readPreparedTemperatureC,
+    bindSmartTaskInProgressRead(ctx),
   );
 }

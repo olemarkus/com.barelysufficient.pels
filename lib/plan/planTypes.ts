@@ -9,7 +9,9 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
-import type { PreparedModeTarget, PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type {
+  ManualTemperatureHold, PreparedModeTarget, PriceTargetShift,
+} from '../../packages/planner-types/src/temperatureSetpoints';
 import type {
   HeldChargeTarget,
   MeteredPlanInputKind,
@@ -721,6 +723,8 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * temperature target. Drives the card's Override chip.
    */
   temporaryTemperatureActive?: boolean;
+  /** The outside setpoint PELS is keeping, including when power limiting takes precedence. */
+  manualTemperatureHold?: ManualTemperatureHold;
   modePreparation?: PreparedModeTarget;
   // Forwarded flat from `PlanInputDevice.reservesStartupPower` (see its doc block): this device
   // may hold back its lowest-active-step power from lower-priority devices' admission until it

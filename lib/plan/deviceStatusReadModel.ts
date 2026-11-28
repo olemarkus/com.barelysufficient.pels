@@ -22,7 +22,7 @@ import {
 } from '../../packages/shared-domain/src/evChargingStateLabel';
 import {
   resolveTemperatureLine, resolveTemperatureReasonLine, resolveBinarySurplusReasonLine,
-  formatTemperatureTarget,
+  formatTemperatureTarget, withManualTemperatureHoldReason,
 } from './planTemperatureCardText';
 import { formatIdleClassificationCopy } from '../observer/idleClassificationCopy';
 import { toSimulationReasonLine } from './simulationReasonMood';
@@ -583,7 +583,8 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reading: resolveReading(presented),
     ...optionalTargetDetail(resolveTargetDetail(presented, dryRun)),
-    reason: buildReason(device, dryRun, nowMs, powerPredatesSwitchOff), rail: resolveRail(device),
+    reason: withManualTemperatureHoldReason(device, buildReason(device, dryRun, nowMs, powerPredatesSwitchOff), dryRun),
+    rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && !powerPredatesSwitchOff && (draw ?? 0) > 0)),
     controlOffDrawing: isControlOffDrawing(device),

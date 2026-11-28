@@ -33,6 +33,7 @@ import type { ShedBehavior } from '../../packages/planner-types/src/shedBehavior
 import type {
   PriceTargetShift,
   PreparedModeTarget,
+  ResolveManualTemperatureHold,
   ResolveTemperatureSetpoints,
   ResolvedShedBehavior,
   TemperatureSetpoints,
@@ -71,6 +72,7 @@ export type TemperatureIntentReads = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
   /** A temperature override while it is in force (`lib/overrides/deviceOverrides.ts`), or `null`. */
   getTemporaryTemperatureC: (deviceId: string) => number | null;
+  beginManualTemperaturePlan: (mode: string) => ResolveManualTemperatureHold;
   getPreparedModeTargets: (devices: readonly PlanInputDevice[]) => ReadonlyMap<string, PreparedModeTarget>;
 };
 
@@ -89,8 +91,8 @@ const isTemperatureInputDevice = (device: PlanInputDevice): device is Temperatur
 
 /** The build's shared inputs: one mode, one settings map, one price level. */
 type BuildIntent = {
+  resolveManualTemperatureHold: ResolveManualTemperatureHold;
   modeTargets: Readonly<Record<string, number>>;
-  preparedTargets: ReadonlyMap<string, PreparedModeTarget>;
   settings: Readonly<Record<string, PriceOptimizationSettings>>;
   priceShiftActive: boolean;
   priceLevel: PriceLevel;
@@ -101,7 +103,13 @@ export function createTemperatureSetpointResolver(reads: TemperatureIntentReads)
     const temperatureDevices = devices.filter(isTemperatureInputDevice);
     if (temperatureDevices.length === 0) return new Map();
     const intent = resolveBuildIntent(reads, temperatureDevices);
-    return new Map(temperatureDevices.map((device) => [device.id, resolveDeviceSetpoints(reads, intent, device)]));
+    // Expire holds before mode preparation checks which devices it can take.
+    const preferences = temperatureDevices.map((device) => resolveTemperaturePreference(reads, intent, device));
+    const preparedTargets = reads.getPreparedModeTargets(temperatureDevices);
+    return new Map(preferences.map((preference) => {
+      const { id } = preference.device;
+      return [id, resolveDeviceSetpoints(reads, intent, preference, preparedTargets.get(id))];
+    }));
   };
 }
 
@@ -111,13 +119,14 @@ export function createTemperatureSetpointResolver(reads: TemperatureIntentReads)
  * each resolution rebuilds the whole price series (~25 ms on a Homey Pro).
  */
 function resolveBuildIntent(reads: TemperatureIntentReads, devices: readonly TemperatureInputDevice[]): BuildIntent {
-  const modeTargets = reads.getModeDeviceTargets()[reads.getOperatingMode()] ?? {};
+  const mode = reads.getOperatingMode();
+  const modeTargets = reads.getModeDeviceTargets()[mode] ?? {};
   const settings = reads.getPriceOptimizationSettings();
   const priceShiftActive = reads.getPriceOptimizationEnabled()
     && devices.some((device) => resolvePriceOptimizationConfig(settings, device.id).enabled);
   return {
+    resolveManualTemperatureHold: reads.beginManualTemperaturePlan(mode),
     modeTargets,
-    preparedTargets: reads.getPreparedModeTargets(devices),
     settings,
     priceShiftActive,
     priceLevel: priceShiftActive ? reads.getCurrentHourPriceLevel() : PriceLevel.UNKNOWN,
@@ -157,13 +166,26 @@ function resolveSurplusRawC(
   return lift > 0 ? moreDemandingSetpoint(direction, desiredC, towardDemand(direction, intendedC, lift)) : desiredC;
 }
 
-function resolveDeviceSetpoints(
-  reads: TemperatureIntentReads,
+function resolveTemperaturePreference(
+  reads: TemperatureIntentReads, intent: BuildIntent, device: TemperatureInputDevice,
+) {
+  const storedTemporaryC = reads.getTemporaryTemperatureC(device.id);
+  const config = resolvePriceOptimizationConfig(intent.settings, device.id);
+  const hasPriceControl = intent.priceShiftActive && config.enabled;
+  const manualTemperatureHold = intent.resolveManualTemperatureHold(
+    device.id, hasPriceControl ? intent.priceLevel : 'not_applied', storedTemporaryC !== null,
+  );
+  return { device, config, hasPriceControl, storedTemporaryC, manualTemperatureHold };
+}
+
+function resolveOwnerTemperatureIntent(
+  preference: ReturnType<typeof resolveTemperaturePreference>,
   intent: BuildIntent,
-  device: TemperatureInputDevice,
-): TemperatureSetpoints {
-  const direction = reads.getThermalDirection(device.id);
-  const target = getPrimaryTargetCapability(device.targets);
+  preparedTarget: PreparedModeTarget | undefined,
+  direction: ThermalDirection,
+  target: ReturnType<typeof getPrimaryTargetCapability>,
+) {
+  const { device, config, hasPriceControl, storedTemporaryC, manualTemperatureHold } = preference;
   // A temperature override stands in for the mode target, literally: no
   // price shift and no surplus lift. The shed limit below still applies to it. A
   // Smart task stamps no deadline floor while it is in force: the task's
@@ -171,18 +193,38 @@ function resolveDeviceSetpoints(
   // Brought into the device's range and onto its step first: the settings UI, a
   // schedule or a script may have stored a value the device cannot hold, and
   // everything below measures the device against what it is asked for.
-  const storedTemporaryC = reads.getTemporaryTemperatureC(device.id);
   const temporaryC = storedTemporaryC === null
     ? null : normalizeTargetCapabilityValue({ target, value: storedTemporaryC });
   const storedIntendedC = intent.modeTargets[device.id];
   const modeIntendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;
-  const modePreparation = temporaryC === null ? intent.preparedTargets.get(device.id) : undefined;
-  const intendedC = temporaryC ?? modePreparation?.targetC ?? modeIntendedC;
-  const config = resolvePriceOptimizationConfig(intent.settings, device.id);
-  const desiredC = temporaryC === null && intent.priceShiftActive && config.enabled
+  const overrideC = temporaryC ?? manualTemperatureHold?.targetC;
+  const modePreparation = overrideC === undefined ? preparedTarget : undefined;
+  const intendedC = overrideC ?? modePreparation?.targetC ?? modeIntendedC;
+  const desiredC = overrideC === undefined && hasPriceControl
     ? applyPriceShift(intendedC, config, intent.priceLevel, direction)
     : intendedC;
-  const surplusLiftC = temporaryC === null ? config.surplusLiftC : 0;
+  return {
+    intendedC,
+    desiredC,
+    surplusLiftC: overrideC === undefined ? config.surplusLiftC : 0,
+    modePreparation,
+    manualTemperatureHold,
+    temporaryTemperatureActive: temporaryC !== null,
+  };
+}
+
+function resolveDeviceSetpoints(
+  reads: TemperatureIntentReads,
+  intent: BuildIntent,
+  preference: ReturnType<typeof resolveTemperaturePreference>,
+  preparedTarget: PreparedModeTarget | undefined,
+): TemperatureSetpoints {
+  const { device } = preference;
+  const direction = reads.getThermalDirection(device.id);
+  const target = getPrimaryTargetCapability(device.targets);
+  const {
+    intendedC, desiredC, surplusLiftC, modePreparation, manualTemperatureHold, temporaryTemperatureActive,
+  } = resolveOwnerTemperatureIntent(preference, intent, preparedTarget, direction, target);
   // An active smart task holds the device's setpoint at least at the task's target.
   const floorC = device.deadlineFloorTargetC;
   const withFloor = (setpointC: number): number => (
@@ -215,10 +257,11 @@ function resolveDeviceSetpoints(
   return {
     intendedC,
     ...(modePreparation ? { modePreparation } : {}),
+    ...(manualTemperatureHold ? { manualTemperatureHold } : {}),
     desiredC,
     keepC,
     keepPriceShift,
-    temporaryTemperatureActive: temporaryC !== null,
+    temporaryTemperatureActive,
     surplusC,
     targetStepC,
     shed,

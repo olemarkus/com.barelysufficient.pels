@@ -1,5 +1,7 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { PreparedModeTarget, PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type {
+  ManualTemperatureHold, PreparedModeTarget, PriceTargetShift,
+} from '../../packages/planner-types/src/temperatureSetpoints';
 import type {
   DevicePlanDevice, LooseDevicePlanDevice, MeteredDiscriminantProbe, PlanInputDevice, ShedAction, ShedBehavior,
   SteppedLoadKind, TemperatureKind,
@@ -226,6 +228,7 @@ export type BasePlanDeviceInputs = {
   priceTargetShift: PriceTargetShift;
   /** A temperature override is in force (`DevicePlanDevice.temporaryTemperatureActive`). */
   temporaryTemperatureActive: boolean;
+  manualTemperatureHold?: ManualTemperatureHold;
   modePreparation?: PreparedModeTarget;
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
@@ -347,16 +350,18 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));
 }
 
-/** Keep the required temperature fields together and add preparation only while it is active. */
+/** Keep the required temperature fields together and forward active interventions. */
 function temperatureCluster(inputs: BasePlanDeviceInputs, plannedTarget: number | undefined) {
-  const { dev, temporaryTemperatureActive, modePreparation } = inputs;
+  const { dev, temporaryTemperatureActive, manualTemperatureHold, modePreparation } = inputs;
   if (!isTemperaturePlanDevice(dev)) return undefined;
-  const temperature: TemperatureKind & Pick<LooseDevicePlanDevice, 'temporaryTemperatureActive' | 'modePreparation'> = {
+  const temperature: TemperatureKind & Pick<LooseDevicePlanDevice,
+  'temporaryTemperatureActive' | 'manualTemperatureHold' | 'modePreparation'> = {
     currentTarget: dev.currentTarget,
     currentTemperature: dev.currentTemperature,
     plannedTarget: plannedTarget ?? dev.currentTarget,
     temporaryTemperatureActive,
   };
+  if (manualTemperatureHold !== undefined) temperature.manualTemperatureHold = manualTemperatureHold;
   if (modePreparation !== undefined) temperature.modePreparation = modePreparation;
   return temperature;
 }

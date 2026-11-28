@@ -251,7 +251,7 @@ describe('createSettingsHandler', () => {
 
     expect(deps.onTemperatureControlPolicyObserved).toHaveBeenCalledTimes(1);
     await expect(actuator.apply({
-      kind: 'target', deviceId: 'thermostat', target: 'temperature', value: 18,
+      kind: 'target', deviceId: 'thermostat', target: 'temperature', purpose: 'plan', value: 18,
     })).resolves.toEqual({ requested: false });
     // Only the setpoint is fenced: the step axis is untouched by this setting
     // and reaches the base actuator.

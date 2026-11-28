@@ -27,6 +27,7 @@ export const fixtureTemperatureSetpoints = (
   getThermalDirection: () => 'heating',
   getShedBehavior: () => ({ action: 'turn_off' }),
   getTemporaryTemperatureC: () => null,
+  beginManualTemperaturePlan: () => () => undefined,
   getPreparedModeTargets: () => new Map(),
   ...reads,
 });

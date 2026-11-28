@@ -2,6 +2,7 @@ import { buildDeviceStatus } from '../../lib/plan/deviceStatusReadModel';
 import type { DeviceStatusInput } from '../../lib/plan/deviceStatusInput';
 import { withChargingInstallation } from '../../lib/plan/chargingInstallationCardText';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
 
 const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceStatusInput => ({
   currentState: 'on', plannedState: 'shed', binaryControllable: true, isEvCharger: false,
@@ -625,6 +626,59 @@ describe('mode preparation reason', () => {
       temperature: { currentTemperature: 58, currentTarget: 65, plannedTarget: 65, thermalDirection: 'heating' } }),
     false, 0);
     expect(status.reason?.text).not.toContain('Getting ready');
+  });
+});
+
+describe('manual temperature hold', () => {
+  const manualTemperatureHold = { targetC: 23, releasesOnPriceLevelChange: true, releasesOnSmartTask: true };
+  const held = (overrides: Partial<DeviceStatusInput> = {}): DeviceStatusInput => runningPowerHold({
+    manualTemperatureHold,
+    plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    temperature: { currentTemperature: 20.8, currentTarget: 23, plannedTarget: 23, thermalDirection: 'heating' },
+    execution: {
+      ...runningPowerHold().execution, desiredBinary: 'on', binaryProgress: 'settled', targetProgress: 'settled',
+    },
+    ...overrides,
+  });
+
+  it('names the held target and the changes that can end it', () => {
+    expect(buildDeviceStatus(held(), false, 0)).toMatchObject({
+      factText: '20.8 °C · target 23 °C',
+      reason: { text: 'Kept at 23 °C until the price level or mode changes, or a Smart task is set.' },
+    });
+  });
+
+  it('shows the hold on a stepped thermostat and omits inapplicable release conditions', () => {
+    const base = held();
+    const device: DeviceStatusInput = {
+      ...base,
+      steppedLoad: {
+        profile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_250 }] },
+        reportedStepId: 'low', targetStepId: 'low', selectedStepId: 'low', planningPowerKw: 1.25, commandPending: false,
+      },
+      execution: { ...base.execution, observedStepId: 'low', desiredStepId: 'low', stepProgress: 'settled' },
+      manualTemperatureHold: { targetC: 23, releasesOnPriceLevelChange: false, releasesOnSmartTask: false },
+    };
+    expect(buildDeviceStatus(device, false, 0)).toMatchObject({
+      cardKind: 'stepped',
+      factText: '20.8 °C · target 23 °C',
+      reason: { text: 'Kept at 23 °C until the mode changes.' },
+    });
+  });
+
+  it('shows the decided limit and preserves its countdown while keeping the manual target visible', () => {
+    const device = held({
+      plannedState: 'shed', shedAction: 'set_temperature',
+      reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
+      temperature: { currentTemperature: 20.8, currentTarget: 21, plannedTarget: 18, thermalDirection: 'heating' },
+    });
+    const status = buildDeviceStatus(device, false, 0);
+    const hold = 'Manual target 23 °C until the price level or mode changes, or a Smart task is set.';
+    expect(status).toMatchObject({
+      factText: '20.8 °C · set to 21 °C → planned 18 °C',
+      reason: { text: `Waiting to resume — 30s. ${hold}`, countdown: { kind: 'in_text' } },
+    });
+    expect(formatDeviceStatusReason(status, 5_000)).toBe(`Waiting to resume — 25s. ${hold}`);
   });
 });
 

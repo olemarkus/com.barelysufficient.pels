@@ -3248,11 +3248,11 @@ and whether or not PELS is the one controlling it. Commanded off it is
 
 The per-device selector is labelled **When the temperature changes outside PELS**.
 It uses **Return to mode target** (default), **Keep the new temperature** (the
-former Disable temperature control toggle), and **Save as current mode target**.
-The last option includes changes from the device, Homey, another app or Flow; do
-not imply the physical remote is distinguishable. The saved mode target is the
-literal temperature to apply. Automatic offsets (price, solar) are unavailable
-under this choice; **power limiting stays as configured**, including limiting by
+former Disable temperature control toggle), **Save as current mode target**,
+and **Keep until the next change**. Both of the last two options include changes
+from the device, Homey, another app or Flow. Under **Save as current mode target**,
+PELS applies the saved temperature without price or solar offsets.
+**Power limiting stays as configured**, including limiting by
 temperature — a temperature change made outside PELS *while PELS is limiting the
 device's temperature* is not saved as the mode target (since 2026-09-14).
 
@@ -3265,15 +3265,25 @@ power control beside the selector: under Save as current mode target it is
 temperature, a change made outside PELS is not saved as the mode target.**; under Keep
 the new temperature it is what is left — binary on/off, power levels, or
 **PELS cannot limit this device’s power without changing its temperature.**
-Temperature Smart tasks require the default control policy; existing task history
-stays visible regardless of the current choice.
+**Keep until the next change** holds the outside setpoint until the mode or
+applicable price level changes, or a Smart task is set. Power limiting stays as
+configured. The card states what is held, for example **Kept at 23 °C until the
+price level or mode changes, or a Smart task is set.** Keep the usual observed
+and planned target line. A power limit takes priority in the reason line and the
+hold is described separately. Include only the release events that can apply to
+this device.
 
-Leaving **Return to mode target** asks for confirmation when price/solar
-adjustments will become inactive; for Keep the new temperature, also when
+Temperature Smart tasks work with **Return to mode target** and **Keep until the
+next change**. With a task active, users can only switch to **Return to mode
+target**. Existing task history stays visible under every choice.
+
+Leaving **Return to mode target** or **Keep until the next change** asks for
+confirmation when price or solar adjustments will become inactive; for Keep the new temperature, also when
 configured temperature limiting becomes inactive or a temperature-only device
 loses power limiting; for Save as current mode target with temperature limiting
 configured, the bullet is **While PELS is limiting this device’s temperature, a change made
 outside PELS is not saved as the mode target.** **Change how PELS
 handles temperature?** names the device and lists the actual consequences. **Cancel** and dismissal leave the saved
 selection unchanged; **Save choice** saves it. Selecting **Return to mode target**
-does not ask again. A toast alone is insufficient for approving a control change.
+or **Keep until the next change** skips the confirmation. A toast alone is
+insufficient for approving a control change.

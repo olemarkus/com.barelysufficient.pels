@@ -52,6 +52,7 @@ const fixture = () => {
     thermalDirection: (id) => id === 'cooler' ? 'cooling' : 'heating',
     canSetTemperature: (id) => !external.has(id),
     temporaryTemperatureC: (id) => overrides.has(id) ? 19 : null,
+    hasManualTemperatureHold: () => false,
     smartTaskState: (id) => {
       if (failedTaskReads.has(id)) return 'unavailable';
       return tasks.has(id) ? 'open' : 'none';

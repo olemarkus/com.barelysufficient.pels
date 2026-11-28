@@ -7,6 +7,7 @@ import {
   hasOpenDeferredObjective,
   isDeviceInSmartTaskMainHome,
   readCreateSmartTaskCandidates,
+  readSmartTaskInProgress,
   resolveDeviceSmartTaskHomeScope,
 } from '../../lib/objectives/deferredObjectives';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
@@ -141,4 +142,8 @@ export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevi
 export const buildLimitedNotListedDevices = (ctx: AppContext): StarvationNotListedDevice[] => (
   requireDeviceDiagnosticsService(ctx).getLimitedNotListedEntries()
     .filter((entry) => resolveHeldBackWidgetScope(ctx, entry.deviceId) !== null)
+);
+
+export const bindSmartTaskInProgressRead = (ctx: AppContext) => (deviceId: string) => (
+  readSmartTaskInProgress(ctx.homey.settings, deviceId, ctx.getNow().getTime())
 );

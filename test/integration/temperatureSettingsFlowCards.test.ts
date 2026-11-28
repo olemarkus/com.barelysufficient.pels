@@ -221,20 +221,20 @@ describe('set_device_price_adjustment', () => {
 });
 
 describe('set_device_temperature_control_mode', () => {
-  it('saves the choice', async () => {
+  it.each(['external', 'hold_until_change'])('saves %s', async (choice) => {
     const { run } = register();
 
-    await run('set_device_temperature_control_mode', { device: HEATER, choice: 'external' });
-    expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ heater: 'external' });
+    await run('set_device_temperature_control_mode', { device: HEATER, choice });
+    expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ heater: choice });
 
     await run('set_device_temperature_control_mode', { device: HEATER, choice: 'mode' });
     expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ heater: 'mode' });
   });
 
-  it('allows only Return to mode target while a Smart task is in progress', async () => {
+  it.each(['external', 'update_mode', 'hold_until_change'])('rejects %s while a Smart task is in progress', async (choice) => {
     const { run } = register('in_progress');
 
-    await expect(run('set_device_temperature_control_mode', { device: HEATER, choice: 'external' }))
+    await expect(run('set_device_temperature_control_mode', { device: HEATER, choice }))
       .rejects.toThrow('active Smart task');
     expect(settings.get(TEMPERATURE_CONTROL_MODES)).toBeNull();
     await expect(run('set_device_temperature_control_mode', { device: HEATER, choice: 'mode' })).resolves.toBe(true);
@@ -317,8 +317,8 @@ describe('set_device_temporary_temperature and end_device_temporary_temperature'
     expect(settings.get(HEATER_OVERRIDE)).toBeNull();
   });
 
-  it('accepts a device set to Save as current mode target', async () => {
-    settings.set(TEMPERATURE_CONTROL_MODES, { heater: 'update_mode' });
+  it.each(['update_mode', 'hold_until_change'])('accepts a device set to %s', async (choice) => {
+    settings.set(TEMPERATURE_CONTROL_MODES, { heater: choice });
     const { run } = register();
 
     await run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 });

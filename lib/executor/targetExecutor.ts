@@ -31,7 +31,7 @@ type TargetCommandDispatchResult =
   | { applied: false; reason: 'skipped' | 'failed' | 'not_requested' }
   | { applied: true; attemptType: 'send' | 'retry'; requestedValue: number };
 
-type TargetSkipContext = 'plan' | 'shedding';
+type TargetSkipContext = 'plan' | 'shedding' | 'shed_release';
 
 const resolveTargetCommandReasonCode = (
   isRestoring: boolean,
@@ -84,9 +84,10 @@ export const applyTargetUpdate = async (
   ctx: ExecutorCommandContext,
   update: ExecutableTargetUpdate,
   forceAgainstReleasedOpposing = false,
+  purpose: 'plan' | 'shed_release' = 'plan',
 ): Promise<boolean> => {
   try {
-    const result = await dispatchTargetCommand(ctx, update, 'plan', forceAgainstReleasedOpposing);
+    const result = await dispatchTargetCommand(ctx, update, purpose, forceAgainstReleasedOpposing);
     if (!result.applied) return false;
     logger.info({
       event: 'target_command_applied',
@@ -267,6 +268,7 @@ const executeTargetCommandDispatch = async (
       kind: 'target',
       deviceId,
       target: 'temperature',
+      purpose: skipContext === 'plan' ? 'plan' : 'limit',
       value: desired,
     }));
     if (!outcome.requested) return { applied: false, reason: 'not_requested' };

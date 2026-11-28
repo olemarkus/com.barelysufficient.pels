@@ -128,7 +128,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     const command = {
       kind: 'target' as const,
       deviceId: 'heater-1',
-      target: 'temperature' as const,
+      target: 'temperature' as const, purpose: 'plan' as const,
       value: 21,
     };
 
