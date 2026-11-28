@@ -19,6 +19,9 @@ const pause = document.querySelector<HTMLElement & { selected: boolean }>('#devi
 const serialize = createSerializedAsyncRunner();
 let renderedDeviceId: string | null = null;
 let renderGeneration = 0;
+let hasAcceptedSettings = false;
+let pendingSettingsLoad: Promise<void> | undefined;
+const CAR_CAPACITY_HINT = 'Used for percentage Smart tasks when this car is matched to a charger.';
 
 const readSettings = async () => {
   let value = await getSettingFresh(EV_SMART_TASK_SETTINGS);
@@ -37,10 +40,26 @@ export const resetEvSmartTaskSettings = (): void => {
   if (row) row.hidden = true;
 };
 
-export const loadEvSmartTaskSettings = async (): Promise<void> => {
-  try {
-    state.evSmartTaskSettings = normalizeEvSmartTaskSettings(await readSettings());
-  } catch { /* Retain the last accepted map. */ }
+function displayCarCapacity(field: CapacityField, carId: string): void {
+  Object.assign(field, { value: state.evSmartTaskSettings[carId]?.usableBatteryKWh?.toString() ?? '' });
+  field.setAttribute('supporting-text', CAR_CAPACITY_HINT);
+  field.removeAttribute('disabled');
+}
+
+function acceptSettings(settings: unknown): void {
+  state.evSmartTaskSettings = normalizeEvSmartTaskSettings(settings);
+  hasAcceptedSettings = true;
+  for (const field of document.querySelectorAll<CapacityField>('[data-car-battery-capacity][disabled]')) {
+    const carId = field.dataset.carBatteryCapacity;
+    if (carId) displayCarCapacity(field, carId);
+  }
+}
+
+export const loadEvSmartTaskSettings = (): Promise<void> => {
+  pendingSettingsLoad ??= serialize(async () => {
+    try { acceptSettings(await readSettings()); } catch { /* Retain the last accepted map. */ }
+  }).finally(() => { pendingSettingsLoad = undefined; });
+  return pendingSettingsLoad;
 };
 
 const applyValues = (settings: EvSmartTaskSettings | undefined): void => {
@@ -63,9 +82,9 @@ export const renderEvSmartTaskSettings = async (device: SettingsUiDeviceView | n
   // A power update can refresh the device page while the capacity field is being edited.
   if (id === renderedDeviceId) return;
   try {
-    const settings = normalizeEvSmartTaskSettings(await readSettings())[id];
+    await serialize(async () => acceptSettings(await readSettings()));
     if (generation !== renderGeneration) return;
-    applyValues(settings);
+    applyValues(state.evSmartTaskSettings[id]);
     renderedDeviceId = id;
     row.hidden = false;
   } catch {
@@ -86,7 +105,7 @@ const saveDeviceSetting = async <K extends keyof EvSmartTaskSettings>(
     if (Object.keys(next).length > 0) settings[id] = next;
     else delete settings[id];
     await setSetting(EV_SMART_TASK_SETTINGS, settings);
-    state.evSmartTaskSettings = normalizeEvSmartTaskSettings(settings);
+    acceptSettings(settings);
   });
 };
 
@@ -108,13 +127,23 @@ export const createCarCapacityField = (carId: string, carName: string): HTMLElem
   field.setAttribute('type', 'text');
   field.setAttribute('inputmode', 'decimal');
   field.setAttribute('suffix-text', 'kWh');
-  field.setAttribute('supporting-text', 'Used for percentage Smart tasks when this car is matched to a charger.');
-  const restore = () => { field.value = state.evSmartTaskSettings[carId]?.usableBatteryKWh?.toString() ?? ''; };
-  restore();
+  if (hasAcceptedSettings) displayCarCapacity(field, carId);
+  else {
+    field.setAttribute('disabled', '');
+    field.setAttribute('supporting-text', 'Loading car battery capacity…');
+    void loadEvSmartTaskSettings().then(() => {
+      if (hasAcceptedSettings && field.hasAttribute('disabled')) displayCarCapacity(field, carId);
+      if (field.hasAttribute('disabled')) field.setAttribute('supporting-text', 'Car battery capacity is unavailable.');
+    });
+  }
   field.addEventListener('change', () => {
-    const save = async () => saveDeviceSetting(carId, 'usableBatteryKWh', parseCapacity(field.value));
+    if (field.hasAttribute('disabled')) return;
+    const editedValue = field.value;
+    const save = async () => saveDeviceSetting(carId, 'usableBatteryKWh', parseCapacity(editedValue));
     void save().catch(async (error: unknown) => {
-      restore();
+      await serialize(async () => {
+        if (field.value === editedValue) displayCarCapacity(field, carId);
+      });
       await showToastError(error, 'Could not save the car’s usable battery capacity.');
     });
   });
@@ -122,26 +151,20 @@ export const createCarCapacityField = (carId: string, carName: string): HTMLElem
 };
 
 export const initEvSmartTaskSettings = (deps: { getCurrentDetailDeviceId: () => string | null }): void => {
-  const save = async <K extends keyof EvSmartTaskSettings>(key: K, value: EvSmartTaskSettings[K]): Promise<void> => {
+  let editRevision = 0;
+  const save = <K extends keyof EvSmartTaskSettings>(key: K, readValue: () => EvSmartTaskSettings[K]): void => {
     const id = deps.getCurrentDetailDeviceId();
     if (!id || id !== renderedDeviceId || row?.hidden !== false) return;
-    await saveDeviceSetting(id, key, value);
+    const revision = ++editRevision;
+    const write = async () => saveDeviceSetting(id, key, readValue());
+    void write().catch(async (error: unknown) => {
+      await serialize(async () => {
+        if (renderedDeviceId !== id || deps.getCurrentDetailDeviceId() !== id || revision !== editRevision) return;
+        applyValues(state.evSmartTaskSettings[id]);
+      });
+      await showToastError(error, 'Could not save EV Smart task settings.');
+    });
   };
-  const recover = async (error: unknown) => {
-    if (renderedDeviceId === deps.getCurrentDetailDeviceId() && renderedDeviceId !== null) {
-      try {
-        const id = renderedDeviceId;
-        const settings = normalizeEvSmartTaskSettings(await readSettings())[id];
-        if (id === renderedDeviceId) applyValues(settings);
-      } catch { /* Keep the last visible values if settings are unavailable. */ }
-    }
-    await showToastError(error, 'Could not save EV Smart task settings.');
-  };
-  capacity?.addEventListener('change', () => {
-    const saveCapacity = async () => save('usableBatteryKWh', parseCapacity(capacity.value));
-    void saveCapacity().catch(recover);
-  });
-  pause?.addEventListener('change', () => {
-    void save('pauseOnBatteryDischarge', pause.selected ? true : undefined).catch(recover);
-  });
+  capacity?.addEventListener('change', () => save('usableBatteryKWh', () => parseCapacity(capacity.value)));
+  pause?.addEventListener('change', () => save('pauseOnBatteryDischarge', () => pause.selected ? true : undefined));
 };

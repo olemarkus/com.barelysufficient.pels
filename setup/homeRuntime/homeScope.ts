@@ -31,7 +31,7 @@
 import {
   requireBatteryControl, requireHomeMembership, requirePlanService, requirePriceCoordinator,
 } from '../appInit/contextGuards';
-import { projectStorageDischargeObservations, readFreshHomeBatteryDischargeW }
+import { projectStorageDischargeObservations, readHomeBatteryDischargeW }
   from '../../lib/planInput/storageObservation';
 import { mainStorageLane } from '../appInit/createBatteryControl';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
@@ -288,8 +288,8 @@ export function buildMainHomeScope(
   const deferredObjectiveController = new DeferredObjectiveDecorationController(
     {
       ...taskEvaluationSource,
-      getHomeBatteryDischargeW: (nowMs) => readFreshHomeBatteryDischargeW(
-        requireHomeMembership(ctx).filterDevicesForHome(ctx.getDeviceSurfaces(), homeId), nowMs,
+      getHomeBatteryDischargeW: () => readHomeBatteryDischargeW(
+        requireHomeMembership(ctx).filterDevicesForHome(ctx.getDeviceSurfaces(), homeId),
       ),
     },
     createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),

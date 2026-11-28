@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { StorageLeverState } from '../../lib/plan/planState';
-import { projectStorageDischargeObservations } from '../../lib/planInput/storageObservation';
+import { projectStorageDischargeObservations, readHomeBatteryDischargeW } from '../../lib/planInput/storageObservation';
 import { resolveStorageDischargeW } from '../../lib/plan/battery/storageRelief';
 import { partialDouble } from '../helpers/partialDouble';
 
@@ -11,6 +11,14 @@ const battery = (signedW: number, managed = true): DeviceSurfaces => partialDoub
 const held = (setpointW: number): StorageLeverState => partialDouble<StorageLeverState>({ setpointW });
 
 describe('whole-home storage discharge observation', () => {
+  it('uses accepted discharge even when its value has not changed, until the battery reports another value', () => {
+    const discharging = battery(-1000, false);
+    const charging = battery(3000);
+    expect(readHomeBatteryDischargeW([discharging, charging])).toBe(1000);
+    expect(readHomeBatteryDischargeW([battery(0, false), charging])).toBe(0);
+    expect(readHomeBatteryDischargeW([{ ...discharging, available: false }, charging])).toBe(0);
+  });
+
   it('keeps unmanaged discharge and does not cancel it against another battery charging', () => {
     const observations = projectStorageDischargeObservations([battery(-2500, false), battery(-500), battery(3000)]);
     expect(resolveStorageDischargeW(observations, {})).toBe(3000);
