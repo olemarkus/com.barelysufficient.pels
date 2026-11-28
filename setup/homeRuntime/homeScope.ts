@@ -31,7 +31,8 @@
 import {
   requireBatteryControl, requireHomeMembership, requirePlanService, requirePriceCoordinator,
 } from '../appInit/contextGuards';
-import { projectStorageDischargeObservations } from '../../lib/planInput/storageObservation';
+import { projectStorageDischargeObservations, readFreshHomeBatteryDischargeW }
+  from '../../lib/planInput/storageObservation';
 import { mainStorageLane } from '../appInit/createBatteryControl';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
@@ -285,7 +286,12 @@ export function buildMainHomeScope(
   // source member is a lazy getter, so building it before the price/plan
   // services exist is safe.
   const deferredObjectiveController = new DeferredObjectiveDecorationController(
-    taskEvaluationSource,
+    {
+      ...taskEvaluationSource,
+      getHomeBatteryDischargeW: (nowMs) => readFreshHomeBatteryDischargeW(
+        requireHomeMembership(ctx).filterDevicesForHome(ctx.getDeviceSurfaces(), homeId), nowMs,
+      ),
+    },
     createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),
     (deviceId) => bindTemporaryTemperatureRead(ctx)(deviceId) !== null,
   );
