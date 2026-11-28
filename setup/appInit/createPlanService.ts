@@ -89,8 +89,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     readSimulationSetting: scope.readSimulationSetting,
     structuredLog: ctx.getStructuredLogger('plan'),
     // Policy closure from the scope (main: the live ctx read; sub-home bundles:
-    // constant UNKNOWN — capacity-only status, no price level driving plan
-    // behavior and no `price_level_changed` fired against MAIN's level).
+    // constant UNKNOWN for capacity-only status).
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
     getLastPowerUpdate: () => requireDisplayedPowerUpdateMs(scope.getPowerTracker()),
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),

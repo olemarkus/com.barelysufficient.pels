@@ -14,6 +14,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   importLegacyPriceCaches(ctx.homey.settings, priceCache);
   const coordinator = new PriceCoordinator({
     homey: ctx.homey,
+    flow: ctx.homey.flow,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(ctx.homey.settings),
     priceDataStore: createPriceDataStore(ctx.homey.settings, priceCache),
     getTimeZone: () => ctx.getTimeZone(),

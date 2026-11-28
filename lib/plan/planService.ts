@@ -176,12 +176,10 @@ export class PlanService {
   constructor(private deps: PlanServiceDeps) {
     this.idleClassifier = createIdleClassifier(deps.structuredLog);
     this.planStatusWriter = new PlanStatusWriter({
-      homey: deps.homey,
       publishPelsStatus: deps.publishPelsStatus,
       getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getLastPowerUpdate: deps.getLastPowerUpdate,
       getCapacityDryRun: deps.getCapacityDryRun,
-      structuredLog: deps.structuredLog,
     });
     this.changeTracker = new PlanChangeTracker();
     this.rebuildHost = {

@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlanStatusWriter } from '../../lib/plan/planStatusWriter';
 import type { DevicePlan, StatusPlanChanges } from '../../lib/plan/planTypes';
-import type { FlowPort, FlowToken, FlowTriggerCard } from '../../lib/ports/homeyRuntime';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
-import { testLogger } from '../utils/testLogger';
 
 /* -------------------------------------------------------------------------- *
  * PlanStatusWriter persist cadence. Pins the per-home posture-flip guarantee:
@@ -18,20 +16,6 @@ const VOLATILE_WRITE_THROTTLE_MS = 60 * 1000;
 // A realistic epoch base: the first write must land on a non-zero clock so
 // `lastPelsStatusWriteMs` leaves its "never written" (0) sentinel behind.
 const BASE_MS = 1_700_000_000_000;
-
-type TriggerRecord = { tokens: unknown; state: unknown };
-
-// Records every `price_level_changed` fire so the trigger can be asserted
-// independently of whether a status write happened.
-const recordingFlow = (fired: TriggerRecord[]): FlowPort => ({
-  getTriggerCard: (): FlowTriggerCard => ({
-    trigger: (tokens?: unknown, state?: unknown) => {
-      fired.push({ tokens, state });
-      return Promise.resolve(undefined);
-    },
-  }),
-  createToken: (): Promise<FlowToken> => Promise.resolve({ setValue: () => Promise.resolve(undefined) }),
-});
 
 const plan = (totalKw: number): DevicePlan => ({
   meta: buildPlanMeta({ totalKw, softLimitKw: 6, headroomKw: 6 - totalKw }),
@@ -57,25 +41,18 @@ type Harness = {
    * as "was this called?".
    */
   computeSpy: ReturnType<typeof vi.fn>;
-  /** Every `price_level_changed` fire, in order. */
-  fired: TriggerRecord[];
   setDryRun: (value: boolean) => void;
   setLastPowerUpdate: (value: number | null) => void;
-  setPriceLevel: (value: PriceLevel) => void;
 };
 
 const makeWriter = (initialDryRun: boolean): Harness => {
   let dryRun = initialDryRun;
   let lastPowerUpdate = 1_745_000_000_000;
-  let priceLevel = PriceLevel.UNKNOWN;
   const writeSpy = vi.fn();
-  const fired: TriggerRecord[] = [];
   const computeSpy = vi.fn(() => lastPowerUpdate);
   const writer = new PlanStatusWriter({
-    structuredLog: testLogger,
-    homey: { flow: recordingFlow(fired) },
     publishPelsStatus: writeSpy,
-    getCurrentHourPriceLevel: () => priceLevel,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getLastPowerUpdate: computeSpy,
     // Every home supplies its own posture; there is no home-kind branch left.
     getCapacityDryRun: () => dryRun,
@@ -84,10 +61,8 @@ const makeWriter = (initialDryRun: boolean): Harness => {
     writer,
     writeSpy,
     computeSpy,
-    fired,
     setDryRun: (value) => { dryRun = value; },
     setLastPowerUpdate: (value) => { lastPowerUpdate = value ?? lastPowerUpdate; },
-    setPriceLevel: (value) => { priceLevel = value; },
   };
 };
 
@@ -253,46 +228,6 @@ describe('PlanStatusWriter dead-computation skip', () => {
     nowSpy.mockReturnValue(BASE_MS + 5000);
     h.writer.update(plan(4), { ...CHANGES, actionChanged: true });
     expect(h.computeSpy.mock.calls.length).toBeGreaterThan(afterInitial);
-  });
-
-  // The defect the skip introduced, and the reason the level is resolved BEFORE
-  // the skip rather than read off the computed status. `power_source = flow`
-  // drives rebuilds from Flow events, so there is no clock guaranteeing another
-  // rebuild inside the hour: a level that changes on a skipped cycle and is not
-  // fired there is not fired late, it is never fired. Here the whole cheap hour
-  // begins and ends between two rebuilds an hour apart.
-  it('fires price_level_changed on a cycle the dead-work skip throws away', () => {
-    const h = makeWriter(false);
-
-    h.writer.update(plan(3), CHANGES); // initial persist, level UNKNOWN
-    expect(h.fired).toHaveLength(0);
-    const afterInitial = h.computeSpy.mock.calls.length;
-
-    // The hour turns cheap 5 s later — inside the throttle window, no action
-    // change, no posture flip, so the status computation is (correctly) skipped.
-    h.setPriceLevel(PriceLevel.CHEAP);
-    nowSpy.mockReturnValue(BASE_MS + 5000);
-    h.writer.update(plan(3), CHANGES);
-
-    expect(h.writeSpy).toHaveBeenCalledTimes(1);
-    expect(h.computeSpy.mock.calls.length).toBe(afterInitial);
-    expect(h.fired).toEqual([{ tokens: { level: PriceLevel.CHEAP }, state: { priceLevel: PriceLevel.CHEAP } }]);
-    expect(h.writer.getLastNotifiedPriceLevel()).toBe(PriceLevel.CHEAP);
-  });
-
-  it('does not re-fire price_level_changed while the level holds across skipped cycles', () => {
-    const h = makeWriter(false);
-
-    h.setPriceLevel(PriceLevel.EXPENSIVE);
-    h.writer.update(plan(3), CHANGES);
-    expect(h.fired).toHaveLength(1);
-
-    nowSpy.mockReturnValue(BASE_MS + 5000);
-    h.writer.update(plan(3), CHANGES);
-    nowSpy.mockReturnValue(BASE_MS + 20_000);
-    h.writer.update(plan(3), CHANGES);
-
-    expect(h.fired).toHaveLength(1);
   });
 
   it('still builds inside the window when the dry-run posture flips (sub-home)', () => {

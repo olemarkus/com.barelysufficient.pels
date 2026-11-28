@@ -31,6 +31,10 @@ against the previous one per hour. That matters most for cloud-connected thermos
 pressure turns out to hurt in production, the fix is a minimum hold on the *level*, not
 a return to hourly prices.
 
+The price service publishes `price_level_changed` at period boundaries and when
+updated prices or classification settings change the current level. Device
+control still picks up the new level through its normal plan rebuild.
+
 ## What did NOT change
 
 Everything that reasons in whole hours still gets whole hours, because the hour is the

@@ -1,12 +1,15 @@
-import type Homey from 'homey';
 import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
 import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../../lib/price/priceLevels';
-import { PlanService } from '../../lib/plan/planService';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { openPlanBuildGate, buildPlanMeta } from '../utils/planTestUtils';
-import { planServiceWiring } from '../helpers/planServiceWiring';
+import { PriceCoordinator } from '../../lib/price/priceCoordinator';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
+import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME, PRICE_THRESHOLD_PERCENT } from '../../lib/utils/settingsKeys';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
+import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
+import { testLogger } from '../utils/testLogger';
 
 describe('Price level helpers', () => {
   it('exposes enum values and option metadata', () => {
@@ -115,47 +118,128 @@ describe('Price level flow cards', () => {
       ]);
     });
   });
+});
 
-  it('emits price_level_changed with state when level flips', () => {
-    const app = createApp();
-    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
-      getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
+describe('Price-level publication with no meter readings', () => {
+  let coordinator: PriceCoordinator;
+  let priceStore: ReturnType<typeof createPriceDataStore>;
+
+  const setPrices = (
+    dateKey: string,
+    startMs: number,
+    durationMinutes: number,
+    prices: number[],
+    day: typeof FLOW_PRICES_TODAY | typeof FLOW_PRICES_TOMORROW = FLOW_PRICES_TODAY,
+  ) => {
+    priceStore.writeFlowPayload(day, {
+      dateKey,
+      pricesByHour: {},
+      updatedAt: new Date().toISOString(),
+      pricesByPeriod: prices.map((totalPrice, index) => ({
+        startsAt: new Date(startMs + index * durationMinutes * 60_000).toISOString(),
+        totalPrice,
+        durationMinutes,
+      })),
     });
-    app.registerFlowCards();
+    coordinator.updateCombinedPrices();
+  };
 
-    const planService = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      isCapacityControlEnabled: () => false,
-      getDevicePowerSetupRequirement: () => null,
-      getDeviceControlAdapter: () => undefined,
-      getUnusedBuiltInControl: () => 'none' as const,
-      isTargetPowerControlRefused: () => false,
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      homey: mockHomeyInstance as unknown as Homey.App['homey'],
-      publishPelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
-      planEngine: partialDouble<ConstructorParameters<typeof PlanService>[0]['planEngine']>({}),
-      getPlanDevices: () => [],
-      getSettleDevices: () => [],
-      getCapacityDryRun: () => true,
-      readSimulationSetting: () => true,
-      getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
-      getLastPowerUpdate: () => 1_745_000_000_000,
+  const triggers = () => mockHomeyInstance.flow._triggerCardTriggers.price_level_changed ?? [];
+  const levels = () => triggers().map((trigger) => trigger.state?.priceLevel);
+
+  beforeEach(() => {
+    resetMockHomey();
+    vi.useFakeTimers();
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
+    priceStore = createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache());
+    coordinator = new PriceCoordinator({
+      homey: mockHomeyInstance,
+      flow: mockHomeyInstance.flow,
+      priceDataStore: priceStore,
+      priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
+      getTimeZone: () => 'Europe/Oslo',
+      getPowerTracker: () => ({}),
+      homeyWebApiGet: noHomeyWebApi,
+      readHubMarket: unknownHubMarket,
+      readHubLocation: async () => ({ kind: 'unavailable' }),
+      error: () => undefined,
+      structuredLog: testLogger,
+    });
+  });
+
+  afterEach(() => {
+    coordinator.stop();
+    vi.useRealTimers();
+  });
+
+  it('publishes every changed native quarter-hour level and the end of the series', () => {
+    const start = Date.parse('2026-06-01T08:00:00Z');
+    vi.setSystemTime(start);
+    setPrices('2026-06-01', start, 15, [3, 1, 1, 3]);
+    expect(levels()).toEqual([]);
+    coordinator.startPriceRefresh();
+
+    vi.advanceTimersByTime(15 * 60_000 - 1);
+    expect(levels()).toEqual([PriceLevel.EXPENSIVE]);
+    vi.advanceTimersByTime(1);
+    expect(triggers()[1]).toMatchObject({
+      tokens: { level: PriceLevel.CHEAP },
+      state: { priceLevel: PriceLevel.CHEAP },
+    });
+    vi.advanceTimersByTime(45 * 60_000);
+    expect(levels()).toEqual([PriceLevel.EXPENSIVE, PriceLevel.CHEAP, PriceLevel.EXPENSIVE, PriceLevel.UNKNOWN]);
+  });
+
+  it('publishes changed inputs inside a period even with the same hourly average', () => {
+    const start = Date.parse('2026-06-01T08:00:00Z');
+    vi.setSystemTime(start);
+    coordinator.startPriceRefresh();
+
+    setPrices('2026-06-01', start, 15, [1, 3, 1, 3]);
+    setPrices('2026-06-01', start, 15, [3, 1, 1, 3]);
+    mockHomeyInstance.settings.set(PRICE_THRESHOLD_PERCENT, 90);
+    coordinator.updateCombinedPrices();
+    expect(levels()).toEqual([PriceLevel.CHEAP, PriceLevel.EXPENSIVE, PriceLevel.NORMAL]);
+  });
+
+  it('publishes at both occurrences of a repeated local hour and stops on shutdown', () => {
+    const start = Date.parse('2026-10-25T00:00:00Z');
+    vi.setSystemTime(start);
+    setPrices('2026-10-25', start, 60, [1, 3, 1]);
+    coordinator.startPriceRefresh();
+
+    vi.advanceTimersByTime(60 * 60_000);
+    expect(levels()).toEqual([PriceLevel.CHEAP, PriceLevel.EXPENSIVE]);
+    coordinator.stop();
+    vi.advanceTimersByTime(60 * 60_000);
+    expect(levels()).toEqual([PriceLevel.CHEAP, PriceLevel.EXPENSIVE]);
+  });
+
+  it('classifies midnight using the new local day before the cache rotates', () => {
+    const midnight = Date.parse('2026-06-01T22:00:00Z');
+    vi.setSystemTime(midnight - 1000);
+    setPrices('2026-06-01', midnight - 60 * 60_000, 60, [10]);
+    setPrices('2026-06-02', midnight, 60, [2, 3], FLOW_PRICES_TOMORROW);
+    coordinator.startPriceRefresh();
+
+    vi.advanceTimersByTime(1000);
+    expect(levels()).toEqual([PriceLevel.EXPENSIVE, PriceLevel.NORMAL]);
+    vi.advanceTimersByTime(30_000);
+    expect(levels()).toEqual([PriceLevel.EXPENSIVE, PriceLevel.NORMAL]);
+  });
+
+  it('keeps the last published level on a read failure and rechecks after recovery', () => {
+    const start = Date.parse('2026-06-01T08:00:00Z');
+    vi.setSystemTime(start);
+    setPrices('2026-06-01', start, 15, [1, 3]);
+    coordinator.startPriceRefresh();
+    vi.spyOn(coordinator['priceService'], 'getPriceLevelSchedule').mockImplementationOnce(() => {
+      throw new Error('Price settings temporarily unavailable');
     });
 
-    planService.updatePelsStatus({
-      meta: buildPlanMeta({ totalKw: 0, softLimitKw: 0, headroomKw: 0 }),
-      devices: [],
-      chargingPhaseDecisions: [],
-      inverterDecisions: [],
-      storageReleases: [],
-    });
-
-    const triggers = mockHomeyInstance.flow._triggerCardTriggers.price_level_changed;
-    expect(triggers?.[0]?.tokens?.level).toBe(PriceLevel.CHEAP);
-    expect(triggers?.[0]?.state?.priceLevel).toBe(PriceLevel.CHEAP);
+    vi.advanceTimersByTime(15 * 60_000);
+    expect(levels()).toEqual([PriceLevel.CHEAP]);
+    vi.advanceTimersByTime(30_000);
+    expect(levels()).toEqual([PriceLevel.CHEAP, PriceLevel.EXPENSIVE]);
   });
 });

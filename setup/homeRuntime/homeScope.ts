@@ -72,8 +72,7 @@ import type { ShutdownLatch } from '../../lib/utils/shutdownLatch';
 
 /**
  * The policy members of a capacity-only home (a meter area). No price
- * optimization and no price level, so its status reads UNKNOWN and
- * `price_level_changed` never fires against Main's level; no surplus term, no
+ * optimization and no price level, so its status reads UNKNOWN. No surplus term, no
  * storage discharge and no per-device price settings. No smart tasks either
  * (multi-home v1 defers them per home), so the decoration seam is the identity
  * one, named rather than omitted.
