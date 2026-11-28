@@ -85,7 +85,9 @@ on read), `hard_cap_shortfalls` (runtime-owned, Main home only, `lib/power/hardC
 validated on read), `device_phase_learning`
 (runtime-owned, validated entry by entry by `parsePhaseLearning` in `lib/phaseFootprint/phaseFootprintLearner.ts`,
 written only by that learner through setup's wiring; the settings UI does not write it), `ev_car_associations` (`evCarAssociations.ts`; a charger's entry may carry the standing `assumedCarId`, kept only while it is the sole selected car),
-`export_price_source` (`exportPriceSource.ts`), `overshoot_behaviors`
+`export_price_source` (`exportPriceSource.ts`; a new install in the Netherlands has it
+written to `homey_energy`, with `export_price_enabled` on, once by
+`lib/price/exportPriceMarketDefault.ts`), `overshoot_behaviors`
 (`shedBehaviors.ts`), and the daily-budget option and switch keys
 (`dailyBudgetSettings.ts`), all in `packages/shared-domain/src/settings/`, plus
 the keys covered below.

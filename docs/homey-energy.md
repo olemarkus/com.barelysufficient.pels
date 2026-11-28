@@ -142,7 +142,7 @@ If you have solar, Homey also models what your power company pays you for the po
 Under **Settings > Electricity prices > Export price**, turn the section on and set **Where the price comes from**:
 
 - **Amounts I enter here** — the share-of-spot and fixed amount you type into PELS. This is the default, and what every existing setup keeps using.
-- **Homey Energy** — the feed-in price you already set up in Homey under **Energy > Electricity**. Nothing to retype, and a price that follows the hour when your contract does.
+- **Homey Energy** — the feed-in price you already set up in Homey under **Energy > Electricity**. Nothing to retype, and a price that follows the hour when your contract does. A new install in the Netherlands starts with the export price on and this source chosen.
 
 Choosing Homey Energy replaces the amount fields, because the price then comes from Homey.
 
