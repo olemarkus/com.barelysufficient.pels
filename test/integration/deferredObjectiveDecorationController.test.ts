@@ -236,7 +236,11 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
   const startMs = Date.UTC(2026, 9, 2, 0);
   const quarterMs = 15 * 60_000;
   const deadlineAtMs = startMs + 4 * quarterMs;
-  const buildExemptController = (temporaryTemperatureActive = false, readBatteryDischargeW?: () => number) => {
+  const buildExemptController = (
+    temporaryTemperatureActive = false,
+    readBatteryDischargeW?: (excludedDeviceIds: ReadonlySet<string>) => number,
+    batteries: readonly PlanInputDevice[] = [],
+  ) => {
     const settings: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         dev: {
@@ -279,7 +283,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       ...(readBatteryDischargeW ? { isEvCharger: true, evChargingState: 'plugged_in' as const } : {}),
       control: fixtureControlPosture({ controllable: false }),
     };
-    planning.settle({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs }, settings);
+    planning.settle({ devices: [device, ...batteries], dailyBudgetSnapshot: null, nowTs: startMs }, settings);
     buildPriceHorizon.mockClear();
     const readRoster = vi.fn(() => settings);
     const controller = new DeferredObjectiveDecorationController(
@@ -305,6 +309,31 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
     dischargeW = 0;
     expect(at(startMs + quarterMs - 1).drivingDeviceIds.has('dev')).toBe(false);
     expect(at(startMs + quarterMs).drivingDeviceIds.has('dev')).toBe(true);
+  });
+
+  it('ignores discharge from a battery that holds its scheduled discharge for the booked task', () => {
+    const battery = (holdDischargeDuringEvCharging?: true): PlanInputDevice => ({
+      ...buildDevice(), id: 'battery', name: 'Battery',
+      storage: {
+        reading: 'observed',
+        ...(holdDischargeDuringEvCharging ? { holdDischargeDuringEvCharging } : {}),
+        continuousPlan: { reason: 'supply_house', setpointW: -2000, validUntilMs: startMs + quarterMs },
+      },
+    }) as unknown as PlanInputDevice;
+    const readDischarge = vi.fn((excluded: ReadonlySet<string>) => (excluded.has('battery') ? 0 : 2000));
+    const decorate = (holds: boolean, nowTs: number) => {
+      const storage = holds ? battery(true) : battery();
+      const { controller, device } = buildExemptController(false, readDischarge, [storage]);
+      return controller.decorate({ devices: [device, storage], dailyBudgetSnapshot: null, nowTs });
+    };
+
+    const held = decorate(true, startMs);
+    expect(readDischarge).toHaveBeenLastCalledWith(new Set(['battery']));
+    expect(held.drivingDeviceIds.has('dev')).toBe(true);
+    expect(held.admittedDevices[0].deferredHold).toBeUndefined();
+
+    expect(decorate(false, startMs).admittedDevices[0].deferredHold).toBe('battery_pause');
+    expect(readDischarge).toHaveBeenLastCalledWith(new Set());
   });
 
   it('serves a capacity-off task claim without reevaluating or publishing a plan', () => {

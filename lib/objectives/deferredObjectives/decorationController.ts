@@ -5,7 +5,7 @@ import type {
   DeferredHoldCause,
   ChargingPhaseTaskRequirement,
 } from '../../../packages/planner-types/src/deferredDecoration';
-import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
+import type { PlanInputDevice, StoragePlanInputKind } from '../../../packages/planner-types/src/planInputDevice';
 import { addPerfDuration } from '../../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
 import {
@@ -34,6 +34,15 @@ import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 
 const BATTERY_DISCHARGE_DEADBAND_W = 500;
 const RETRY_QUARTER_MS = 15 * 60 * 1000;
+
+const hasStorage = (device: PlanInputDevice): device is PlanInputDevice & StoragePlanInputKind => 'storage' in device;
+
+/** An observed battery whose scheduled discharge the planner holds while an EV task is booked. */
+const holdsScheduledDischargeForEv = (device: PlanInputDevice): boolean => {
+  if (!hasStorage(device) || device.storage.reading !== 'observed') return false;
+  const { holdDischargeDuringEvCharging, continuousPlan } = device.storage;
+  return holdDischargeDuringEvCharging === true && (continuousPlan?.setpointW ?? 0) < 0;
+};
 
 const emitTaskDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
@@ -127,8 +136,14 @@ export class DeferredObjectiveDecorationController {
     };
   }
 
-  private batteryDischargeExceedsDeadband(): boolean {
-    return (this.source.getHomeBatteryDischargeW?.() ?? 0) > BATTERY_DISCHARGE_DEADBAND_W;
+  /**
+   * A battery that holds its scheduled discharge during EV charging stops this
+   * cycle (`holdScheduledDischargeDuringEvCharging` in the planner), so its
+   * current discharge does not pause the charger.
+   */
+  private batteryDischargeExceedsDeadband(devices: readonly PlanInputDevice[]): boolean {
+    const held = new Set(devices.filter(holdsScheduledDischargeForEv).map((device) => device.id));
+    return (this.source.getHomeBatteryDischargeW?.(held) ?? 0) > BATTERY_DISCHARGE_DEADBAND_W;
   }
 
   private findProtectedCharger(devices: PlanInputDevice[], deviceId: string): PlanInputDevice | undefined {
@@ -158,7 +173,7 @@ export class DeferredObjectiveDecorationController {
       if (isCurrentClaim(prior, signature, nowTs)) {
         pauses.set(deviceId, prior);
       } else if (canRun) {
-        discharging ??= this.batteryDischargeExceedsDeadband();
+        discharging ??= this.batteryDischargeExceedsDeadband(devices);
         if (!discharging) continue;
         pauses.set(deviceId, {
           taskSignature: signature, startsAtMs: nowTs, endsAtMs: getBatteryPauseEnd(evaluation, nowTs),
