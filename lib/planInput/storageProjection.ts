@@ -104,6 +104,7 @@ export const resolveStorageCluster = (
       powerLimitControl: isBatteryPowerLimitEnabled(source.deviceControl.controllableDevices, device.id),
       verdict: control.verdict,
       deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
+      canSetDischargePower: control.response.kind === 'delivers_setpoint',
       chargeCeilingW: chargeCeilingAtLevelW(control.chargeCeiling, device.batteryLevel),
       ownModeGridCharge: control.ownModeGridCharge,
       ...(currentPeriod === undefined || continuous.status !== 'planned' ? {} : {

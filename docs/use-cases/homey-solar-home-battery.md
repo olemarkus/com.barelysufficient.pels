@@ -7,7 +7,7 @@ description: Use PELS on Homey Pro to send your own solar to your car, hot water
 
 When the grid pays little for the power you send back, or charges you for it, every kilowatt-hour you keep at home is worth the full import price. Solar panels and a home battery give you the energy. PELS decides where it goes.
 
-PELS puts your home battery into your priority list, right next to your EV charger, water heater and heating. Your sun goes down that list in your order, and when the house nears its limit, the battery takes its turn: PELS caps its charge, then has it discharge to cover the peak. Leave it last, the default, and the battery covers the whole house before a single device is turned down.
+Your devices and home battery get spare solar in your priority order. When your home needs help holding its power limit, PELS reduces battery charging from the grid or uses available stored energy before limiting devices.
 
 ## When this is useful
 
@@ -39,18 +39,15 @@ The battery shows up like any other managed device: a card on the **Overview**, 
   <figcaption>The Overview while the battery holds the limit: the hero says so in one line, and the battery's card shows what it is doing.</figcaption>
 </figure>
 
-## Your priority list decides everything
+## Who gets spare solar
 
 The battery has a place in each mode's priority list, like your devices. It is last by default, and you move it with **Reorder** on its device page or on the **Modes** page.
 
-That one place decides two things:
+Solar surplus goes to your devices and batteries in priority order. With the battery last, your devices get the sun first, then the battery, then the grid. A device ranked below the battery gets what the battery leaves. If a device ranked above it is waiting to start, PELS can lower the battery's charge so the device can run.
 
-- **Who gets the sun.** Solar surplus goes to your devices and batteries in priority order, and only what is left goes to the grid. With the battery last, your devices get the sun first, then the battery, then the grid. A device ranked below the battery gets what the battery leaves. A device ranked above it gets the solar first: if it is waiting to start, PELS lowers the battery's charge so the device can run.
-- **Who is limited first, and who the battery protects.** When the house nears its limit, PELS limits in priority order, from the bottom up. When the battery's turn comes, PELS first caps its charge, then asks it to discharge enough to cover the rest. Devices below the battery are limited before it, and its discharge protects every device above it. Last in the list, it covers your whole home before any device is limited.
+## How the battery helps at a peak
 
-If PELS plans cheap-hour charging for both the car and the battery, the device higher in priority gets the available power first. And at the dinner peak, a battery last in the list discharges so the heating, hot water and car keep running.
-
-When the battery is empty, or does not follow what PELS asks, PELS simply moves on to the next device, exactly as in a home without a battery. Your limit holds either way.
+PELS can reduce battery charging from the grid or use available battery power before limiting your devices. Spare-solar charging keeps its turn in your priority order. At the dinner peak, available battery power can keep the heating, hot water and car running. If the battery cannot cover the whole peak, PELS limits devices for the rest.
 
 ## On the device page
 
@@ -72,7 +69,7 @@ If you change the battery's mode in its own app while PELS holds it, PELS takes 
 | --- | --- |
 | `Supplying` · `Holding your limit so your devices keep running` | The battery discharges so the house stays under its limit. The Overview hero adds a line such as `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | `Charging` · `Storing solar for later household use` | PELS uses the solar surplus available at the battery’s place in your priority list. |
-| `Limited · Charging` · `Waiting to charge faster` | PELS capped the battery's charge at its place in the priority order, and gives the rest back as the house has room. |
+| `Limited · Charging` · `Waiting to charge faster` | PELS capped the battery's charge. Charging can increase as the house has room. |
 | `Selling to grid` · `Selling stored energy while export pays more` | With **Plan charging with PELS** and **Sell stored energy when profitable** on, the battery sells stored energy: it discharges and your meter shows export. While the house still uses all of it, the card reads `Supplying`. |
 | `Waiting` | PELS is keeping the battery idle until it has power to store or a reason to discharge. |
 | `Own mode` · `PELS can only watch it: its app does not accept control` | The battery's app refused PELS (for example a Sessy on its cloud login). PELS tries again after six hours or when PELS restarts. |
@@ -97,7 +94,7 @@ If you uninstall PELS while it holds the battery, switch the battery's mode back
 3. **Check the battery under Settings > Devices.** For a battery PELS can drive, **Managed by PELS** and **Power-limit control** are on by default, so there is nothing to turn on. Turn **Managed by PELS** off if you want PELS to keep away from it. A battery whose app gives PELS no control shows `PELS can only watch it` instead of a Power-limit control switch.
 4. **Set an export price.** Under **Settings > Electricity prices**, turn on **Use an export price**. With Homey Energy prices on a dynamic contract, set **Where the price comes from** to **Homey Energy** so PELS follows the feed-in price you already set up in Homey. A fixed amount can be negative if you pay to export. See [Export pricing](../solar.md#export-pricing).
 5. **Point devices at the sun.** Turn on **Use solar surplus** on heating and water heaters, **Run on solar surplus** on on/off loads such as a pool pump, and **Charge on solar surplus** on the EV charger. See [Solar and Self-Consumption](../solar.md).
-6. **Place the battery in your priority list.** Leave it last to give your devices the sun first and to cover the whole house at a peak, or move it up if filling the battery for the evening matters more. See [Configuration](../configuration.md#settings-modes).
+6. **Place the battery in your priority list.** Leave it last to give your devices spare solar first, or move it up if filling the battery for the evening matters more. See [Configuration](../configuration.md#settings-modes).
 7. **Add Smart tasks for what must be ready.** A car charged by 07:00 or hot water by morning goes into a [Smart task](../smart-tasks.md), and PELS picks the cheapest hours before the deadline.
 8. **Sell stored solar in the evening (optional).** Where evening export pays more than midday export, turn on **Plan charging with PELS** on the battery's device page, then **Sell stored energy when profitable**, and enter your **Export limit at your meter**. PELS sells only when that lowers your cost compared with keeping the energy for your home, and keeps your minimum reserve. See [Home batteries](../solar.md#home-batteries).
 
@@ -111,7 +108,7 @@ Take a home with a 5 kW hard cap, 6 kW of panels, a 10 kWh battery, a water heat
 
 **16:00.** The car is full and the sun is fading. The battery stores the remaining surplus and idles when the sun fades.
 
-**18:00.** Dinner, floor heating and the dishwasher push the house past its safe pace. The battery is last in the list, so its turn comes first: `Supplying` · `Holding your limit so your devices keep running`, and the hero reads `Sessy battery is supplying 2.4 kW to hold your limit.` No device is turned down, and the hour stays under 5 kW.
+**18:00.** Dinner, floor heating and the dishwasher push the house past its safe pace. PELS uses available battery power to cover the peak. The battery shows `Supplying` · `Holding your limit so your devices keep running`, and the hero reads `Sessy battery is supplying 2.4 kW to hold your limit.` No device is turned down, and the hour stays under 5 kW.
 
 **21:30.** The battery is empty. PELS limits the floor heating in priority order, exactly as it would without a battery, and the hard cap still holds.
 

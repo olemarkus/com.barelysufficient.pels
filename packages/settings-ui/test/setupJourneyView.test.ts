@@ -130,16 +130,16 @@ describe('Choose what PELS does, battery row', () => {
     expect(on.root.textContent).toContain('Planned for 9.6 kWh usable capacity. The plan runs once you start managing.');
   });
 
-  it('says batteries plan together in priority order only while another battery also plans', () => {
+  it('explains scheduled battery priority only while another battery also plans', () => {
     const alone = renderPicker([battery({
       battery: { state: 'ready', enabled: true, capacityKWh: 9.6, simulating: false, othersPlanned: false },
     })]);
-    expect(alone.root.textContent).not.toContain('in priority order');
+    expect(alone.root.textContent).not.toContain('highest in your priority list plans first');
     const together = renderPicker([battery({
       id: 'other',
       battery: { state: 'ready', enabled: true, capacityKWh: 9.6, simulating: false, othersPlanned: true },
     })]);
-    expect(together.root.textContent).toContain('PELS plans your batteries together, in priority order');
+    expect(together.root.textContent).toContain('highest in your priority list plans first');
   });
 
   it('says why PELS cannot plan the battery instead of offering the switch', () => {

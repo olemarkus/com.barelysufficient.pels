@@ -494,15 +494,16 @@ reports the value PELS would restore was handed back, not taken over.
 Deferred hand-backs still reserve held discharge
 against new starts, without adding that discharge to the shedding deficit.
 
-A battery is limited only by shedding, at its own place in the priority order
-(`lib/plan/shedding/storageCandidate.ts`; owner ruling 2026-10-06): there is no
-battery write ahead of shedding selection. It is never in the shed set, so the
-executor never sees a `shedAction` for it: its setpoint leaves selection as
-`storageSetpoints`, becomes a limit hold in `lib/plan/battery/storageLimit.ts`,
-and reaches the storage lane as an ordinary `StorageDecision`. The restore
-lane restores managed idle in priority order. Ordinary measured planning
-resumes solar charging or the price plan. The battery owner persists the
-hand-back request before writing so a restart can finish it.
+Shedding selects battery relief for a limit. The physical relief budget gives
+grid-charge reductions and available bounded discharge the first turn. Ranked
+solar charge keeps its Modes turn. Under daily-only pressure shedding can cap
+charge and the continuous plan decides scheduled discharge. The planner returns
+the signed target through `storageSetpoints` and materializes a limit hold in
+`lib/plan/battery/storageLimit.ts`. The storage lane issues the resulting
+`StorageDecision` through the actuator. The restore lane returns the battery
+to managed idle in priority order. Ordinary measured planning resumes solar
+charging or the price plan. The battery owner persists the hand-back request
+before writing so a restart can finish it.
 
 Binary and stepped actuator outcomes distinguish issued requests from acknowledgement.
 Every issued binary/step outcome carries `acknowledged`; a step also carries its

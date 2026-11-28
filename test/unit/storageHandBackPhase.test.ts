@@ -1,5 +1,5 @@
 import { withoutStorageWithheld } from '../../lib/plan/battery/storageLimit';
-import { decideStorageRelief } from '../../lib/plan/battery/storageRelief';
+import { decideStorageReliefFixture as decideStorageRelief } from '../helpers/storageReliefFixture';
 import { phaseExportRoomKw } from '../../lib/plan/phase/phasePower';
 import { resolvePhaseRoomAxis } from '../../lib/plan/phase/phaseRoom';
 import { buildMeasuredPower } from '../utils/planContextPowerFixture';
@@ -39,7 +39,7 @@ function restoresToIdle(held: StorageLeverState, phaseRoomKw = 2, continuousPlan
     reading: 'observed', claimHeld: true, signedPowerW: held.setpointW, observedAtMs: 10_000,
     powerLimitControl: true, admissible: true, handBackDeferred: false, verdict: 'responding',
     range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
-    deliveryCeilingW: 2500, chargeCeilingW: 2500, ownModeGridCharge: { kind: 'observed' },
+    deliveryCeilingW: 2500, canSetDischargePower: true, chargeCeilingW: 2500, ownModeGridCharge: { kind: 'observed' },
     continuousPlan,
   };
   const battery = { ...buildPlanInputDevice({ id: 'battery', phaseFootprint: device.phaseFootprint }), storage };

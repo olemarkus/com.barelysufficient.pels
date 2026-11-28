@@ -185,6 +185,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     // cluster this fixture does not carry; as a load it never is.
     const context = buildContext([batteryInputDevice(), heaterInputDevice()]);
     const { candidates } = buildSheddingCandidates({
+      nowTs: context.nowTs,
       bypassRecentRestore: false,
       devices: context.devices,
       temperatureSetpoints: context.temperatureSetpoints,
@@ -192,7 +193,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       deficitKw: 5,
       limitSource: 'capacity',
       physicalLimitBreached: context.physicalLimitBreached,
-      storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {} },
+      storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {}, surplusOffers: new Map() },
       state: createPlanEngineState(),
       deps: {
         structuredLog: testLogger,
@@ -201,7 +202,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
         getShedBehavior: () => ({ action: 'turn_off' }),
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}, fixedConfirmationWindows),
       },
-    }, context.nowTs);
+    });
     const candidateIds = candidates.map((c) => c.id);
     expect(candidateIds).not.toContain(BATTERY_ID);
     // The controllable heater IS a candidate — the exclusion isn't vacuous.

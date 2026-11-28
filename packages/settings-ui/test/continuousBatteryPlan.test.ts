@@ -131,9 +131,11 @@ test('says how far the measurement is, and shows nothing without one', async () 
   expect(document.querySelector('.battery-plan-measured')).toBeNull();
 });
 
-test('explains the priority order only while other batteries also have the plan on', async () => {
+test('explains scheduled priority only while other batteries also have the plan on', async () => {
   await openBattery();
-  expect(document.body.textContent).toContain(BATTERY_PLAN_ORDER_LINE);
+  expect(document.body.textContent).toContain(
+    'PELS schedules your batteries together. The battery highest in your priority list plans first, and each next battery covers what the others leave. In each planned period the batteries either charge or supply.',
+  );
   await act(async () => setContinuousBatteryPlanDevice(null));
   otherPlans = false;
   cachedDevices = null;

@@ -61,7 +61,7 @@ const pendingFor = (
   devices: PlanInputDevice[],
   powerW = 6_378,
 ): PendingShedRelief => {
-  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {}, { kind: 'capacity' });
+  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {}, { kind: 'capacity', deficitKw: 1 });
   if (pending === null) throw new Error('expected relief to be pending');
   return pending;
 };
@@ -91,13 +91,13 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
     { creditDelivered: false, stepId: '10a' },
   ])('retains the decision-time target across step echo $stepId, creditDelivered=$creditDelivered', ({ creditDelivered, stepId }) => {
     const initial = phaseCharger('16a');
-    const chosen = selectShedDevices([phaseCandidate(initial)], 1, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity' });
+    const chosen = selectShedDevices([phaseCandidate(initial)], 1, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity', deficitKw: 1 });
     expect(chosen.shedStepTargets.get('ev')).toBe('10a');
     const latch = latchShedDecision(chosen, null, 6000, NOW - 3000, [initial]);
     expect(latch.stepTargets.get('ev')).toEqual({ stepId: '10a', expectedDrawKw: expect.closeTo(2.3, 6) });
 
     const unchanged = phaseCharger(stepId);
-    const pending = resolvePendingShedRelief(latch, [unchanged], 6000, NOW, {}, creditDelivered ? { kind: 'capacity' } : { kind: 'grid', deficitKw: 1 });
+    const pending = resolvePendingShedRelief(latch, [unchanged], 6000, NOW, {}, creditDelivered ? { kind: 'capacity', deficitKw: 1 } : { kind: 'grid', deficitKw: 1 });
     if (pending === null) throw new Error('expected a pending reduction');
     expect(pending.undeliveredKw).toBeCloseTo(1.38, 6);
     expect(pending.totalKw).toBeCloseTo(1.38, 6);
@@ -105,7 +105,7 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
     // A growing deficit may deepen the command, but only the additional
     // 10a→6a relief is new; an echoed 10a must not change the physical scale.
     const beyond = candidatesBeyondPendingRelief([phaseCandidate(unchanged)], pending);
-    const deeper = selectShedDevices(beyond, 0.62, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity' });
+    const deeper = selectShedDevices(beyond, 0.62, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity', deficitKw: 1 });
     expect(deeper.shedStepTargets.get('ev')).toBe('6a');
     expect(deeper.reliefByDevice.get('ev')?.creditedKw).toBeCloseTo(0.92, 6);
     const relatched = latchShedDecision(deeper, pending, 6000, NOW, [unchanged]);
@@ -115,7 +115,7 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
     ]);
 
     const landed = { ...phaseCharger('6a'), currentDrawKw: 1.38 };
-    expect(resolvePendingShedRelief(relatched, [landed], 3700, NOW + 1000, {}, creditDelivered ? { kind: 'capacity' } : { kind: 'grid', deficitKw: 1 })?.totalKw).toBe(0);
+    expect(resolvePendingShedRelief(relatched, [landed], 3700, NOW + 1000, {}, creditDelivered ? { kind: 'capacity', deficitKw: 1 } : { kind: 'grid', deficitKw: 1 })?.totalKw).toBe(0);
   });
 });
 
@@ -128,7 +128,7 @@ it('prices further cuts from a held single-phase cap at the lower rung’s rated
     currentDrawKw: 4.4,
     steppedLoadProfile,
   });
-  const chosen = selectShedDevices([phaseCandidate(device)], 0.6, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity' });
+  const chosen = selectShedDevices([phaseCandidate(device)], 0.6, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity', deficitKw: 1 });
   const latch = latchShedDecision(chosen, null, 6000, NOW - 3000, [device]);
   expect(latch.stepTargets.get('ev')).toEqual({ stepId: '16a', expectedDrawKw: 3.68 });
 
@@ -152,11 +152,11 @@ describe('resolvePendingShedRelief', () => {
       powerW: 4000, stepTargets: new Map(),
       decisions: new Map([['relay', [...decided(1), ...decided(1, NOW - 1000)]]]),
     };
-    const pending = resolvePendingShedRelief(latch, [{ ...relay, relayShedNoAck: noAck }], 4000, NOW, {}, { kind: 'capacity' });
+    const pending = resolvePendingShedRelief(latch, [{ ...relay, relayShedNoAck: noAck }], 4000, NOW, {}, { kind: 'capacity', deficitKw: 1 });
     expect(pending?.totalKw).toBe(1);
     expect(pending?.held.get('relay')).toEqual(decided(1, NOW - 1000));
     // Clearing the execution outcome after a subsequent accepted command cannot revive the old promise.
-    expect(resolvePendingShedRelief(pending!.retained, [relay], 4000, NOW + 1000, {}, { kind: 'capacity' })?.totalKw).toBe(1);
+    expect(resolvePendingShedRelief(pending!.retained, [relay], 4000, NOW + 1000, {}, { kind: 'capacity', deficitKw: 1 })?.totalKw).toBe(1);
   });
 
   it.each(['grid', 'hard_cap'] as const)('retires historical demand credit permanently under %s pressure', (pressure) => {
@@ -168,7 +168,7 @@ describe('resolvePendingShedRelief', () => {
       powerW: 18_000, stepTargets: new Map(),
       decisions: new Map([['heat', [{ kind: 'demand', decidedAtMs: NOW - 1000, creditedKw: 6 }]]]),
     };
-    const soft = resolvePendingShedRelief(latch, [device], 18_000, NOW, {}, { kind: 'capacity' });
+    const soft = resolvePendingShedRelief(latch, [device], 18_000, NOW, {}, { kind: 'capacity', deficitKw: 1 });
     expect(soft?.totalKw).toBe(6);
     const urgent = resolvePendingShedRelief(latch, [device], 18_000, NOW, {}, { kind: pressure, deficitKw: 6 });
     if (urgent === null) throw new Error('expected the retired latch');
@@ -181,11 +181,11 @@ describe('resolvePendingShedRelief', () => {
       ...device, currentTarget: 22, targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
     });
     const later = resolvePendingShedRelief(
-      urgent.retained, [lateObservation], 18_000, NOW + 1000, {}, { kind: 'capacity' },
+      urgent.retained, [lateObservation], 18_000, NOW + 1000, {}, { kind: 'capacity', deficitKw: 1 },
     );
     expect(later?.totalKw).toBe(0);
     expect(later?.retained.decisions.get('heat')?.[0]?.kind).toBe('withdrawn_demand');
-    expect(resolvePendingShedRelief(urgent.retained, [device], 18_000, NOW + 30_000, {}, { kind: 'capacity' })?.retained.decisions.size).toBe(0);
+    expect(resolvePendingShedRelief(urgent.retained, [device], 18_000, NOW + 30_000, {}, { kind: 'capacity', deficitKw: 1 })?.retained.decisions.size).toBe(0);
   });
 
   it.each([true, false])('keeps an older withdrawn demand fall ahead of later electrical relief, demand already delivered=%s', (delivered) => {
@@ -474,7 +474,7 @@ describe('resolvePendingShedRelief', () => {
   });
 
   it('answers nothing before a shed has latched', () => {
-    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {}, { kind: 'capacity' })).toBeNull();
+    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {}, { kind: 'capacity', deficitKw: 1 })).toBeNull();
   });
 });
 
@@ -567,7 +567,7 @@ describe('latchShedDecision', () => {
       LATCHED_READING_W - 5_980,
       NOW + 10_000,
       {},
-      { kind: 'capacity' },
+      { kind: 'capacity', deficitKw: 1 },
     );
     expect(landed?.totalKw).toBe(0);
     expect(landed?.held.size).toBe(0);

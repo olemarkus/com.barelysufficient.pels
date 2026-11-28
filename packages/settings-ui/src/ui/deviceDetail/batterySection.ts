@@ -52,10 +52,9 @@ const syncDrivableRows = (drivable: boolean): void => {
  * Managed and Power-limit control switches are the shared ones, moved in by
  * the section layout; only the Power-limit hint changes with the kind.
  *
- * A battery PELS cannot drive has no Power-limit control and its place
- * protects nothing, so both rows are hidden; its status card already says
- * why (`resolveBatteryUndrivableLine`). Every other page gets the switch row
- * back. A battery PELS drives through its app's Flow actions also offers the
+ * A watch-only battery uses its status card to explain what PELS can see
+ * (`resolveBatteryUndrivableLine`). Hide the Power-limit control and priority
+ * rows on that page. A battery PELS drives through Flow actions also offers the
  * owner's Homey API key here (`batteryApiKey.tsx`).
  */
 export const renderDeviceDetailBattery = (device: SettingsUiDeviceDetailItem | null): void => {
@@ -77,40 +76,28 @@ export const renderDeviceDetailBattery = (device: SettingsUiDeviceDetailItem | n
   const value = document.getElementById('device-detail-battery-priority-value');
   if (value) value.textContent = `${position.rank} of ${position.total} in ${position.mode}`;
   const hint = document.getElementById('device-detail-battery-priority-hint');
-  if (hint) hint.textContent = resolveBatteryPriorityHint(position, resolveBatteryPowerLimitOn(device.id));
+  if (hint) hint.textContent = resolveBatteryPriorityHint(resolveBatteryPowerLimitOn(device.id));
 };
 
-/**
- * What the battery's place means, true for where it is: only last in the list
- * does it cover the whole house before any device is limited, and only with
- * Power-limit control on does its place protect anything at all.
- */
-export const resolveBatteryPriorityHint = (
-  position: { rank: number; total: number },
-  powerLimitOn: boolean,
-): string => {
-  if (!powerLimitOn) {
-    return 'Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.';
-  }
-  return position.rank === position.total
-    ? 'Last in the list, it covers the whole house before any device is limited.'
-    : 'Devices below it are limited first, so it protects only those above it.';
-};
+/** Explain what priority controls and how the battery helps hold a power limit. */
+export const resolveBatteryPriorityHint = (powerLimitOn: boolean): string => (
+  powerLimitOn
+    ? 'Your priority order decides when the battery gets spare solar. '
+      + 'When your home needs help holding its power limit, PELS uses available battery power before limiting devices.'
+    : 'Turn on Power-limit control to let the battery help hold your power limit '
+      + 'and store spare solar in priority order.'
+);
 
 /**
  * The Modes page note under a priority list holding a battery PELS can
- * drive: each such battery by name, with what its place in this list means
- * (`resolveBatteryPriorityHint`). `null` when the list holds none, so a
- * battery PELS can only watch gets no promise from its place.
+ * drive, with its name and the same explanation shown on its device page.
+ * Returns `null` when the list contains only loads or watch-only batteries.
  */
 export const resolvePriorityBatteryNote = (orderedDeviceIds: readonly string[]): string | null => {
-  const lines = orderedDeviceIds.flatMap((deviceId, index) => {
+  const lines = orderedDeviceIds.flatMap((deviceId) => {
     const device = state.latestDevices.find((entry) => entry.id === deviceId);
     if (!device || !isHomeBatteryClassKey(device.deviceClass) || device.batteryControl !== 'drivable') return [];
-    const hint = resolveBatteryPriorityHint(
-      { rank: index + 1, total: orderedDeviceIds.length },
-      resolveBatteryPowerLimitOn(deviceId),
-    );
+    const hint = resolveBatteryPriorityHint(resolveBatteryPowerLimitOn(deviceId));
     return [`${formatDisplayDeviceName(device.name)}: ${hint.charAt(0).toLowerCase()}${hint.slice(1)}`];
   });
   return lines.length > 0 ? lines.join(' ') : null;

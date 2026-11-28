@@ -184,9 +184,9 @@ See [Solar and Self-Consumption](/solar).
 A battery paired with Homey whose app lets PELS set how much it charges or
 discharges. It is a managed device with its own Overview card (**Supplying**,
 **Charging**, **Limited · Charging** or **Own mode**) and a place in your priority list, last by default.
-PELS uses it to share your solar surplus and, on its turn, to hold your limit:
-first by capping its charge, then by discharging. **Managed by PELS** turns this
-on or off, and **Power-limit control** decides whether it may hold your limit. See
+PELS shares spare solar in priority order and uses available battery power to
+hold your power limit before limiting other devices. **Managed by PELS** turns
+this on or off, and **Power-limit control** decides whether it may hold your limit. See
 [Solar and a home battery](/use-cases/homey-solar-home-battery).
 
 ### Use solar surplus / Run on solar surplus

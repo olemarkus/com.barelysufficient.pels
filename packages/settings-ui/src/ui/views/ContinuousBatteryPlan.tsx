@@ -100,7 +100,7 @@ const REASON_COPY: Record<BatteryEnergyPlanPeriod['reason'], string> = {
 };
 
 /** Shown while other batteries also have the plan on: they plan together, in priority order. */
-export const BATTERY_PLAN_ORDER_LINE = 'PELS plans your batteries together, in priority order: a battery higher in the list goes first, and the next covers what it leaves. No battery charges from another.';
+export const BATTERY_PLAN_ORDER_LINE = 'PELS schedules your batteries together. The battery highest in your priority list plans first, and each next battery covers what the others leave. In each planned period the batteries either charge or supply.';
 
 /** The money unit of a price unit such as `EUR/kWh`: what an estimated cost reduction is counted in. */
 const moneyUnitOf = (priceUnit: string): string => priceUnit.replace(/\s*\/\s*kwh$/i, '').trim();

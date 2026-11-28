@@ -58,7 +58,7 @@ const batteryOn = (id: string, footprint: PhaseFootprint, signedPowerW: number) 
     admissible: true,
     powerLimitControl: true,
     verdict: 'unverified' as const,
-    deliveryCeilingW: 2500,
+    deliveryCeilingW: 2500, canSetDischargePower: true,
     chargeCeilingW: 2500,
     ownModeGridCharge: { kind: 'observed' as const },
   },
@@ -190,7 +190,7 @@ describe('main fuse phase protection in the planner', () => {
         admissible: true,
         powerLimitControl: true,
         verdict: 'unverified' as const,
-        deliveryCeilingW: 2500,
+        deliveryCeilingW: 2500, canSetDischargePower: true,
         chargeCeilingW: 2500,
         ownModeGridCharge: { kind: 'observed' as const },
       },
@@ -306,6 +306,23 @@ describe('main fuse phase protection in the planner', () => {
     expect(state.storageLeverByDevice.battery?.setpointW).toBeLessThan(0);
     // Its deficit is about 1 kW, well inside what L1 imports, so it stops there.
     expect(state.storageLeverByDevice.battery?.setpointW).toBeGreaterThan(-2000);
+  });
+
+  it('crosses from grid charge into bounded discharge before limiting the load on that phase', async () => {
+    const state = createPlanEngineState();
+    const battery = batteryOn('battery', L1, 500);
+    const plan = await buildCycle(state, [6.2, 1, 1]).buildDevicePlanSnapshot([
+      load('heater', 2, L1, 1),
+      {
+        ...battery,
+        storage: {
+          ...battery.storage,
+          continuousPlan: { reason: 'charge_grid', setpointW: 500, validUntilMs: Date.now() + 60_000 },
+        },
+      } as never,
+    ]);
+    expect(state.storageLeverByDevice.battery?.setpointW).toBeLessThan(0);
+    expect(planned(plan, 'heater')?.plannedState).toBe('keep');
   });
 
   it('only cuts the charge of a battery on an unknown phase', async () => {

@@ -98,7 +98,7 @@ const laggingDischargeCeilingW = (
  * above it left, less what the pool already counted of its own charge, plus
  * that charge, less the draw margin.
  */
-const offeredChargeW = (
+export const offeredChargeW = (
   storage: ObservedStorageInput,
   offer: Pick<StorageSurplusOffer, 'availableW' | 'addedBackW'>,
   marginW: number,
@@ -170,6 +170,21 @@ export const continuousLever = (
     ...dischargeCredit(storage, previous, setpointW, nowTs),
   };
 };
+
+/** Keep measured charging and the ranked solar share while deferring an increase from the grid. */
+export function deferGridChargeIncrease(
+  storage: ObservedStorageInput, lever: StorageLeverState, offer: StorageSurplusOffer,
+): StorageLeverState {
+  if (lever.purpose !== 'continuous' || lever.continuousReason !== 'charge_grid') return lever;
+  const solarW = offeredChargeW(storage, offer, drawMarginWFor(storage));
+  const capW = Math.max(0, storage.signedPowerW, solarW);
+  if (lever.setpointW <= capW) return lever;
+  // On a meter-following surface the maximum is the fixed grid-charge mode.
+  const { stepW, maxW } = storage.range;
+  const surplusModeW = solarW > 0 && stepW + 1 <= maxW ? stepW : 0;
+  const setpointW = storage.canSetDischargePower ? floorStorageSetpointW(capW, storage.range) : surplusModeW;
+  return { ...lever, setpointW };
+}
 
 /** The routine policy stores only spare solar, and otherwise keeps the claim at 0 W. */
 export function baselineSolarChargeW(

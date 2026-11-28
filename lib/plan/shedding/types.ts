@@ -1,3 +1,4 @@
+import type { StorageSurplusOffer } from '../planSurplusAbsorb';
 import type { PlanLimitSource } from '../planContext';
 import type CapacityGuard from '../../power/capacityGuard';
 import type { PowerTrackerState } from '../../power/tracker';
@@ -153,6 +154,7 @@ export type PlanSheddingResult = {
 };
 
 export type ShedCandidateParams = {
+  nowTs: number,
   /** Present only on a newly observed whole-home reading that can authorize a paced retry. */
   relayRetryMeterAtMs?: number;
   bypassRecentRestore: boolean;
@@ -207,6 +209,7 @@ export type StorageLimitInput =
     kind: 'measured';
     drawKw: number;
     levers: Readonly<Record<string, StorageLeverState>>;
+    surplusOffers: ReadonlyMap<string, StorageSurplusOffer>;
     /** The phase pass's bound per battery: its phase's import, and whether it may discharge at all. */
     boundFor?: (device: PlanInputDevice) => { drawKw: number; chargeOnly: boolean };
   }
@@ -260,10 +263,9 @@ export type TemperatureShedCandidate = BaseShedCandidate & {
 export type LoadShedCandidate = BinaryShedCandidate | SteppedShedCandidate | TemperatureShedCandidate;
 
 /**
- * A home battery, offered at its own place in the priority order
- * (`storageCandidate.ts`). Its limiting ladder runs from its charge, through
- * 0 W, to its deepest discharge: limiting it first caps its charge, then
- * discharges it, in one decision. It carries no load fields: it is never in
+ * A home battery's signed relief ladder, from its charge through 0 W to its
+ * deepest allowed discharge. Selection may stage a charge cut and a discharge
+ * in separate turns and publish one final setpoint. It carries no load fields: it is never in
  * the shed set and the executor never sees a shed for it.
  */
 export type StorageShedCandidate = {

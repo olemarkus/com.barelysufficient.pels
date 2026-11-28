@@ -1,4 +1,4 @@
-import { spendLimitHeadroom, type LimitHeadroom } from '../planContext';
+import { StorageDischargeBudget } from './storageDischargeBudget';
 import { getDebugEmitter } from '../../logging/logger';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type SheddingOutcome } from '../planState';
@@ -7,12 +7,10 @@ import type { MeasuredPower, PlanContext } from '../planContext';
 import { requireLatchedMeterReading } from '../../power/lastTotalPower';
 import {
   type PlanSheddingResult,
-  type ShedCandidateParams,
   type SheddingDeps,
   type SheddingOvershootInput,
   type SheddingPlan,
   type StorageSetpoint,
-  type StorageShedTerm,
 } from './types';
 import type { StorageRelief } from '../battery/storageRelief';
 import {
@@ -31,13 +29,12 @@ import { mergeShedDecisions, resolveShedReason, selectShedDevices, type ShedSele
 import {
   buildShedCandidateParams,
   buildSheddingCandidates,
-  resolveExhaustedHourAnswer,
 } from './candidates';
 import { isDrivableLimitScope } from './storageCandidate';
 import { resolveContinuousChargeRelief } from './continuousChargeRelief';
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
-import { resolveShedPressure, type ShedPressure } from './pressure';
+import type { ShedPressure } from './pressure';
 import { resolveRelayShedDecisions, retainNoAckShedPosture } from './relayShedDecision';
 import { runPhaseShedPass } from '../phase/phaseShedPass';
 import { readLastResortOwnedOffAtMs, selectLastResortCut } from './lastResort';
@@ -61,11 +58,12 @@ export async function buildSheddingPlan(
   storage: StorageRelief,
 ): Promise<SheddingPlan> {
   const { nowTs } = context;
-  const scalar = planShedding(context, power, state, deps, overshoot, storage);
+  const dischargeBudget = new StorageDischargeBudget(context, power, storage);
+  const scalar = planShedding(context, power, state, deps, overshoot, storage, dischargeBudget);
   const phase = runPhaseShedPass(context, power, state, deps, storage, {
     decidedIds: new Set([...scalar.shedSet, ...scalar.storageSetpoints.keys()]),
     undeliveredKw: resolveScalarInFlightRelief(context, state, scalar, storage),
-  });
+  }, dischargeBudget);
   const relayShedDecisions = resolveRelayShedDecisions(context, power, state, scalar, phase,
     overshoot.shedActionable || state.capacityPeriodSpentFor(context));
   const phaseMerged = mergeShedDecisions(scalar, { ...phase, reliefByDevice: new Map() });
@@ -137,10 +135,6 @@ function resolveScalarInFlightRelief(
   return resolveUndeliveredScalarReliefKw(latch, context.devices, setpointsW, context.nowTs);
 }
 
-function shouldPlanShedding(headroom: LimitHeadroom): boolean {
-  return headroom.kind === 'on' && headroom.kw < 0;
-}
-
 function emptySheddingResult(outcome: SheddingOutcome): PlanSheddingResult {
   return {
     shedSet: new Set<string>(),
@@ -159,40 +153,38 @@ function planShedding(
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
   storage: StorageRelief,
+  dischargeBudget: StorageDischargeBudget,
 ): PlanSheddingResult {
   const { nowTs } = context;
   const measurement = requireLatchedMeterReading(deps.powerTracker);
-  const pressure = resolveShedPressure(power, context.capacity, storage.shed);
+  const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
+  const { pressure } = candidateParams;
   const pendingCharge = resolveContinuousChargeRelief(state, context.devices, storage, pressure, measurement, nowTs);
-  const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
+  const entry = resolveShedEntry(candidateParams, overshoot);
   if (entry.kind === 'none') return emptySheddingResult(retainPendingLatch(pendingCharge));
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
 
-  const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
-  const gathered = buildSheddingCandidates(candidateParams, nowTs);
+  const gathered = buildSheddingCandidates(candidateParams);
   gathered.diagnostics.emit();
   const walked = restrictToLeadingStorage(gathered, leadingStorageOnly);
-  // The grace defers every device: with no battery ranked ahead of them there
-  // is nothing to decide, exactly as without a battery.
+  // A funded wait leaves ordinary loads and ranked solar cuts alone.
   if (leadingStorageOnly && walked.candidates.length === 0) {
     return emptySheddingResult(retainPendingLatch(pendingCharge));
   }
-  const needed = candidateParams.deficitKw;
 
   const measurementDecision = resolveSameMeasurementSheddingDecision(
     state, context.devices, measurement, nowTs, pressure, storage.levers,
     pendingCharge === null ? null : pendingCharge.retained,
   );
   // Shedding every candidate goes on every cycle regardless of the sample: the
-  // deficit is the whole hour's, not this reading's. An hour a battery answers
-  // in priority order is held to the readings like any deficit.
+  // deficit is the whole period's. A finite import target is still held to the readings.
   if (!shedsEverything && measurementDecision.kind === 'skip_same_sample') {
     return skipSheddingAwaitingMeasurement(candidateParams, walked, measurementDecision.pending, hourlyBudgetExhausted);
   }
   if (!shedsEverything && measurementDecision.kind === 'credit_pending_relief') {
     return shedBeyondPendingRelief(
-      candidateParams, walked, measurementDecision.pending, measurement.atMs, nowTs, hourlyBudgetExhausted,
-      pressure,
+      candidateParams, walked, measurementDecision.pending, measurement.atMs, hourlyBudgetExhausted,
+      pressure, dischargeBudget,
     );
   }
   const escalatedSameSample = measurementDecision.kind === 'proceed' && measurementDecision.escalatedSameSample;
@@ -202,7 +194,7 @@ function planShedding(
   const { candidates } = walked;
   const result = selectShedDevices(
     candidates,
-    needed,
+    candidateParams.deficitKw,
     // The flag short-circuits inside `resolveShedReason`, so the limit source
     // is passed plain — the old `exhausted ? 'daily' : …` alias only fed the
     // pre-2026-08 reason mapping.
@@ -212,7 +204,7 @@ function planShedding(
       hourlyBudgetExhausted,
     ),
     shedsEverything,
-    pressure,
+    pressure, dischargeBudget,
   );
 
   if (isEmptySelection(result)) {
@@ -223,7 +215,7 @@ function planShedding(
         remainingDeficitKw: result.remainingKw,
       };
     }
-    return blockEscalation(context, deps, needed, candidates.length, measurement.atMs, nowTs);
+    return blockEscalation(context, deps, candidateParams.deficitKw, candidates.length, measurement.atMs, nowTs);
   }
   // The reading and the decision it produced latch as one pair (copied:
   // `shedSet` is mutated downstream when holds are merged in).
@@ -239,50 +231,35 @@ function planShedding(
   };
 }
 
-/**
- * Whether this cycle selects at all, and how. An exhausted hour always does:
- * shedding everything, or, with a battery to answer it, down to an import
- * target in priority order. Otherwise only on a deficit, once the shed grace
- * is over. The grace defers a device's shed while the deficit may be a
- * restore PELS itself is driving; limiting a battery ranked ahead of every
- * device costs no comfort, so the grace does not defer that
- * (`leadingStorageOnly`).
- */
 function resolveShedEntry(
-  context: PlanContext,
-  power: MeasuredPower,
-  state: PlanEngineState,
-  overshoot: SheddingOvershootInput,
-  storage: StorageShedTerm,
+  cycle: ReturnType<typeof buildShedCandidateParams>, overshoot: SheddingOvershootInput,
 ): { kind: 'none' } | {
   kind: 'select'; hourlyBudgetExhausted: boolean; shedsEverything: boolean; leadingStorageOnly: boolean;
 } {
-  const hour = resolveExhaustedHourAnswer(context, state, power, storage);
-  if (hour.kind !== 'not_exhausted') {
-    const shedsEverything = hour.kind === 'shed_everything';
-    return { kind: 'select', hourlyBudgetExhausted: true, shedsEverything, leadingStorageOnly: false };
+  if (cycle.period.kind === 'import_target' || cycle.period.kind === 'shed_everything') {
+    return {
+      kind: 'select', hourlyBudgetExhausted: true,
+      shedsEverything: cycle.period.kind === 'shed_everything', leadingStorageOnly: false,
+    };
   }
-  const adjustedHeadroom = spendLimitHeadroom(power.headroom, -storage.netCreditKw);
-  if (!shouldPlanShedding(adjustedHeadroom)) return { kind: 'none' };
+  if (cycle.deficitKw <= 0) return { kind: 'none' };
   if (overshoot.shedActionable) {
     return { kind: 'select', hourlyBudgetExhausted: false, shedsEverything: false, leadingStorageOnly: false };
   }
-  const graceLimitsStorage = overshoot.actionable && context.devices.some(isDrivableLimitScope);
-  return graceLimitsStorage
+  return overshoot.actionable && cycle.devices.some(isDrivableLimitScope)
     ? { kind: 'select', hourlyBudgetExhausted: false, shedsEverything: false, leadingStorageOnly: true }
     : { kind: 'none' };
 }
 
-/**
- * During the shed grace only the batteries ranked ahead of every load may be
- * limited: the ranked candidates up to the first load. Without the grace the
- * walk is the whole ranking.
- */
+/** Physical grace permits the first battery turn. Daily grace only allows leading charge cuts. */
 function restrictToLeadingStorage(
   walked: ReturnType<typeof buildSheddingCandidates>,
   leadingStorageOnly: boolean,
 ): ReturnType<typeof buildSheddingCandidates> {
   if (!leadingStorageOnly) return walked;
+  if (walked.physicalLimitBreached) {
+    return { ...walked, candidates: walked.candidates.slice(0, walked.physicalStorageCount) };
+  }
   const firstLoad = walked.candidates.findIndex((candidate) => candidate.kind !== 'storage');
   return { ...walked, candidates: firstLoad === -1 ? walked.candidates : walked.candidates.slice(0, firstLoad) };
 }
@@ -296,7 +273,7 @@ function restrictToLeadingStorage(
  * Unreachable in an hour that sheds everything: it never withholds.
  */
 function skipSheddingAwaitingMeasurement(
-  candidateParams: ShedCandidateParams,
+  candidateParams: ReturnType<typeof buildShedCandidateParams>,
   candidateSummary: ReturnType<typeof buildSheddingCandidates>,
   held: PendingShedRelief | null,
   hourlyBudgetExhausted: boolean,
@@ -318,7 +295,7 @@ function skipSheddingAwaitingMeasurement(
   return {
     ...decision,
     outcome: retainPendingLatch(held),
-    pendingReliefKw: held.totalKw,
+    pendingReliefKw: candidateParams.prioritizeStorage ? held.electricalKw : held.totalKw,
   };
 }
 
@@ -343,22 +320,23 @@ function skipSheddingAwaitingMeasurement(
  * exhausted hour down to, from which the pending relief is taken.
  */
 function shedBeyondPendingRelief(
-  candidateParams: ShedCandidateParams,
+  candidateParams: ReturnType<typeof buildShedCandidateParams>,
   candidateSummary: ReturnType<typeof buildSheddingCandidates>,
   pending: PendingShedRelief,
   measurementTs: number,
-  nowTs: number,
   hourlyBudgetExhausted: boolean,
   pressure: ShedPressure,
+  dischargeBudget: StorageDischargeBudget,
 ): PlanSheddingResult {
-  const { deficitKw: needed, limitSource } = candidateParams;
+  const { deficitKw: needed, limitSource, nowTs } = candidateParams;
   const { candidates } = candidateSummary;
   const reason = resolveShedReason(limitSource, candidateSummary.physicalLimitBreached, hourlyBudgetExhausted);
   const held = holdPendingShedDecision(candidates, pending, reason);
-  const residualKw = needed - pending.totalKw;
+  const pendingKw = candidateParams.prioritizeStorage ? pending.electricalKw : pending.totalKw;
+  const residualKw = needed - pendingKw;
   const creditFields = {
     neededKw: needed,
-    pendingReliefKw: pending.totalKw,
+    pendingReliefKw: pendingKw,
     undeliveredReliefKw: pending.undeliveredKw,
     deliveredReliefKw: pending.deliveredKw,
     realisedKw: pending.realisedKw,
@@ -367,7 +345,7 @@ function shedBeyondPendingRelief(
   if (residualKw <= PENDING_RELIEF_EPSILON_KW) {
     debug({ event: 'plan_shed_held_pending_relief', ...creditFields });
     return {
-      ...held, outcome: retainPendingLatch(pending), pendingReliefKw: pending.totalKw,
+      ...held, outcome: retainPendingLatch(pending), pendingReliefKw: pendingKw,
     };
   }
   const beyond = selectShedDevices(
@@ -375,7 +353,7 @@ function shedBeyondPendingRelief(
     residualKw,
     reason,
     false,
-    pressure,
+    pressure, dischargeBudget,
   );
   debug({
     event: 'plan_shed_beyond_pending_relief',
@@ -394,7 +372,7 @@ function shedBeyondPendingRelief(
       escalatedSameSample: false,
     };
   return {
-    ...merged, outcome, pendingReliefKw: pending.totalKw, remainingDeficitKw: beyond.remainingKw,
+    ...merged, outcome, pendingReliefKw: pendingKw, remainingDeficitKw: beyond.remainingKw,
   };
 }
 

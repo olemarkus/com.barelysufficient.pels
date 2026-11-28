@@ -160,6 +160,7 @@ export type PendingShedRelief = {
   /** Per held device that banked relief, the part its own meter says it has not delivered yet. */
   readonly undeliveredKwByDevice: ReadonlyMap<string, number>;
   readonly totalKw: number;
+  readonly electricalKw: number;
   /** Credited relief the held devices have not delivered, by their own meters. */
   readonly undeliveredKw: number;
   /** Credited relief they have delivered, by their own meters. */
@@ -276,6 +277,9 @@ export function resolvePendingShedRelief(
       .filter(({ share }) => outstandingKw.has(share.deviceId))
       .map(({ share }) => [share.deviceId, share.undeliveredKw] as const)),
     totalKw: sumKw([...outstandingKw.values()]),
+    electricalKw: sumKw(crediting.flatMap(({ share, outstandingKw: kw }) => (
+      share.decision.kind === 'electrical' && outstandingKw.has(share.deviceId) ? [kw] : []
+    ))),
     undeliveredKw: sumKw(liveShares.map((share) => share.undeliveredKw)),
     deliveredKw: sumKw(liveShares.map((share) => share.deliveredKw)),
     realisedKw,

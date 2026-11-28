@@ -1,3 +1,5 @@
+import { storageCandidateBelow } from '../shedding/storageCandidate';
+import type { StorageDischargeBudget } from '../shedding/storageDischargeBudget';
 /**
  * The phase shed pass (`notes/main-fuse.md`): after the scalar selection, for
  * each phase over its share of the main fuse, spend the candidates that touch
@@ -111,6 +113,7 @@ function holdDecision(
 type PassCycle = {
   context: PlanContext;
   baseParams: ShedCandidateParams;
+  dischargeBudget: StorageDischargeBudget;
   phases: readonly PhaseMeasurement[];
   /** Open deficit per phase, kW; only breached phases have an entry. */
   deficits: Map<PhaseName, number>;
@@ -145,14 +148,14 @@ function resolveBatteryBound(
 }
 
 function candidatesFor(cycle: PassCycle, phase: PhaseMeasurement): ShedCandidate[] {
-  const { baseParams, nowTs, excluded, footprintById } = cycle;
+  const { baseParams, excluded, footprintById } = cycle;
   const deficitKw = cycle.deficits.get(phase.phase) ?? 0;
   const storageLimit = baseParams.storageLimit.kind === 'measured'
     ? { ...baseParams.storageLimit, boundFor: (device: PlanInputDevice) => resolveBatteryBound(cycle, phase, device) }
     : baseParams.storageLimit;
   const { candidates } = buildSheddingCandidates({
     ...baseParams, needed: deficitKw, deficitKw, storageLimit,
-  }, nowTs);
+  });
   return candidates.filter((candidate) => {
     if (excluded.has(candidate.id)) return false;
     const footprint = footprintById.get(candidate.id);
@@ -209,13 +212,20 @@ function spendCandidate(
   footprint: PhaseFootprint,
   share: number,
 ): void {
+  const staged = cycle.outcome.storageSetpoints.get(candidate.id);
+  if (staged !== undefined && !staged.banked) return;
+  const next = staged !== undefined && candidate.kind === 'storage'
+    ? storageCandidateBelow(candidate, staged.setpointW) : candidate;
   const deficitKw = cycle.deficits.get(phase) ?? 0;
   const reason: DeviceReason = { code: PLAN_REASON_CODES.phaseLimit, phase };
-  const selection = selectShedDevices([candidate], deficitKw / share, reason, false, { kind: 'grid', deficitKw });
+  const selection = selectShedDevices(
+    [next], deficitKw / share, reason, false, { kind: 'grid', deficitKw }, cycle.dischargeBudget,
+  );
   const relief = selection.reliefByDevice.get(candidate.id);
   if (relief === undefined) return;
-  const creditedKw = resolveCreditedKw(candidate, selection, relief.creditedKw);
-  recordSpend(cycle, candidate, footprint, selection, reason, creditedKw);
+  const creditedKw = resolveCreditedKw(next, selection, relief.creditedKw);
+  const earlierKw = staged === undefined ? 0 : cycle.nextDecisions.get(candidate.id)?.reliefKw ?? 0;
+  recordSpend(cycle, next, footprint, selection, reason, earlierKw + creditedKw);
   deductRelief(cycle, footprint, creditedKw);
   if (candidate.kind === 'binary' && candidate.relayShedNoAck) return;
   cycle.spentOnPhases.add(phase);
@@ -317,6 +327,7 @@ export function runPhaseShedPass(
   deps: SheddingDeps,
   storage: StorageRelief,
   scalar: ScalarShedFacts,
+  dischargeBudget: StorageDischargeBudget,
 ): PhaseShedOutcome {
   const { nowTs, devices } = context;
   if (power.phase.kind === 'off') {
@@ -340,6 +351,7 @@ export function runPhaseShedPass(
   const deficits = resolveDeficits(phases, credits);
   const cycle: PassCycle = {
     context,
+    dischargeBudget,
     baseParams: {
       ...buildShedCandidateParams(context, power, state, deps, storage),
       bypassRecentRestore: true,

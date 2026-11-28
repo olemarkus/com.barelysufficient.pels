@@ -76,6 +76,7 @@ const battery = (
     admissible: true,
     verdict: 'unverified',
     deliveryCeilingW: 2500,
+    canSetDischargePower: true,
     chargeCeilingW: 2500,
     ownModeGridCharge: { kind: 'observed' },
     powerLimitControl: true,
@@ -266,8 +267,8 @@ const plannedState = (plan: DevicePlan, id: string): string | undefined => (
   plan.devices.find((device) => device.id === id)?.plannedState
 );
 
-const storageDecision = (plan: DevicePlan): StorageDecision | undefined => {
-  const device = plan.devices.find((entry) => entry.id === 'battery');
+const storageDecision = (plan: DevicePlan, id = 'battery'): StorageDecision | undefined => {
+  const device = plan.devices.find((entry) => entry.id === id);
   return device !== undefined && hasStorageDecision(device) ? device.storageDecision : undefined;
 };
 
@@ -447,13 +448,39 @@ describe('storage relief in the plan build', () => {
     expect(plan.devices.find((device) => device.id === 'battery')?.plannedState).not.toBe('shed');
   });
 
-  it('first in the order, limits the devices below it first and discharges only for what they leave', async () => {
+  it('discharges before lower-ranked devices and limits them only for its residual', async () => {
     const { build } = buildHarness({ paceKw: 3 });
-    // A 3 kW deficit: the 2 kW heater ranked below it goes first, the battery covers the rest.
+    // Its 2.5 kW ceiling leaves 0.5 kW for the heater to cover.
     const plan = await build(6000, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
 
     expect(plannedState(plan, 'heater')).toBe('shed');
-    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1100, stepW: 5 });
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -2500, stepW: 5 });
+  });
+
+  it('uses battery energy only for the physical portion of simultaneous daily pressure', async () => {
+    const { build } = buildHarness({ paceKw: 3, dailyBudget: true });
+    const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
+    expect(plan.meta.softLimitSource).toBe('daily');
+    expect(storageDecision(plan)).toMatchObject({ setpointW: -1300 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+
+    const later = await build(2900, [
+      heater(true, 2, 'heater', 5), battery({ signedPowerW: -1300, claimHeld: true }, { priority: 1 }),
+    ], 10_000);
+    expect(storageDecision(later)).toMatchObject({ setpointW: -1300 });
+    expect(plannedState(later, 'heater')).toBe('shed');
+  });
+
+  it('cuts a lower-ranked load before an allocated solar charge', async () => {
+    const { build } = buildHarness({ paceKw: 1 });
+    const first = await build(-1200, [heater(false, 2, 'heater', 5), battery({}, { priority: 1 })]);
+    expect(storageDecision(first)).toMatchObject({ setpointW: 1100 });
+    const plan = await build(1300, [
+      heater(true, 2, 'heater', 5), battery({ signedPowerW: 1100, claimHeld: true }, { priority: 1 }),
+    ], 10_000);
+    expect(storageDecision(plan)).toMatchObject({ setpointW: expect.any(Number) });
+    expect((storageDecision(plan) as { setpointW: number }).setpointW).toBeGreaterThanOrEqual(0);
+    expect(plannedState(plan, 'heater')).toBe('shed');
   });
 
   it('limits the lower-priority battery first when a higher-priority relay uses available power', async () => {
@@ -464,12 +491,12 @@ describe('storage relief in the plan build', () => {
     expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 700, stepW: 5 });
   });
 
-  it('first in the order, retains its economic charge while the devices below it cover the deficit', async () => {
+  it('cuts grid charging before a lower-ranked device', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({ signedPowerW: 1500, continuousPlan: priceGrid(1500) }, { priority: 1 })]);
 
-    expect(plannedState(plan, 'heater')).toBe('shed');
-    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: 1400 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: 200 });
   });
 
   it('caps part of a charging battery\'s charge for a deficit its charge covers', async () => {
@@ -579,19 +606,19 @@ describe('storage relief in the plan build', () => {
     expect(storageDecision(easing)).toMatchObject({ kind: 'setpoint', setpointW: -1900 });
   });
 
-  it('does not grant activation grace without margin when a device ranks below the battery', async () => {
+  it('does not grant activation grace without margin when battery relief is unavailable', async () => {
     const { build, state } = buildHarness({ paceKw: 3 });
     state.activationAttemptByDevice.heater = {
       startedMs: START_MS - 10_000, cleanWholeHomeSampleSeen: false,
     };
-    const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
+    const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({ deliveryCeilingW: 0 }, { priority: 1 })]);
 
     expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
     expect(plannedState(plan, 'heater')).toBe('shed');
   });
 
 
-  it('answers an exhausted hour in priority order when the battery covers only part of it', async () => {
+  it('uses the battery first in an exhausted period when the battery covers only part of it', async () => {
     const { build } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
     const plan = await build(1800, [
       heater(true, 1.9), heater(true, 0.5, 'pump', 2), heater(true, 0.3, 'lamp', 3), battery({ deliveryCeilingW: 1000 }),
@@ -603,7 +630,7 @@ describe('storage relief in the plan build', () => {
     expect(plannedState(plan, 'heater')).toBe('keep');
   });
 
-  it('answers an exhausted hour in priority order with the battery already at its ceiling', async () => {
+  it('uses the finite exhausted-period target with the battery already at its ceiling', async () => {
     const { build, state } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
     const atCeiling: StorageLeverState = {
       setpointW: -1000, purpose: 'limit', increaseDecidedAtMs: START_MS - 60_000, creditBaseW: 0,
@@ -675,13 +702,13 @@ describe('storage relief in the plan build', () => {
     const plan = await build(2500, [heater(), battery({ signedPowerW: 1000 })]);
 
     expect(plan.meta.softLimitSource).toBe('daily');
-    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint' });
-    expect(plannedState(plan, 'heater')).toBe('keep');
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+    expect(plannedState(plan, 'heater')).toBe('shed');
   });
 
-  it('answers an exhausted hour in priority order: the battery covers it and nothing is shed', async () => {
+  it('holds an exhausted period at the battery\'s safe import margin on later readings', async () => {
     const { build, state } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
-    const devices = [heater(true, 1.9), heater(true, 0.3, 'lamp', 2), battery()];
+    const devices = [heater(true, 1.9, 'heater', 2), heater(true, 0.3, 'lamp', 3), battery({}, { priority: 1 })];
     const plan = await build(2200, devices);
 
     expect(state.hourlyBudgetExhausted).toBe(true);
@@ -689,6 +716,24 @@ describe('storage relief in the plan build', () => {
     expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -2100, stepW: 5 });
     expect(plannedState(plan, 'heater')).toBe('keep');
     expect(plannedState(plan, 'lamp')).toBe('keep');
+    const following = [...devices.slice(0, 2), battery({ signedPowerW: -2100, claimHeld: true }, { priority: 1 })];
+    const later = await build(100, following, 10_000);
+    expect(storageDecision(later)).toMatchObject({ setpointW: -2100 });
+    expect(plannedState(later, 'heater')).toBe('keep');
+    expect(plannedState(later, 'lamp')).toBe('keep');
+  });
+
+  it('shares the no-export margin across batteries with different setpoint steps', async () => {
+    const { build } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
+    const firstBattery = battery({ deliveryCeilingW: 310 }, { priority: 10 });
+    const coarseBattery = {
+      ...battery({ range: { minW: -2500, maxW: 2500, stepW: 100, excludeMinW: 0, excludeMaxW: 0 } },
+        { priority: 1 }),
+      id: 'second-battery',
+    };
+    const plan = await build(500, [coarseBattery, firstBattery]);
+    expect(storageDecision(plan)).toMatchObject({ setpointW: -310 });
+    expect(storageDecision(plan, 'second-battery')).toMatchObject({ setpointW: 0 });
   });
 
   it('still sheds everything in an exhausted hour without a battery', async () => {
@@ -830,10 +875,10 @@ describe('storage relief in the plan build', () => {
 
   it('returns the battery to managed idle before restoring a device ranked below it', async () => {
     const { build } = buildHarness({ paceKw: 3 });
-    // The heater ranked below the battery goes first; the battery covers the 1 kW left.
+    // The heater covers the deficit left by the battery.
     const first = await build(6000, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
     expect(plannedState(first, 'heater')).toBe('shed');
-    expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: -1100, stepW: 5 });
+    expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: -2500, stepW: 5 });
 
     const later = [heater(false, 2, 'heater', 5), battery({ signedPowerW: 0, claimHeld: true }, { priority: 1 })];
     await build(0, later, 6 * 60_000);

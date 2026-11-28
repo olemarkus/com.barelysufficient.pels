@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideStorageRelief } from '../../lib/plan/battery/storageRelief';
+import { decideStorageReliefFixture as decideStorageRelief } from '../helpers/storageReliefFixture';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { PhasePower } from '../../lib/plan/phase/phasePower';
 import type { ObservedStorageInput } from '../../packages/planner-types/src/planInputDevice';
@@ -15,7 +15,7 @@ const battery = (id: string, phaseFootprint: PhaseFootprint): PlanInputDevice & 
   storage: {
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false, signedPowerW: 0, observedAtMs: NOW, claimHeld: true, admissible: true,
-    verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
+    verdict: 'responding', deliveryCeilingW: 2500, canSetDischargePower: true, chargeCeilingW: 2500, powerLimitControl: true,
     ownModeGridCharge: { kind: 'observed' },
     continuousPlan: charging,
   },

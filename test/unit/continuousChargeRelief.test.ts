@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveContinuousChargeRelief } from '../../lib/plan/shedding/continuousChargeRelief';
-import { decideStorageRelief } from '../../lib/plan/battery/storageRelief';
+import { decideStorageReliefFixture as decideStorageRelief } from '../helpers/storageReliefFixture';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ObservedStorageInput } from '../../packages/planner-types/src/planInputDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
@@ -14,7 +14,7 @@ const battery = (targetW: number, observedW: number): PlanInputDevice & { storag
   storage: {
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false, signedPowerW: observedW, observedAtMs: 0, claimHeld: true, admissible: true,
-    verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
+    verdict: 'responding', deliveryCeilingW: 2500, canSetDischargePower: true, chargeCeilingW: 2500, powerLimitControl: true,
     ownModeGridCharge: { kind: 'observed' },
     continuousPlan: { setpointW: targetW, validUntilMs: NOW + 600_000, reason: 'charge_grid' },
   },
@@ -32,12 +32,12 @@ function transition(previousW: number, targetW: number, observedW: number) {
 describe('continuous stopped-charge ledger', () => {
   it('banks a new reduction once without turning it into a capacity hold', () => {
     const { state, devices, storage } = transition(2000, 0, 2000);
-    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity' }, { atMs: NOW, powerW: 5000 }, NOW);
+    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity', deficitKw: 1 }, { atMs: NOW, powerW: 5000 }, NOW);
     expect(result?.totalKw).toBe(2);
     expect(storage.levers.battery.purpose).toBe('continuous');
     state.storageLeverByDevice = { ...storage.levers };
     state.shedPlanLatch = result!.retained;
-    const repeat = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity' }, { atMs: NOW + 1000, powerW: 5000 }, NOW + 1000);
+    const repeat = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity', deficitKw: 1 }, { atMs: NOW + 1000, powerW: 5000 }, NOW + 1000);
     expect(repeat?.totalKw).toBe(2);
     expect(repeat?.retained.decisions.get('battery')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 2 }]);
   });
@@ -49,7 +49,7 @@ describe('continuous stopped-charge ledger', () => {
       ['heater', [{ kind: 'electrical' as const, decidedAtMs: NOW - 5000, creditedKw: 0.5 }]],
     ]) };
     devices.push(buildPlanInputDevice({ id: 'heater', binaryControl: { on: false }, currentDrawKw: 0 }));
-    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity' }, { atMs: NOW, powerW: 5000 }, NOW);
+    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity', deficitKw: 1 }, { atMs: NOW, powerW: 5000 }, NOW);
     expect(result?.totalKw).toBe(2.5);
     expect(result?.retained.decisions.get('battery')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 2 }]);
     expect(result?.retained.decisions.get('heater')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 5000, creditedKw: 0.5 }]);
@@ -60,7 +60,7 @@ describe('continuous stopped-charge ledger', () => {
     state.shedPlanLatch = { powerW: 5000, stepTargets: new Map(), decisions: new Map([
       ['battery', [{ kind: 'electrical' as const, decidedAtMs: NOW - 40_000, creditedKw: 1 }]],
     ]) };
-    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity' }, { atMs: NOW, powerW: 5000 }, NOW);
+    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity', deficitKw: 1 }, { atMs: NOW, powerW: 5000 }, NOW);
     expect(result?.totalKw).toBe(0);
   });
 
@@ -69,7 +69,7 @@ describe('continuous stopped-charge ledger', () => {
     state.shedPlanLatch = { powerW: 6000, stepTargets: new Map(), decisions: new Map([
       ['battery', [{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 1 }]],
     ]) };
-    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity' }, { atMs: NOW, powerW: 5000 }, NOW);
+    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity', deficitKw: 1 }, { atMs: NOW, powerW: 5000 }, NOW);
     expect(result?.retained.decisions.get('battery')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 1 }]);
   });
 
@@ -78,7 +78,7 @@ describe('continuous stopped-charge ledger', () => {
     state.shedPlanLatch = { powerW: 5000, stepTargets: new Map(), decisions: new Map([
       ['battery', [{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 2 }]],
     ]) };
-    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity' }, { atMs: NOW, powerW: 5000 }, NOW);
+    const result = resolveContinuousChargeRelief(state, devices, storage, { kind: 'capacity', deficitKw: 1 }, { atMs: NOW, powerW: 5000 }, NOW);
     expect(result?.totalKw).toBe(1);
     expect(result?.retained.decisions.get('battery')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 1 }]);
   });

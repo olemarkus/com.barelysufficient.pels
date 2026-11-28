@@ -18,6 +18,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PRIORITIES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
@@ -55,6 +56,7 @@ const seedSettings = (): void => {
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+  mockHomeyInstance.settings.set(CAPACITY_PRIORITIES, { Home: { [BATTERY]: 1, [HEATER]: 2 } });
   mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [HEATER]: true });
   mockHomeyInstance.settings.set(MANAGED_DEVICES, { [HEATER]: true });
   mockHomeyInstance.settings.set(OVERSHOOT_BEHAVIORS, { [HEATER]: { action: 'turn_off' } });

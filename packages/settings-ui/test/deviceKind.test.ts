@@ -157,19 +157,17 @@ describe('home battery in the settings UI', () => {
     expect(resolveManagedState('battery-1')).toBe(true);
   });
 
-  it('claims whole-house cover only for a battery last in the list', async () => {
+  it('explains ranked solar charging and available power-limit discharge', async () => {
     const { resolveBatteryPriorityHint } = await import('../src/ui/deviceDetail/batterySection.ts');
-    expect(resolveBatteryPriorityHint({ rank: 5, total: 5 }, true))
-      .toBe('Last in the list, it covers the whole house before any device is limited.');
-    expect(resolveBatteryPriorityHint({ rank: 3, total: 5 }, true))
-      .toBe('Devices below it are limited first, so it protects only those above it.');
+    expect(resolveBatteryPriorityHint(true)).toBe(
+      'Your priority order decides when the battery gets spare solar. When your home needs help holding its power limit, PELS uses available battery power before limiting devices.',
+    );
   });
 
-  it('promises no cover from its place while Power-limit control is off', async () => {
+  it('explains what enabling Power-limit control does', async () => {
     const { resolveBatteryPriorityHint } = await import('../src/ui/deviceDetail/batterySection.ts');
-    for (const position of [{ rank: 5, total: 5 }, { rank: 3, total: 5 }]) {
-      expect(resolveBatteryPriorityHint(position, false))
-        .toBe('Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.');
-    }
+    expect(resolveBatteryPriorityHint(false)).toBe(
+      'Turn on Power-limit control to let the battery help hold your power limit and store spare solar in priority order.',
+    );
   });
 });

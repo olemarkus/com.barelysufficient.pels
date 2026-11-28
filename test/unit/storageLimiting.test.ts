@@ -7,10 +7,10 @@ import { selectShedDevices } from '../../lib/plan/shedding/selection';
 import { resolvePendingShedRelief } from '../../lib/plan/shedding/pendingRelief';
 import { resumeStorageAfterLimit, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
 import {
-  decideStorageRelief,
   sumWithheldKw,
   type StorageRelief,
 } from '../../lib/plan/battery/storageRelief';
+import { decideStorageReliefFixture as decideStorageRelief } from '../helpers/storageReliefFixture';
 import type { StorageDecision } from '../../lib/planContract/storageDecision';
 import { resolveStorageHandBack } from '../../lib/plan/restore/devices';
 import type { StorageLeverState } from '../../lib/plan/planState';
@@ -56,7 +56,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     admissible: true,
     powerLimitControl: true,
     verdict: 'unverified',
-    deliveryCeilingW: 2500,
+    deliveryCeilingW: 2500, canSetDischargePower: true,
     chargeCeilingW: 2500,
     ownModeGridCharge: { kind: 'observed' },
     ...overrides,
@@ -175,6 +175,45 @@ describe('spending the battery', () => {
     expect(spend?.setpointW).toBe(-1670);
   });
 
+  it('caps additional discharge independently of the charge it can stop', () => {
+    const cycling = candidateFor(battery({ signedPowerW: 1000 }), 6);
+    expect(resolveStorageSpend(cycling, 2, 303)).toEqual({
+      setpointW: -300, reliefKw: 1.3, chargeReliefKw: 1,
+    });
+    const supplying = candidateFor(battery({ signedPowerW: -1000 }), 6);
+    expect(resolveStorageSpend(supplying, 2, 303)).toEqual({
+      setpointW: -1300, reliefKw: 0.3, chargeReliefKw: 0,
+    });
+  });
+
+  it('rounds up when the nearest step would cut into a reserved solar charge', () => {
+    const charging = candidateFor(battery({
+      signedPowerW: 1000,
+      range: { minW: -2500, maxW: 2500, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
+    }), 6);
+    const bounded = { ...charging, effectivePower: 0.57 };
+    expect(resolveStorageSpend(bounded, 1)).toEqual({
+      setpointW: 500, reliefKw: 0.5, chargeReliefKw: 0.5,
+    });
+  });
+
+  it('offers the full meter-following mode only when its maximum fits the need and the shared room', () => {
+    const device = battery({ canSetDischargePower: false });
+    const idle = candidateFor(device, 6);
+    const ratedW = -device.storage.range.minW;
+    expect(resolveStorageSpend(idle, ratedW / 1000 - 0.1)).toBeNull();
+    expect(resolveStorageSpend(idle, ratedW / 1000, ratedW - 1)).toBeNull();
+    expect(resolveStorageSpend(idle, ratedW / 1000, ratedW)).toMatchObject({ setpointW: -ratedW });
+    expect(buildStorageCandidate(
+      battery({ canSetDischargePower: false, deliveryCeilingW: ratedW - 1 }), undefined, 6, false, NOW,
+    )).toBe('storage_nothing_to_release');
+    const charging = candidateFor(battery({ canSetDischargePower: false, signedPowerW: 1000 }), 6);
+    expect(resolveStorageSpend({ ...charging, effectivePower: 0.57 }, 1)).toBeNull();
+    expect(resolveStorageSpend(charging, 0.4)).toEqual({
+      setpointW: 0, reliefKw: 1, chargeReliefKw: 1,
+    });
+  });
+
   it('never asks past its ladder', () => {
     expect(resolveStorageSpend(candidateFor(battery(), 6), 10)).toEqual({
       setpointW: -2500, reliefKw: 2.5, chargeReliefKw: 0,
@@ -186,7 +225,7 @@ describe('the battery in the priority order', () => {
   const charging = (): StorageShedCandidate => candidateFor(battery({ signedPowerW: 2000 }), 6);
 
   it('last in the list (the default), it is limited first and covers the deficit alone', () => {
-    const selection = selectShedDevices([charging(), heater(2, 2), heater(1, 2)], 1.5, CAPACITY, false, { kind: 'capacity' });
+    const selection = selectShedDevices([charging(), heater(2, 2), heater(1, 2)], 1.5, CAPACITY, false, { kind: 'capacity', deficitKw: 1 });
 
     expect(selection.shedSet.size).toBe(0);
     expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: 400, banked: true });
@@ -196,7 +235,7 @@ describe('the battery in the priority order', () => {
 
   it('first in the list, the devices below it are limited first and it discharges only for what they leave', () => {
     const candidates = [heater(5, 1, 'lamp'), heater(4, 2, 'heater'), { ...charging(), priority: 1 }];
-    const selection = selectShedDevices(candidates, 4, CAPACITY, false, { kind: 'capacity' });
+    const selection = selectShedDevices(candidates, 4, CAPACITY, false, { kind: 'capacity', deficitKw: 1 });
 
     expect([...selection.shedSet]).toEqual(['lamp', 'heater']);
     // 1 kW left: covered by its charge alone.
@@ -204,14 +243,14 @@ describe('the battery in the priority order', () => {
   });
 
   it('is never in the shed set: the executor never sees a shed for it', () => {
-    const selection = selectShedDevices([charging()], 4, CAPACITY, true, { kind: 'capacity' });
+    const selection = selectShedDevices([charging()], 4, CAPACITY, true, { kind: 'capacity', deficitKw: 1 });
     expect(selection.shedSet.has('battery')).toBe(false);
     expect(selection.shedReasons.has('battery')).toBe(false);
   });
 
   it('a re-probing battery is still asked, but the next device sheds as without it', () => {
     const reprobing = candidateFor(battery({ signedPowerW: 2000, verdict: 'reprobing' }), 6);
-    const selection = selectShedDevices([reprobing, heater(1, 2)], 1.5, CAPACITY, false, { kind: 'capacity' });
+    const selection = selectShedDevices([reprobing, heater(1, 2)], 1.5, CAPACITY, false, { kind: 'capacity', deficitKw: 1 });
 
     expect(selection.storageSetpoints.get('battery')).toMatchObject({ banked: false });
     expect([...selection.shedSet]).toEqual(['heater-1']);
@@ -223,7 +262,7 @@ describe('an unconfirmed battery PELS already holds', () => {
   it('is held where it is, unbanked, never asked deeper', () => {
     const held = lever({ setpointW: -1300, lastNeedAtMs: NOW - STORAGE_RELIEF_SETTLE_WINDOW_MS });
     const unanswered = candidateFor(battery({ signedPowerW: 0 }), 6, held);
-    const selection = selectShedDevices([unanswered, heater(1, 2)], 1.5, CAPACITY, false, { kind: 'capacity' });
+    const selection = selectShedDevices([unanswered, heater(1, 2)], 1.5, CAPACITY, false, { kind: 'capacity', deficitKw: 1 });
 
     expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: -1300, banked: false });
     expect([...selection.shedSet]).toEqual(['heater-1']);
@@ -231,7 +270,7 @@ describe('an unconfirmed battery PELS already holds', () => {
 
   it('re-asserts a re-probing battery at its hold, never at a deeper reading', () => {
     const reprobing = candidateFor(battery({ signedPowerW: -1500, verdict: 'reprobing' }), 6, lever({ setpointW: -1300 }));
-    const selection = selectShedDevices([reprobing], 1, CAPACITY, false, { kind: 'capacity' });
+    const selection = selectShedDevices([reprobing], 1, CAPACITY, false, { kind: 'capacity', deficitKw: 1 });
     expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: -1300, banked: false });
   });
 
@@ -279,7 +318,7 @@ describe('the limit hold and its credit', () => {
     expect(later.shed.netCreditKw).toBeCloseTo(1.3);
 
     const latch = { powerW: 6000, decisions: new Map([['battery', [{ kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 1 }]]]), stepTargets: new Map() };
-    const pending = resolvePendingShedRelief(latch, [device], 6000, NOW + 5_000, later.levers, { kind: 'capacity' });
+    const pending = resolvePendingShedRelief(latch, [device], 6000, NOW + 5_000, later.levers, { kind: 'capacity', deficitKw: 1 });
     expect(pending?.totalKw).toBeCloseTo(1);
     // Together exactly the 2.3 kW it was spent for, never a watt twice.
     expect((pending?.totalKw ?? 0) + later.shed.netCreditKw).toBeCloseTo(2.3);
@@ -295,7 +334,7 @@ describe('the limit hold and its credit', () => {
 
   it('credits nothing to pending relief for a battery PELS no longer holds', () => {
     const latch = { powerW: 6000, decisions: new Map([['battery', [{ kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 1 }]]]), stepTargets: new Map() };
-    const pending = resolvePendingShedRelief(latch, [battery({ signedPowerW: 2000 })], 6000, NOW + 5_000, {}, { kind: 'capacity' });
+    const pending = resolvePendingShedRelief(latch, [battery({ signedPowerW: 2000 })], 6000, NOW + 5_000, {}, { kind: 'capacity', deficitKw: 1 });
     expect(pending?.totalKw).toBe(0);
     expect(pending?.held.size).toBe(0);
   });
