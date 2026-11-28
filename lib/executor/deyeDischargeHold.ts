@@ -214,7 +214,8 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
   private needsManualRecovery(claim?: DeyeClaim): boolean {
     const step = claim?.step;
     const overdue = (since: number | undefined) => since !== undefined && Date.now() - since >= RECOVERY_NOTICE_MS;
-    return step?.kind === 'unreadable_order' || (step?.kind === 'submitting' && !this.submitting)
+    return step?.kind === 'unreadable_order' || step?.kind === 'unexpected_limit'
+      || (step?.kind === 'submitting' && !this.submitting)
       || overdue(claim?.releaseRequestedAtMs)
       || ((step?.kind === 'order' || step?.kind === 'readback') && overdue(step.sinceMs));
   }
@@ -245,7 +246,7 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
       }
       return;
     }
-    if (record.claim.step.kind === 'unreadable_order') return;
+    if (record.claim.step.kind === 'unreadable_order' || record.claim.step.kind === 'unexpected_limit') return;
     const claim = record.enabled && this.wantsHold() ? record.claim : this.requestRelease(record.claim);
     if (claim !== record.claim) this.persist({ ...record, claim });
     await this.advanceClaim(record, claim);
@@ -283,7 +284,7 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
 
   private async advanceClaim(record: DeyeHoldRecord, claim: DeyeClaim): Promise<void> {
     const { step } = claim;
-    if (step.kind === 'submitting' || step.kind === 'unreadable_order') return;
+    if (step.kind === 'submitting') return;
     if (step.kind === 'order') {
       const result = await this.cloud.readOrder(record.credentials, step.orderId);
       if (result === 'pending') return;
@@ -301,8 +302,10 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
       this.confirmOrder(record, claim, step.direction, current);
       return;
     }
-    if (current !== 0) this.complete(record);
-    else await this.submit(record, claim, 'restore');
+    if (current === claim.originalLimitA) this.complete(record);
+    else if (current === 0) await this.submit(record, claim, 'restore');
+    // A different nonzero value may be an external change. Preserve it and the saved hand-back target.
+    else this.persist({ ...record, claim: { ...claim, step: { kind: 'unexpected_limit' } } });
   }
 
   private confirmOrder(record: DeyeHoldRecord, claim: DeyeClaim, direction: 'hold' | 'restore', current: number): void {
@@ -318,4 +321,23 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
     if (record.enabled) this.persist({ enabled: true, credentials: record.credentials });
     else this.persist(null);
   }
+}
+
+export type MainDischargeHold = EvDischargeHoldLane & { start(): void; stop(): void };
+
+export function bindMainDischargeHold(
+  lane: MainDischargeHold | undefined,
+  isPlanFenced: () => boolean,
+  hasLiveMeter: () => boolean,
+): EvDischargeHoldLane | undefined {
+  if (!lane) return undefined;
+  return {
+    hasWork: (hold) => (!hold || !isPlanFenced()) && lane.hasWork(hold),
+    apply: (hold, canHold) => {
+      if (hold && isPlanFenced()) return;
+      // The accepted intent outlives the reconcile that produced it. Keep its
+      // authorization live between reconciles and through the cloud request.
+      lane.apply(hold, () => canHold() && hasLiveMeter());
+    },
+  };
 }
