@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { Logger } from '../../lib/logging/logger';
 import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
-import type { PlanService } from '../../lib/plan/planService';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { partialDouble } from '../helpers/partialDouble';
 import { unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
@@ -28,9 +27,7 @@ afterEach(() => {
   for (const registry of armedRegistries.splice(0)) registry.clearAll();
 });
 const buildRuntime = (overrides: { homeId?: 'main' | 'h_annex'; rebuild?: () => Promise<RebuildOutcome> } = {}) => {
-  // The throttle reads only the `RebuildOutcome` slice of the service's outcome.
-  const rebuildPlanFromCache = (overrides.rebuild ?? (async () => unchangedRebuildOutcome())) as unknown as
-    PlanService['rebuildPlanFromCache'];
+  const rebuildPlanFromCache = overrides.rebuild ?? (async () => unchangedRebuildOutcome());
   const child = vi.fn().mockReturnValue({ error: vi.fn() });
   const timers = new TimerRegistry();
   armedRegistries.push(timers);
@@ -39,7 +36,7 @@ const buildRuntime = (overrides: { homeId?: 'main' | 'h_annex'; rebuild?: () => 
     timers,
     (suffix) => (overrides.homeId === 'h_annex' ? `home:h_annex:${suffix}` : suffix),
     () => partialDouble<CapacityGuard>({ isInShortfall: () => false, recordReading: async () => undefined }),
-    () => partialDouble<PlanService>({ rebuildPlanFromCache }),
+    rebuildPlanFromCache,
     () => partialDouble<Logger>({ child: child as unknown as Logger['child'] }),
   );
   return { ...runtime, timers };

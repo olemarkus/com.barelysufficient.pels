@@ -292,7 +292,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     // Main's timer namespace is the bare suffix, as it is for its settings keys.
     (suffix) => suffix,
     () => this.capacityGuard,
-    () => this.planService,
+    this.rebuildMainPlanFromMeter,
     () => this.getStructuredLogger('plan'),
   );
   protected readonly planRebuildScheduler: PlanRebuildScheduler = this.rebuildRuntime.scheduler;

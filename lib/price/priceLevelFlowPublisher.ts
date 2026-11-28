@@ -14,6 +14,7 @@ export class PriceLevelFlowPublisher {
   private started = false;
   private timer?: ReturnType<typeof setTimeout>;
   private lastLevel = PriceLevel.UNKNOWN;
+  private usesLiveMeter = false;
 
   constructor(
     private readonly flow: Pick<FlowPort, 'getTriggerCard'>,
@@ -31,12 +32,17 @@ export class PriceLevelFlowPublisher {
     this.timer = undefined;
   }
 
+  onMeterDrivenRebuild(): void {
+    if (this.usesLiveMeter) this.update();
+  }
+
   update(): void {
     if (!this.started) return;
     clearTimeout(this.timer);
     this.timer = undefined;
     try {
-      const { level, nextBoundaryMs } = this.readSchedule(Date.now());
+      const { level, nextBoundaryMs, usesLiveMeter } = this.readSchedule(Date.now());
+      this.usesLiveMeter = usesLiveMeter;
       if (nextBoundaryMs !== null) {
         const delayMs = Math.max(MINIMUM_BOUNDARY_DELAY_MS, nextBoundaryMs - Date.now());
         this.arm(Math.min(delayMs, MAX_TIMEOUT_DELAY_MS));

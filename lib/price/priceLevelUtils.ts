@@ -5,6 +5,7 @@ import {
 } from './priceMath';
 import { PriceLevel } from './priceLevels';
 import type { PriceTimelineLevel, PriceTimelineLines } from '../../packages/contracts/src/priceTimeline';
+import type { CombinedPricePeriod } from './priceTypes';
 
 /** The owner's cheap/expensive band, as they configured it. */
 export type PriceLevelBand = {
@@ -72,11 +73,11 @@ const classifyCurrentPeriod = (prices: PriceEntry[], band: PriceLevelBand, curre
   current === null ? PriceLevel.UNKNOWN : createPricePeriodClassifier(prices, band)(current)
 );
 
-/** The current level and the next UTC instant at which it could change. */
-export type PriceLevelSchedule = { level: PriceLevel; nextBoundaryMs: number | null };
+/** The current level, its next UTC boundary and whether metered usage can change it in between. */
+export type PriceLevelSchedule = { level: PriceLevel; nextBoundaryMs: number | null; usesLiveMeter: boolean };
 
 export const resolvePriceLevelSchedule = (
-  prices: PriceEntry[],
+  prices: CombinedPricePeriod[],
   band: PriceLevelBand,
   nowMs: number,
 ): PriceLevelSchedule => {
@@ -89,6 +90,8 @@ export const resolvePriceLevelSchedule = (
   return {
     level: classifyCurrentPeriod(prices, band, current),
     nextBoundaryMs: Number.isFinite(nextBoundaryMs) ? nextBoundaryMs : null,
+    // Norway's resolved Norgespris periods carry the adjustment, including zero when the cap is spent.
+    usesLiveMeter: prices.some((period) => period.norgesprisAdjustment !== undefined),
   };
 };
 
