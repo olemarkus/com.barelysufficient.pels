@@ -12,13 +12,21 @@ describe('phase wording and peaks', () => {
     const device = (name: string, measuredPowerKw: number, deviceClass: string, isBatteryOrSolar: boolean) => ({
       name, measuredPowerKw, deviceClass, isBatteryOrSolar, managed: true,
     });
-    feedPhasePeaks({ phasePeaks: { observe } } as never, [
+    feedPhasePeaks({ phasePeaks: { observe } } as never, () => [
       device('Inverter', 5, 'solarpanel', true),
       device('Heater', 2, 'heater', false),
       device('Charging', 1, 'battery', true),
       device('Discharging', 0, 'battery', true),
     ] as never, { kind: 'on', phases: [] }, 1);
     expect(observe).toHaveBeenCalledWith(1, [], ['Heater', 'Charging']);
+  });
+
+  it('leaves the device view unread when phase peaks are off', () => {
+    const observe = vi.fn();
+    const readDevices = vi.fn(() => []);
+    feedPhasePeaks({ phasePeaks: { observe } } as never, readDevices, { kind: 'off' }, 1);
+    expect(readDevices).not.toHaveBeenCalled();
+    expect(observe).not.toHaveBeenCalled();
   });
 
   it('holds a phase to the same target the hint states', () => {

@@ -46,8 +46,8 @@ const measuredThermostat = (): PostureDevice => {
 
 // The stored configuration is the device's own, as the caller passes it.
 type Args = Parameters<typeof resolveTemperaturePolicyShedBehavior>;
-const shed = (configured: Args[0], readDevice: Args[2], allowsLimiting: Args[3], direction: Args[4]) => (
-  resolveTemperaturePolicyShedBehavior(configured, readDevice(), readDevice, allowsLimiting, direction)
+const shed = (configured: Args[0], readDevice: Args[2], allowsLimiting: boolean, direction: Args[4]) => (
+  resolveTemperaturePolicyShedBehavior(configured, readDevice(), readDevice, () => allowsLimiting, direction)
 );
 const shedLimits = (configured: Args[0], readDevice: Args[2]) => (
   resolveTemperaturePolicyShedLimitsC(configured, readDevice(), readDevice)
@@ -157,15 +157,35 @@ describe('resolveTemperaturePolicyShedBehavior', () => {
     });
   });
 
+  it('only reads policy for a configured or synthesized setpoint', () => {
+    const configuration = { controlModel: 'temperature_target' as const };
+    const configured = { action: 'turn_off' as const };
+    const mixed = vi.fn(thermostatWithOnOff);
+    const setpoint = vi.fn(setpointOnly());
+    const allowsLimiting = vi.fn(() => true);
+
+    expect(resolveTemperaturePolicyShedBehavior(configured, configuration, mixed, allowsLimiting, 'heating'))
+      .toEqual(configured);
+    expect(allowsLimiting).not.toHaveBeenCalled();
+    expect(mixed).toHaveBeenCalledTimes(1);
+
+    expect(resolveTemperaturePolicyShedBehavior(configured, configuration, setpoint, allowsLimiting, 'heating'))
+      .toEqual({ action: 'set_temperature', temperature: 10 });
+    expect(setpoint).toHaveBeenCalledTimes(1);
+    expect(allowsLimiting).toHaveBeenCalledTimes(1);
+  });
+
   it('reads the device only when the answer needs it', () => {
     const readDevice = vi.fn(withOnOff);
+    const allowsLimiting = vi.fn(() => true);
     expect(resolveTemperaturePolicyShedBehavior(
-      { action: 'turn_off' }, { controlModel: 'binary_power' }, readDevice, true, 'heating',
+      { action: 'turn_off' }, { controlModel: 'binary_power' }, readDevice, allowsLimiting, 'heating',
     )).toEqual({ action: 'turn_off' });
     expect(resolveTemperaturePolicyShedBehavior(
-      { action: 'turn_off' }, undefined, readDevice, false, 'heating',
+      { action: 'turn_off' }, undefined, readDevice, allowsLimiting, 'heating',
     )).toEqual({ action: 'turn_off' });
     expect(readDevice).not.toHaveBeenCalled();
+    expect(allowsLimiting).not.toHaveBeenCalled();
 
     const readSetpointOnly = vi.fn(setpointOnly());
     expect(resolveTemperaturePolicyShedLimitsC(

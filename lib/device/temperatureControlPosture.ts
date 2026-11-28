@@ -187,29 +187,28 @@ export function resolveTemperaturePolicyShedBehavior(
   configured: ConfiguredShedBehavior,
   configuration: Pick<DeviceConfigurationRead, 'controlModel'> | undefined,
   readDevice: () => SetpointShedPostureDevice | undefined,
-  allowsLimiting: boolean,
+  allowsLimiting: () => boolean,
   direction: ThermalDirection,
 ): ResidualKwShedBehavior {
-  if (!allowsLimiting) {
-    if (configured.action !== 'set_temperature') return configured;
-    return resolveSetpointLimitDenied(readDevice());
-  }
   const isTemperatureTarget = configuration?.controlModel === 'temperature_target';
-  const device = isTemperatureTarget ? readDevice() : undefined;
-  if (device && isSetpointOnlyShedDevice(device)) {
-    return resolveSetpointOnlyShed(configured, device, direction);
+  if (!isTemperatureTarget && configured.action !== 'set_temperature') return configured;
+
+  const device = readDevice();
+  if (isTemperatureTarget && device && isSetpointOnlyShedDevice(device)) {
+    if (allowsLimiting()) return resolveSetpointOnlyShed(configured, device, direction);
+    return configured.action === 'set_temperature' ? resolveSetpointLimitDenied(device) : configured;
   }
   if (configured.action !== 'set_temperature') return configured;
+  if (!allowsLimiting()) return resolveSetpointLimitDenied(device);
   // A saved setpoint limit needs the device's temperature this read: without
   // `measure_temperature` it is not eligible for one, so it is limited the way
   // a denied setpoint limit is (owner ruling 2026-10-17).
-  const limitedDevice = isTemperatureTarget ? device : readDevice();
-  if (!limitedDevice || !hasObservedTemperature(limitedDevice)) {
-    const resolved = resolveSetpointLimitDenied(limitedDevice);
-    if (limitedDevice) noteSetpointLimitUnavailable(limitedDevice, resolved);
+  if (!device || !hasObservedTemperature(device)) {
+    const resolved = resolveSetpointLimitDenied(device);
+    if (device) noteSetpointLimitUnavailable(device, resolved);
     return resolved;
   }
-  noteSetpointLimitAvailable(limitedDevice);
+  noteSetpointLimitAvailable(device);
   return {
     action: 'set_temperature',
     temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
@@ -304,7 +303,7 @@ export function resolveTemperaturePolicyShedLimitsC(
   };
   return (['heating', 'cooling'] as const).flatMap((direction) => {
     const resolved = resolveTemperaturePolicyShedBehavior(
-      configured, configuration, readDeviceOnce, true, direction,
+      configured, configuration, readDeviceOnce, () => true, direction,
     );
     return resolved.action === 'set_temperature' ? [resolved.temperature] : [];
   });

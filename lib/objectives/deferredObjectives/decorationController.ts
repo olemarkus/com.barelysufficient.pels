@@ -123,11 +123,13 @@ export class DeferredObjectiveDecorationController {
    * task. This read neither evaluates tasks nor depends on plan publication.
    */
   public readBudgetExemptDeviceIds(nowMs: number): ReadonlySet<string> {
-    const settings = this.getDeferredObjectiveSettings();
     const exempt = new Set<string>();
+    let settings: DeferredObjectiveRoster | undefined;
     for (const [deviceId, claim] of this.budgetExemptClaims) {
       if (nowMs < claim.startsAtMs || nowMs >= claim.endsAtMs) continue;
-      const task = settings?.objectivesByDeviceId[deviceId];
+      settings ??= this.getDeferredObjectiveSettings();
+      if (settings === undefined) break;
+      const task = settings.objectivesByDeviceId[deviceId];
       if (task?.enabled && buildObjectiveSignatureForEntry(task, 'unknown') === claim.taskSignature) {
         exempt.add(deviceId);
       }

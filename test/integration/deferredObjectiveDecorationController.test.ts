@@ -276,23 +276,27 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
     };
     planning.settle({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs }, settings);
     buildPriceHorizon.mockClear();
+    const readRoster = vi.fn(() => settings);
     const controller = new DeferredObjectiveDecorationController(
-      planning.source, () => settings, () => temporaryTemperatureActive,
+      planning.source, readRoster, () => temporaryTemperatureActive,
     );
-    return { controller, settings, device, buildPriceHorizon };
+    return { controller, settings, device, buildPriceHorizon, readRoster };
   };
 
   it('serves a capacity-off task claim without reevaluating or publishing a plan', () => {
-    const { controller, device, buildPriceHorizon } = buildExemptController();
+    const { controller, device, buildPriceHorizon, readRoster } = buildExemptController();
     expect(controller.readBudgetExemptDeviceIds(startMs)).toEqual(new Set());
+    expect(readRoster).not.toHaveBeenCalled();
     const result = controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs });
     expect(result.admittedDevices[0].budgetExempt).toBe(true);
     const evaluations = buildPriceHorizon.mock.calls.length;
+    readRoster.mockClear();
 
     expect(controller.readBudgetExemptDeviceIds(startMs + quarterMs - 1)).toEqual(new Set(['dev']));
     expect(buildPriceHorizon).toHaveBeenCalledTimes(evaluations);
     expect(controller.readBudgetExemptDeviceIds(startMs - 1)).toEqual(new Set());
     expect(controller.readBudgetExemptDeviceIds(startMs + quarterMs)).toEqual(new Set());
+    expect(readRoster).toHaveBeenCalledTimes(1);
   });
 
   it.each(['clear', 'disable', 'replace', 'permission'] as const)(

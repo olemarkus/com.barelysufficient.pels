@@ -50,12 +50,12 @@ const isLoadDrawing = (device: DeviceSurfaces): boolean => (
 /** Hand the peak log this sample's phases and the managed devices drawing most. */
 export function feedPhasePeaks(
   guard: PeakGuard,
-  devices: readonly DeviceSurfaces[],
+  readDevices: () => readonly DeviceSurfaces[],
   power: PeakPower,
   nowMs: number,
 ): void {
   if (power.kind === 'off') return;
-  const drawing = devices
+  const drawing = readDevices()
     .filter((device) => device.managed === true && isLoadDrawing(device))
     .sort((a, b) => (b.measuredPowerKw ?? 0) - (a.measuredPowerKw ?? 0))
     .map((device) => device.name);
