@@ -378,10 +378,14 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
   },
   timeline: {
     ariaLabel: 'Heating smart task',
-    hours: [],
+    hours: [{
+      startsAtMs: 0, endsAtMs: 3_600_000,
+      time: '01:00', price: '1.00', priceValue: 1, planned: true, changed: false,
+      readout: { primary: 'Now · 1.00 kr/kWh', secondary: null },
+    }],
     nowIndex: 0,
-    nowAxisX: -0.5,
-    deadlineAxisX: 0.5,
+    nowAxisX: 0,
+    deadlineAxisX: 7_200_000,
     deadlineMarkLabel: 'deadline Mon 18:00',
     cheapestHoursCaption: null,
     planningPriceNote: null,
@@ -423,6 +427,18 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     provenanceRows: [],
   },
   revisionLog: [], revisionSummary: { text: null, count: 0, shouldShowPanel: false },
+});
+
+it('shows an unavailable current price while keeping earlier prices in the schedule chart', () => {
+  const mount = mountIntoBody();
+  const payload = buildReadyPayloadWithDeviceRecourse('heater');
+  payload.timeline.nowIndex = null;
+  payload.timeline.nowAxisX = 3_600_000;
+
+  renderDeadlinePlan(mount, { status: 'ready', payload });
+
+  expect(mount.querySelector('.deadline-schedule-chart')).not.toBeNull();
+  expect(mount.querySelector('.deadline-readout__primary')?.textContent).toBe('Now · Price unavailable');
 });
 
 describe('DeadlinePlan after-task card', () => {

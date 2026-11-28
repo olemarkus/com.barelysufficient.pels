@@ -41,7 +41,7 @@ const build = (overrides: {
       .filter((hour) => hour.plannedKWh > 0)
       .map((hour) => ({ startMs: hour.startsAtMs, endMs: hour.startsAtMs + HOUR_MS, plannedKWh: hour.plannedKWh })),
   },
-  3,
+  { energyNeededKWh: 3, energyExpectedKWh: 3 },
   overrides.aheadOfHourMilestone ?? false,
   STEPS,
 );

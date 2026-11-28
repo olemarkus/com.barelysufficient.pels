@@ -637,7 +637,7 @@ const buildDiagnosticWithPolicyHorizon = (
   // decision, read off the commitment).
   if (effectiveFrozenRead) {
     const frozenPlan = buildFrozenHorizonPlan(
-      nowMs, task, effectiveFrozenRead, profileEnergy.energyNeededKWh, aheadOfHourMilestone, steps,
+      nowMs, task, effectiveFrozenRead, profileEnergy, aheadOfHourMilestone, steps,
     );
     return buildFrozenDiagnostic(
       task, base, progress, profileEnergy, effectiveFrozenRead, frozenPlan, liveStepsUnavailable,

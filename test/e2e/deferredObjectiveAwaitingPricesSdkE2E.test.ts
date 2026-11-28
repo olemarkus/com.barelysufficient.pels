@@ -18,6 +18,7 @@ import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredOb
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { TaskPlanningTurns } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
 import type { DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import { resolveEffectivePlanStatus } from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -158,10 +159,11 @@ type Cycle = {
   usesAvailablePower: boolean;
   kWh: number;
   plan: DeferredObjectiveActivePlanRevisionV1 | null;
+  status: ReturnType<typeof resolveEffectivePlanStatus> | null;
 };
 
 const runScenario = (
-  publishAtMs: number | null, todayPublished = true,
+  publishAtMs: number | null, todayPublished = true, fallbackDeliveryKw = FLOOR_KW,
 ): { cycles: Cycle[]; finalTempC: number } => {
   const settings = objectiveRosterFor({
     objectivesByDeviceId: {
@@ -209,15 +211,18 @@ const runScenario = (
     const runs = decision?.kind !== 'idle';
     const usesAvailablePower = decision?.usesAvailablePower === true;
     const dtH = STEP_MS / HOUR_MS;
-    const powerKw = usesAvailablePower ? FLOOR_KW : 1;
+    const powerKw = usesAvailablePower ? fallbackDeliveryKw : 1;
     const kWh = runs && tempC < TARGET_C ? Math.min(powerKw * dtH, (TARGET_C - tempC) * RATE) : 0;
     tempC += kWh / RATE;
+    const activePlan = recorder.getActivePlan(DEVICE_ID);
+    const plan = activePlan?.latest ?? null;
     cycles.push({
       nowMs,
       decision: decision?.kind ?? 'none',
       usesAvailablePower,
       kWh,
-      plan: recorder.getActivePlan(DEVICE_ID)?.latest ?? null,
+      plan,
+      status: activePlan && plan ? resolveEffectivePlanStatus(plan.planStatus, activePlan) : null,
     });
   }
   return { cycles, finalTempC: tempC };
@@ -253,6 +258,20 @@ describe('smart task created before the next day\'s prices (SDK-boundary e2e)', 
     expect(started).toMatchObject({ decision: 'planned', usesAvailablePower: true, kWh: expect.any(Number) });
     expect(started?.kWh).toBeGreaterThan(0);
     expect(finalTempC).toBeGreaterThanOrEqual(TARGET_C - 1);
+  });
+
+  it('reports when the saved fallback can no longer finish without revising its bookings', () => {
+    const { cycles } = runScenario(null, true, 0);
+    const started = cycles.find((cycle) => cycle.nowMs === FALLBACK_START_MS);
+    // Five kWh remain, and the fastest useful step can still deliver those in an hour.
+    const recoverable = cycles.find((cycle) => cycle.nowMs === DEADLINE_MS - HOUR_MS);
+    const last = cycles.at(-1);
+    expect(started?.status).toBe('on_track');
+    expect(recoverable?.status).toBe('at_risk');
+    expect(last).toMatchObject({
+      decision: 'planned', usesAvailablePower: true, kWh: 0, status: 'cannot_meet',
+    });
+    expect(last?.plan).toEqual(started?.plan);
   });
 
   it('leaves the device to normal control when there are no prices at all', () => {
