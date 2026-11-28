@@ -45,14 +45,22 @@ export const shouldWaitForFlowStep = (
   action: ExecutableSteppedLoadDevice,
   step: SteppedLoadStep,
 ): boolean => {
-  const { intent } = action;
+  const { intent, current } = action;
+  const discretionary = isDiscretionaryStep(action, step);
+  // A failed Flow request leaves no command in flight. A fresh decision to
+  // lower the device can try again when the current step supports the descent.
+  // Off and down-only already have explicit direction, and startup stays paced.
+  const reducesLoad = isSteppedLoadStepOff(step) || intent.stepDirection === 'down_only'
+    || (!discretionary && current.stepForShed !== undefined
+      && step.planningPowerW < current.stepForShed.planningPowerW);
+  if (reducesLoad && intent.transition?.effectiveTransition !== 'initialize_unknown_step_at_low') return false;
   const { flowStepRetryAtMs: discretionaryRetryAtMs, rejectedFlowStepRetry } = ctx.getSteppedLoadCommandSession(
     intent.id,
   );
   const now = Date.now();
   const flowStepRetryAtMs = Math.max(
     rejectedFlowStepRetry?.stepId === step.id ? rejectedFlowStepRetry.retryAtMs : now,
-    (isDiscretionaryStep(action, step) ? discretionaryRetryAtMs : undefined) ?? now,
+    (discretionary ? discretionaryRetryAtMs : undefined) ?? now,
   );
   if (now >= flowStepRetryAtMs) return false;
   logSteppedLoadCommandSkip(intent, 'flow_feedback_backoff',
