@@ -5,10 +5,12 @@ import { readSettingsKeyList } from '../utils/settingsKeyList';
 
 export const DEYE_DISCHARGE_HOLD_KEY = 'deye_discharge_hold';
 
+const STEPS_WITHOUT_ORDER = ['held', 'restore_needed', 'unreadable_order', 'unexpected_limit'] as const;
+
 export type DeyeClaimStep =
   | { kind: 'submitting'; direction: 'hold' | 'restore' }
   | { kind: 'order' | 'readback'; direction: 'hold' | 'restore'; orderId: string; sinceMs: number }
-  | { kind: 'held' | 'restore_needed' | 'unreadable_order' };
+  | { kind: typeof STEPS_WITHOUT_ORDER[number] };
 
 export type DeyeClaim = {
   originalLimitA: number;
@@ -48,7 +50,8 @@ function readCredentials(value: unknown): DeyeCloudCredentials | undefined {
 function readStep(value: unknown): DeyeClaimStep | undefined {
   if (!isUnknownRecord(value)) return undefined;
   const { kind, direction, orderId, sinceMs } = value;
-  if (kind === 'held' || kind === 'restore_needed' || kind === 'unreadable_order') return { kind };
+  const stepWithoutOrder = STEPS_WITHOUT_ORDER.find((name) => name === kind);
+  if (stepWithoutOrder) return { kind: stepWithoutOrder };
   if (direction !== 'hold' && direction !== 'restore') return undefined;
   if (kind === 'submitting') return { kind, direction };
   if ((kind !== 'order' && kind !== 'readback') || typeof orderId !== 'string' || !/^[1-9]\d{0,18}$/u.test(orderId)

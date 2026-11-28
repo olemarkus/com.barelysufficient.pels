@@ -139,7 +139,7 @@ describe('Deye EV discharge hold recovery', () => {
     recovered.stop();
   });
 
-  it('does not overwrite a different observed discharge limit when handing back', async () => {
+  it('keeps the saved limit for manual recovery when a different nonzero limit is observed', async () => {
     const { cloud, owner } = harness();
     await owner.save(SETUP);
     owner.start();
@@ -152,7 +152,11 @@ describe('Deye EV discharge hold recovery', () => {
     owner.apply(false, () => false);
     await settle();
     expect(cloud.submitLimit).toHaveBeenCalledTimes(1);
-    expect(owner.status().state).toBe('ready');
+    expect(owner.status()).toMatchObject({ state: 'recovery_required', originalLimitA: 60 });
+    await expect(owner.acknowledge({ confirmedOrderSettled: true })).rejects.toThrow('different discharge limit');
+    cloud.readLimit.mockResolvedValue(60);
+    await expect(owner.acknowledge({ confirmedOrderSettled: true })).resolves.toMatchObject({ state: 'disabled' });
+    expect(cloud.submitLimit).toHaveBeenCalledTimes(1);
     owner.stop();
   });
 
