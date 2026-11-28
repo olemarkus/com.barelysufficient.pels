@@ -49,6 +49,22 @@ const buildTracker = (profile: DeviceObjectiveProfile, deviceId = 'device-1'): P
 });
 
 describe('resolveProfileEnergy (banded)', () => {
+  it('uses the configured usable EV capacity and charger-side losses instead of a learned rate', () => {
+    const tracker = buildTracker(buildProfile({ kwhPerUnit: stat(0.325) }));
+    const subject = { deviceId: 'device-1', carId: null };
+    const configured = resolveProfileEnergy(
+      tracker, { ...subject, usableEvBatteryKWh: 71 }, 'ev_soc', 'soft', 33, 'increasing', 47,
+    );
+    expect(configured).toMatchObject({ kwhPerUnitSource: 'configured', kWhPerUnitMean: null });
+    expect(configured.energyNeededKWh).toBeCloseTo(26.0333, 4);
+    expect(resolveProfileEnergy(tracker, subject, 'ev_soc', 'soft', 33, 'increasing', 47).kwhPerUnitSource)
+      .toBe('learned');
+    expect(resolveProfileEnergy(
+      tracker, { ...subject, usableEvBatteryKWh: 71 }, 'energy', 'soft', 33, 'increasing',
+    ).energyNeededKWh)
+      .toBe(33);
+  });
+
   it('falls back to the global mean when bands are absent', () => {
     const tracker = buildTracker(buildProfile({ kwhPerUnit: stat(0.4) }));
     const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 5, 'increasing', 50);

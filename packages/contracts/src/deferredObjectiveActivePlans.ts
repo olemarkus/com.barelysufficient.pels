@@ -32,7 +32,7 @@ export type DeferredObjectiveActivePlanRevisionReason =
 // learned profile, the bootstrap fallback, or is exact (an energy task, whose
 // unit is kWh). Optional on the revision because the recorder omits it when no
 // rate source was consulted — see the field.
-export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact';
+export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact' | 'configured';
 
 // Producer-resolved presentation-speed mode for the hero meta line. The
 // recorder collapses `kwhPerUnitSource` into this flat enum so the settings UI

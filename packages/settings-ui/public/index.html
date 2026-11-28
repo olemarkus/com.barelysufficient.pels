@@ -1538,6 +1538,19 @@
                   </span>
                 </label>
               </div>
+              <div id="device-detail-ev-smart-task-settings" hidden>
+                <md-filled-text-field id="device-detail-ev-usable-battery"
+                  label="Usable car battery capacity" type="text" inputmode="decimal" suffix-text="kWh"
+                  supporting-text="For the car usually plugged in here. Leave blank to use the learned estimate."
+                ></md-filled-text-field>
+                <label class="md-switch-row">
+                  <md-switch id="device-detail-ev-pause-on-discharge" aria-label="Pause when the home battery supplies power"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label pels-text-settings-label">Pause when the home battery supplies power</span>
+                    <small class="field__hint">Pauses Smart tasks when PELS sees more than 500 W of home battery discharge. Charging can miss its deadline.</small>
+                  </span>
+                </label>
+              </div>
               <label class="md-switch-row" id="device-detail-charging-session-smoothing" hidden>
                 <md-switch aria-label="Avoid short charging breaks" id="device-detail-charging-session-smoothing-enabled"></md-switch>
                 <span class="md-switch-row__content">

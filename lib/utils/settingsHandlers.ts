@@ -1,3 +1,4 @@
+import { EV_SMART_TASK_SETTINGS } from '../../packages/shared-domain/src/settings/evSmartTaskSettings';
 import type { HomeyRuntime } from '../ports/homeyRuntime';
 import { CHARGING_PHASE_SETTINGS_KEY } from '../../packages/shared-domain/src/settings/chargingPhases';
 import {
@@ -460,6 +461,9 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, TEMPERATURE_BOOST_SETTINGS);
+    },
+    [EV_SMART_TASK_SETTINGS]: async () => {
+      deps.loadCapacitySettings();
     },
     [EV_CHARGING_SESSION_SMOOTHING]: async () => {
       deps.loadCapacitySettings();

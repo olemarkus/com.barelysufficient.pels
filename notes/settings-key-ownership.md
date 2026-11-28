@@ -233,6 +233,13 @@ a null WebView read requires an uncached bootstrap owner read. The owner proves
 never-written keys with `getKeys()` and refuses an unavailable read. Browser saves
 are read-modify-write operations, not atomic across clients.
 
+`ev_smart_task_settings` belongs to DeviceControlSettings. The per-charger map
+has a usable car battery capacity and an opt-in home battery discharge pause.
+The owner preserves the last map through transient read failures and applies the
+two validated fields independently. The charger page saves from a fresh full map,
+using the bootstrap owner's read when the WebView cannot prove absence. Tasks
+read the resolved settings from their evaluation source.
+
 `ev_charge_target_settings` (a charger's target battery level) belongs to
 `packages/shared-domain/src/settings/evChargeTarget.ts`. Its reader sanitizes and
 keeps per entry: an active target requires a whole percent in 1..100 and defaults

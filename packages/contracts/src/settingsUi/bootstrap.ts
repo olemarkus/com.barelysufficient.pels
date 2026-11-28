@@ -82,6 +82,7 @@ export type SettingsUiBootstrapKey =
   | 'homes_config_initialized'
   | 'ev_boost_settings'
   | 'ev_charging_session_smoothing'
+  | 'ev_smart_task_settings'
   | 'ev_charge_target_settings'
   | 'device_expected_power_overrides'
   | 'ev_car_associations'

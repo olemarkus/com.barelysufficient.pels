@@ -20,7 +20,7 @@ import {
 
 // `exact`: the task's unit IS energy (an energy task), so a kWh of progress is a
 // kWh fed. Nothing is learned, estimated or buffered.
-export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact';
+export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact' | 'configured';
 
 /**
  * Which rung of the profile ladder (`profileLadder.ts`) sized an EV battery
@@ -137,6 +137,8 @@ const bufferedRate = (mean: number, sigma: number, sampleCount: number, k: numbe
   return Math.min(mean + k * standardError, mean * MAX_BUFFER_MULTIPLIER);
 };
 
+const CONFIGURED_EV_AC_EFFICIENCY = 0.90;
+
 export const resolveProfileEnergy = (
   powerTracker: PowerTrackerState,
   subject: ObjectiveProfileSubject,
@@ -162,6 +164,23 @@ export const resolveProfileEnergy = (
       rateConfidence: null,
       displayConfidence: 'high',
       kwhPerUnitSource: 'exact',
+      evRateRung: null,
+      reasonCode: null,
+    };
+  }
+  const { usableEvBatteryKWh } = subject;
+  if (objectiveKind === 'ev_soc' && usableEvBatteryKWh !== undefined) {
+    const kWhPerUnit = usableEvBatteryKWh / (100 * CONFIGURED_EV_AC_EFFICIENCY);
+    const energyNeededKWh = remainingUnits * kWhPerUnit;
+    return {
+      energyNeededKWh,
+      energyExpectedKWh: energyNeededKWh,
+      kWhPerUnit,
+      kWhPerUnitBuffered: kWhPerUnit,
+      kWhPerUnitMean: null,
+      rateConfidence: null,
+      displayConfidence: null,
+      kwhPerUnitSource: 'configured',
       evRateRung: null,
       reasonCode: null,
     };

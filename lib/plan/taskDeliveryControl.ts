@@ -41,6 +41,7 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   awaiting_battery_level: { kind: 'uncontrolled' },
   deferred_objective_avoid: { kind: 'uncontrolled' },
   deferred_objective_satisfied: { kind: 'uncontrolled' },
+  deferred_objective_battery_discharge: { kind: 'uncontrolled' },
   deferred_objective_waiting_for_plan: { kind: 'uncontrolled' },
   inactive: { kind: 'no_decision' },
   keep: { kind: 'permitted' },

@@ -474,6 +474,7 @@ function resolveCardKind(device: DeviceStatusInput): DeviceStatus['cardKind'] {
 
 function resolveHoldCause(device: DeviceStatusInput): DeviceStatus['holdCause'] {
   if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
+    || device.reason.code === PLAN_REASON_CODES.deferredObjectiveBatteryDischarge
     || device.reason.code === PLAN_REASON_CODES.deferredObjectiveWaitingForPlan) return 'smart_task';
   if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveSatisfied) return 'smart_task_done';
   return device.reason.code === PLAN_REASON_CODES.dailyBudget ? 'daily_budget' : null;

@@ -1,3 +1,4 @@
+import type { EvSmartTaskSettings } from '../../../shared-domain/src/settings/evSmartTaskSettings.ts';
 import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import { uiHomeMembership } from './homeScopeMembership.ts';
 import type { EvChargingSessionSmoothingSettings }
@@ -132,6 +133,7 @@ export type UiState = {
   shedBehaviorsLoaded: boolean;
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
+  evSmartTaskSettings: Record<string, EvSmartTaskSettings>;
   evChargingSessionSmoothingSettings: EvChargingSessionSmoothingSettings;
   evChargeTargetSettings: EvChargeTargetSettings;
   evCarAssociations: EvCarAssociations;
@@ -238,6 +240,7 @@ export const state: UiState = {
   shedBehaviorsLoaded: false,
   temperatureBoostSettings: {},
   evBoostSettings: {},
+  evSmartTaskSettings: {},
   evChargingSessionSmoothingSettings: {},
   evChargeTargetSettings: {},
   evCarAssociations: {},

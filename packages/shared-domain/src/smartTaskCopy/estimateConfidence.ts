@@ -32,9 +32,7 @@ export const resolveSmartTaskLearning = (
 ): boolean => {
   if (!provenance) return false;
   if (provenance.source === 'bootstrap') return true;
-  // Nothing to learn: an energy task's rate is exact.
-  if (provenance.source === 'exact') return false;
-  return provenance.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP;
+  return provenance.source === 'learned' && provenance.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP;
 };
 
 // Smart-task list confidence chip. Shown only during genuine cold-start
@@ -188,6 +186,9 @@ export const resolveKwhPerUnitProvenanceRows = (
     // already says "Estimated — refining as PELS observes charging", so a
     // single Source row is enough here — adding "0 readings" would be noisy.
     return [{ label: 'Source', value: 'Starting estimate', tone: null }];
+  }
+  if (provenance.source === 'configured') {
+    return [{ label: 'Source', value: 'Configured battery capacity', tone: null }];
   }
   if (provenance.source === 'exact') {
     // An energy task: every kWh the device takes is a kWh of progress, counted

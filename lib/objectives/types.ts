@@ -77,6 +77,7 @@ export const resolveObjectiveProgressDirectionRead = (params: {
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
 export type ObjectiveDeviceInput = {
+  usableEvBatteryKWh?: number;
   /** Future permissions set admission geometry. A sole matching live rung supplies learned delivery. */
   permittedChargingEnvelopes?: readonly ChargingPhaseEnvelope[];
   id: string;

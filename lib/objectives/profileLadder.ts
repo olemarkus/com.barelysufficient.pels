@@ -11,13 +11,18 @@ import { OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE, fitBandsFromSamples, resolveKwhPe
 export type ObjectiveProfileSubject = {
   deviceId: string;
   carId: string | null;
+  usableEvBatteryKWh?: number;
 };
 
 export const resolveObjectiveProfileSubject = (
-  device: Pick<ObjectiveDeviceInput, 'id' | 'stateOfCharge'>,
+  device: Pick<ObjectiveDeviceInput, 'id' | 'stateOfCharge' | 'usableEvBatteryKWh'>,
 ): ObjectiveProfileSubject => {
   const level = device.stateOfCharge?.level;
-  return { deviceId: device.id, carId: level?.kind === 'known' ? level.carId : null };
+  return {
+    deviceId: device.id,
+    carId: level?.kind === 'known' ? level.carId : null,
+    usableEvBatteryKWh: device.usableEvBatteryKWh,
+  };
 };
 
 /**

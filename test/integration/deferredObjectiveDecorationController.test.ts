@@ -236,7 +236,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
   const startMs = Date.UTC(2026, 9, 2, 0);
   const quarterMs = 15 * 60_000;
   const deadlineAtMs = startMs + 4 * quarterMs;
-  const buildExemptController = (temporaryTemperatureActive = false) => {
+  const buildExemptController = (temporaryTemperatureActive = false, readBatteryDischargeW?: () => number) => {
     const settings: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         dev: {
@@ -252,6 +252,10 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       moneyPrice: 1,
     })));
     const planning = createCommittedTaskPlanning({
+      ...(readBatteryDischargeW ? {
+        getHomeBatteryDischargeW: readBatteryDischargeW,
+        evSmartTaskSettings: () => ({ pauseOnBatteryDischarge: true }),
+      } : {}),
       prefersContinuousCharging: () => false,
       getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
@@ -272,6 +276,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
     });
     const device = {
       ...buildDevice(), controlModel: 'binary_power' as const,
+      ...(readBatteryDischargeW ? { isEvCharger: true, evChargingState: 'plugged_in' as const } : {}),
       control: fixtureControlPosture({ controllable: false }),
     };
     planning.settle({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs }, settings);
@@ -282,6 +287,23 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
     );
     return { controller, settings, device, buildPriceHorizon, readRoster };
   };
+
+  it('pauses a charger through the booked quarter, then retries when discharge clears', () => {
+    let dischargeW = 500;
+    const { controller, device } = buildExemptController(false, () => dischargeW);
+    const at = (nowTs: number) => controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs });
+    expect(at(startMs).drivingDeviceIds.has('dev')).toBe(true);
+
+    dischargeW = 600;
+    const paused = at(startMs + 1);
+    expect(paused.admittedDevices[0].deferredHold).toBe('battery_pause');
+    expect(paused.deferredReleaseIntentByDeviceId.dev).toBe('binary_release');
+    expect(paused.deferredHoldCauseByDeviceId.get('dev')).toBe('battery_discharging');
+
+    dischargeW = 0;
+    expect(at(startMs + quarterMs - 1).drivingDeviceIds.has('dev')).toBe(false);
+    expect(at(startMs + quarterMs).drivingDeviceIds.has('dev')).toBe(true);
+  });
 
   it('serves a capacity-off task claim without reevaluating or publishing a plan', () => {
     const { controller, device, buildPriceHorizon, readRoster } = buildExemptController();

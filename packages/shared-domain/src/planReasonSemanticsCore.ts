@@ -42,6 +42,7 @@ export const PLAN_REASON_CODES = {
   // hours it did not book until the ready-by time. No detail, like
   // `deferredObjectiveAvoid`.
   deferredObjectiveSatisfied: 'deferred_objective_satisfied',
+  deferredObjectiveBatteryDischarge: 'deferred_objective_battery_discharge',
   // Standing "Run on solar surplus" hold for a binary dump load: the device's
   // baseline is OFF and PELS lifts the hold only while the surplus allocator
   // marks it eligible. Deliberately carries NO numbers/timestamps — the reason
@@ -258,6 +259,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveBatteryDischarge }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveWaitingForPlan }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }

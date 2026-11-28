@@ -577,6 +577,7 @@ function resolvePostureHoldReasonAdoption(
 const DEFERRED_HOLD_REASON_CODE = {
   cheaper_hours: PLAN_REASON_CODES.deferredObjectiveAvoid,
   task_done: PLAN_REASON_CODES.deferredObjectiveSatisfied,
+  battery_discharging: PLAN_REASON_CODES.deferredObjectiveBatteryDischarge,
 } as const satisfies Record<DeferredHoldCause, string>;
 
 // The power holds the smart-task framing replaces: capacity, the grid import

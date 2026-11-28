@@ -795,7 +795,7 @@ export type PlanInputDeviceBase = {
    * active reads its presence (starvation eligibility, and the shed side's recovery
    * rule `isNonSteppedDeviceRecovering`).
    */
-  deferredHold?: 'off' | 'configured';
+  deferredHold?: 'off' | 'configured' | 'battery_pause';
   /** Live limits still apply while a queued task cannot request starts or increases. */
   waitingForTaskPlan?: true;
   /**

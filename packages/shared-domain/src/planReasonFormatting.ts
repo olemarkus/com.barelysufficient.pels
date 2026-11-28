@@ -10,6 +10,7 @@ import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_BATTERY_DISCHARGE_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_WAITING_FOR_PLAN_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_GRID_IMPORT_STATUS,
@@ -63,6 +64,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveBatteryDischarge }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveWaitingForPlan }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
@@ -98,6 +100,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.deferredObjectiveSatisfied,
+  PLAN_REASON_CODES.deferredObjectiveBatteryDischarge,
   PLAN_REASON_CODES.deferredObjectiveWaitingForPlan,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
@@ -126,6 +129,7 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',
   [PLAN_REASON_CODES.deferredObjectiveWaitingForPlan]: 'waiting for a plan',
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: 'smart task done, held until its ready-by time',
+  [PLAN_REASON_CODES.deferredObjectiveBatteryDischarge]: 'home battery supplying power',
   [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
   [PLAN_REASON_CODES.awaitingPelsStart]: 'waiting for a smart task to start it',
   [PLAN_REASON_CODES.awaitingBatteryLevel]: 'waiting for battery level',
@@ -489,6 +493,7 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   [PLAN_REASON_CODES.deferredObjectiveWaitingForPlan]: PLAN_STATE_DEFERRED_OBJECTIVE_WAITING_FOR_PLAN_STATUS,
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
+  [PLAN_REASON_CODES.deferredObjectiveBatteryDischarge]: PLAN_STATE_DEFERRED_OBJECTIVE_BATTERY_DISCHARGE_STATUS,
   [PLAN_REASON_CODES.awaitingSolarSurplus]: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   // States what the device needs: a smart task to start it. A task holding the
   // device for a cheaper hour gives it that task's reason instead

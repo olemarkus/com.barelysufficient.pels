@@ -5,7 +5,9 @@ import {
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeEvChargingSessionSmoothingSettings, type EvChargingSessionSmoothingSettings }
   from '../../packages/shared-domain/src/settings/evChargingSessionSmoothing';
-import { readEvChargingSessionSmoothingSettings } from './evChargingSessionSmoothingSettings';
+import type { EvSmartTaskSettings } from '../../packages/shared-domain/src/settings/evSmartTaskSettings';
+import { readEvChargingSessionSmoothingSettings, readResolvedEvSmartTaskSettings }
+  from './evChargingSessionSmoothingSettings';
 import type { ChargingPhaseSettings, ChargingPhaseSettingsMap } from '../../packages/contracts/src/chargingPhases';
 import { CHARGING_PHASE_SETTINGS_KEY, isChargingPhaseSettingsMap }
   from '../../packages/shared-domain/src/settings/chargingPhases';
@@ -108,6 +110,7 @@ type DeviceControlMaps = {
   readonly temperatureControl: TemperatureControlPolicy;
   readonly temperatureBoost: TemperatureBoostSettings;
   readonly evBoost: EvBoostSettings;
+  readonly evSmartTasks: Record<string, EvSmartTaskSettings>;
   readonly evChargingSessionSmoothing: EvChargingSessionSmoothingSettings;
   readonly evChargeTargets: EvChargeTargetSettings;
   readonly evCarAssociations: EvCarAssociations;
@@ -211,6 +214,7 @@ export class DeviceControlSettings {
     temperatureControl: { devices: {}, state: 'unavailable' },
     temperatureBoost: {},
     evBoost: {},
+    evSmartTasks: {},
     evChargingSessionSmoothing: {},
     evChargeTargets: {},
     evCarAssociations: {},
@@ -291,6 +295,7 @@ export class DeviceControlSettings {
     return this.maps.temperatureBoost[deviceId];
   }
   getEvBoostConfig(deviceId: string): EvBoostConfig | undefined { return this.maps.evBoost[deviceId]; }
+  getEvSmartTaskSettings(deviceId: string): EvSmartTaskSettings | undefined { return this.maps.evSmartTasks[deviceId]; }
   getPreferContinuousCharging(deviceId: string): boolean {
     return this.maps.evChargingSessionSmoothing[deviceId] === true;
   }
@@ -444,6 +449,7 @@ export class DeviceControlSettings {
         settings.get(TEMPERATURE_BOOST_SETTINGS), normalizeTemperatureBoostSettings, current.temperatureBoost,
       ),
       evBoost: normalizeOrKeep(settings.get(EV_BOOST_SETTINGS), normalizeEvBoostSettings, current.evBoost),
+      evSmartTasks: readResolvedEvSmartTaskSettings(settings) ?? current.evSmartTasks,
       evChargingSessionSmoothing: normalizeOrKeep(
         readEvChargingSessionSmoothingSettings(settings), normalizeEvChargingSessionSmoothingSettings,
         current.evChargingSessionSmoothing,
