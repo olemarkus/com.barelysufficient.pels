@@ -60,6 +60,16 @@ const buildCharger = async (setup: ChargerSetup): Promise<MockDevice> => {
 /** Hour 17 is cheap, every other hour dear, so a smart task books the hour it starts in. */
 const cheapNowPrices = () => Array.from({ length: 24 }, (_, hour) => (hour === 17 ? 5 : 50));
 
+const seedPercentageTask = (): void => {
+  mockHomeyInstance.settings.set(`deferred_objective.${CHARGER_ID}`, {
+    enabled: true,
+    kind: 'ev_soc',
+    enforcement: 'soft',
+    targetPercent: 80,
+    deadlineAtMs: START_MS + 4 * 60 * 60 * 1000,
+  });
+};
+
 const boot = async (setup: ChargerSetup): Promise<MockDevice> => {
   const charger = await buildCharger(setup);
   setMockDrivers({ ev: new MockDriver('ev', [charger]) });
@@ -182,15 +192,50 @@ describe('EV charge target (SDK-boundary e2e)', () => {
     expect(plannedReason(app)?.code).not.toBe(PLAN_REASON_CODES.awaitingBatteryLevel);
   });
 
+  it.each([false, true])('holds a percentage task before and after its Flow reports a met target (power-limit control=%s)', async (powerLimitControl) => {
+    const charger = await boot({ levelPercent: null, chargeBeforeLevelKnown: true });
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: powerLimitControl });
+    seedPercentageTask();
+    const app = createApp();
+    await app.onInit();
+    await pump(3);
+
+    expect(await charger.getCapabilityValue('evcharger_charging')).toBe(false);
+    expect(plannedReason(app)).toEqual({ code: PLAN_REASON_CODES.awaitingBatteryLevel });
+
+    await charger.setCapabilityValue('measure_power', 0);
+    await mockHomeyInstance.flow._actionCardListeners.report_evcharger_battery_level({
+      device: CHARGER_ID,
+      battery_percent: 85,
+    });
+    await pump(3);
+
+    expect(await charger.getCapabilityValue('evcharger_charging')).toBe(false);
+    expect(plannedReason(app)).toEqual({ code: PLAN_REASON_CODES.chargeTargetReached, targetPercent: 80 });
+  });
+
+  it('shows an unplugged charger after a percentage task was waiting for its battery level', async () => {
+    const charger = await boot({ levelPercent: null, chargeBeforeLevelKnown: true, stepped: true });
+    seedPercentageTask();
+    const app = createApp();
+    await app.onInit();
+    await pump(3);
+    expect(plannedReason(app)?.code).toBe(PLAN_REASON_CODES.awaitingBatteryLevel);
+
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+    await charger.setCapabilityValue('measure_power', 0);
+    await pump(3);
+
+    const plan = app.planService.getLatestPlanSnapshot()?.devices.find(({ id }) => id === CHARGER_ID);
+    expect(plan?.chargeTargetHeld).toBeUndefined();
+    const card = app.planService.getLatestPlanSnapshotForUi()?.devices?.find(({ id }) => id === CHARGER_ID);
+    expect(card?.status.factText).toContain('Unplugged');
+    expect(card?.status.reason?.text ?? '').not.toContain('Waiting for battery level');
+  });
+
   it('lets a smart task booked in this hour charge past the target', async () => {
     const charger = await boot({ levelPercent: 50, chargeBeforeLevelKnown: true });
-    mockHomeyInstance.settings.set(`deferred_objective.${CHARGER_ID}`, {
-      enabled: true,
-      kind: 'ev_soc',
-      enforcement: 'soft',
-      targetPercent: 80,
-      deadlineAtMs: START_MS + 4 * 60 * 60 * 1000,
-    });
+    seedPercentageTask();
     const app = createApp();
     await app.onInit();
     await pump(5);

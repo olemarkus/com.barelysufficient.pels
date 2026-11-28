@@ -26,7 +26,7 @@ import {
 } from '../mocks/homey';
 import { cleanupApps, createApp, getTransportSnapshotForTests } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
@@ -459,9 +459,8 @@ describe('EV charger integration', { retry: 2 }, () => {
     }));
   });
 
-  // Meeting the target removes the deferred-objective allowance, but the task keeps governing the
-  // charger until its deadline (owner ruling 2026-10-17): an hour it did not book is a released
-  // hour, so the plan pauses the charger. No lifecycle-clock fallback races it.
+  // The attained task target holds the charger independently of its ordinary
+  // power-limiting setting.
   it('pauses a satisfied charger through the plan path', async () => {
     setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
@@ -478,7 +477,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'binary_release');
+    expect(evPlan?.reason).toEqual({ code: PLAN_REASON_CODES.chargeTargetReached, targetPercent: 42 });
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
 
     const snapshot = await refreshSnapshot(app);
@@ -505,8 +504,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(charger.getCommandSequence()).toEqual([]);
   });
 
-  // Power-limit control ON + satisfied: the task still governs until its deadline, so its unbooked
-  // hour pauses the charger the same way. Normal managed charging takes over after the deadline.
+  // Power-limit control on follows the attained target too.
   it('pauses a satisfied charger while Power-limit control is on', async () => {
     setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
@@ -520,7 +518,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'binary_release');
+    expect(evPlan?.reason).toEqual({ code: PLAN_REASON_CODES.chargeTargetReached, targetPercent: 42 });
     expect(evPlan?.plannedState).toBe('shed');
   });
 

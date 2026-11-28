@@ -98,6 +98,8 @@ For EV charging, a common setup is to keep the charger managed by PELS but turn 
 
 A task is done at its ready-by time. Until then the task decides what the device does, also once it has reached its goal: it holds the device back in the periods it does not plan to use, and a mode change never sets a less demanding target than the task's, while a more demanding mode target still applies. If the device moves away from the target again, the task plans to top it up in its cheapest remaining periods. A device with a solar-surplus setting, such as **Run on solar surplus** or **Charge on solar surplus**, is not held back in those periods: it still runs on your solar surplus, never on grid electricity, and what it takes counts toward the task, which then plans less. A Flow's **Start temperature override for device** is the exception: while it lasts, the task leaves a temperature device alone, then carries on with the time left.
 
+For a charging task with a percentage target, PELS pauses the charger when the battery level is unknown or has reached the target, even when solar power is available. If the level is missing, the charger card explains how to confirm the car, check its reading in Homey, or send the level with the **Report battery level for charger** Flow card when no car is selected.
+
 After the ready-by time, the device's own settings decide again: the task page's **When the task is done** card says what they do.
 
 | Device settings | What the card says |

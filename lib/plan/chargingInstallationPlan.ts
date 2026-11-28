@@ -162,10 +162,14 @@ export class ChargingInstallationPlan {
         const orderedPause = !plan.meta.powerIsMeasured && groupSwitch === false;
         const chargingInstallationSwitch = orderedPause
           ? { ...command, meterSilencePausePrimaryId: installation.mainId } : command;
+        // When the group already asks for off, retain its reason on the shared
+        // power writer. Otherwise the member's target can explain its pause.
+        const chargeTargetHeld = groupSwitch === false ? null : resolveHeldChargeTarget(member);
         return {
           ...device,
           chargingInstallationSwitch,
           ...(isStartPolicyHeldDevice(member) ? { startPolicyHoldActive: true as const } : {}),
+          ...(chargeTargetHeld ? { chargeTargetHeld } : {}),
         };
       }),
     };

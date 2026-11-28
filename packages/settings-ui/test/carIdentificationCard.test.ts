@@ -17,10 +17,11 @@ describe('a charger still identifying its car', () => {
     });
   });
 
-  it('answers the wait for a battery level with the identification line', () => {
+  it('offers immediate confirmation when the charger is held for the battery level', () => {
     expect(charger({
+      currentState: 'off', plannedState: 'shed',
       carIdentificationState: 'waiting', reason: { code: PLAN_REASON_CODES.awaitingBatteryLevel },
-    }).reason).toMatchObject({ text: 'Waiting to identify the connected car' });
+    }).reason).toEqual({ text: 'Waiting for battery level', offersCarConfirmation: true });
   });
 
   it('offers confirmation once every selected car reports unplugged', () => {

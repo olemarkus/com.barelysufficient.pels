@@ -37,6 +37,7 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   /** The device owner's resolved power setup requirement. */
   powerSetupRequirement: DevicePowerSetupRequirement | null;
   carIdentificationState: CarIdentificationState;
+  hasSelectedCars: boolean;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
   idleClassification?: IdleClassification;
@@ -47,5 +48,5 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   modePreparation?: PreparedModeTarget;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
-} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold' | 'startPolicyHoldActive'>
+} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold' | 'startPolicyHoldActive' | 'chargeTargetHeld'>
   & Partial<Pick<DevicePlanDevice, 'phaseFootprint' | 'lastResort' | 'lastResortOwnedOffAtMs'>>;

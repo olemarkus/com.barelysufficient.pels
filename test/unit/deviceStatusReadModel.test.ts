@@ -11,6 +11,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   standingCommandGrant: true, powerLimitControlEnabled: true, hasPowerReading: true, powerSetupRequirement: null,
   powerBeforeSwitchOffKw: undefined,
   carIdentificationState: 'not_waiting',
+  hasSelectedCars: false,
   execution: {
     available: true, physicalState: 'on', observedStepId: null,
     desiredBinary: 'off', desiredStepId: null, binaryProgress: 'unmet',
@@ -663,6 +664,32 @@ describe('charging installation controlled as one load', () => {
       powerText: '0.0 kW · installation 3.2 kW',
       reason: { text: 'Waiting for a smart task' },
     });
+  });
+
+  it.each([{ role: 'main', totalKw: 3.2 }, { role: 'secondary', mainName: 'Garage' }] as const)(
+    'keeps the battery-level guidance on a shared charger card ($role)', (installation) => {
+      const charger = status(card(installation, {
+        currentState: 'off', currentDrawKw: 0, startPolicyHoldActive: true,
+        chargeTargetHeld: { kind: 'awaiting_level' },
+        execution: { ...runningPowerHold().execution, physicalState: 'off', desiredBinary: 'off', resumeExpected: false },
+      }));
+      expect(charger.reason?.text).toBe('Waiting for battery level. Use the Report battery level for charger Flow card.');
+    },
+  );
+
+  it.each([
+    { code: PLAN_REASON_CODES.meterSilent },
+    { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
+  ] as const)('keeps a shared primary’s group pause reason ($code)', (reason) => {
+    const charger = card({ role: 'main', totalKw: 3.2 }, {
+      plannedState: 'shed', currentState: 'off', currentDrawKw: 0, reason,
+      execution: { ...runningPowerHold().execution, physicalState: 'off', desiredBinary: 'off', resumeExpected: false },
+    });
+    const groupReason = status(charger).reason;
+    expect(groupReason?.text).toBeTruthy();
+    expect(status({
+      ...charger, chargeTargetHeld: { kind: 'awaiting_level' }, startPolicyHoldActive: true,
+    }).reason).toEqual(groupReason);
   });
 
   it.each([

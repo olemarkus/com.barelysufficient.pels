@@ -67,6 +67,7 @@ import {
   type DeferredObjectiveDiagnosticReasonCode,
 } from './diagnosticTypes';
 import {
+  applySatisfiedTaskControl, buildBatteryLevelWaitDiagnostic, resolveBatteryLevelWaitReason,
   buildDiagnosticBase, buildWaitingForPlanDiagnostic,
   buildKnownEnergyFields,
   mergeProgressFields,
@@ -452,6 +453,12 @@ const buildDeferredObjectiveDiagnostic = (
     return withUnavailableTrajectory(buildTaskDiagnosticBase(snapshot, task), 'objective_invalid_deadline');
   }
   const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
+  const batteryLevelWait = resolveBatteryLevelWaitReason(objective, progress, snapshot.priceOptimizationEnabled, nowMs);
+  if (batteryLevelWait) {
+    return buildBatteryLevelWaitDiagnostic(
+      buildTaskDiagnosticBase(snapshot, task), objective, progress, batteryLevelWait,
+    );
+  }
   const frozenFallback = resolveDeadlineBoundFrozenReadInputs(
     deviceId, objective, progress.progressDirection, nowMs, activePlans, allocation === 'serve_idle',
   );
@@ -470,9 +477,7 @@ const buildDeferredObjectiveDiagnostic = (
     // A satisfied task governs its device until the deadline, but the task is
     // price-dependent: with price optimization off it governs nothing, exactly as
     // an unmet task goes inactive below. It still reports its satisfaction.
-    return snapshot.priceOptimizationEnabled
-      ? satisfied
-      : { ...satisfied, evaluation: { ...satisfied.evaluation, planning: { kind: 'inactive' } } };
+    return applySatisfiedTaskControl(satisfied, objective, snapshot.priceOptimizationEnabled, nowMs);
   }
 
   // A task the observer accepted near its target is satisfied: it keeps the hours

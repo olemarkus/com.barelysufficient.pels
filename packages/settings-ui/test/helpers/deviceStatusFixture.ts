@@ -14,6 +14,7 @@ export type CardFixture = Partial<DeviceOverviewSnapshot> & Partial<SettingsUiPl
   carChargingState?: DeviceOverviewSnapshot['evChargingState'];
   idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle';
   carIdentificationState?: CarIdentificationState;
+  hasSelectedCars?: boolean;
 };
 
 export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {}, dryRun = false,
@@ -28,9 +29,11 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
   // cannot read as "no". A fixture that says nothing has no commandable binary
   // axis and is not a charger, which is what the optional fields used to mean.
   const isEvCharger = device.isEvCharger ?? false;
+  const carIdentificationState = device.carIdentificationState ?? 'not_waiting';
   const status = device.status ?? buildDeviceStatus({
     ...device, reason, controllable: device.controllable ?? true, available,
-    carIdentificationState: device.carIdentificationState ?? 'not_waiting',
+    carIdentificationState,
+    hasSelectedCars: device.hasSelectedCars ?? carIdentificationState !== 'not_waiting',
     adapterUnavailableStatus: undefined, chargingInstallation: undefined,
     unusedBuiltInControl: 'none', targetPowerControlRefused: false,
     // A card fixture that is Manual reads Power-limit control off.

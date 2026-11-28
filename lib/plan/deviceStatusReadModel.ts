@@ -1,17 +1,12 @@
 import { getSteppedLoadOffStep, getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
-import {
-  CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED,
-  CAR_ASSOCIATION_TIMED_OUT,
-  WAITING_FOR_CAR_ASSOCIATION,
-} from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import { isBuiltInSteppedLoadControlEnabled } from '../device/deviceActionProjection';
 import type { UnusedBuiltInControl } from '../device/builtInControlFlowGate';
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
 import {
-  isSatisfiedTemperatureDevice, PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS, reportsSatisfiedTemperature,
+  isSatisfiedTemperatureDevice, reportsSatisfiedTemperature,
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import {
@@ -37,7 +32,8 @@ import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
 import { HOMEY_ENERGY_SETUP_REASON } from '../../packages/shared-domain/src/homeyEnergySetup';
 import type { DeviceStatusInput } from './deviceStatusInput';
 import {
-  resolveCarConfirmationOffer, resolveOwnerActionTone, resolvePhaseSettingOffer,
+  resolveBatteryTargetReason, resolveCarConfirmationOffer, resolveCarIdentificationReason,
+  resolveOwnerActionTone, resolvePhaseSettingOffer,
 } from './deviceStatusReasonOffers';
 import { resolveMeteringSocketReason } from './meteringSocketReason';
 
@@ -322,11 +318,17 @@ function buildOrdinaryReason(
 ): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
   if (kind === 'unavailable' || kind === 'manual') return resolveNotControlledReason(device, kind);
-  const unansweredStep = buildUnansweredStepReason(device, dryRun, nowMs);
-  if (unansweredStep) return unansweredStep;
-  let text = resolveReason(device, dryRun, powerPredatesSwitchOff);
+  const specificReason = buildUnansweredStepReason(device, dryRun, nowMs) ?? resolveBatteryTargetReason(device);
+  if (specificReason) return specificReason;
+  const text = resolveReason(device, dryRun, powerPredatesSwitchOff);
   const identification = resolveCarIdentificationReason(device, text);
-  if (identification) return identification;
+  return identification ?? formatOrdinaryReason(device, text, dryRun, nowMs);
+}
+
+function formatOrdinaryReason(
+  device: DeviceStatusInput, reasonText: string | null, dryRun: boolean, nowMs: number,
+): DeviceStatus['reason'] {
+  let text = reasonText;
   let idle;
   if (text === null && device.idleClassification && device.idleClassification !== 'near_target_idle') {
     idle = formatIdleClassificationCopy({ classification: device.idleClassification,
@@ -351,27 +353,6 @@ function buildOrdinaryReason(
   };
 }
 
-// A charger still identifying its car says so only where nothing else explains
-// the card: no other reason, or the wait for a battery level it is itself. Any
-// other reason (a hold for power or cheaper hours, a level change not confirmed)
-// stays, since identifying the car would not change it.
-function resolveCarIdentificationReason(
-  device: DeviceStatusInput,
-  reasonText: string | null,
-): DeviceStatus['reason'] {
-  const state = device.carIdentificationState;
-  if (state === 'not_waiting') return null;
-  if (reasonText !== null && reasonText !== '' && reasonText !== PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS) return null;
-  if (state === 'timed_out') return { text: CAR_ASSOCIATION_TIMED_OUT, tone: 'warning', offersCarConfirmation: true };
-  if (state === 'selected_cars_unplugged') {
-    return { text: CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED, offersCarConfirmation: true };
-  }
-  return { text: WAITING_FOR_CAR_ASSOCIATION };
-}
-
-// A charger whose car PELS will not identify by itself offers the confirmation
-// even when another reason holds the line: a hold for power does not end the
-// wait for the car, and the reason line has room for one cause only.
 // The observed rung a held stepped device's state word names, if any.
 function resolvePhysicalStepId(device: DeviceStatusInput): string | null {
   if (!device.execution.available || device.execution.physicalState === 'off' || !device.steppedLoad) return null;

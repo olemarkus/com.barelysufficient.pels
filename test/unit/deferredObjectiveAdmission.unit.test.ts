@@ -343,14 +343,20 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
   });
 
-  it('pauses a satisfied EV in an hour it did not book', () => {
+  const batteryHold = {
+    kind: 'battery_hold', hold: { kind: 'target_reached', targetPercent: 80 },
+  } as const;
+
+  it('lends authority to hold a charger off at its task’s percentage target', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'ev1', objectiveKind: 'ev_soc', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
-    const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', releaseIntent: 'binary_release' });
+    const decisions = applyDeferredObjectiveAdmission([{ ...diagnostic.evaluation, targetControl: batteryHold }], [device]);
+    const applied = applyDeferredAdmissionToInput([device], decisions);
+    expect(applied.lentAuthorityDeviceIds.has('ev1')).toBe(true);
+    expect(applied.devices[0].chargeTargetHold).toEqual(batteryHold.hold);
   });
 
-  it.each([false, true])('resolves a satisfied shared charger with solar surplus %s', (surplusTracking) => {
+  it.each([false, true])('holds a shared charger at its task’s target with solar surplus %s', (surplusTracking) => {
     const diagnostic = buildDiagnostic({ deviceId: 'ev1', objectiveKind: 'ev_soc', ...satisfiedUnbooked });
     const device = buildEvDevice({
       id: 'ev1', controllable: true, controlModel: 'binary_power', surplusTracking,
@@ -359,13 +365,9 @@ describe('applyDeferredObjectiveAdmission', () => {
         chargingInstallation: { id: 'installation', mainId: 'ev2', memberIds: ['ev2', 'ev1'] },
       },
     });
-    const decisions = applyDeferredObjectiveAdmission([diagnostic.evaluation], [device]);
-    expect(decisions.get('ev1')).toEqual({
-      kind: 'idle', budgetExempt: false, holdCause: 'task_done',
-      ...(surplusTracking ? {} : { releaseIntent: 'binary_release' }),
-    });
+    const decisions = applyDeferredObjectiveAdmission([{ ...diagnostic.evaluation, targetControl: batteryHold }], [device]);
     const applied = applyDeferredAdmissionToInput([device], decisions);
-    expect(applied.forceShedSet.has('ev1')).toBe(!surplusTracking);
+    expect(applied.devices[0].chargeTargetHold).toEqual(batteryHold.hold);
   });
 
   it('releases a satisfied cap-off heater through its configured posture', () => {

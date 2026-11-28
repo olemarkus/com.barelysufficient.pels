@@ -1,4 +1,5 @@
 import type { ObjectiveProgressDirection } from '../types';
+import type { HeldChargeTarget } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredObjectiveHorizonPlan } from './types';
 import type { TaskCompletion } from './taskCompletion';
 
@@ -31,7 +32,10 @@ export type TaskEvaluation = {
     | { kind: 'awaiting_prices'; device: 'held' | 'running' }
     | { kind: 'allocated'; plan: DeferredObjectiveHorizonPlan };
   permissions: { budgetExempt: boolean; limitLowerPriority: boolean; pauseLowerPriority: boolean };
-  targetControl: { kind: 'none' } | { kind: 'temperature'; value: number };
+  targetControl:
+    | { kind: 'none' }
+    | { kind: 'temperature'; value: number }
+    | { kind: 'battery_hold'; hold: HeldChargeTarget };
 };
 
 /** A task holds no rescue permission: unset, or its obligation is met. */

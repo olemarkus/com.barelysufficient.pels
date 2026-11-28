@@ -59,6 +59,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
     getCarIdentificationState: (deviceId, nowMs) => deviceManager.getCarIdentificationState(deviceId, nowMs),
+    getCarAssociationCarIds: (deviceId) => deviceManager.getCarAssociationCarIds(deviceId),
     getDeviceControlAdapter: (deviceId) => ctx.deviceConfiguration.get(deviceId)?.controlAdapter,
     getUnusedBuiltInControl: (deviceId) => deviceManager.chargingCurrentControl.unusedBuiltInControl(
       deviceId, deviceManager.getSnapshotByDeviceId(deviceId),
