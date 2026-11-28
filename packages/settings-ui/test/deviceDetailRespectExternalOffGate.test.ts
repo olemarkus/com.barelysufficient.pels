@@ -176,6 +176,7 @@ const openPanel = async (params: OpenPanelParams) => {
         priceConfigured: false,
         surplusWilling: true,
         surplusDelta: 0,
+        gridWhenPanelsStop: false,
       },
     }
     : params.priceEnabled
@@ -187,6 +188,7 @@ const openPanel = async (params: OpenPanelParams) => {
         priceConfigured: true,
         surplusWilling: false,
         surplusDelta: 2,
+        gridWhenPanelsStop: false,
       },
     }
     : {};
@@ -909,6 +911,7 @@ describe('device detail "Disable temperature control"', () => {
       priceConfigured: true,
       surplusWilling: false,
       surplusDelta: 2,
+      gridWhenPanelsStop: false,
     };
     openDeviceDetail('heater-2');
     const second = temperatureControlToggle();

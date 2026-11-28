@@ -1,4 +1,9 @@
 import {
+  deviceDetailSurplusGridHint,
+  deviceDetailSurplusGridLabel,
+  deviceDetailSurplusGridOpt,
+  deviceDetailSurplusGridRow,
+  deviceDetailSurplusGridUnreadableHint,
   deviceDetailSurplusTrackDisabledHint,
   deviceDetailSurplusTrackHint,
   deviceDetailSurplusTrackLabel,
@@ -14,6 +19,7 @@ import {
 import {
   findLatestDevice,
   hasActiveDeadlineObjective,
+  resolveSolarProductionReadable,
   resolveSurplusControlAvailable,
   state,
 } from '../state.ts';
@@ -27,6 +33,9 @@ import { resolveDeviceDetailControlState } from './controlState.ts';
 import { hasUsableSteppedLoadLadder } from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import { vehicleChargingConsentMissing } from '../chargingSetupFacts.ts';
 import {
+  SURPLUS_GRID_WHEN_PANELS_STOP_HINT,
+  SURPLUS_GRID_WHEN_PANELS_STOP_LABEL,
+  SURPLUS_GRID_WHEN_PANELS_STOP_UNREADABLE_HINT,
   SURPLUS_TRACKING_HINTS,
   SURPLUS_TRACKING_LABELS,
   SURPLUS_TRACKING_SMART_TASK_NOTE,
@@ -78,12 +87,36 @@ const applyTrackingDisabledState = (deviceId: string): void => {
   if (deviceDetailSurplusTrackOpt) {
     deviceDetailSurplusTrackOpt.disabled = powerLimitOff || disabledBySmartTask;
   }
+  if (deviceDetailSurplusGridOpt) {
+    deviceDetailSurplusGridOpt.disabled = powerLimitOff || disabledBySmartTask;
+  }
   if (deviceDetailSurplusTrackPowerLimitHint) {
     deviceDetailSurplusTrackPowerLimitHint.hidden = !powerLimitOff;
   }
   if (deviceDetailSurplusTrackDisabledHint) {
     deviceDetailSurplusTrackDisabledHint.hidden = !(disabledBySmartTask && !powerLimitOff);
   }
+};
+
+/**
+ * "Charge from the grid when the panels stop" qualifies "Charge on solar
+ * surplus", so it shows on a charger's page while that switch is on. A stored
+ * choice outlives turning the surplus switch off and comes back with it.
+ *
+ * It is offered only where PELS can see the panels' production. Where it
+ * cannot, a choice already on stays visible so it can be turned off, with a
+ * line saying what it waits for.
+ */
+const syncGridWhenPanelsStopRow = (deviceId: string | null, surplusOn: boolean): void => {
+  if (!deviceDetailSurplusGridRow) return;
+  const selected = deviceId !== null && state.priceOptimizationSettings[deviceId]?.gridWhenPanelsStop === true;
+  const readable = resolveSolarProductionReadable();
+  const show = surplusOn && (readable || selected);
+  deviceDetailSurplusGridRow.hidden = !show;
+  if (deviceDetailSurplusGridUnreadableHint) deviceDetailSurplusGridUnreadableHint.hidden = readable;
+  if (!deviceDetailSurplusGridOpt) return;
+  deviceDetailSurplusGridOpt.selected = show && selected;
+  if (!show) deviceDetailSurplusGridOpt.disabled = true;
 };
 
 const hideTrackingRow = (): void => {
@@ -123,11 +156,13 @@ export const setDeviceDetailSurplusTrackingControl = (
   syncChargingSetupNotice(deviceId, showRow && optedIn);
   deviceDetailSurplusTrackRow.hidden = !showRow;
   if (!showRow || !deviceId || !device) {
+    syncGridWhenPanelsStopRow(deviceId, false);
     hideTrackingRow();
     return;
   }
   applyTrackingCopy(device);
   deviceDetailSurplusTrackOpt.selected = optedIn;
+  syncGridWhenPanelsStopRow(deviceId, optedIn && resolveCopyKind(device) === 'ev_charger');
   applyTrackingDisabledState(deviceId);
 };
 
@@ -144,6 +179,12 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
   if (deviceDetailSurplusTrackSmartTaskNote) {
     deviceDetailSurplusTrackSmartTaskNote.textContent = SURPLUS_TRACKING_SMART_TASK_NOTE;
   }
+  if (deviceDetailSurplusGridLabel) deviceDetailSurplusGridLabel.textContent = SURPLUS_GRID_WHEN_PANELS_STOP_LABEL;
+  deviceDetailSurplusGridOpt?.setAttribute('aria-label', SURPLUS_GRID_WHEN_PANELS_STOP_LABEL);
+  if (deviceDetailSurplusGridHint) deviceDetailSurplusGridHint.textContent = SURPLUS_GRID_WHEN_PANELS_STOP_HINT;
+  if (deviceDetailSurplusGridUnreadableHint) {
+    deviceDetailSurplusGridUnreadableHint.textContent = SURPLUS_GRID_WHEN_PANELS_STOP_UNREADABLE_HINT;
+  }
 };
 
 export const initDeviceDetailSurplusTrackingHandlers = (params: {
@@ -153,7 +194,9 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
   document.getElementById('device-detail-solar-charging-setup-action')?.addEventListener('click', () => {
     params.revealChargingSetup();
   });
-  const save = async (surplusWilling: boolean): Promise<void> => {
+  const save = async (
+    patch: { surplusWilling: boolean } | { gridWhenPanelsStop: boolean },
+  ): Promise<void> => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
     const device = findLatestDevice(deviceId);
@@ -163,7 +206,7 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
     // above is dead.
     if (!isSurplusTrackingDeviceShape(device, controlState)) return;
 
-    // An existing entry keeps its other fields and only flips `surplusWilling`.
+    // An existing entry keeps its other fields and only flips the patched one.
     const rebind = (): void => {
       if (params.getCurrentDetailDeviceId() === deviceId) {
         setDeviceDetailSurplusTrackingControl(deviceId, findLatestDevice(deviceId));
@@ -171,7 +214,7 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
     };
     if (await savePriceOptimizationPatch(
       deviceId,
-      { surplusWilling },
+      patch,
       SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG,
       'Failed to save solar surplus settings',
       rebind,
@@ -179,6 +222,9 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
   };
 
   deviceDetailSurplusTrackOpt?.addEventListener('change', () => {
-    void save(deviceDetailSurplusTrackOpt.selected);
+    void save({ surplusWilling: deviceDetailSurplusTrackOpt.selected });
+  });
+  deviceDetailSurplusGridOpt?.addEventListener('change', () => {
+    void save({ gridWhenPanelsStop: deviceDetailSurplusGridOpt.selected });
   });
 };

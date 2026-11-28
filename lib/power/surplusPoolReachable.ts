@@ -1,6 +1,8 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from './trackerTypes';
 import { SignedExportLatch, type FeedExportEvidence } from './signedExportLatch';
+import { SolarProductionPhase } from './solarProductionPhase';
+import type { GenerationReadResult } from './sources/generationPoll';
 
 /**
  * Can this home's solar-surplus pool ever be non-zero?
@@ -80,14 +82,35 @@ export const resolveSurplusPoolReachable = (params: {
 );
 
 /**
+ * The home's solar-surplus facts as runtime readers see them: whether the pool
+ * can ever open, and whether the panels have settled into not producing.
+ */
+export type SurplusPoolRead = {
+  isReachable(): boolean;
+  /**
+   * True only once the feed has shown the panels stopped and held there
+   * (`SolarProductionPhase`). False while they produce and while production is
+   * unknown, so a reader that releases a device on `true` never acts on a guess.
+   */
+  havePanelsStopped(): boolean;
+};
+
+/**
  * The home's one answer to "can the surplus pool ever open", composed once so
  * the `surplusOnly` posture and the "Use solar surplus" toggle read the same
  * thing. Owns the feed's export latch: the Main tracker component hands it
  * every state it adopts ({@link observeExportEvidence}), and both readers ask
  * {@link isReachable}.
+ *
+ * Also owns the feed's production phase ({@link havePanelsStopped}), the
+ * answer "Charge from the grid when the panels stop" asks. The Main power
+ * pipeline hands it the observer's fresh production reading with every sample
+ * ({@link observeGeneration}).
  */
-export class SurplusPoolReachability {
+export class SurplusPoolReachability implements SurplusPoolRead {
   private readonly exportLatch: SignedExportLatch;
+
+  private readonly production = new SolarProductionPhase();
 
   /**
    * @param canContributeCurtailment the curtailment estimator's own standing
@@ -100,6 +123,14 @@ export class SurplusPoolReachability {
 
   observeExportEvidence(tracker: PowerTrackerState): void {
     this.exportLatch.observe(tracker);
+  }
+
+  observeGeneration(reading: GenerationReadResult, nowMs: number): void {
+    this.production.observe(reading, nowMs);
+  }
+
+  havePanelsStopped(): boolean {
+    return this.production.read() === 'not_producing';
   }
 
   isReachable(): boolean {

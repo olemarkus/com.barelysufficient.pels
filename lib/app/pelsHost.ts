@@ -63,7 +63,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getTrackerStore'
   | 'getUserdataDatabase'
   | 'observer'
-  | 'isSurplusPoolReachable'
+  | 'surplusPool'
   | 'getLatestPlanSnapshotForUi'
   | 'getPowerCalibrationSnapshot'
   | 'refreshTargetDevicesSnapshot'

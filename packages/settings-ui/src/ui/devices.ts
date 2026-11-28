@@ -65,6 +65,7 @@ import {
   ensureChargerPhasePresetsRead,
 } from './chargerPhasePresets.ts';
 import { applyManagedOptInLimit } from './deviceDetail/managedOptInLimit.ts';
+import { applyManagedOptInSolarCharging } from './deviceDetail/managedOptInSolarCharging.ts';
 import {
   beginManagedControlIntent,
   isCurrentManagedControlIntent,
@@ -191,18 +192,20 @@ const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('ma
     return;
   }
   if (checked && isCurrentManagedControlIntent(deviceId, intentGeneration)) {
-    await applyManagedOptInControlMode(
-      deviceId,
-      phaseRead.presets,
-      () => renderDevices(state.latestDevices),
-    );
+    await applyManagedOptInControlMode(deviceId, phaseRead.presets, () => renderDevices(state.latestDevices));
     // The write above awaited: an owner who has turned Managed back off since
     // must not get Limit switched on for a device they just let go of.
     if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return;
     await applyManagedOptInLimit(deviceId, () => {
       renderDevices(state.latestDevices);
       renderPriorities(state.latestDevices);
-    }, () => isCurrentManagedControlIntent(deviceId, intentGeneration));
+    }, () => isCurrentManagedControlIntent(deviceId, intentGeneration))
+      // Then solar charging, which needs the control mode and Limit in place.
+      .then(() => applyManagedOptInSolarCharging(
+        deviceId,
+        () => renderDevices(state.latestDevices),
+        () => isCurrentManagedControlIntent(deviceId, intentGeneration),
+      ));
   }
 });
 

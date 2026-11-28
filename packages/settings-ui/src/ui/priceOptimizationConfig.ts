@@ -8,4 +8,5 @@ export const DEFAULT_PRICE_OPTIMIZATION_CONFIG: PriceOptimizationConfig = {
   priceConfigured: false,
   surplusWilling: false,
   surplusDelta: DEFAULT_SURPLUS_LIFT_C,
+  gridWhenPanelsStop: false,
 };

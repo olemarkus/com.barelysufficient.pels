@@ -40,6 +40,7 @@ type Taps = {
   heating: ReturnType<typeof vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>>;
   meterResponse: ReturnType<typeof vi.fn<MeterResponseTap>>;
   meterAuthority: ReturnType<typeof vi.fn<(deviceId: string, atMs: number) => void>>;
+  solarProduction: ReturnType<typeof vi.fn<(nowMs: number) => void>>;
 };
 
 const buildPipeline = (
@@ -53,6 +54,7 @@ const buildPipeline = (
     heating: vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>(),
     meterResponse: vi.fn<MeterResponseTap>(),
     meterAuthority: vi.fn<(deviceId: string, atMs: number) => void>(),
+    solarProduction: vi.fn<(nowMs: number) => void>(),
   };
   // The scheduler stub executes every accepted intent at once by calling back
   // into the throttle, so the ingest path settles like production.
@@ -106,6 +108,7 @@ const buildPipeline = (
     savePowerTracker: (state) => { powerTracker = state; },
     recordCurtailmentSample: taps.curtailment,
     recordPvGenerationSample: taps.pvForecast,
+    observeSolarGeneration: taps.solarProduction,
     recordHeatingObservations: taps.heating,
     recordMeterResponseSample: taps.meterResponse,
     getCoSampledGenerationW: () => coSampledGenerationW,
@@ -123,6 +126,14 @@ describe('PowerSamplePipeline generation co-sampling', () => {
 
     expect(taps.curtailment).toHaveBeenCalledWith(-1_500, 7_000, T0);
     expect(taps.pvForecast).toHaveBeenCalledWith(7_000, T0, -1_500);
+  });
+
+  it('asks the solar production phase to read the held production with every sample', async () => {
+    // The home's wiring hands the phase the observer's reading, which keeps a
+    // reported "nothing generates" (`resolveFreshGenerationReading`).
+    const { pipeline, taps } = buildPipeline(undefined);
+    await pipeline.recordPowerSample(200, T0);
+    expect(taps.solarProduction).toHaveBeenCalledWith(T0);
   });
 
   it('withholds a CO-SAMPLED generation from the curtailment estimator, but not from accounting', async () => {

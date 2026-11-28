@@ -269,6 +269,7 @@ describe('advanced device cleanup', () => {
         priceConfigured: true,
         surplusWilling: false,
         surplusDelta: 2,
+        gridWhenPanelsStop: false,
       },
     };
     state.capacityPriorities = { Home: { 'dev-1': 1, 'dev-2': 2 } };

@@ -268,6 +268,13 @@ export const deviceDetailSurplusTrackHint = qs('#device-detail-surplus-track-hin
 export const deviceDetailSurplusTrackDisabledHint = qs('#device-detail-surplus-track-disabled-hint');
 export const deviceDetailSurplusTrackPowerLimitHint
   = qs('#device-detail-surplus-track-power-limit-hint');
+export const deviceDetailSurplusGridRow = qs('#device-detail-surplus-grid-row');
+export const deviceDetailSurplusGridOpt = document.querySelector(
+  '#device-detail-surplus-grid-opt',
+) as MdSwitchElement;
+export const deviceDetailSurplusGridLabel = qs('#device-detail-surplus-grid-label');
+export const deviceDetailSurplusGridHint = qs('#device-detail-surplus-grid-hint');
+export const deviceDetailSurplusGridUnreadableHint = qs('#device-detail-surplus-grid-unreadable-hint');
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as MdFilledSelectElement;
 export const deviceDetailShedSegmented = qs('#device-detail-overshoot-segmented');
 export const deviceDetailShedSegmentedLabel = qs('#device-detail-overshoot-segmented-label');

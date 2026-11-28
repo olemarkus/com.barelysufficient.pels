@@ -356,6 +356,11 @@ export const resolveHomeHasSolar = (): boolean => (
   resolveHomeExhibitsSolar() || resolveSurplusControlAvailable()
 );
 
+// Whether PELS can see when the panels stop: a solar device in Homey reports
+// production. A home that shows solar only through its meter's export cannot
+// tell, so "Charge from the grid when the panels stop" would never act there.
+export const resolveSolarProductionReadable = (): boolean => state.hasManagedSolarDevice;
+
 // A home with solar that has not shown its first surplus: solar control is on
 // its way, not broken. An evening or winter install simply has not had one yet.
 export const resolveSolarSurplusPending = (): boolean => (

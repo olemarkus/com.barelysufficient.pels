@@ -35,9 +35,21 @@ describe('createPriceOptimizationSettingsStore setup read', () => {
           surplusWilling: false,
           // The same lift the settings UI shows for an entry that stores none.
           surplusDelta: DEFAULT_SURPLUS_LIFT_C,
+          // Absent means off.
+          gridWhenPanelsStop: false,
         },
       },
     });
+  });
+
+  it('rejects a map whose grid-after-solar choice is not a boolean', () => {
+    const settings = new MockSettings();
+    settings.set(PRICE_OPTIMIZATION_SETTINGS, {
+      charger: {
+        enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, gridWhenPanelsStop: 'yes',
+      },
+    });
+    expect(createPriceOptimizationSettingsStore(settings).readDeviceSettings()).toEqual({ state: 'unavailable' });
   });
 
   it('resolves canonical defaults when price keys were never written', () => {

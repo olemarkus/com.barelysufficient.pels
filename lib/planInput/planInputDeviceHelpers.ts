@@ -123,8 +123,14 @@ export function resolveSurplusPostureForDevice(
   // A missing per-device entry means the owner has not opted this device in.
   // Resolve that absence here so the planner receives a complete decision and
   // can trust the boolean without knowing settings-map provenance.
-  if (source.getPriceOptimizationSettings(device.id)?.surplusWilling !== true) return none;
+  const priceConfig = source.getPriceOptimizationSettings(device.id);
+  if (priceConfig?.surplusWilling !== true) return none;
   if (!source.isSurplusPoolReachable()) return none;
+  // "Charge from the grid when the panels stop": once the panels have stopped,
+  // the device is no longer held for solar and the planner runs it as any other
+  // managed device. Unknown production (none readable, or none yet this run)
+  // does not count as stopped, so the device keeps waiting for surplus.
+  if (priceConfig.gridWhenPanelsStop && source.havePanelsStopped()) return none;
   const plainBinaryControlModel = isPlainBinaryControlDevice(
     device.targetPowerConfig,
     device.controlModel,

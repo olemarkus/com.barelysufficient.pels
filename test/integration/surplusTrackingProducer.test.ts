@@ -14,6 +14,7 @@ import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 
 const CHARGER = 'charger-1';
 const SOCKET = 'socket-1';
@@ -130,5 +131,71 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     // than by withholding the posture (see the unit tier).
     const device = toPlanDevice(willingCtx(CHARGER), withDeviceConfiguration(buildChargerSnapshot()));
     expect(device.surplusTracking).toBe(true);
+  });
+});
+
+describe('toPlanDevice with "Charge from the grid when the panels stop"', () => {
+  const HOLD_MS = 10 * 60_000;
+
+  const gridAfterSunCtx = (gridWhenPanelsStop: boolean) => {
+    const ctx = createAppContextMock({
+      powerTracker: exportedBefore,
+      priceOptimizationSettings: {
+        [CHARGER]: {
+          enabled: false,
+          cheapDelta: 0,
+          expensiveDelta: 0,
+          surplusWilling: true,
+          surplusDelta: 0,
+          gridWhenPanelsStop,
+        },
+      },
+    });
+    (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
+    (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
+    // The real owner the Main power pipeline feeds each sample's generation to.
+    const pool = ctx.surplusPool as SurplusPoolReachability;
+    return { ctx, pool };
+  };
+
+  const watts = (value: number) => ({ state: 'measured', watts: value } as const);
+  const stopPanels = (pool: SurplusPoolReachability) => {
+    pool.observeGeneration(watts(2500), 0);
+    // Homey reporting that nothing generates, as it does once the panels go quiet.
+    pool.observeGeneration({ state: 'none' }, 60_000);
+    pool.observeGeneration({ state: 'none' }, 60_000 + HOLD_MS);
+  };
+
+  it('runs the charger as an ordinary managed charger once the panels have stopped', () => {
+    const { ctx, pool } = gridAfterSunCtx(true);
+    stopPanels(pool);
+    const device = toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot()));
+    expect(device.surplusTracking).toBe(false);
+    expect(device.surplusOnly).toBeUndefined();
+  });
+
+  it('follows the surplus while the panels produce', () => {
+    const { ctx, pool } = gridAfterSunCtx(true);
+    pool.observeGeneration(watts(2500), 0);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(true);
+  });
+
+  it('goes back to following the surplus when production returns', () => {
+    const { ctx, pool } = gridAfterSunCtx(true);
+    stopPanels(pool);
+    pool.observeGeneration(watts(800), 2 * HOLD_MS);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(true);
+  });
+
+  it('keeps waiting for surplus when production is unknown', () => {
+    // No production reading this run: PELS does not assume the sun has set.
+    const { ctx } = gridAfterSunCtx(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(true);
+  });
+
+  it('keeps waiting for surplus at night when the option is off', () => {
+    const { ctx, pool } = gridAfterSunCtx(false);
+    stopPanels(pool);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(true);
   });
 });

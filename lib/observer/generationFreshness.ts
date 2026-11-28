@@ -1,5 +1,5 @@
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
-import type { GenerationReading } from './observedHomePower';
+import type { GenerationReading, ObservedHomePower } from './observedHomePower';
 
 /**
  * Freshness producer for the observer's held generation reading: resolves it
@@ -56,6 +56,32 @@ export const resolveFreshGenerationW = (params: {
   // restart); treat it as absent rather than reasoning about it.
   if (ageMs < 0 || ageMs >= POWER_SAMPLE_STALE_THRESHOLD_MS) return undefined;
   return generationW;
+};
+
+/**
+ * The held reading as an observation, keeping what {@link resolveFreshGenerationW}
+ * folds away: a fresh `null` is Homey reporting that nothing generates right
+ * now (`none`), which a reader asking "have the panels stopped" needs, while a
+ * missing, stale, future-dated or malformed reading is `unavailable`. The same
+ * freshness window applies.
+ */
+export type FreshGenerationReading =
+  | { readonly state: 'measured'; readonly watts: number }
+  | { readonly state: 'none' }
+  | { readonly state: 'unavailable' };
+
+export const resolveFreshGenerationReading = (
+  holder: Pick<ObservedHomePower, 'getGenerationW' | 'getGenerationObservedAtMs'>,
+  nowMs: number,
+): FreshGenerationReading => {
+  const generationW = holder.getGenerationW();
+  const observedAtMs = holder.getGenerationObservedAtMs();
+  if (observedAtMs === null || !Number.isFinite(observedAtMs)) return { state: 'unavailable' };
+  const ageMs = nowMs - observedAtMs;
+  if (ageMs < 0 || ageMs >= POWER_SAMPLE_STALE_THRESHOLD_MS) return { state: 'unavailable' };
+  if (generationW === null) return { state: 'none' };
+  const watts = resolveFreshGenerationW({ generationW, observedAtMs, nowMs });
+  return watts === undefined ? { state: 'unavailable' } : { state: 'measured', watts };
 };
 
 /**

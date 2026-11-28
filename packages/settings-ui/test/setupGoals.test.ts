@@ -78,7 +78,7 @@ describe('Choose what PELS does', () => {
     const { goals, state } = await load();
     manage(state, [heatPump]);
     state.priceOptimizationSettings = {
-      pump: { enabled: true, cheapDelta: 5, expensiveDelta: -5, priceConfigured: true, surplusWilling: false, surplusDelta: 2 },
+      pump: { enabled: true, cheapDelta: 5, expensiveDelta: -5, priceConfigured: true, surplusWilling: false, surplusDelta: 2, gridWhenPanelsStop: false },
     };
     expect(ready(goals.resolveSetupGoalChoices())[0]?.price).toEqual({ enabled: true });
   });
@@ -157,7 +157,7 @@ describe('Choose what PELS does', () => {
       state.deviceTargetPowerConfigs = { charger: { enabled: true, preset: 'ev_charger_3_phase' } };
       state.priceOptimizationSettings = {
         charger: { enabled: false, cheapDelta: 0, expensiveDelta: 0,
-          priceConfigured: false, surplusWilling: true, surplusDelta: 0 },
+          priceConfigured: false, surplusWilling: true, surplusDelta: 0, gridWhenPanelsStop: false },
       };
       const charging = await import('../src/ui/chargingSetupFacts.ts');
       await charging.loadChargingSetup();

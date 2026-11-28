@@ -1264,9 +1264,14 @@ THREE per-device surplus controls share the `surplusWilling` opt-in; the label n
 | Binary dump-load posture (toggle) | `Run on solar surplus` |
 | Stepped-load tracking posture, EV charger (toggle) | `Charge on solar surplus` |
 | Stepped-load tracking posture, other stepped device (toggle) | `Match solar surplus` |
+| EV charger, under `Charge on solar surplus` while it is on (toggle) | `Charge from the grid when the panels stop` |
+| Its supporting text | `When your solar panels stop producing, PELS charges as usual. While they produce, it waits for surplus.` |
+| Its line where no solar device in Homey reports production | `Add your solar panels or inverter to Homey so PELS can see when they stop. Until then, it waits for surplus.` |
 | Temperature card reason while lifted | `Raised to use your solar power` |
 | Dump-load or tracking card reason while running on surplus | `On to use your solar power` |
 | Dump-load or tracking card reason while held off | `Waiting for solar surplus` |
+
+`Charge from the grid when the panels stop` names the trigger the runtime uses, the panels' production, never the clock: say "when the panels stop", not "after sunset". While the panels are not producing the charger is an ordinary managed charger, so its card carries the ordinary reasons and no solar line.
 
 Sources: `lib/plan/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
 

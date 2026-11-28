@@ -85,6 +85,7 @@ Some things to know:
 - **A smart task wins.** If the device has a [smart task](./smart-tasks.md) with a deadline, the task's schedule decides while it is running — a deadline you asked for is not something "use only your own sun" should quietly miss.
 - **It moves in steps, not smoothly**, and it waits a couple of minutes between increases so a passing cloud does not change your charging current every few seconds. Decreases are immediate.
 - The card reads **"Waiting for solar surplus"** while PELS is holding the device back.
+- **Sun first, grid after.** On a charger, **Charge from the grid when the panels stop** lets the car charge as usual once your panels stop producing, and go back to following the surplus when they produce again. It needs your panels or inverter in Homey to see the production. PELS turns it on together with **Charge on solar surplus** when you manage a new charger in such a home. See [EV Charger](./ev-charger.md).
 
 ### Big flexible loads use the freed-up power
 

@@ -27,6 +27,7 @@ describe('classifyPriceOptimizationConfigMap', () => {
           priceConfigured: true,
           surplusWilling: false,
           surplusDelta: DEFAULT_SURPLUS_LIFT_C,
+          gridWhenPanelsStop: false,
         },
       },
     });
@@ -60,6 +61,7 @@ describe('classifyPriceOptimizationConfigMap', () => {
           priceConfigured: true,
           surplusWilling: true,
           surplusDelta: 2,
+          gridWhenPanelsStop: false,
         },
         solarOnly: {
           enabled: false,
@@ -68,6 +70,7 @@ describe('classifyPriceOptimizationConfigMap', () => {
           priceConfigured: false,
           surplusWilling: true,
           surplusDelta: 0,
+          gridWhenPanelsStop: false,
         },
       },
     });
@@ -96,6 +99,7 @@ describe('classifyPriceOptimizationConfigMap', () => {
           priceConfigured: true,
           surplusWilling: true,
           surplusDelta: 2,
+          gridWhenPanelsStop: false,
         },
         priceOnly: {
           enabled: false,
@@ -104,8 +108,17 @@ describe('classifyPriceOptimizationConfigMap', () => {
           priceConfigured: true,
           surplusWilling: false,
           surplusDelta: 2,
+          gridWhenPanelsStop: false,
         },
       },
     });
+  });
+
+  it('reads the grid-after-solar choice, and treats a non-boolean as unreadable', () => {
+    const entry = { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true };
+    const read = classifyPriceOptimizationConfigMap({ charger: { ...entry, gridWhenPanelsStop: true } });
+    expect(read.state === 'resolved' && read.settings.charger?.gridWhenPanelsStop).toBe(true);
+    expect(classifyPriceOptimizationConfigMap({ charger: { ...entry, gridWhenPanelsStop: 1 } }))
+      .toEqual({ state: 'unavailable' });
   });
 });

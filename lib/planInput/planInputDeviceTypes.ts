@@ -4,7 +4,7 @@ import type {
   BinaryCommandabilityProjectionInput,
 } from '../plan/admission/binaryCommandReachability';
 import type { DeviceControlSettingsRead } from '../device/deviceControlSettings';
-import type { PriceOptimizationSettings } from '../price/priceOptimizer';
+import type { PriceOptimizationConfig } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { AssociatedCarDecoration } from '../../packages/contracts/src/types';
 import type {
@@ -39,8 +39,10 @@ export type PlanInputProjectionSource = {
    * never through `isCapacityControlEnabled`, which vetoes every battery.
    */
   deviceControl: DeviceControlSettingsRead;
-  getPriceOptimizationSettings: (deviceId: string) => PriceOptimizationSettings | undefined;
+  getPriceOptimizationSettings: (deviceId: string) => PriceOptimizationConfig | undefined;
   isSurplusPoolReachable: () => boolean;
+  /** Whether the home's panels have settled into not producing (`SurplusPoolRead.havePanelsStopped`). */
+  havePanelsStopped: () => boolean;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead;

@@ -14,6 +14,7 @@ export const SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG: PriceOptimizationConfig = {
   priceConfigured: false,
   surplusWilling: false,
   surplusDelta: 0,
+  gridWhenPanelsStop: false,
 };
 
 /**

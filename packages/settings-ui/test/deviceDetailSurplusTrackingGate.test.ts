@@ -36,6 +36,12 @@ const buildDom = () => {
           <small id="device-detail-surplus-track-disabled-hint" hidden></small>
           <small id="device-detail-surplus-track-power-limit-hint" hidden></small>
         </div>
+        <div class="md-switch-row" id="device-detail-surplus-grid-row" hidden>
+          <md-switch id="device-detail-surplus-grid-opt"></md-switch>
+          <span id="device-detail-surplus-grid-label"></span>
+          <small id="device-detail-surplus-grid-hint"></small>
+          <small id="device-detail-surplus-grid-unreadable-hint" hidden></small>
+        </div>
         <div id="device-detail-expected-power-row">
           <input id="device-detail-expected-power">
           <small id="device-detail-expected-power-source"></small>
@@ -130,6 +136,9 @@ type OpenPanelParams = {
   managed?: boolean;
   controllable?: boolean;
   surplusWilling?: boolean;
+  gridWhenPanelsStop?: boolean;
+  /** Whether a solar device in Homey reports production (default yes). */
+  hasSolarDevice?: boolean;
   activeSmartTask?: boolean;
   /** An unsaved control-mode draft, as the panel's own store would hold it. */
   storedTargetPowerConfig?: Record<string, unknown>;
@@ -155,13 +164,14 @@ const openPanel = async (params: OpenPanelParams) => {
         priceConfigured: false,
         surplusWilling: true,
         surplusDelta: 0,
+        gridWhenPanelsStop: params.gridWhenPanelsStop ?? false,
       },
     }
     : {};
   state.deviceTargetPowerConfigs = params.storedTargetPowerConfig
     ? { [deviceId]: params.storedTargetPowerConfig }
     : {};
-  state.hasManagedSolarDevice = true;
+  state.hasManagedSolarDevice = params.hasSolarDevice ?? true;
   state.hasExhibitedExport = true;
   state.surplusPoolReachable = params.surplusPoolReachable ?? true;
   state.capacityPriorities = { Home: { [deviceId]: 1 } };
@@ -197,6 +207,8 @@ const trackRow = () => document.querySelector('#device-detail-surplus-track-row'
 const trackSwitch = () => document.querySelector('#device-detail-surplus-track-opt') as MdSwitchLike | null;
 const trackLabel = () => document.querySelector('#device-detail-surplus-track-label') as HTMLElement | null;
 const powerLimitHint = () => document.querySelector('#device-detail-surplus-track-power-limit-hint') as HTMLElement | null;
+const gridRow = () => document.querySelector('#device-detail-surplus-grid-row') as HTMLElement | null;
+const gridSwitch = () => document.querySelector('#device-detail-surplus-grid-opt') as MdSwitchLike | null;
 const smartTaskHint = () => document.querySelector('#device-detail-surplus-track-disabled-hint') as HTMLElement | null;
 
 describe('device detail solar-surplus tracking gating', () => {
@@ -357,6 +369,64 @@ describe('device detail solar-surplus tracking gating', () => {
     await openPanel({ device: buildCharger(), activeSmartTask: true });
     expect(trackSwitch()?.disabled).toBe(true);
     expect(smartTaskHint()?.hidden).toBe(false);
+  });
+
+  describe('Charge from the grid when the panels stop', () => {
+    it('stays hidden while "Charge on solar surplus" is off', async () => {
+      await openPanel({ device: buildCharger() });
+      expect(gridRow()?.hidden).toBe(true);
+    });
+
+    it('shows under "Charge on solar surplus" once it is on, with the saved choice', async () => {
+      await openPanel({ device: buildCharger(), surplusWilling: true, gridWhenPanelsStop: true });
+      expect(gridRow()?.hidden).toBe(false);
+      expect(gridSwitch()?.selected).toBe(true);
+      expect(gridSwitch()?.disabled).toBe(false);
+      expect(document.querySelector('#device-detail-surplus-grid-label')?.textContent)
+        .toBe('Charge from the grid when the panels stop');
+      expect((document.querySelector('#device-detail-surplus-grid-unreadable-hint') as HTMLElement).hidden)
+        .toBe(true);
+    });
+
+    it('is not offered where no solar device in Homey reports production', async () => {
+      await openPanel({ device: buildCharger(), surplusWilling: true, hasSolarDevice: false });
+      expect(trackRow()?.hidden).toBe(false);
+      expect(gridRow()?.hidden).toBe(true);
+    });
+
+    it('stays visible there once on, and says what it waits for', async () => {
+      await openPanel({
+        device: buildCharger(), surplusWilling: true, gridWhenPanelsStop: true, hasSolarDevice: false,
+      });
+      expect(gridRow()?.hidden).toBe(false);
+      expect(gridSwitch()?.selected).toBe(true);
+      const hint = document.querySelector('#device-detail-surplus-grid-unreadable-hint') as HTMLElement;
+      expect(hint.hidden).toBe(false);
+      expect(hint.textContent).toContain('Until then, it waits for surplus.');
+    });
+
+    it('is not offered on a stepped device that is not a charger', async () => {
+      await openPanel({ device: buildSteppedHeater(), surplusWilling: true });
+      expect(trackRow()?.hidden).toBe(false);
+      expect(gridRow()?.hidden).toBe(true);
+    });
+
+    it('is disabled with the surplus switch while Power-limit control is off', async () => {
+      await openPanel({ device: buildCharger(), surplusWilling: true, controllable: false });
+      expect(gridRow()?.hidden).toBe(false);
+      expect(gridSwitch()?.disabled).toBe(true);
+    });
+
+    it('saves the choice into the charger\'s entry', async () => {
+      const { state } = await openPanel({ device: buildCharger(), surplusWilling: true });
+      const control = gridSwitch()!;
+      control.selected = true;
+      control.dispatchEvent(new Event('change'));
+      await flushPromises();
+      expect(state.priceOptimizationSettings['charger-1']).toMatchObject({
+        surplusWilling: true, gridWhenPanelsStop: true,
+      });
+    });
   });
 
   describe('copy', () => {

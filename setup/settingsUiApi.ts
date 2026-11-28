@@ -644,7 +644,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // surplus pool. Same predicate the runtime producer gates the `surplusOnly`
     // stamp on (`lib/planInput/projectPlanInputDevice.ts`), so the toggle is offered
     // exactly where enabling it does something.
-    surplusPoolReachable: host.isSurplusPoolReachable(),
+    surplusPoolReachable: host.surplusPool.isReachable(),
   };
 };
 
