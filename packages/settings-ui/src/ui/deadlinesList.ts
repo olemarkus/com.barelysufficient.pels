@@ -9,9 +9,9 @@ import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi
 import { MODE_PREPARATION_QUERY_PARAM } from '../../../shared-domain/src/settings/schedules.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
-  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEVICES_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
+import { readDeferredObjectiveHistory } from './deferredObjectiveHistoryRead.ts';
 import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import type { DeferredObjectiveRoster } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {
@@ -229,19 +229,6 @@ const writePersistedDeviceFilter = (deviceId: string | null): void => {
   }
 };
 
-const fetchPlanHistoryOrNull = async (): Promise<
-  SettingsUiDeferredObjectivePlanHistoryPayload | null
-> => {
-  try {
-    return await callApi<SettingsUiDeferredObjectivePlanHistoryPayload>(
-      'GET',
-      SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
-    );
-  } catch {
-    return null;
-  }
-};
-
 // In-memory mirror of the persisted filter. Persistent state lives in
 // localStorage; this cache keeps the chip-click round-trip fast (no read on
 // every render). It is read from storage once per page load.
@@ -263,29 +250,14 @@ const ensureDeviceFilterInitialized = (): void => {
   activeDeviceFilterInitialized = true;
 };
 
-// Monotonic refresh generation. The active list and the (independently
-// fetched) history archive resolve on their own schedules, and the history
-// `.then` re-renders the active list to thread the resolved `historyPresent`
-// flag. If the user re-opens the Smart tasks tab — firing a fresh
-// `refreshDeadlinesList()` — before a prior history request settles, the older
-// callback would otherwise fire late and re-render the active surface with its
-// own (now stale) cards / empty-state, clobbering the newer loading/error/ready
-// paint. Each invocation captures the counter value at entry and the history
-// callback only re-renders the active list while its generation is still the
-// latest. The history SURFACE render is unaffected — only the active-list
-// re-render is gated.
+// Each page ignores reads superseded by a newer refresh of that page.
 let refreshGeneration = 0;
+let historyRefreshGeneration = 0;
 
 const renderHistorySurface = (
   surface: HTMLElement,
-  payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
+  entries: ResolvedDeferredObjectivePlanHistoryEntry[],
 ): void => {
-  const entries = resolveDeadlinesHistoryEntries(payload);
-  // Render `empty` (with copy) rather than `hidden` so a brand-new user who
-  // has never finished a smart task still sees the Past tasks heading and an
-  // explanatory line — the section silently vanishing was the bug. `hidden`
-  // remains a valid state for callers that genuinely want to suppress the
-  // section (e.g. a transient render before any data has arrived).
   if (entries.length === 0) {
     renderDeadlinesHistoryList(surface, { status: 'empty' });
     return;
@@ -294,10 +266,10 @@ const renderHistorySurface = (
   const handleSelectDevice = (deviceId: string | null): void => {
     activeDeviceFilter = deviceId;
     writePersistedDeviceFilter(deviceId);
-    // Re-render the same payload from cache so the chip row reflects the new
+    // Re-render the same entries so the chip row reflects the new
     // selection immediately — no network round-trip needed since the filter
     // is a pure view-side narrowing.
-    renderHistorySurface(surface, payload);
+    renderHistorySurface(surface, entries);
   };
   const state: DeadlinesHistoryListState = {
     status: 'ready',
@@ -311,6 +283,23 @@ const renderHistorySurface = (
   renderDeadlinesHistoryList(surface, state);
 };
 
+export const refreshDeadlinesHistory = async (): Promise<void> => {
+  const surface = getHistorySurface();
+  if (!surface) return;
+  const generation = ++historyRefreshGeneration;
+  renderDeadlinesHistoryList(surface, { status: 'loading' });
+  const payload = await readDeferredObjectiveHistory('deadlines-history').catch(() => null);
+  if (generation !== historyRefreshGeneration) return;
+  if (payload === null) {
+    renderDeadlinesHistoryList(surface, {
+      status: 'error',
+      onRetry: () => { void refreshDeadlinesHistory(); },
+    });
+    return;
+  }
+  renderHistorySurface(surface, resolveDeadlinesHistoryEntries(payload));
+};
+
 // Task schedules that are switched on but cannot run, from the last schedules read that succeeded.
 let schedulesNotRunning = 0;
 
@@ -318,14 +307,8 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   const surface = getSurface();
   if (!surface) return;
   void refreshModePreparation();
-  // Claim a generation for this invocation. A later refresh bumps the counter,
-  // which stales any in-flight history callback from this invocation so it
-  // can't re-render the active surface over the newer paint.
-  refreshGeneration += 1;
-  const generation = refreshGeneration;
-  const historySurface = getHistorySurface();
+  const generation = ++refreshGeneration;
   renderDeadlinesList(surface, { status: 'loading' }, listActions);
-  if (historySurface) renderDeadlinesHistoryList(historySurface, { status: 'loading' });
 
   // Coordinate the active list's empty state with the (independently fetched)
   // history archive. The active list's zero-card branch must distinguish a
@@ -340,7 +323,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   let latestCards: DeadlinesListCard[] | null = null;
   let historyPresent: boolean | undefined;
   const renderActiveReady = (): void => {
-    if (latestCards === null) return;
+    if (generation !== refreshGeneration || latestCards === null) return;
     const state: DeadlinesListState = {
       status: 'ready',
       cards: latestCards,
@@ -355,32 +338,19 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     renderDeadlinesList(surface, state, listActions);
   };
 
-  // Fire history fetch in parallel but don't await it before rendering the
-  // active list — history is optional and a slow/hanging endpoint must not
-  // gate first paint of the primary Smart tasks list. The same payload feeds
-  // both the history surface render and the active list's empty-state branch,
-  // so a single fetch resolves both (no second round-trip).
-  const historyTarget = historySurface;
-  void fetchPlanHistoryOrNull().then((payload) => {
-    if (historyTarget) renderHistorySurface(historyTarget, payload);
-    // `historyPresent` is the empty-state discriminator: true when at least
-    // one finished run exists in the archive. Resolved through the same
-    // entry-extraction helper the history surface uses so the active list and
-    // the archive agree on what "has history" means.
+  // History only informs the landing page's empty-state copy and never gates
+  // the active list. The archive renders on its own page.
+  void readDeferredObjectiveHistory('deadlines').then((payload) => {
     historyPresent = resolveDeadlinesHistoryEntries(payload).length > 0;
-    // Gate the active-list re-render: only the latest invocation may repaint
-    // the active surface. A stale (older-generation) callback that resolves
-    // after a newer refresh has started must not overwrite the newer paint.
-    // The history surface render above is unaffected — it always reflects this
-    // fetch's own payload.
-    if (generation === refreshGeneration) renderActiveReady();
-  });
+    if (latestCards?.length === 0) renderActiveReady();
+  }, () => {});
 
   try {
     const [bootstrap, devicesPayload] = await Promise.all([
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
       callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
     ]);
+    if (generation !== refreshGeneration) return;
     const objectiveSettings = normalizeDeferredObjectiveRoster(bootstrap.deferredObjectives);
     // An unavailable schedules read keeps the last count: it is not a home with no such schedule.
     if (devicesPayload.schedules?.ok === true) {
@@ -396,6 +366,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     renderActiveReady();
   } catch (error) {
     await logSettingsError('Failed to load deadlines list', error, 'refreshDeadlinesList');
+    if (generation !== refreshGeneration) return;
     renderDeadlinesList(surface, {
       status: 'error',
       message: SMART_TASK_LIST_LOAD_ERROR_COPY,
@@ -437,14 +408,12 @@ const smartTaskCreateActions: SmartTaskCreateActions = {
   onChangeDeviceSettings: openSmartTaskCreateDeviceSettings,
 };
 
-// The flow shares this tab with the task lists and mode preparation. Closing
+// The flow shares this tab with the active task list and mode preparation. Closing
 // it brings those surfaces back refreshed.
 const setListVisible = (visible: boolean): void => {
   const list = document.getElementById('deadlines-list-root');
-  const history = document.getElementById('deadlines-history-root');
   const surface = document.getElementById('smart-task-create-root');
   if (list) list.hidden = !visible;
-  if (history) history.hidden = !visible;
   const modePreparation = getModePreparationSurface();
   if (modePreparation) modePreparation.hidden = !visible;
   if (surface) surface.hidden = visible;

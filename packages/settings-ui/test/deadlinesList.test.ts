@@ -5,11 +5,7 @@ import { resolveDeadlinesHistoryEntries, resolveDeadlinesListCards } from '../sr
 import {
   type SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../contracts/src/deferredObjectivePlanHistory.ts';
-import {
-  SETTINGS_UI_BOOTSTRAP_PATH,
-  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
-  SETTINGS_UI_DEVICES_PATH,
-} from '../../contracts/src/settingsUi/paths.ts';
+import { SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH } from '../../contracts/src/settingsUi/paths.ts';
 import type {
   DeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV2,
@@ -22,7 +18,7 @@ import type { ObservedStateOfChargeProbe, TargetDeviceSnapshot, TemperatureObser
 import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
-// The history surface renders from the payload `refreshDeadlinesList()`
+// The history surface renders from the payload `refreshDeadlinesHistory()`
 // fetches, so the history specs drive the panel through that entry point with
 // the API mocked.
 const callApiMock = vi.fn();
@@ -662,21 +658,10 @@ describe('resolveDeadlinesHistoryEntries', () => {
 // a rename of the key, which would drop every owner's saved filter, fails here.
 const HISTORY_DEVICE_FILTER_STORAGE_KEY = 'pels.smart-tasks.history.deviceFilter';
 
-// An empty active list, so only the history surface carries entries.
-const emptyBootstrap = {
-  settings: {},
-  deferredObjectives: { objectivesByDeviceId: {} },
-  deferredObjectiveActivePlans: { version: 2, plansByDeviceId: {} },
-};
-
-const installDeadlinesSurfaces = (): void => {
-  document.body.replaceChildren();
-  const active = document.createElement('div');
-  active.id = 'deadlines-list-root';
-  document.body.appendChild(active);
+const installHistorySurface = (): void => {
   const history = document.createElement('div');
   history.id = 'deadlines-history-root';
-  document.body.appendChild(history);
+  document.body.replaceChildren(history);
 };
 
 // The panel module keeps the device filter it read from storage for its
@@ -686,21 +671,15 @@ const importFreshDeadlinesList = async (): Promise<typeof import('../src/ui/dead
   return import('../src/ui/deadlinesList.ts');
 };
 
-// Open the Smart tasks panel with `history` as the archive and wait for the
-// fire-and-forget history fetch to render. A `setTimeout(0)` macrotask runs
-// only after the pending microtasks of that chain have settled.
 const renderHistoryThroughRefresh = async (
-  refreshDeadlinesList: () => Promise<void>,
+  refreshDeadlinesHistory: () => Promise<void>,
   history: SettingsUiDeferredObjectivePlanHistoryPayload,
 ): Promise<HTMLElement> => {
   callApiMock.mockImplementation((_method: string, path: string) => {
-    if (path === SETTINGS_UI_BOOTSTRAP_PATH) return Promise.resolve(emptyBootstrap);
-    if (path === SETTINGS_UI_DEVICES_PATH) return Promise.resolve({ devices: [] });
     if (path === SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH) return Promise.resolve(history);
     return Promise.reject(new Error(`unexpected path ${path}`));
   });
-  await refreshDeadlinesList();
-  await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+  await refreshDeadlinesHistory();
   return document.getElementById('deadlines-history-root') as HTMLElement;
 };
 
@@ -710,7 +689,7 @@ const renderHistoryThroughRefresh = async (
 // test imports a fresh panel module and clears the storage key so a stale
 // write from one test can't bleed into another.
 describe('history device-filter persistence', () => {
-  let refreshDeadlinesList: () => Promise<void>;
+  let refreshDeadlinesHistory: () => Promise<void>;
 
   const buildHistoryPayloadEntry = (deviceId: string, finalizedAtMs: number, deviceName: string) => toResolvedLegacyPlanHistoryEntry({
     id: `${deviceId}-${finalizedAtMs}`,
@@ -747,8 +726,8 @@ describe('history device-filter persistence', () => {
   beforeEach(async () => {
     window.localStorage.removeItem(HISTORY_DEVICE_FILTER_STORAGE_KEY);
     callApiMock.mockReset();
-    installDeadlinesSurfaces();
-    ({ refreshDeadlinesList } = await importFreshDeadlinesList());
+    installHistorySurface();
+    ({ refreshDeadlinesHistory } = await importFreshDeadlinesList());
   });
 
   afterEach(() => {
@@ -761,14 +740,26 @@ describe('history device-filter persistence', () => {
       .find((chip) => (chip.textContent ?? '').trim() === label) ?? null
   );
 
+  it('shows a retry after a failed history read and renders the archive on retry', async () => {
+    callApiMock.mockRejectedValueOnce(new Error('history unavailable')).mockResolvedValueOnce(buildPayload());
+    await refreshDeadlinesHistory();
+
+    const surface = document.getElementById('deadlines-history-root') as HTMLElement;
+    expect(surface.textContent).toContain('Past tasks couldn’t be loaded.');
+    expect(surface.textContent).not.toContain('No completed tasks yet');
+
+    surface.querySelector<HTMLElement>('md-text-button')?.click();
+    await vi.waitFor(() => expect(surface.querySelectorAll('.plan-history-card')).toHaveLength(2));
+  });
+
   it('persists the selected device id to localStorage when a chip is clicked', async () => {
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildPayload());
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildPayload());
     findChip(surface, 'Connected 300')?.click();
     expect(window.localStorage.getItem(HISTORY_DEVICE_FILTER_STORAGE_KEY)).toBe('dev_b');
   });
 
   it('clears the persisted filter when the active chip is tapped again', async () => {
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildPayload());
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildPayload());
     findChip(surface, 'Connected 300')?.click();
     expect(window.localStorage.getItem(HISTORY_DEVICE_FILTER_STORAGE_KEY)).toBe('dev_b');
     // Re-resolve the chip after the re-render so we click the current element.
@@ -778,7 +769,7 @@ describe('history device-filter persistence', () => {
 
   it('reads the persisted filter on the next render (simulates a reload)', async () => {
     window.localStorage.setItem(HISTORY_DEVICE_FILTER_STORAGE_KEY, 'dev_b');
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildPayload());
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildPayload());
     expect(findChip(surface, 'Connected 300')?.getAttribute('aria-pressed')).toBe('true');
     expect(findChip(surface, 'All')?.getAttribute('aria-pressed')).toBe('false');
     // Only Connected 300 rows render — Boiler entries are filtered out.
@@ -790,7 +781,7 @@ describe('history device-filter persistence', () => {
 
   it('self-heals when the persisted filter points at a removed device', async () => {
     window.localStorage.setItem(HISTORY_DEVICE_FILTER_STORAGE_KEY, 'dev_removed');
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildPayload());
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildPayload());
     // No empty-state copy — the helper falls back to the unfiltered list when
     // the persisted target no longer exists; the chip row drops the dead
     // chip naturally because `resolveSmartTaskHistoryFilterDevices` only
@@ -809,13 +800,13 @@ describe('history device-filter persistence', () => {
 // the ones built here without the field — fall back to the recording-era øre/kr
 // default `{ unit: 'kr', divisor: 100 }`). These entries carry RAW øre `totalCost`
 // and no `costDisplay`, so they exercise the legacy fallback end-to-end through
-// the history surface `refreshDeadlinesList()` renders: the persisted øre must
+// the history surface `refreshDeadlinesHistory()` renders: the persisted øre must
 // be divided by 100 before it reads as kr. The tests pin BOTH that the cost
 // reaches the row AND that the fallback scaling is applied, so a future
 // regression that drops the entry-display path (or the øre→kr fallback) is
 // caught here.
 describe('history cost meta line (real state path)', () => {
-  let refreshDeadlinesList: () => Promise<void>;
+  let refreshDeadlinesHistory: () => Promise<void>;
 
   // `totalCost` is the RAW persisted total in the scheme's minor unit (øre for
   // the default kr/100 scheme), exactly as the runtime accumulates it from
@@ -855,8 +846,8 @@ describe('history cost meta line (real state path)', () => {
 
   beforeEach(async () => {
     callApiMock.mockReset();
-    installDeadlinesSurfaces();
-    ({ refreshDeadlinesList } = await importFreshDeadlinesList());
+    installHistorySurface();
+    ({ refreshDeadlinesHistory } = await importFreshDeadlinesList());
   });
 
   afterEach(() => {
@@ -865,7 +856,7 @@ describe('history cost meta line (real state path)', () => {
 
   it('renders the cost half from the entry display (legacy øre/kr fallback, not dead-wired)', async () => {
     // Legacy entry (no recorded display) → øre/kr fallback: 1234 øre / 100 ≈ 12 kr.
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildCostPayload(1234, 18.2));
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildCostPayload(1234, 18.2));
     const cost = surface.querySelector('.plan-history-card__cost');
     // The cost half renders — proving the entry-display path reaches the row,
     // not just when a test injects a display into the component.
@@ -877,7 +868,7 @@ describe('history cost meta line (real state path)', () => {
   it('applies the CostDisplay divisor — 150 øre @ divisor 100 reads "≈ 2 kr", not "≈ 150 kr"', async () => {
     // The P1 money bug: dropping the divisor labelled raw øre as kr, rendering
     // ~100× too much. 150 øre / 100 = 1.5 → Math.round → 2 kr.
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildCostPayload(150, 1.5));
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildCostPayload(150, 1.5));
     const cost = surface.querySelector('.plan-history-card__cost');
     expect(cost?.textContent).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
     // Guard the regression direction explicitly: the raw øre figure must NOT
@@ -889,7 +880,7 @@ describe('history cost meta line (real state path)', () => {
     // 1234 øre → 12 kr, not "12.34". The divider above sums the same money and
     // rounds it (Math.round); the row must agree so one screen never shows two
     // precisions for the same figure.
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildCostPayload(1234, 18.2));
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildCostPayload(1234, 18.2));
     const cost = surface.querySelector('.plan-history-card__cost');
     expect(cost?.textContent).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
     expect(cost?.textContent).not.toContain('12.34');
@@ -900,7 +891,7 @@ describe('history cost meta line (real state path)', () => {
     // must render `≈ 12 EUR`, NOT divided by 100 as if it were øre — even though
     // the live boot/default would assume øre/kr. No live display is consulted.
     const entry = { ...buildCostEntry(12, 4), costDisplay: { unit: 'EUR', divisor: 1 } };
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, {
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, {
       version: 1 as const,
       entriesByDeviceId: { dev_cost: [entry] },
     });
@@ -914,7 +905,7 @@ describe('history cost meta line (real state path)', () => {
     // the same money. Both must scale øre→kr identically (divisor applied once
     // each), so the divider heading and the row read the same figure rather
     // than the divider reading raw øre while the row reads kr (or vice-versa).
-    const surface = await renderHistoryThroughRefresh(refreshDeadlinesList, buildCostPayload(150, 1.5));
+    const surface = await renderHistoryThroughRefresh(refreshDeadlinesHistory, buildCostPayload(150, 1.5));
     const rowCost = surface.querySelector('.plan-history-card__cost')?.textContent ?? '';
     const weekHeading = surface.querySelector('.deadlines-history__week')?.textContent ?? '';
     expect(rowCost).toContain('≈ 2 kr');

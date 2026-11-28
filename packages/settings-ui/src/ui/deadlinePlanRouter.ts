@@ -1,7 +1,7 @@
 import { isDeadlinePlanRoute } from './deadlineUrls.ts';
 import { setActiveTabIndicator } from './realtime.ts';
 import { initialShellPanel, renderPanel, replaceTab } from './tabNavigation.ts';
-import { isShellPanel, shellRouteUrl } from './shellRoutes.ts';
+import { DEADLINES_HISTORY_PANEL, isShellPanel, panelFromSearch, shellRouteUrl } from './shellRoutes.ts';
 import {
   mountDeadlinePlan,
   setDeadlinePlanCloseHandler,
@@ -17,6 +17,14 @@ const PANEL_ID = 'deadline-plan-panel';
 // can see they're now under "Smart tasks", not still on "Overview".
 const DEADLINE_PLAN_TAB_ID = 'deadlines';
 
+// The history entry survives reload and Forward. A detail reached from other
+// surfaces continues to use the normal close target.
+const cameFromPastTasks = (): boolean => {
+  const state: unknown = window.history.state;
+  return typeof state === 'object' && state !== null
+    && 'pelsFromPastTasks' in state && state.pelsFromPastTasks === true;
+};
+
 const showDeadlinePlanPanel = (): void => {
   document.querySelectorAll<HTMLElement>('[data-panel]').forEach((panel) => {
     panel.classList.toggle('hidden', panel.id !== PANEL_ID);
@@ -26,6 +34,9 @@ const showDeadlinePlanPanel = (): void => {
   // would hide the deadline-plan panel a moment later, so we use the
   // indicator-only helper.
   setActiveTabIndicator(DEADLINE_PLAN_TAB_ID);
+  document.querySelector('[data-deadline-plan-close]')?.setAttribute(
+    'aria-label', cameFromPastTasks() ? 'Back to Past tasks' : 'Back to Smart tasks',
+  );
 };
 
 // The closed plan's history entry becomes the fallback tab's, so the plan is
@@ -56,8 +67,15 @@ export const initDeadlinePlanRouter = (): void => {
   let pendingOnSettled: (() => void) | null = null;
 
   const closeView = (options?: DeadlinePlanCloseOptions): void => {
+    const fromPastTasks = cameFromPastTasks();
+    if (fromPastTasks && !options?.fallbackTab) {
+      window.history.back();
+      return;
+    }
     const fallbackTab = options?.fallbackTab ?? 'deadlines';
-    if (openedViaPushState && window.history.length > 1) {
+    // Explicit destinations replace the detail entry so the archive remains
+    // available via browser Back.
+    if (!fromPastTasks && openedViaPushState && window.history.length > 1) {
       pendingFallbackTab = fallbackTab;
       pendingOnSettled = options?.onSettled ?? null;
       window.history.back();
@@ -151,7 +169,9 @@ export const initDeadlinePlanRouter = (): void => {
     if (!isDeadlinePlanRoute(url.search)) return;
     event.preventDefault();
     const target = `${url.pathname}${url.search}${url.hash}`;
-    window.history.pushState(null, '', target);
+    const fromPastTasks = panelFromSearch(window.location.search) === DEADLINES_HISTORY_PANEL
+      && url.searchParams.has('historyId');
+    window.history.pushState(fromPastTasks ? { pelsFromPastTasks: true } : null, '', target);
     openedViaPushState = true;
     applyRouteFromUrl();
   }, true);

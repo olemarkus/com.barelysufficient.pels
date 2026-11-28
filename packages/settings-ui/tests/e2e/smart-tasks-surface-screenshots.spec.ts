@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../../test/utils/planHistoryFixtures.ts';
 import { captureOutputDir, expect, injectHomeyHostCss, test, type Page } from './fixtures/test';
 
 // Baseline whole-surface render of the Smart tasks tab. Not a CI assertion — a
@@ -110,7 +111,7 @@ const makeEntry = (params: {
       { atMs: startedAtMs + 5 * HOUR, endsAtMs: (startedAtMs + 5 * HOUR) + 3_600_000, deliveredKWh: 1.1, priceValue: 60, tone: 'expensive' as const },
     ]
     : undefined;
-  return {
+  return toResolvedLegacyPlanHistoryEntry({
     id,
     deviceId,
     deviceName,
@@ -143,7 +144,7 @@ const makeEntry = (params: {
     hourlyContributions,
     totalCost: totalCostOre,
     deliveredKWh,
-  };
+  });
 };
 
 // Stable history id for the entry the detail-surface capture navigates into.
@@ -211,7 +212,7 @@ const seed = (data: { clearActive: boolean; history: unknown }) => {
 const openSmartTasks = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('tab', { name: 'Smart tasks' }).click();
-  await expect(page.locator('.deadlines-history__heading')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Past tasks', exact: true })).toBeVisible();
 };
 
 // Drive the history-detail sub-page directly via its query-string route (the
@@ -245,6 +246,7 @@ const STATES = [
   { name: 'contradiction', clearActive: true, withHistory: true, detail: false },
   { name: 'active', clearActive: false, withHistory: true, detail: false },
   { name: 'first-run', clearActive: true, withHistory: false, detail: false },
+  { name: 'past-tasks', clearActive: false, withHistory: true, detail: false },
   // History-detail sub-page for the revised run — gates the "Revised
   // trajectory" overlay + revisions-card pixels the list-only states miss.
   { name: 'history-detail', clearActive: false, withHistory: true, detail: true },
@@ -281,6 +283,10 @@ for (const width of [480, 360, 320] as const) {
             await openHistoryDetail(page);
           } else {
             await openSmartTasks(page);
+            if (state.name === 'past-tasks') {
+              await page.getByRole('button', { name: 'Past tasks', exact: true }).click();
+              await expect(page.locator('#deadlines-history-root .plan-history-card').first()).toBeVisible();
+            }
           }
           await page.waitForTimeout(500);
           await page.screenshot({ path: path.join(OUT_DIR, `${state.name}-${width}.png`), fullPage: false });

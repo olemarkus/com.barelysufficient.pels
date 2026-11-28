@@ -542,7 +542,7 @@ describe('DeadlinesList', () => {
   // run (no history) from a between-runs lull (history exists). Showing "Add
   // your first smart task" / "No smart tasks yet" to a user who has finished
   // runs in the archive below erases their history; the between-runs state
-  // renders a calmer header that points down to Past tasks instead.
+  // renders a calmer header that points to Past tasks instead.
   describe('empty-state coordination with history', () => {
     it('keeps the first-run invitation when there is no active card AND no history', () => {
       const mount = mountIntoBody();
@@ -557,9 +557,9 @@ describe('DeadlinesList', () => {
     it('shows the between-runs header (not "first" / "yet") when history exists', () => {
       const mount = mountIntoBody();
       renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: true }, { onNewTask: () => {} });
-      // Between-runs headline + a pointer to Past tasks below.
+      // Between-runs headline + a pointer to Past tasks.
       expect(mount.textContent).toContain('No smart tasks scheduled');
-      expect(mount.textContent).toContain('Past tasks');
+      expect(mount.querySelector('[data-state="empty-between-runs"]')?.textContent).toContain('Your finished tasks are in Past tasks.');
       // The "first" / "yet" framing must never reach a returning user.
       expect(mount.textContent).not.toContain('Add your first smart task');
       expect(mount.textContent).not.toContain('No smart tasks yet');
@@ -664,7 +664,7 @@ describe('DeadlinesHistoryList', () => {
     const mount = mountIntoBody();
     renderDeadlinesHistoryList(mount, { status: 'empty' });
     expect(mount.querySelector('.deadlines-history')).not.toBeNull();
-    expect(mount.textContent).toContain('Past tasks');
+    expect(mount.querySelector('h3')).toBeNull();
     expect(mount.textContent).toContain('No completed tasks yet');
   });
 

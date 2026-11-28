@@ -1,3 +1,4 @@
+import { toResolvedLegacyPlanHistoryEntry } from '../../../../test/utils/planHistoryFixtures.ts';
 import { expect, HOMEY_HOST_CSS, test, type Page } from './fixtures/test';
 
 // Regression gate for the Homey host-stylesheet button bleed.
@@ -27,7 +28,35 @@ const HOUR = 3_600_000, DAY = 24 * HOUR;
 type Outcome = 'met' | 'missed' | 'abandoned';
 const makeEntry = (p: { id: string; deviceId: string; deviceName: string; outcome: Outcome; finalizedAtMs: number; startC: number; finalC: number; targetC: number }) => {
   const startedAtMs = p.finalizedAtMs - 8 * HOUR, deadlineAtMs = p.finalizedAtMs - HOUR;
-  return { id: p.id, deviceId: p.deviceId, deviceName: p.deviceName, objectiveKind: 'temperature', targetTemperatureC: p.targetC, targetPercent: null, deadlineAtMs, startedAtMs, finalizedAtMs: p.finalizedAtMs, startProgressC: p.startC, startProgressPercent: null, finalProgressC: p.finalC, finalProgressPercent: null, initialEnergyNeededKWh: 4, outcome: p.outcome, metAtMs: p.outcome === 'met' ? deadlineAtMs - HOUR : null, usedDeadlineReserve: false, observedIntervals: [{ fromMs: startedAtMs, toMs: deadlineAtMs }], discoveredFrom: 'observation', originalPlan: { hours: [{ startsAtMs: startedAtMs, endsAtMs: (startedAtMs) + 3_600_000, plannedKWh: 1 }], energyNeededKWh: 4, planStatus: 'on_track', revisedAtMs: startedAtMs }, finalPlan: null, revisionCount: 1 };
+  return toResolvedLegacyPlanHistoryEntry({
+    id: p.id,
+    deviceId: p.deviceId,
+    deviceName: p.deviceName,
+    objectiveKind: 'temperature',
+    targetTemperatureC: p.targetC,
+    targetPercent: null,
+    deadlineAtMs,
+    startedAtMs,
+    finalizedAtMs: p.finalizedAtMs,
+    startProgressC: p.startC,
+    startProgressPercent: null,
+    finalProgressC: p.finalC,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 4,
+    outcome: p.outcome,
+    metAtMs: p.outcome === 'met' ? deadlineAtMs - HOUR : null,
+    usedDeadlineReserve: false,
+    observedIntervals: [{ fromMs: startedAtMs, toMs: deadlineAtMs }],
+    discoveredFrom: 'observation',
+    originalPlan: {
+      hours: [{ startsAtMs: startedAtMs, endsAtMs: startedAtMs + HOUR, plannedKWh: 1 }],
+      energyNeededKWh: 4,
+      planStatus: 'on_track',
+      revisedAtMs: startedAtMs,
+    },
+    finalPlan: null,
+    revisionCount: 1,
+  });
 };
 const buildHistory = (nowMs: number) => {
   const c300 = (i: number, o: Outcome, d: number, s: number, f: number) => makeEntry({ id: `c300-${i}`, deviceId: 'dev_connected300', deviceName: 'Connected 300', outcome: o, finalizedAtMs: nowMs - d * DAY, startC: s, finalC: f, targetC: 65 });
@@ -39,25 +68,28 @@ const seed = (data: { history: unknown }) => {
   (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = { apiHandlers: { 'GET /ui_deferred_objective_history': () => data.history } };
 };
 
-const openSmartTasks = async (page: Page) => {
+const openPastTasks = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   // Let the Overview paint first: a hidden Overview does not paint, and its
   // buttons are part of what the scan below must cover.
   await expect(page.locator('#plan-cards')).toBeAttached();
   await page.getByRole('tab', { name: 'Smart tasks' }).click();
-  await expect(page.locator('.deadlines-history__heading')).toBeVisible();
+  await page.getByRole('button', { name: 'Past tasks', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Filter past tasks by device' })).toBeVisible();
 };
 
-test('Homey host stylesheet does not bleed onto native <button> or <label> in dark theme', async ({ browser, browserName, baseURL }) => {
+test('Homey host stylesheet does not bleed onto native <button> or <label> in dark theme', async ({ browser, browserName, baseURL, viewport }) => {
   test.skip(browserName !== 'chromium', 'Mobile dark capture needs chromium isMobile emulation.');
   // A manually-created context does NOT inherit the fixture baseURL, so pass it
-  // explicitly or `openSmartTasks`'s `page.goto('/')` has no base to resolve
+  // explicitly or `openPastTasks`'s `page.goto('/')` has no base to resolve
   // against under the dynamic-port e2e server (mirrors smart-tasks-surface).
-  const ctx = await browser.newContext({ baseURL, viewport: { width: 480, height: 2400 }, isMobile: true, hasTouch: true });
+  const ctx = await browser.newContext({
+    baseURL, viewport: { width: viewport?.width ?? 480, height: 2400 }, isMobile: true, hasTouch: true,
+  });
   const page = await ctx.newPage();
   await page.clock.setFixedTime(FIXED_NOW_MS);
   await page.addInitScript(seed, { history: buildHistory(FIXED_NOW_MS) });
-  await openSmartTasks(page);
+  await openPastTasks(page);
   // Reproduce the real iframe: inject the captured Homey host CSS AFTER our sheet.
   // `addStyleTag` resolves once the sheet is applied and `getComputedStyle`
   // below forces a synchronous style recalc, so no settle wait is needed.

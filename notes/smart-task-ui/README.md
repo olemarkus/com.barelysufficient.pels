@@ -17,7 +17,7 @@ The Smart tasks surface has three primary pages:
 
 1. **Landing tab** (`packages/settings-ui/src/ui/views/DeadlinesList.tsx`
    + `views/DeadlinesHistoryList.tsx` + `views/DeadlinePlanHistory.tsx`)
-   — list of current tasks at the top, list of past tasks below.
+   — current tasks and a Past tasks action that opens the archive.
 2. **Live plan page** (`views/DeadlinePlan.tsx` +
    `deadlinePlan.ts` + `deadlinePlanHero.ts`) — per-device per-deadline
    hero + price horizon chart + plan inputs card.

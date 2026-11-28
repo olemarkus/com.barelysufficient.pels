@@ -115,7 +115,7 @@ import {
 } from './recommendations.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { reloadSetupIntentIfChanged } from './setupIntent.ts';
-import { refreshDeadlinesList } from './deadlinesList.ts';
+import { refreshDeadlinesHistory, refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { applyDeferredObjectiveActivePlansPush } from './deferredObjectiveActivePlans.ts';
 import { handleWeatherAdvisorSettingsChanged } from './weatherInsight.ts';
@@ -441,10 +441,12 @@ const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
   invalidateDeferredObjectiveHistoryRead();
   invalidateApiCache(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
   runLoggedTask(loadDeferredObjectiveSettings(), 'Failed to reload deferred objectives', context);
-  // The list re-reads three payloads, so a hidden Smart tasks panel waits for
-  // its activation hook, which refreshes it on open.
+  // Each page refreshes on activation when hidden.
   if (isPanelVisible('#deadlines-panel')) {
     runLoggedTask(refreshDeadlinesList(), 'Failed to refresh deadlines list', context);
+  }
+  if (isPanelVisible('#deadlines-history-panel')) {
+    runLoggedTask(refreshDeadlinesHistory(), 'Failed to load past tasks', context);
   }
 };
 

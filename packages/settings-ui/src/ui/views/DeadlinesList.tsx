@@ -14,6 +14,7 @@ import {
 import {
   resolveSmartTaskListDeadlineVerb,
   SMART_TASK_LIST_ROW_LABELS,
+  SMART_TASK_PAST_HEADING,
 } from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
 import {
   resolveSmartTaskListReadyByTone,
@@ -38,6 +39,7 @@ import {
 } from '../../../../shared-domain/src/deadlinesListHero.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';
+import { DEADLINES_HISTORY_PANEL } from '../shellRoutes.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../../contracts/src/objectiveProfileTypes.ts';
 
@@ -393,7 +395,7 @@ const EmptyBody = () => (
   </>
 );
 
-// Between-runs body: no active tasks, but the Past tasks archive below has
+// Between-runs body: no active tasks, but the Past tasks archive has
 // finished runs. The user has used smart tasks before, so the first-run Flow
 // setup instructions would be condescending and the "first" / "yet" framing
 // would erase their history. A single calm sentence points them at the archive
@@ -442,6 +444,7 @@ const DeadlinesListRoot = ({ state, actions }: { state: DeadlinesListState; acti
         {SMART_TASK_CREATE_PAGE_COPY.newTaskAction}
       </MdFilledTonalButton>
       <MdTextButton data-open-schedules data-schedule-filter="task">Task schedules</MdTextButton>
+      <MdTextButton data-settings-target={DEADLINES_HISTORY_PANEL}>{SMART_TASK_PAST_HEADING}</MdTextButton>
     </div>
   );
   if (state.status === 'loading') {

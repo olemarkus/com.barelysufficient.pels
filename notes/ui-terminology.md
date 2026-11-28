@@ -1661,7 +1661,8 @@ connected and undriveable, which nothing could ever observe.
 #### Empty-state headlines
 
 The smart-task list distinguishes two zero-active-card states by whether the
-Past tasks archive below has any finished runs. Headlines come from
+Past tasks archive has any finished runs. The `Past tasks` action opens the
+archive on its own page. Headlines come from
 `DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE` in
 `packages/shared-domain/src/deadlinesListHero.ts`; the first-run body is
 `SMART_TASK_LIST_CREATE_HINT` in `smartTaskCopy/createEditCopy.ts`.
@@ -1669,7 +1670,7 @@ Past tasks archive below has any finished runs. Headlines come from
 | State | Headline | When |
 |---|---|---|
 | First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty. The body, `No smart tasks yet. Set a goal and ready-by time for a managed device. PELS will choose when it runs.`, sits beside the page's `New smart task` action. |
-| Between runs (history exists) | `No smart tasks scheduled` | No active cards but the archive has finished runs — the calmer present-tense headline; the body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to Past tasks. Never `first` / `yet` here — that framing would erase a returning user's history. |
+| Between runs (history exists) | `No smart tasks scheduled` | No active cards and the archive has finished runs. The body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points to Past tasks. |
 
 #### Creating, editing, and clearing a task
 

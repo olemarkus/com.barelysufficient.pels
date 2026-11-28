@@ -459,8 +459,17 @@
            Settings rhythm). -->
       <div id="deadlines-list-root"></div>
       <div id="mode-preparation-root"></div>
-      <div id="deadlines-history-root"></div>
       <div id="smart-task-create-root" hidden></div>
+    </section>
+
+    <section class="card panel hidden settings-detail-panel" id="deadlines-history-panel" data-panel="deadlines-history" aria-labelledby="deadlines-history-page-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="deadlines" aria-label="Back to Smart tasks">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="deadlines-history-page-title">Past tasks</h2>
+      </div>
+      <div id="deadlines-history-root" aria-live="polite"></div>
     </section>
 
     <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-labelledby="deadline-plan-title">
