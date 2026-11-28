@@ -1,5 +1,3 @@
-import { readFreshHomeBatteryDischargeW } from '../../lib/observer/homeBatteryDischarge';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import { TaskAllocationRoster, type TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
@@ -28,9 +26,6 @@ export const buildTaskEvaluationSource = (
   getChargingPhaseEnvelopes: (_nowMs) => requirePlanService(ctx).readChargingPhaseEnvelopes(),
   allocationRoster: new TaskAllocationRoster(() => ctx.getNow()),
   getTimeZone: () => ctx.getTimeZone(),
-  getHomeBatteryDischargeW: (nowMs) => readFreshHomeBatteryDischargeW(
-    ctx.homeMembership?.filterDevicesForHome(ctx.getDeviceSurfaces(), MAIN_HOME_ID) ?? [], nowMs,
-  ),
   evSmartTaskSettings: (deviceId) => ctx.deviceControlSettings.getEvSmartTaskSettings(deviceId),
   prefersContinuousCharging: (deviceId) => ctx.deviceControlSettings.getPreferContinuousCharging(deviceId),
   getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
