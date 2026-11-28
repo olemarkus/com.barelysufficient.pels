@@ -44,7 +44,8 @@ export type ObserverDeviceRead = ObservedDeviceState
 export type ExecutorDeviceRead = ExecutorDeviceSnapshot
   & ReportedStepObservedProbe
   & MeasuredPowerObservedProbe
-  & EvObservedProbe;
+  & EvObservedProbe
+  & Pick<DeviceConfigurationRead, 'controlAdapter'>;
 
 /**
  * The executor's two owner reads. The final executor read keeps only the
@@ -88,6 +89,7 @@ const joinExecutorDevice = (
     id: configuration.id,
     name: configuration.name,
     isEvCharger: configuration.isEvCharger,
+    controlAdapter: configuration.controlAdapter,
     steppedLoadProfile: 'steppedLoadProfile' in configuration ? configuration.steppedLoadProfile : undefined,
   };
 };

@@ -15,13 +15,15 @@ import { HomeyRequestInFlightError } from '../utils/homeyRequestInFlightError';
 import type { UnusedBuiltInControl } from './builtInControlFlowGate';
 import {
   canSetChargingCurrent, hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
-  installationPresetWattsPerAmp, resolveInstallationCurrentTargetPowerObservation,
+  assertCurrentActionCeiling, installationPresetWattsPerAmp, resolveInstallationCurrentTargetPowerObservation,
 } from './chargingCurrentAdapter';
 import type { CapabilityWrite, ChargingCurrentBinding, InstallationCurrentAccess } from './deviceAdapter';
-import { currentSettingCapabilities, currentSettingFlows, installationCurrentFlows } from './chargingCurrentFlowRoutes';
+import {
+  actionControlHoldReason, currentSettingCapabilities, currentSettingFlows, installationCurrentFlows,
+} from './chargingCurrentFlowRoutes';
 import {
   describeCurrentBinding, describeCurrentFlowCheck, projectedInstallationRole, withChargingInstallation,
-  withCurrentRoute,
+  lazyChargingCurrentSetup, readChargingCurrentSetup, trustEpochOf, withCurrentActionHold, withCurrentRoute,
 } from './chargingCurrentProjection';
 import {
   ChargingInstallationControl, withholdsInstallationSteps, type InstallationCurrentRoute,
@@ -44,19 +46,10 @@ const SECONDARY_CURRENT_ERROR = 'This charger shares its installation current; P
 const SHARED_CURRENT_UNAVAILABLE = 'PELS cannot set the shared current for this installation.';
 const DEFAULT_SETUP: ChargingCurrentSetup = { method: 'flow', confirmation: 'none' };
 
-function readSetup(value: unknown): ChargingCurrentSetup | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  if (!('method' in value) || (value.method !== 'flow' && value.method !== 'built_in')) return undefined;
-  if (!('confirmation' in value)) return undefined;
-  const { confirmation } = value;
-  if (confirmation !== 'none' && confirmation !== 'vehicle' && confirmation !== 'single_charger') return undefined;
-  return { method: value.method, confirmation };
-}
-
 /** What a device parse reads from the current-route owner. */
 export type ChargingCurrentParseRead = Pick<
   ChargingCurrentControl, 'requiresManualControl' | 'withdrawsCurrentLadder' | 'withholdsInstallationSteps'
-  | 'isInstallationMain'
+  | 'isInstallationMain' | 'routesBuiltIn'
 >;
 
 /** Owns current-route selection. Binary control remains independent of this choice. */
@@ -68,7 +61,7 @@ export class ChargingCurrentControl {
   // The last Flow list PELS accepted, seeded from the one saved before the
   // restart. Shared installations wait for a successful scan before setting current.
   private flowWrites: FlowCapabilityWrites = new Map();
-  private sharedFlowInventoryReady = false;
+  private flowInventoryReady = false;
   // The charging devices the reads carried, for a device the committed list
   // does not hold yet: that list is adopted only after projection, so it is
   // empty for the first refresh after a boot and lacks a device new in this read.
@@ -169,7 +162,11 @@ export class ChargingCurrentControl {
   assertControlAllowed(device: HomeyDeviceLike, capabilityId?: string): void {
     if (capabilityId !== undefined) this.assertInstallationWrite(device.id, capabilityId);
     const connected = this.synchronizeTrust();
-    this.sessions.assertAllowed(device, () => this.setup(device.id), connected);
+    const adapter = resolveChargingCurrentAdapter(device);
+    const readSetup = lazyChargingCurrentSetup(() => this.setup(device.id));
+    const hold = actionControlHoldReason(adapter, readSetup, this.flowInventoryReady, this.flowWrites);
+    if (hold !== undefined) throw new Error(hold);
+    this.sessions.assertAllowed(device, readSetup, connected);
   }
 
   /**
@@ -179,7 +176,7 @@ export class ChargingCurrentControl {
   acceptFlowFacts(facts: UserFlowFacts): boolean {
     const before = this.currentRouteKey();
     this.flowWrites = facts.writes;
-    this.sharedFlowInventoryReady = true;
+    this.flowInventoryReady = true;
     this.saveFlowWrites();
     return this.currentRouteKey() !== before;
   }
@@ -190,7 +187,7 @@ export class ChargingCurrentControl {
   /** Puts back an earlier accepted list, when applying a later one failed. */
   restoreFlowWrites(writes: FlowCapabilityWrites): void {
     this.flowWrites = writes;
-    this.sharedFlowInventoryReady = false;
+    this.flowInventoryReady = false;
     this.saveFlowWrites();
   }
 
@@ -287,7 +284,9 @@ export class ChargingCurrentControl {
       return false;
     }
     const setup = readSetup ? readSetup() : this.setup(device.id);
-    return setup.method === 'built_in' && this.permitsInstallationCurrent(adapter, setup, access);
+    return setup.method === 'built_in'
+      && actionControlHoldReason(adapter, () => setup, this.flowInventoryReady, this.flowWrites) === undefined
+      && this.permitsInstallationCurrent(adapter, setup, access);
   }
 
   private routesAutomaticWatts(device: HomeyDeviceLike, access: InstallationCurrentAccess): boolean {
@@ -324,7 +323,9 @@ export class ChargingCurrentControl {
     };
     const builtIn = this.routesBuiltInFor(device, installation?.access, readSetup);
     const projected = this.sessions.project(withCurrentRoute(source, builtIn), readSetup);
-    return withChargingInstallation(projected, installation?.installation);
+    const adapter = device && resolveChargingCurrentAdapter(device);
+    const reason = actionControlHoldReason(adapter, readSetup, this.flowInventoryReady, this.flowWrites);
+    return withChargingInstallation(withCurrentActionHold(projected, reason), installation?.installation);
   }
 
   chargingInstallation(deviceId: string): ChargingInstallation | undefined {
@@ -333,7 +334,7 @@ export class ChargingCurrentControl {
   }
 
   private installationRoute(main: HomeyDeviceLike | undefined, memberIds: readonly string[]): InstallationCurrentRoute {
-    if (!this.sharedFlowInventoryReady) return 'unverified';
+    if (!this.flowInventoryReady) return 'unverified';
     if (this.findInstallationFlows(memberIds, this.flowWrites).size > 0) return 'flow';
     const automatic = main !== undefined && this.automaticWattsOwnRoute(main);
     if (automatic && this.sessions.targetPowerClaims.resolve(main, Date.now()) === 'refused') return 'refused';
@@ -521,7 +522,7 @@ export class ChargingCurrentControl {
   }
 
   async save(deviceId: string, body: unknown): Promise<void> {
-    const setup = readSetup(body);
+    const setup = readChargingCurrentSetup(body);
     if (!setup) throw new Error('Choose a charging-current control method.');
     const device = (await this.list()).find((entry) => entry.deviceId === deviceId);
     if (!device) throw new Error('This device has no supported charging-current control.');
@@ -591,16 +592,16 @@ export class ChargingCurrentControl {
       .catch((cause: unknown) => {
         throw new Error('Unable to read charging-current action metadata', { cause });
       });
-    // Selection can change while Homey is answering the metadata read.
-    if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
-    this.assertInstallation(adapter);
-    this.assertControlAllowed(device);
-    if (action === undefined) throw new Error('The charging-current action is unavailable in Homey.');
-    await this.access.runAction(device.id, action, 'charging_current', () => {
+    // Selection and the charger ceiling can change while Homey is answering the metadata read.
+    const assertAuthorized = () => {
       if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
+      if (adapter.confirmsCurrentWithAction) assertCurrentActionCeiling(this.findDevice(device.id), currentA);
       this.assertControlAllowed(device);
       this.assertInstallation(adapter);
-    }).catch((error: unknown) => {
+    };
+    assertAuthorized();
+    if (action === undefined) throw new Error('The charging-current action is unavailable in Homey.');
+    await this.access.runAction(device.id, action, 'charging_current', assertAuthorized).catch((error: unknown) => {
       this.cardInventory.retrySoon();
       throw new SteppedLoadTransportError('homey_action', error);
     });
@@ -634,15 +635,11 @@ export class ChargingCurrentControl {
         }
       }
       if (!isUnknownRecord(raw)) return;
-      const entries = Object.entries(raw).map(([id, value]) => [id, readSetup(value)] as const);
+      const entries = Object.entries(raw).map(([id, value]) => [id, readChargingCurrentSetup(value)] as const);
       if (entries.some(([, value]) => !value)) return;
       this.setups.clear();
       for (const [id, value] of entries) if (value) this.setups.set(id, value);
       this.setupsReadState = 'resolved';
     } catch { /* A transient read preserves accepted configuration. */ }
   }
-}
-
-function trustEpochOf(trust: { connected: boolean; revision: number }): string {
-  return `${trust.connected}:${trust.revision}`;
 }

@@ -5,8 +5,14 @@ import { resolveDeviceActionCard, type FlowActionCardIds } from './flowActionCar
 
 import type { ChargingCurrentBinding } from './deviceAdapter';
 import type { DeviceCapabilityMap } from './managerControl';
-import type { TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
+
+import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  buildEvTargetPowerCandidateProfile, isEvTargetPowerConfig, withoutTargetPowerReachability,
+  type TargetPowerConfigWithReachability,
+} from './targetPowerReachability';
 
 export function resolveChargingCurrentAdapter(device: HomeyDeviceLike): ChargingCurrentBinding | undefined {
   return getDeviceAdapter(device).currentBindings(device)[0];
@@ -90,4 +96,25 @@ export function resolveInstallationCurrentTargetPowerObservation(
 export function installationPresetWattsPerAmp(config: TargetPowerSteppedLoadConfig): number | undefined {
   const phases = resolveTargetPowerPresetPhaseCount(config.preset);
   return phases ? 230 * phases : undefined;
+}
+
+export function assertCurrentActionCeiling(device: HomeyDeviceLike | undefined, currentA: number): void {
+  const ceiling = device && resolveChargingCurrentAdapter(device)?.actionCurrentCeilingA;
+  if (ceiling === undefined || currentA > ceiling) throw new Error('Charging-current ceiling changed.');
+}
+
+/** The available current settings for an action with a device-reported ceiling. */
+export function resolveActionCurrentLadder(
+  device: HomeyDeviceLike, config: TargetPowerConfigWithReachability, routesBuiltIn: () => boolean,
+): { steppedLoadProfile?: SteppedLoadProfile; targetPowerConfig?: TargetPowerSteppedLoadConfig } | undefined {
+  const { actionCurrentCeilingA } = resolveChargingCurrentAdapter(device) ?? {};
+  if (actionCurrentCeilingA === undefined || !isEvTargetPowerConfig(config) || !routesBuiltIn()) return undefined;
+  const wattsPerAmp = installationPresetWattsPerAmp(config);
+  if (wattsPerAmp === undefined) return {};
+  const ceilingW = actionCurrentCeilingA * wattsPerAmp;
+  const targetPowerConfig = {
+    ...withoutTargetPowerReachability(config), max: Math.min(config.max ?? ceilingW, ceilingW),
+  };
+  const steppedLoadProfile = buildEvTargetPowerCandidateProfile(targetPowerConfig);
+  return hasUsableSteppedLoadLadder(steppedLoadProfile) ? { steppedLoadProfile, targetPowerConfig } : {};
 }

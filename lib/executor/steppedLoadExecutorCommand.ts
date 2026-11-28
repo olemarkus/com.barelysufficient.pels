@@ -155,6 +155,7 @@ export type SteppedCommandOptions = {
   commandPurpose?: 'post_activation_step';
 };
 
+type AcceptedStep = Extract<ActuatorOutcome, { kind: 'step'; acknowledged: true }>;
 type UnacknowledgedStep = Extract<ActuatorOutcome, { kind: 'step'; acknowledged: false }>;
 
 const markAcceptedSteppedLoadCommand = (
@@ -164,6 +165,7 @@ const markAcceptedSteppedLoadCommand = (
   now: number,
   options: SteppedCommandOptions,
   deviceLimitChange: SteppedDeviceLimitChange | undefined,
+  receipt: AcceptedStep['currentActionReceipt'],
 ): void => {
   if (
     options.preserveMaterializedConfirmation === true
@@ -185,6 +187,7 @@ const markAcceptedSteppedLoadCommand = (
     previousStepId: resolveCommandPreviousStepId(action),
     issuedAtMs: now,
     ...(deviceLimitChange === undefined ? {} : { deviceLimitChange }),
+    ...(receipt ? { currentActionReceipt: receipt } : {}),
   });
 };
 
@@ -438,12 +441,12 @@ const recordAcceptedSteppedLoadCommand = (
   desiredStep: SteppedLoadStep,
   now: number,
   options: SteppedCommandOptions,
-  commandTransport: SteppedLoadStepRequestTransport,
+  outcome: AcceptedStep,
 ): boolean => {
   const actuation = resolveSteppedLoadPlanActuation(action, desiredStep.id, options);
   const limitChange = steppedDeviceLimitChange(ctx, action.intent, actuation, desiredStep.id);
-  markAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, limitChange);
-  logAcceptedSteppedLoadCommand(action, desiredStep, options, commandTransport);
+  markAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, limitChange, outcome.currentActionReceipt);
+  logAcceptedSteppedLoadCommand(action, desiredStep, options, outcome.transport);
   recordSteppedLoadPlanActuation(ctx, action.intent, now, actuation, true);
   return true;
 };
@@ -509,7 +512,7 @@ export const executeSteppedLoadCommand = async (
     if (!ctx.isAuthorityCurrent()) return false;
     if (result.transport === 'flow') recordFlowAttempt?.('requested');
     accepted = result.acknowledged
-      ? recordAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, result.transport)
+      ? recordAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, result)
       : recordUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now, options, result);
     // Seeding an unknown step at the lowest rung assumes the step rather than
     // asking the device to confirm it, so it is no command to contest.

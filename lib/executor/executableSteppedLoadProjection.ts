@@ -1,3 +1,4 @@
+import { resolveCurrentActionStep } from './currentActionStep';
 import {
   getBinaryOn, isBinaryControlled, isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
@@ -48,15 +49,9 @@ export function buildExecutableSteppedLoadDevice(
   // a planner-only EV probe rung: an acknowledged probe confirms the rung it
   // commanded, as any rung's command does.
   const { command } = commandSession;
-  const confirmedCommandStepId = resolvedObserved !== undefined && current.on === false
-    && command?.status === 'success'
-    ? command.stepId
-    : undefined;
+  const confirmedCommandStepId = resolveConfirmedCommandStep(intent, resolvedObserved, current, command);
   const stepActuation = resolveSteppedStepActuationState({
-    step: intent.controlAdapter?.activationOrder === 'current_before_start'
-      ? toPreparedCurrentStepState(intent.steppedLoadProfile, resolvedObserved?.steppedLoad, desired.stepId,
-        confirmedCommandStepId)
-      : toExecutableSteppedStepState(resolvedObserved?.steppedLoad, desired.stepId, confirmedCommandStepId),
+    step: resolveExecutableStepState(intent, resolvedObserved, desired.stepId, confirmedCommandStepId),
   });
   const desiredIsNonOff = desired.stepId
     && !isSteppedLoadOffStep(intent.steppedLoadProfile, desired.stepId);
@@ -70,6 +65,42 @@ export function buildExecutableSteppedLoadDevice(
       command, intent.steppedLoadProfile, intent.desired.stepId, Date.now(),
     ),
   };
+}
+
+function resolveExecutableStepState(
+  intent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedDeviceState | undefined,
+  desiredStepId: string | undefined,
+  confirmedCommandStepId: string | undefined,
+): ExecutableSteppedStepState {
+  if (intent.controlAdapter?.currentActionEpoch !== undefined
+    || observed?.snapshot.controlAdapter?.currentActionEpoch !== undefined) {
+    // A Flow report left over from before the built-in route cannot prepare a new start.
+    return toExecutableSteppedStepState(undefined, desiredStepId, confirmedCommandStepId);
+  }
+  return intent.controlAdapter?.activationOrder === 'current_before_start'
+    ? toPreparedCurrentStepState(
+      intent.steppedLoadProfile, observed?.steppedLoad, desiredStepId, confirmedCommandStepId,
+    )
+    : toExecutableSteppedStepState(observed?.steppedLoad, desiredStepId, confirmedCommandStepId);
+}
+
+function resolveConfirmedCommandStep(
+  intent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedDeviceState | undefined,
+  current: ExecutableSteppedLoadCurrentState,
+  command: ExecutableSteppedLoadCommandSession['command'],
+): string | undefined {
+  if (!observed || command?.status !== 'success') return undefined;
+  if (!command.currentActionReceipt) {
+    const requiresReceipt = intent.controlAdapter?.currentActionEpoch !== undefined
+      || observed.snapshot.controlAdapter?.currentActionEpoch !== undefined;
+    return !requiresReceipt && current.on === false ? command.stepId : undefined;
+  }
+  if (!observed.commandableNow) return undefined;
+  return resolveCurrentActionStep(
+    command, observed.snapshot.controlAdapter, intent.steppedLoadProfile, observed.snapshot,
+  );
 }
 
 const withCommandSessionReportedStep = (

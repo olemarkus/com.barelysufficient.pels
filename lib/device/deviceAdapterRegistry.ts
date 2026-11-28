@@ -12,6 +12,7 @@ import { peblarAdapter } from './peblar';
 import { zappiAdapter } from './myenergi';
 import { wallboxAdapter } from './wallbox';
 import { warpAdapter } from './warp';
+import { victronEvChargerAdapter } from './victron';
 import { zaptecAdapter } from './zaptec';
 import { futurehomeAdapter } from './futurehome';
 import { aminaAdapter } from './amina';
@@ -49,7 +50,8 @@ import type { HomeyDeviceLike } from '../utils/types';
 
 const adapters: readonly DeviceAdapter[] = [
   teslaAdapter, easeeAdapter, enuaAdapter, alfenAdapter, alfenProlineAdapter, peblarAdapter, zappiAdapter,
-  wallboxAdapter, warpAdapter, zaptecAdapter, futurehomeAdapter, aminaAdapter, goeAdapter, kebaAdapter,
+  wallboxAdapter, warpAdapter, victronEvChargerAdapter, zaptecAdapter, futurehomeAdapter, aminaAdapter, goeAdapter,
+  kebaAdapter,
   smappeeAdapter, ocppServerAdapter, osoAdapter, adaxAdapter, smaAdapter, knxAdapter, nibeMyUplinkAdapter,
   stiebelHeatPumpAdapter, sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter,
   zendureLocalAdapter, huaweiLuna2000Adapter, solaxBatteryAdapter, froniusGen24Adapter,

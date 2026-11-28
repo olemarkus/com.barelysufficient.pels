@@ -1,3 +1,4 @@
+import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import type { FlowCapabilityWrites } from '../flowApi/userFlows';
 import type { HomeyDeviceLike } from '../utils/types';
 import { resolveChargingCurrentAdapter } from './chargingCurrentAdapter';
@@ -39,4 +40,19 @@ function collectFlowNames(
   for (const action of actions) {
     for (const [id, name] of writes?.get(action) ?? []) names.set(id, name);
   }
+}
+
+/** Built-in current actions must have a verified exclusive route and an accepted ceiling. */
+export function actionControlHoldReason(
+  binding: ChargingCurrentBinding | undefined,
+  readSetup: () => ChargingCurrentSetup,
+  flowInventoryReady: boolean,
+  writes: FlowCapabilityWrites,
+): string | undefined {
+  if (!binding?.confirmsCurrentWithAction || readSetup().method !== 'built_in') return undefined;
+  if (!flowInventoryReady) return 'Checking Homey Flows';
+  if (binding.actionCurrentCeilingA === undefined && currentSettingFlows(binding, writes).size === 0) {
+    return 'Waiting for the charger to report its current limit';
+  }
+  return undefined;
 }

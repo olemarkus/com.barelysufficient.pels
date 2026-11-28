@@ -30,7 +30,6 @@ import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,
-  hasTargetPowerCapability,
   resolveAutomaticSteppedLoadProfile,
   hasNativeTargetPowerLadder,
   isNativeSteppedLoadWiringCandidate,
@@ -46,7 +45,7 @@ import {
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
-import { resolveInstallationCurrentTargetPowerObservation } from './chargingCurrentAdapter';
+import { resolveActionCurrentLadder, resolveInstallationCurrentTargetPowerObservation } from './chargingCurrentAdapter';
 import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from './deviceAdapter';
 import { resolveAcknowledgedStepObservation } from './acknowledgedStep';
 import { warnIfTargetPowerCapabilityViolatesContract } from './targetPowerContractWarn';
@@ -339,9 +338,11 @@ function applySyntheticTargetPowerOverlay(
       capabilityObj: nativeEvOverlay.capabilityObj,
     };
   }
-  const capabilities = hasTargetPowerCapability(nativeEvOverlay.capabilities)
-    ? nativeEvOverlay.capabilities
-    : [...nativeEvOverlay.capabilities, 'target_power'];
+  const actionLadder = resolveActionCurrentLadder(
+    device, config, () => sources.chargingCurrent.routesBuiltIn(deviceId),
+  );
+  if (actionLadder) return { ...nativeEvOverlay, ...actionLadder };
+  const capabilities = [...new Set([...nativeEvOverlay.capabilities, 'target_power'])];
   // On the native watt path PELS writes the device's own watt target, which
   // its driver turns into a current its own way (a Zaptec on an IT grid, or one
   // switching phases), so that target is the step it holds; the current times

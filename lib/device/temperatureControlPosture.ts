@@ -106,7 +106,8 @@ export function resolveDeviceControlPosture(
     // turning it on are all power decisions, which take a measured draw (owner
     // ruling 2026-09-23). Its setpoints still follow the temperature logic —
     // those writes never needed this authority — but PELS never switches it.
-    commandAuthority: hasStandingCommandGrant(managed, capacityControlEnabled, startPolicy)
+    commandAuthority: device.controlAdapter?.unavailableStatus === undefined
+      && hasStandingCommandGrant(managed, capacityControlEnabled, startPolicy)
       && hasTemperaturePolicyPowerControl(device)
       && hasObservedMeasuredPower(device),
   };

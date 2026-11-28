@@ -431,3 +431,59 @@ test('a Futurehome limit is dated by the newest read only, and only on a step at
   // A refresh the session never saw (the live feed was down) parsed 12 A: undated.
   expect(dateOf('12a')).toBeUndefined();
 });
+
+test('Victron retains newer mode evidence across a refresh and revokes authority across reconnect', () => {
+  const home = partialDouble<HubHomeLocation>({});
+  const sessions = new DeviceAdapterSessions(home);
+  const mode = 'sensor_status.mode';
+  const status = 'sensor_status';
+  const runSetup = { method: 'built_in', confirmation: 'none' } as const;
+  const charger: HomeyDeviceLike = {
+    ...HOMEY_DEVICE_FIELDS, id: 'victron', class: 'evcharger', available: true,
+    driverId: 'homey:app:com.victronenergy:evcharger',
+    capabilities: [mode, status],
+    capabilitiesObj: { [mode]: cap('Manual'), [status]: cap('Waiting for start') },
+  };
+  const startedAt = Date.now();
+  sessions.setTrustEpoch('connected:1');
+  sessions.observeDevice(charger, startedAt);
+  expect(() => sessions.assertAllowed(charger, () => runSetup, true)).not.toThrow();
+
+  vi.advanceTimersByTime(1);
+  sessions.observeCapability(charger.id, mode, 'Auto');
+  sessions.observeDevice(charger, startedAt);
+  expect(() => sessions.assertAllowed(charger, () => runSetup, true)).toThrow('requires Manual mode');
+
+  vi.advanceTimersByTime(1);
+  sessions.setTrustEpoch('disconnected:1');
+  vi.advanceTimersByTime(1);
+  sessions.setTrustEpoch('connected:2');
+  sessions.observeCapability(charger.id, 'measure_power', 0);
+  sessions.observeDevice(charger, startedAt);
+  expect(() => sessions.assertAllowed(charger, () => runSetup, true)).toThrow('requires Manual mode');
+
+  // An unchanged setting in a complete current read still authorizes control.
+  sessions.observeDevice(charger, Date.now());
+  expect(() => sessions.assertAllowed(charger, () => runSetup, true)).not.toThrow();
+});
+
+test('Victron uses current-first ordering only for the selected built-in route', () => {
+  const home = partialDouble<HubHomeLocation>({});
+  const sessions = new DeviceAdapterSessions(home);
+  const charger: HomeyDeviceLike = {
+    ...HOMEY_DEVICE_FIELDS, id: 'victron', class: 'evcharger', available: true,
+    driverId: 'homey:app:com.victronenergy:evcharger',
+    capabilities: ['sensor_status.mode', 'sensor_status'],
+    capabilitiesObj: { 'sensor_status.mode': cap('Manual'), sensor_status: cap('Waiting for start') },
+  };
+  const source = snapshot(charger);
+  const controlAdapter = { kind: 'capability_adapter', activationRequired: false, activationEnabled: true } as const;
+  sessions.setTrustEpoch('connected:1');
+  sessions.observeDevice(charger, Date.now());
+  const builtIn = sessions.project(
+    { ...source, controlAdapter: { ...controlAdapter, currentControl: 'built_in' } },
+    () => ({ method: 'built_in', confirmation: 'none' }),
+  );
+  expect(builtIn.controlAdapter?.activationOrder).toBe('current_before_start');
+  expect(sessions.project({ ...source, controlAdapter }, () => setup).controlAdapter?.activationOrder).toBeUndefined();
+});

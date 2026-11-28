@@ -159,6 +159,7 @@ export class DeviceWriteService {
    * value there by itself, so waiting for one would leave the charger off.
    */
   private needsNativeControlReadBeforeStart(snapshot: TransportDeviceSnapshot): boolean {
+    if (snapshot.controlAdapter?.currentActionEpoch !== undefined && !snapshot.steppedLoadProfile) return true;
     const tracked = this.snapshotStore.getTrackedRawDevice(snapshot.id);
     if (!tracked) return false;
     const raw = this.chargingCurrentControl.sessions.withholdCapabilities(tracked);
@@ -451,7 +452,7 @@ export class DeviceWriteService {
     params: SteppedLoadWrite,
   ): Promise<SteppedLoadStepRequestResult> {
     this.currentLimitPolicy.assertStepAllowed(params);
-    const { deviceId, profile, desiredStepId, planningCurrentA } = params;
+    const { deviceId, profile, desiredStepId } = params;
     this.chargingCurrentControl.assertInstallationStepAllowed(deviceId);
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const route = this.resolveStepWriteRoute(snapshot);
@@ -467,9 +468,7 @@ export class DeviceWriteService {
         return { requested: true, acknowledged: true, transport: 'native_capability' };
       }
       if (this.chargingCurrentControl.routesBuiltIn(deviceId)) {
-        const transport = await this.chargingCurrentControl.writeCurrent(rawDevice, planningCurrentA,
-          (capabilityId, value) => this.setCapability(deviceId, capabilityId, value));
-        return { requested: true, acknowledged: true, transport };
+        return this.requestBuiltInCurrent(params, rawDevice);
       }
     }
     if (route === 'native') {
@@ -489,6 +488,21 @@ export class DeviceWriteService {
     const accepted = this.nativeWiring.resolveGatedStepRoute(snapshot);
     // A scan can change the route before the device snapshot takes the new control model.
     return accepted === undefined || accepted === projected ? projected : 'waiting';
+  }
+
+  private async requestBuiltInCurrent(
+    request: SteppedLoadWrite, device: HomeyDeviceLike,
+  ): Promise<SteppedLoadStepRequestResult> {
+    const { deviceId, planningCurrentA, planningPowerW } = request;
+    const epoch = this.snapshotStore.getSnapshotByDeviceId(deviceId)?.controlAdapter?.currentActionEpoch;
+    const transport = await this.chargingCurrentControl.writeCurrent(device, planningCurrentA,
+      (id, value) => this.setCapability(deviceId, id, value));
+    const liveEpoch = this.snapshotStore.getSnapshotByDeviceId(deviceId)?.controlAdapter?.currentActionEpoch;
+    if (transport !== 'homey_action' || epoch === undefined || epoch !== liveEpoch) {
+      return { requested: true, acknowledged: true, transport };
+    }
+    return { requested: true, acknowledged: true, transport,
+      currentActionReceipt: { epoch, acknowledgedAtMs: Date.now(), planningPowerW } };
   }
 
   private async requestNativeSteppedLoadStep(request: SteppedLoadWrite): Promise<SteppedLoadStepRequestResult> {
