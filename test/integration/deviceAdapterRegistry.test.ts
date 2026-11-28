@@ -439,7 +439,7 @@ test('Victron retains newer mode evidence across a refresh and revokes authority
   const status = 'sensor_status';
   const runSetup = { method: 'built_in', confirmation: 'none' } as const;
   const charger: HomeyDeviceLike = {
-    ...HOMEY_DEVICE_FIELDS, id: 'victron', class: 'evcharger', available: true,
+    ...HOMEY_DEVICE_FIELDS, id: 'victron', name: 'Victron EV Charging Station', class: 'evcharger', available: true,
     driverId: 'homey:app:com.victronenergy:evcharger',
     capabilities: [mode, status],
     capabilitiesObj: { [mode]: cap('Manual'), [status]: cap('Waiting for start') },
@@ -471,7 +471,7 @@ test('Victron uses current-first ordering only for the selected built-in route',
   const home = partialDouble<HubHomeLocation>({});
   const sessions = new DeviceAdapterSessions(home);
   const charger: HomeyDeviceLike = {
-    ...HOMEY_DEVICE_FIELDS, id: 'victron', class: 'evcharger', available: true,
+    ...HOMEY_DEVICE_FIELDS, id: 'victron', name: 'Victron EV Charging Station', class: 'evcharger', available: true,
     driverId: 'homey:app:com.victronenergy:evcharger',
     capabilities: ['sensor_status.mode', 'sensor_status'],
     capabilitiesObj: { 'sensor_status.mode': cap('Manual'), sensor_status: cap('Waiting for start') },
