@@ -966,8 +966,8 @@ export type PlanDeviceCarriedKey =
  */
 export type PlanDeviceStrippedKey =
   'acknowledgedStep' | 'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
-  | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'carCurrentRangeUnavailable'
-  | 'chargerPhaseCurrentsA'
+  | 'binaryControl' | 'binaryControlObservation' | 'builtInSteppedLoadControl'
+  | 'carConfirmation' | 'carCurrentRangeUnavailable' | 'chargerPhaseCurrentsA'
   | 'evChargingState' | 'manualFlowSteppedLoad' | 'measuredPowerKw' | 'nativeRelayMeter' | 'powerSetupRequirement'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

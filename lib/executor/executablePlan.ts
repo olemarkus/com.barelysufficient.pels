@@ -272,6 +272,8 @@ export type ExecutableSteppedLoadCommandSession = {
   stepCommandPending: boolean;
   /** Earliest time for another discretionary step command on this manual Flow device. */
   flowStepRetryAtMs?: number;
+  /** Retry backoff for a rung whose Flow trigger was rejected. */
+  rejectedFlowStepRetry?: { stepId: string; retryAtMs: number };
   /** Whether the device's level reports have stopped answering step requests. */
   unansweredStepCommands: UnansweredStepCommands;
 };
@@ -280,4 +282,4 @@ export type ExecutableSteppedLoadCommandSession = {
 export type UnansweredStepCommands =
   | { kind: 'none' }
   | { kind: 'unanswered'; stepId: string; count: number }
-  | { kind: 'flow_unanswered'; count: number };
+  | { kind: 'flow_unanswered'; stepId: string };

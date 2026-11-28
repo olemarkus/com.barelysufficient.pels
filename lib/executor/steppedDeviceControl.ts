@@ -48,6 +48,7 @@ export class SteppedDeviceControl {
       stepCommandPending: this.store.isStepCommandPending(deviceId),
       unansweredStepCommands: this.store.getUnansweredStepCommands(deviceId),
       flowStepRetryAtMs: configuration?.manualFlowSteppedLoad ? this.store.getFlowStepRetryAtMs(deviceId) : undefined,
+      rejectedFlowStepRetry: this.store.getRejectedFlowStepRetry(deviceId),
     };
   }
 
@@ -55,9 +56,15 @@ export class SteppedDeviceControl {
     this.targetPower.markDesiredStepIssued(command);
   }
 
-  trackFlowStepAttempt(deviceId: string, issuedAtMs: number): (() => void) | undefined {
-    if (!this.source.getDeviceConfiguration(deviceId)?.manualFlowSteppedLoad) return undefined;
-    return this.store.trackFlowStepAttempt(deviceId, issuedAtMs);
+  trackFlowStepAttempt(deviceId: string, stepId: string, issuedAtMs: number, discretionary: boolean) {
+    const paceRetry = discretionary && this.source.getDeviceConfiguration(deviceId)?.manualFlowSteppedLoad === true;
+    const recordAttempt = this.store.trackFlowStepAttempt(deviceId, stepId, issuedAtMs, paceRetry);
+    return (outcome: Parameters<typeof recordAttempt>[0]): void => {
+      const configuration = this.source.getDeviceConfiguration(deviceId);
+      if (configuration && 'steppedLoadProfile' in configuration && !configuration.builtInSteppedLoadControl) {
+        recordAttempt(outcome);
+      }
+    };
   }
 
   hasPendingTargetPowerProbe(): boolean { return this.store.hasPendingTargetPowerProbe(); }

@@ -544,7 +544,7 @@ describe('settingsOverviewReadModel', () => {
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), stepProgress: 'pending',
         steppedTransitionPending: true, stepCommandUnanswered: true }),
     }).status.reason?.text;
-    expect(unanswered(flowBacked)).toBe('Level change not confirmed — check the Flow that reports the level back');
+    expect(unanswered(flowBacked)).toBe('Level change not confirmed — check the Flows that set and report the level');
 
     const builtIn = { ...flowBacked, controlAdapter: {
       kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: false,

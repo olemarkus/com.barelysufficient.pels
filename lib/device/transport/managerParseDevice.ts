@@ -71,7 +71,8 @@ export type DeviceParseSettings = Pick<
 export type NativeWiringRead = {
     /** The user's explicit choice, else the conflict-gated automatic decision. */
     resolveNativeWiringEnabled(deviceId: string): boolean;
-    awaitsNativeStepRoute(device: Pick<TargetDeviceSnapshot, 'id' | 'controlAdapter'>): boolean;
+    resolveGatedStepRoute(device: Pick<TargetDeviceSnapshot, 'id' | 'controlAdapter'>):
+      'native' | 'flow' | 'waiting' | undefined;
     getFlowConflict(deviceId: string): TargetDeviceSnapshot['flowConflict'];
     steppedLoadFlowSetup(deviceId: string): PendingSteppedLoad['reason'] | 'ready';
 };

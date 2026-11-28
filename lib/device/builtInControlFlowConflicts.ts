@@ -121,12 +121,17 @@ export class BuiltInControlFlowConflicts {
     );
   }
 
-  /** A gated native candidate needs an explicit choice or a known conflict to use Flow. */
-  awaitsNativeStepRoute(device: Pick<TargetDeviceSnapshot, 'id' | 'controlAdapter'>): boolean {
-    return device.controlAdapter?.activationAvailable === true
-      && !device.controlAdapter.activationEnabled
-      && this.ownerChoices.nativeEvWiringDevices[device.id] !== false
-      && this.conflicts.get(device.id) === undefined;
+  /** The accepted route for a device whose built-in level control needs activation. */
+  resolveGatedStepRoute(device: Pick<TargetDeviceSnapshot, 'id' | 'controlAdapter'>):
+    'native' | 'flow' | 'waiting' | undefined {
+    if (device.controlAdapter?.activationAvailable !== true) return undefined;
+    if (this.resolveNativeWiringEnabled(device.id)) return 'native';
+    const flow = this.steppedLoadCards?.[device.id];
+    if (flow === 'both') return 'flow';
+    const flowChosen = this.ownerChoices.nativeEvWiringDevices[device.id] === false
+      || this.conflicts.get(device.id) !== undefined;
+    return flowChosen && (flow === 'target' || this.steppedLoadCards === undefined)
+      ? 'flow' : 'waiting';
   }
 
   /** The native-write capabilities a user Flow drives on this device, for the device-detail notice. */
@@ -209,7 +214,9 @@ export class BuiltInControlFlowConflicts {
     // rebuild the plan against a half-torn-down app.
     if (this.shutdown.isStopped() || detection.status !== 'ok') return { state: 'unavailable' };
 
-    const decisions = Object.fromEntries(detection.autoEnableDeviceIds.map((deviceId) => [deviceId, true]));
+    const decisions = Object.fromEntries(detection.autoEnableDeviceIds
+      .filter((deviceId) => detection.flowFacts.steppedLoadCards[deviceId] !== 'both')
+      .map((deviceId) => [deviceId, true]));
     const conflicts: NativeFlowConflicts = Object.fromEntries(
       detection.conflicts.map(({ deviceId, ...conflict }) => [deviceId, conflict]),
     );

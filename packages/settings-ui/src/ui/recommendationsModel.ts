@@ -517,8 +517,8 @@ export const resolveLevelReportRecommendations = (
       ...recommendation,
       version: FLOW_LEVEL_REPORT_VERSION,
       category: 'warning',
-      body: 'PELS changes its level through your Flow, but no level has come back, so PELS does not know '
-        + 'what the device is doing and keeps asking. '
+      title: `Level change not confirmed for ${name}`,
+      body: 'PELS could not confirm the level change through your Flow. '
         + 'PELS can control this device directly and read its level without a Flow. '
         + `To use built-in device control, ${flowConflictHandoffStep(conflict.flowName)}`
         // It stands in for the built-in control advice, so it keeps that card's last step
@@ -529,14 +529,17 @@ export const resolveLevelReportRecommendations = (
       target: { kind: 'flow-conflict-check', deviceId: device.id },
     }];
   }
-  const body = isBuiltInControlChosen(device, nativeWiringEnabledByDeviceId)
+  const builtIn = isBuiltInControlChosen(device, nativeWiringEnabledByDeviceId);
+  const body = builtIn
     ? 'PELS sets its level directly, but the device has not reported a new level. '
       + 'Check that the device is online and accepts level changes.'
-    : 'PELS changes its level through your Flow, but no level has come back, so PELS keeps asking. '
+    : 'PELS could not confirm the level change through your Flow. '
+      + 'Check the Flow that sets the level. '
       + 'Add the Report stepped load card to a Flow that runs when the device changes. '
       + 'If the device has no levels of its own, choose another way to control it on its device page.';
   return [{
     ...recommendation,
+    title: builtIn ? recommendation.title : `Level change not confirmed for ${name}`,
     body,
     actionLabel: 'Open device',
     target: { kind: 'device', deviceId: device.id },

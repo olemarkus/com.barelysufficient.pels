@@ -1345,6 +1345,47 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
+  it('records a rejected Flow attempt without recording a command or actuation', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => ({
+      requested: false as const, reason: 'flow_trigger_rejected' as const,
+    }));
+    const recordFlowAttempt = vi.fn();
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const recordShedActuation = vi.fn();
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {
+      trackFlowStepAttempt: () => recordFlowAttempt,
+      markSteppedLoadDesiredStepIssued,
+      recordShedActuation,
+    });
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'shed',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: 'capacity' },
+    });
+
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
+    expect(recordFlowAttempt).toHaveBeenCalledExactlyOnceWith('rejected');
+    expect(markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(recordShedActuation).not.toHaveBeenCalled();
+
+    const original = ctx.getSteppedLoadCommandSession;
+    vi.spyOn(ctx, 'getSteppedLoadCommandSession').mockImplementation((deviceId) => ({
+      ...original(deviceId),
+      rejectedFlowStepRetry: { stepId: 'medium', retryAtMs: Date.now() + 30_000 },
+    }));
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
+    expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
+  });
+
   it('does not log a superseded unacknowledged stepped write as a definite failure', async () => {
     const requestSteppedLoadStep = vi.fn(async () => {
       throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
@@ -1943,7 +1984,7 @@ describe('native stepped-load wiring', () => {
       planningPowerW: 1750,
       planningCurrentA: 0,
     }))
-      .resolves.toEqual({ requested: false });
+      .resolves.toEqual({ requested: false, reason: 'flow_trigger_rejected' });
 
     expect(logger.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_command_failed',

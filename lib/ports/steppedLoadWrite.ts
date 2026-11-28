@@ -39,5 +39,6 @@ export type TargetPowerControlClaimResult =
  */
 export type SteppedLoadStepRequestResult =
   | { requested: false }
+  | { requested: false; reason: 'flow_trigger_rejected' }
   | { requested: true; acknowledged: true; transport: SteppedLoadStepRequestTransport }
   | { requested: true; acknowledged: false; transport: 'flow'; reasonCode: 'flow_trigger_timeout' };

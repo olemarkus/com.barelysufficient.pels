@@ -19,6 +19,7 @@ const snapshot: RuntimeDeviceRead = {
   managed: true,
   controlModel: 'stepped_load',
   manualFlowSteppedLoad: false,
+  builtInSteppedLoadControl: false,
   binaryControl: { on: false },
   expectedPowerKw: 1,
   expectedPowerSource: 'default',

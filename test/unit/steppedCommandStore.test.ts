@@ -81,7 +81,7 @@ describe('SteppedCommandStore', () => {
     const { store } = steppedStoresForTest();
     let issuedAtMs = 1_000;
     for (const delayMs of [30_000, 120_000, 300_000, 900_000, 900_000]) {
-      store.trackFlowStepAttempt('dev-1', issuedAtMs)();
+      store.trackFlowStepAttempt('dev-1', 'low', issuedAtMs, true)('requested');
       const nextRetryAtMs = issuedAtMs + STEPPED_LOAD_COMMAND_STALE_MS + delayMs;
       expect(store.getFlowStepRetryAtMs('dev-1')).toBe(nextRetryAtMs);
       issuedAtMs = nextRetryAtMs;
@@ -94,13 +94,61 @@ describe('SteppedCommandStore', () => {
     const initial = { deviceId: 'dev-1', stepId: 'low', planningPowerW: 100, observedAtMs: 1_000 };
     store.reportActualStep(initial);
 
-    store.trackFlowStepAttempt('dev-1', 1_000)();
+    store.trackFlowStepAttempt('dev-1', 'low', 1_000, true)('requested');
     expect(store.getFlowStepRetryAtMs('dev-1')).toBe(121_000);
 
-    const complete = store.trackFlowStepAttempt('dev-1', 121_000);
+    const complete = store.trackFlowStepAttempt('dev-1', 'low', 121_000, true);
     expect(store.reportActualStep({ ...initial, observedAtMs: 121_000 })).toBe('unchanged');
-    complete();
+    complete('requested');
     expect(store.getFlowStepRetryAtMs('dev-1')).toBeUndefined();
+  });
+
+  it('warns as soon as delivery is rejected or the first confirmation window expires', () => {
+    const { store } = steppedStoresForTest();
+    const issuedAtMs = 1_000;
+    const confirmationDueAtMs = issuedAtMs + STEPPED_LOAD_COMMAND_STALE_MS;
+    store.trackFlowStepAttempt('timed-out', 'low', issuedAtMs, false)('requested');
+    store.trackFlowStepAttempt('rejected', 'high', issuedAtMs, false)('rejected');
+
+    expect(store.getUnansweredStepCommands('timed-out', confirmationDueAtMs - 1)).toEqual({ kind: 'none' });
+    expect(store.getUnansweredStepCommands('timed-out', confirmationDueAtMs))
+      .toEqual({ kind: 'flow_unanswered', stepId: 'low' });
+    expect(store.getUnansweredStepCommands('rejected', issuedAtMs))
+      .toEqual({ kind: 'flow_unanswered', stepId: 'high' });
+    expect(store.getFlowStepRetryAtMs('rejected')).toBeUndefined();
+    expect(store.getDesired('rejected')).toBeUndefined();
+
+    const retryAtMs = confirmationDueAtMs + 30_000;
+    store.trackFlowStepAttempt('timed-out', 'low', retryAtMs, false)('requested');
+    expect(store.getUnansweredStepCommands('timed-out', retryAtMs))
+      .toEqual({ kind: 'flow_unanswered', stepId: 'low' });
+    store.reportActualStep({ deviceId: 'timed-out', stepId: 'low', planningPowerW: 100, observedAtMs: retryAtMs + 1 });
+    expect(store.getUnansweredStepCommands('timed-out', retryAtMs + 1)).toEqual({ kind: 'none' });
+  });
+
+  it('keeps warning and rejection retry with a legacy Flow and clears them on native handoff', () => {
+    const { store } = steppedStoresForTest();
+    const legacy = {
+      id: 'dev-1',
+      name: 'Charger',
+      steppedLoadProfile: { steps: [{ id: 'low', planningPowerW: 1_000 }, { id: 'high', planningPowerW: 2_000 }] },
+    };
+    store.trackFlowStepAttempt(legacy.id, 'low', 1_000, false)('rejected');
+    store.trackFlowStepAttempt(legacy.id, 'low', 31_000, false)('rejected');
+    store.reconcileFlowStepFeedback(() => withDeviceConfiguration(legacy));
+    expect(store.getUnansweredStepCommands(legacy.id, 31_000)).toEqual({ kind: 'flow_unanswered', stepId: 'low' });
+    expect(store.getRejectedFlowStepRetry(legacy.id)).toMatchObject({ stepId: 'low', retryAtMs: 151_000 });
+
+    const native = withDeviceConfiguration({
+      ...legacy,
+      controlAdapter: {
+        kind: 'capability_adapter' as const, activationRequired: false,
+        activationEnabled: true, activationAvailable: true,
+      },
+    });
+    store.reconcileFlowStepFeedback(() => native);
+    expect(store.getUnansweredStepCommands(legacy.id, 31_000)).toEqual({ kind: 'none' });
+    expect(store.getRejectedFlowStepRetry(legacy.id)).toBeUndefined();
   });
 
   it('clears the whole command session when the ladder changed under it', () => {

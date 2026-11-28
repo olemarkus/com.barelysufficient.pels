@@ -99,7 +99,7 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
   settings: testParseSettings(inputs.settings),
   nativeWiring: {
     resolveNativeWiringEnabled: () => false,
-    awaitsNativeStepRoute: () => false,
+    resolveGatedStepRoute: () => undefined,
     getFlowConflict: () => undefined,
     steppedLoadFlowSetup: () => 'ready' as const,
     ...inputs.nativeWiring,

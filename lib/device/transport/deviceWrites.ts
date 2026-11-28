@@ -163,8 +163,9 @@ export class DeviceWriteService {
     if (!tracked) return false;
     const raw = this.chargingCurrentControl.sessions.withholdCapabilities(tracked);
     if (this.needsNativeWattReadBeforeStart(raw)) return true;
-    const expectsNativeStep = this.nativeWiring.resolveNativeWiringEnabled(raw.id)
-      || this.nativeWiring.awaitsNativeStepRoute(snapshot);
+    const route = this.nativeWiring.resolveGatedStepRoute(snapshot);
+    const expectsNativeStep = route === 'native' || route === 'waiting'
+      || (route === undefined && this.nativeWiring.resolveNativeWiringEnabled(raw.id));
     if (!expectsNativeStep) return false;
     return getDeviceAdapter(raw).nativeCurrentControls.some(control => {
       const current = raw.capabilitiesObj[control.capabilityId];
@@ -453,10 +454,8 @@ export class DeviceWriteService {
     const { deviceId, profile, desiredStepId, planningCurrentA } = params;
     this.chargingCurrentControl.assertInstallationStepAllowed(deviceId);
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-    if (snapshot?.pendingSteppedLoad) return { requested: false };
-    if (snapshot?.manualFlowSteppedLoad && this.nativeWiring.steppedLoadFlowSetup(deviceId) !== 'ready') {
-      return { requested: false };
-    }
+    const route = this.resolveStepWriteRoute(snapshot);
+    if (route === 'waiting') return { requested: false };
     if (isSteppedLoadOffStep(profile, desiredStepId)) {
       this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
     }
@@ -473,11 +472,23 @@ export class DeviceWriteService {
         return { requested: true, acknowledged: true, transport };
       }
     }
-    if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
+    if (route === 'native') {
       return this.requestNativeSteppedLoadStep(params);
     }
 
     return this.triggerSteppedFlow(params, snapshot);
+  }
+
+  private resolveStepWriteRoute(snapshot: TransportDeviceSnapshot | undefined): 'native' | 'flow' | 'waiting' {
+    if (!snapshot) return 'flow';
+    if (snapshot.pendingSteppedLoad) return 'waiting';
+    if (snapshot.manualFlowSteppedLoad && this.nativeWiring.steppedLoadFlowSetup(snapshot.id) !== 'ready') {
+      return 'waiting';
+    }
+    const projected = isNativeSteppedLoadControlEnabled(snapshot) ? 'native' : 'flow';
+    const accepted = this.nativeWiring.resolveGatedStepRoute(snapshot);
+    // A scan can change the route before the device snapshot takes the new control model.
+    return accepted === undefined || accepted === projected ? projected : 'waiting';
   }
 
   private async requestNativeSteppedLoadStep(request: SteppedLoadWrite): Promise<SteppedLoadStepRequestResult> {
@@ -568,7 +579,6 @@ export class DeviceWriteService {
     snapshot: TransportDeviceSnapshot | undefined,
   ): Promise<SteppedLoadStepRequestResult> {
     const { deviceId, desiredStepId, planningPowerW, planningCurrentA, previousStepId } = params;
-    if (snapshot && this.nativeWiring.awaitsNativeStepRoute(snapshot)) return { requested: false };
     const triggerCard = this.getFlowTriggerCard('desired_stepped_load_changed');
     if (!triggerCard?.trigger) return { requested: false };
 
@@ -608,7 +618,7 @@ export class DeviceWriteService {
         commandTransport: 'flow',
         err: normalizeError(error),
       });
-      return { requested: false };
+      return { requested: false, reason: 'flow_trigger_rejected' };
     }
   }
 }

@@ -19,8 +19,8 @@ export type ExecutionCommandState = Pick<DriftCommandRead, 'binary' | 'step'> & 
 };
 
 /**
- * One expiry can be a slow Flow or a busy device; a second in a row, about two
- * minutes later on the retry ladder, is not.
+ * A directly controlled device can be busy for one window. Two unanswered
+ * commands in a row mark it unconfirmed.
  */
 export const STEP_COMMAND_UNANSWERED_AFTER = 2;
 
@@ -113,7 +113,7 @@ function isStepCommandUnanswered(
   observedStepId: string | null,
   stepProgress: AxisProgress,
 ): boolean {
-  if (unanswered.kind === 'flow_unanswered') return unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
+  if (unanswered.kind === 'flow_unanswered') return stepProgress !== 'settled' || unanswered.stepId === desiredStepId;
   return unanswered.kind === 'unanswered'
     && (unanswered.stepId === desiredStepId || observedStepId === null)
     && stepProgress !== 'settled' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;

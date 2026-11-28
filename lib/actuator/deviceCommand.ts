@@ -98,6 +98,7 @@ export type ActuatorOutcome =
   | {
     requested: false;
   }
+  | { requested: false; reason: 'flow_trigger_rejected' }
   | {
     requested: false;
     /**
