@@ -45,12 +45,18 @@ export const shouldWaitForFlowStep = (
   action: ExecutableSteppedLoadDevice,
   step: SteppedLoadStep,
 ): boolean => {
-  if (!isDiscretionaryStep(action, step)) return false;
   const { intent } = action;
-  const { flowStepRetryAtMs } = ctx.getSteppedLoadCommandSession(intent.id);
-  if (flowStepRetryAtMs === undefined || Date.now() >= flowStepRetryAtMs) return false;
+  const { flowStepRetryAtMs: discretionaryRetryAtMs, rejectedFlowStepRetry } = ctx.getSteppedLoadCommandSession(
+    intent.id,
+  );
+  const now = Date.now();
+  const flowStepRetryAtMs = Math.max(
+    rejectedFlowStepRetry?.stepId === step.id ? rejectedFlowStepRetry.retryAtMs : now,
+    (isDiscretionaryStep(action, step) ? discretionaryRetryAtMs : undefined) ?? now,
+  );
+  if (now >= flowStepRetryAtMs) return false;
   logSteppedLoadCommandSkip(intent, 'flow_feedback_backoff',
-    'Capacity: skip discretionary step while the Flow feedback retry is backed off',
+    'Capacity: skip step while the Flow retry is backed off',
     { desiredStepId: step.id, nextRetryAtMs: flowStepRetryAtMs });
   return true;
 };
@@ -439,10 +445,16 @@ const recordAcceptedSteppedLoadCommand = (
  * still running, or no command transport at all.
  */
 const handleUnrequestedStep = (
+  ctx: ExecutorCommandContext,
   intent: ExecutableSteppedLoadIntent,
   desiredStep: SteppedLoadStep,
   result: Extract<ActuatorOutcome, { requested: false }>,
+  recordFlowAttempt: ReturnType<ExecutorCommandContext['trackFlowStepAttempt']>,
 ): boolean => {
+  if ('reason' in result && result.reason === 'flow_trigger_rejected') {
+    if (ctx.isAuthorityCurrent()) recordFlowAttempt?.('rejected');
+    return false;
+  }
   if ('reason' in result && result.reason === 'previous_command_in_flight') {
     return logSteppedLoadCommandSkip(
       intent, 'previous_command_in_flight',
@@ -476,17 +488,18 @@ export const executeSteppedLoadCommand = async (
   )) return false;
   let accepted = false;
   try {
-    const recordFlowAttempt = isDiscretionaryStep(action, desiredStep)
-      ? ctx.trackFlowStepAttempt(intent.id, now) : undefined;
+    const recordFlowAttempt = ctx.trackFlowStepAttempt(
+      intent.id, desiredStep.id, now, isDiscretionaryStep(action, desiredStep),
+    );
     const result = await ctx.actuator.apply({
       kind: 'step', deviceId: intent.id, profile: intent.steppedLoadProfile,
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
       planningCurrentA: resolvePlanningCurrentA(desiredStep), previousStepId: resolveCommandPreviousStepId(action),
     });
-    if (!result.requested) return handleUnrequestedStep(intent, desiredStep, result);
+    if (!result.requested) return handleUnrequestedStep(ctx, intent, desiredStep, result, recordFlowAttempt);
     if (result.kind !== 'step') throw new Error(`Step actuator returned ${result.kind} outcome for ${intent.id}`);
     if (!ctx.isAuthorityCurrent()) return false;
-    if (result.transport === 'flow') recordFlowAttempt?.();
+    if (result.transport === 'flow') recordFlowAttempt?.('requested');
     accepted = result.acknowledged
       ? recordAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, result.transport)
       : recordUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now, options, result);

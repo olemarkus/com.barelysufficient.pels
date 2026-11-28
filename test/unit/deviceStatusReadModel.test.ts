@@ -300,7 +300,8 @@ describe('simulation action previews', () => {
     const device = steppedHold();
     const unanswered = { ...device, execution: { ...device.execution, stepCommandUnanswered: true } };
     expect(buildDeviceStatus(unanswered, false, 0).reason).toMatchObject({
-      text: 'Level change not confirmed — check the Flow that reports the level back', offersProblemReport: true,
+      text: 'Level change not confirmed — check the Flows that set and report the level',
+      tone: 'warning', offersProblemReport: true,
     });
     expect(buildDeviceStatus(unanswered, true, 0).reason).not.toHaveProperty('offersProblemReport');
     expect(buildDeviceStatus(device, false, 0).reason).not.toHaveProperty('offersProblemReport');

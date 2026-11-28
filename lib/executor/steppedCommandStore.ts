@@ -53,7 +53,13 @@ import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { ControlContestRecording } from '../ports/controlContest';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 
-type FlowStepFeedback = { issuedAtMs: number; attempts: number };
+type FlowStepFeedback = {
+  stepId: string;
+  issuedAtMs: number;
+  warnAtMs: number;
+  retry?: { issuedAtMs: number; attempts: number };
+  rejected?: { stepId: string; retryAtMs: number; attempts: number };
+};
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
@@ -111,26 +117,50 @@ export class SteppedCommandStore {
   }
 
   getFlowStepRetryAtMs(deviceId: string): number | undefined {
-    const feedback = this.flowFeedback.get(deviceId);
-    if (!feedback) return undefined;
-    const delay = resolveSteppedLoadCommandRetryDelayMs(feedback.attempts - 1);
-    return feedback.issuedAtMs + CONTROL_COMMAND_CONFIRMATION_MS + delay;
+    const retry = this.flowFeedback.get(deviceId)?.retry;
+    if (!retry) return undefined;
+    const delay = resolveSteppedLoadCommandRetryDelayMs(retry.attempts - 1);
+    return retry.issuedAtMs + CONTROL_COMMAND_CONFIRMATION_MS + delay;
   }
 
-  trackFlowStepAttempt(deviceId: string, issuedAtMs: number): () => void {
+  getRejectedFlowStepRetry(deviceId: string): { stepId: string; retryAtMs: number } | undefined {
+    return this.flowFeedback.get(deviceId)?.rejected;
+  }
+
+  trackFlowStepAttempt(deviceId: string, stepId: string, issuedAtMs: number, paceRetry: boolean):
+    (outcome: 'requested' | 'rejected') => void {
     const previousReport = this.reportedStore.get(deviceId);
-    return () => {
+    return (outcome) => {
       // The feedback Flow can report before the trigger call returns, even in the same clock tick.
       const report = this.reportedStore.get(deviceId);
       if (report && report !== previousReport && report.updatedAtMs >= issuedAtMs) return;
-      const attempts = (this.flowFeedback.get(deviceId)?.attempts ?? 0) + 1;
-      this.flowFeedback.set(deviceId, { issuedAtMs, attempts });
+      this.recordFlowStepAttempt(deviceId, stepId, issuedAtMs, paceRetry, outcome);
     };
+  }
+
+  private recordFlowStepAttempt(
+    deviceId: string, stepId: string, issuedAtMs: number, paceRetry: boolean, outcome: 'requested' | 'rejected',
+  ): void {
+    const previous = this.flowFeedback.get(deviceId);
+    const warnAtMs = outcome === 'rejected' ? issuedAtMs : issuedAtMs + CONTROL_COMMAND_CONFIRMATION_MS;
+    const attempts = previous?.rejected?.stepId === stepId ? previous.rejected.attempts : 0;
+    this.flowFeedback.set(deviceId, {
+      stepId,
+      issuedAtMs,
+      warnAtMs: Math.min(warnAtMs, previous?.warnAtMs ?? warnAtMs),
+      retry: paceRetry && outcome === 'requested'
+        ? { issuedAtMs, attempts: (previous?.retry?.attempts ?? 0) + 1 }
+        : previous?.retry,
+      rejected: outcome === 'rejected'
+        ? { stepId, retryAtMs: issuedAtMs + resolveSteppedLoadCommandRetryDelayMs(attempts), attempts: attempts + 1 }
+        : undefined,
+    });
   }
 
   reconcileFlowStepFeedback(readConfiguration: (deviceId: string) => DeviceConfigurationRead | undefined): void {
     for (const deviceId of this.flowFeedback.keys()) {
-      if (!readConfiguration(deviceId)?.manualFlowSteppedLoad) {
+      const configuration = readConfiguration(deviceId);
+      if (!configuration || !('steppedLoadProfile' in configuration) || configuration.builtInSteppedLoadControl) {
         this.flowFeedback.delete(deviceId);
       }
     }
@@ -171,8 +201,7 @@ export class SteppedCommandStore {
   getUnansweredStepCommands(deviceId: string, nowMs = Date.now()): UnansweredStepCommands {
     const feedback = this.flowFeedback.get(deviceId);
     if (feedback) {
-      const count = feedback.attempts - Number(nowMs < feedback.issuedAtMs + CONTROL_COMMAND_CONFIRMATION_MS);
-      return count > 0 ? { kind: 'flow_unanswered', count } : { kind: 'none' };
+      return nowMs >= feedback.warnAtMs ? { kind: 'flow_unanswered', stepId: feedback.stepId } : { kind: 'none' };
     }
     const desired = this.state.steppedLoadDesiredByDeviceId.get(deviceId);
     return desired?.answer.kind === 'unanswered' && desired.answer.expiredCount > 0
@@ -181,14 +210,13 @@ export class SteppedCommandStore {
   }
 
   /**
-   * Whether level changes for the tracked step have drawn no report of any level
-   * as many times in a row as makes the device's card say the change is not
-   * confirmed (`STEP_COMMAND_UNANSWERED_AFTER`), for the settings UI's setup
-   * recommendation.
+   * Whether the device's card says its level change was not confirmed, for the
+   * settings UI's setup recommendation.
    */
   isLevelUnconfirmed(deviceId: string): boolean {
     const unanswered = this.getUnansweredStepCommands(deviceId);
-    return unanswered.kind !== 'none' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
+    return unanswered.kind === 'flow_unanswered'
+      || (unanswered.kind === 'unanswered' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER);
   }
 
   /** Whether a step command is issued and not yet settled, acknowledged or not. */
@@ -241,6 +269,8 @@ export class SteppedCommandStore {
   /** Settle the tracked command against the step the device reports (`noteSteppedLoadReportedStep`). */
   noteReportedStep(deviceId: string, stepId: string, reportedAtMs: number): void {
     noteSteppedLoadReportedStep(this.state, deviceId, stepId, reportedAtMs);
+    const feedback = this.flowFeedback.get(deviceId);
+    if (feedback && reportedAtMs > feedback.issuedAtMs) this.flowFeedback.delete(deviceId);
     this.contests.controlReported({ deviceId, setting: 'level', value: stepId, reportedAtMs });
   }
 

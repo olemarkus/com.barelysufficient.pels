@@ -67,7 +67,8 @@ export type ExecutorCommandContext = {
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
   /** Returns a recorder for an attempt that the actuator actually sent through Flow. */
-  trackFlowStepAttempt: (deviceId: string, issuedAtMs: number) => (() => void) | undefined;
+  trackFlowStepAttempt: (deviceId: string, stepId: string, issuedAtMs: number, discretionary: boolean) =>
+    ((outcome: 'requested' | 'rejected') => void) | undefined;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   /** Synchronous claims closing the pre-pending async dispatch race between the lanes. */
   binaryCommandClaim: CommandClaim<boolean>;

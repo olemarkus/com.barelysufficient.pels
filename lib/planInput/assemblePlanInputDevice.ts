@@ -41,6 +41,7 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     targetPowerConfig: _targetPowerConfig,
     // Flow feedback backoff is executor state.
     manualFlowSteppedLoad: _manualFlowSteppedLoad,
+    builtInSteppedLoadControl: _builtInSteppedLoadControl,
     carCurrentRangeUnavailable: _carCurrentRangeUnavailable,
     // Setup guidance belongs to the device status read, not planner decisions.
     powerSetupRequirement: _powerSetupRequirement,

@@ -130,7 +130,7 @@ function resolveBinaryReason(device: DeviceStatusInput, kind: PlanStateKind, hel
 // applying its level, so it is pointed at its unfinished setup.
 // Simulation sends no commands, so it has none to say.
 const UNANSWERED_STEP_LINES: Record<UnusedBuiltInControl, string> = {
-  none: 'Level change not confirmed — check the Flow that reports the level back',
+  none: 'Level change not confirmed — check the Flows that set and report the level',
   held_by_flow: 'Level change not confirmed — disable your Flow to use built-in control',
   not_set_up: 'Level change not applied — finish Charging current setup',
   needs_app_update: 'Level change not applied — update the charger app',
@@ -309,6 +309,7 @@ function buildUnansweredStepReason(device: DeviceStatusInput, dryRun: boolean, n
   const countdown = buildCountdown(device, text, nowMs);
   return {
     text,
+    ...(!isBuiltInSteppedLoadControlEnabled(device) ? { tone: 'warning' as const } : {}),
     ...(countdown ? { countdown } : {}),
     ...phase,
     ...car,

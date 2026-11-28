@@ -785,7 +785,7 @@ describe('level report recommendations', () => {
       .filter(({ id }) => id.startsWith('level-report:'));
     expect(recommendations).toEqual([expect.objectContaining({
       id: 'level-report:floor', version: 1, category: 'recommendation',
-      title: 'Varmekabler Kjøkken does not report its level',
+      title: 'Level change not confirmed for Varmekabler Kjøkken',
       target: { kind: 'device', deviceId: 'floor' },
     })]);
     expect(recommendations[0]?.body).toContain('Report stepped load');

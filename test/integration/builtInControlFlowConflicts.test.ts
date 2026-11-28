@@ -51,11 +51,49 @@ describe('BuiltInControlFlowConflicts', () => {
     setRestClient({ get: async () => { throw new Error('Flow inventory unavailable'); }, put: vi.fn() });
     const owner = app.builtInControlFlowConflicts;
     await owner.applyBackgroundScan();
-    expect(owner.awaitsNativeStepRoute(device)).toBe(true);
+    expect(owner.resolveGatedStepRoute(device)).toBe('waiting');
 
     mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { [device.id]: false });
     app.deviceControlSettings.reload();
-    expect(owner.awaitsNativeStepRoute(device)).toBe(false);
+    expect(owner.resolveGatedStepRoute(device)).toBe('flow');
+  });
+
+  it('keeps a verified stepped Flow through a failed scan and revokes it before changing to native', async () => {
+    const deviceId = 'heater';
+    const device = {
+      ...hoiaxCandidate(deviceId), controlAdapter: {
+        kind: 'capability_adapter' as const, activationRequired: true, activationAvailable: true, activationEnabled: false,
+      },
+    };
+    const args = { device: { id: deviceId } };
+    const bridge = {
+      trigger: { id: 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed', args },
+      actions: [{ id: 'homey:app:com.barelysufficient.pels:report_stepped_load_actual_step', args }],
+    };
+    let inventory: Record<string, typeof bridge> | undefined = { bridge };
+    setRestClient({
+      get: async (path) => {
+        if (!inventory) throw new Error('Flow inventory unavailable');
+        return path === ADVANCED_FLOW_API_PATH ? {} : inventory;
+      },
+      put: vi.fn(),
+    });
+    const { app, rebuildPlanFromCache } = stubApp([device]);
+    const owner = app.builtInControlFlowConflicts;
+    await owner.applyBackgroundScan();
+    expect(owner.resolveGatedStepRoute(device)).toBe('flow');
+    expect(owner.resolveNativeWiringEnabled(deviceId)).toBe(false);
+
+    inventory = undefined;
+    await owner.applyBackgroundScan();
+    expect(owner.resolveGatedStepRoute(device)).toBe('flow');
+
+    inventory = {};
+    rebuildPlanFromCache.mockResolvedValueOnce({ failed: true });
+    await expect(owner.applyBackgroundScan()).rejects.toThrow('Plan rebuild failed');
+    expect(owner.resolveGatedStepRoute(device)).toBe('waiting');
+    await owner.applyBackgroundScan();
+    expect(owner.resolveGatedStepRoute(device)).toBe('native');
   });
 
   it('auto-enables a conflict-free Hoiax device and rebuilds once', async () => {

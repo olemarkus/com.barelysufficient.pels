@@ -537,6 +537,7 @@ export const withDeviceConfiguration = <T extends {
     ? {
       ...fields, controlModel: 'stepped_load', steppedLoadProfile: configuration.steppedLoadProfile,
       manualFlowSteppedLoad: configuration.manualFlowSteppedLoad,
+      builtInSteppedLoadControl: configuration.builtInSteppedLoadControl,
     }
     : { ...fields, controlModel: configuration.controlModel }) as T & DeviceConfigurationRead;
 };

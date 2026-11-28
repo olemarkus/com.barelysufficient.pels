@@ -54,7 +54,9 @@ async function buildEaseeCharger(settings: Record<string, unknown> = {}): Promis
 }
 
 function reportHomePower(
-  powerW: number | (() => number), withLegacyEaseeFlow: boolean, waitForFlows?: Promise<void>,
+  powerW: number | (() => number),
+  flowInventory: () => 'empty' | 'legacy' | 'verified' | 'unavailable' = () => 'empty',
+  waitForFlows?: Promise<void>,
 ): void {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
@@ -65,7 +67,9 @@ function reportHomePower(
     if (path === 'manager/flow/flow/') return {};
     if (path === 'manager/flow/advancedflow/') {
       await waitForFlows;
-      return withLegacyEaseeFlow ? {
+      const inventory = flowInventory();
+      if (inventory === 'unavailable') throw new Error('Flow inventory unavailable');
+      return inventory === 'empty' ? {} : {
         // Production has these blocks in unrelated Flows. One such block used
         // to invalidate the whole inventory, hiding the charger's valid Flow.
         unrelated: { cards: { start: { type: 'start' }, delay: { type: 'delay' }, note: { type: 'note' } } },
@@ -75,14 +79,19 @@ function reportHomePower(
             trigger: {
               id: 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed',
               type: 'trigger',
+              args: { device: { id: CHARGER_ID } },
             },
-            write: {
+            control: inventory === 'legacy' ? {
               id: `homey:device:${CHARGER_ID}:setDynamicChargerCurrent`,
               type: 'action',
+            } : {
+              id: 'homey:app:com.barelysufficient.pels:report_stepped_load_power',
+              type: 'action',
+              args: { device: { id: CHARGER_ID } },
             },
           },
         },
-      } : {};
+      };
     }
     return originalGet(path);
   });
@@ -319,7 +328,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
     configureRuntime(true);
     // The 32 A reset plus 2 kW of background load, against an 8 kW hard cap.
-    reportHomePower(RESET_POWER_W + 2_000, false);
+    reportHomePower(RESET_POWER_W + 2_000);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
@@ -345,7 +354,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     let releaseFlows: () => void = () => {};
     const flowRead = new Promise<void>((resolve) => { releaseFlows = resolve; });
     let totalW = RESET_POWER_W + 200;
-    reportHomePower(() => totalW, false, flowRead);
+    reportHomePower(() => totalW, undefined, flowRead);
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
 
@@ -380,7 +389,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     configureRuntime(true);
     mockHomeyInstance.settings.set(MANAGED_DEVICES, { [CHARGER_ID]: true, heater: true });
     mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: false, heater: true });
-    reportHomePower(RESET_POWER_W + 2_000, false);
+    reportHomePower(RESET_POWER_W + 2_000);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const heaterPath = 'manager/devices/device/heater/capability/onoff';
@@ -537,7 +546,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     const charger = await buildEaseeCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
     configureRuntime(false);
-    reportHomePower(RESET_POWER_W + 2_000, true);
+    reportHomePower(RESET_POWER_W + 2_000, () => 'legacy');
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
@@ -567,5 +576,47 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
 
     // The old return lane remains accepted while native current observation is disabled.
     await expect(reportStep({ device: CHARGER_ID, power_w: '1380 W' })).resolves.toBe(true);
+  });
+
+  it('keeps a verified stepped Flow across restart while the inventory is unavailable', async () => {
+    const charger = await buildEaseeCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime(false);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
+    let inventory: 'verified' | 'unavailable' = 'verified';
+    let homeW = RESET_POWER_W;
+    reportHomePower(() => homeW, () => inventory);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const flowRequests = () => mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? [];
+    const nativeWrites = () => putSpy.mock.calls.filter(([path]) => path === CHARGER_CURRENT_PATH);
+    const startAndReport = async () => {
+      const app = createApp();
+      await app.onInit();
+      const reportStep = mockHomeyInstance.flow._actionCardListeners.report_stepped_load_power;
+      if (!reportStep) throw new Error('Expected report_stepped_load_power to be registered.');
+      await expect(reportStep({ device: CHARGER_ID, power_w: `${RESET_POWER_W} W` })).resolves.toBe(true);
+      return app;
+    };
+
+    const app = await startAndReport();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await api.ui_refresh_flow_conflicts({ homey: app.homey });
+    // Simulation persisted the verified inventory without leaving a live command.
+    await app.onUninit();
+    await drainPending();
+
+    inventory = 'unavailable';
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    const previousRequests = flowRequests().length;
+    const rebooted = await startAndReport();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(api.ui_refresh_flow_conflicts({ homey: rebooted.homey })).rejects.toThrow(
+      'Homey Flows could not be checked right now',
+    );
+
+    homeW += 2_000;
+    await vi.advanceTimersByTimeAsync(30_000);
+    await drainUntil(() => flowRequests().length > previousRequests);
+    expect(nativeWrites()).toEqual([]);
   });
 });

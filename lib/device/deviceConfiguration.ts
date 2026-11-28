@@ -69,12 +69,14 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     expectedPowerSource: snapshot.expectedPowerSource,
     targetPowerConfig: snapshot.targetPowerConfig,
   };
+  const builtInSteppedLoadControl = isBuiltInSteppedLoadControlEnabled(snapshot);
   return snapshot.steppedLoadProfile
     ? {
       ...fields,
       controlModel: 'stepped_load',
       steppedLoadProfile: snapshot.steppedLoadProfile,
-      manualFlowSteppedLoad: snapshot.manualFlowSteppedLoad === true && !isBuiltInSteppedLoadControlEnabled(snapshot),
+      manualFlowSteppedLoad: snapshot.manualFlowSteppedLoad === true && !builtInSteppedLoadControl,
+      builtInSteppedLoadControl,
     }
     : { ...fields, controlModel: snapshot.deviceType === 'temperature' ? 'temperature_target' : 'binary_power' };
 };

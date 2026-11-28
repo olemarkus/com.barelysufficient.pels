@@ -341,6 +341,7 @@ describe('recommendation loading', () => {
     expect(text).toContain(automaticPowerControl
       ? 'Automatic charging control is available for Garage' : 'Set up charging-current control for Garage');
     expect(text).not.toContain('does not report its level');
+    expect(text).not.toContain('Level change not confirmed for');
   });
 
   it('turns on the daily report from its card without raising the banner or the Settings chip', async () => {

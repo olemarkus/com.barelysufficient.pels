@@ -429,15 +429,17 @@ too. Matrix of record: `notes/ev-charger-state-copy.md`.
 
 ### A level change nothing confirms (stepped card reason line)
 
-When a stepped device reports no level at all back to two step commands in a
-row, and is still not at the level asked for, its reason line
-says what carries the level back, ahead of every other stepped line (source:
+For a Flow-routed level change, the device card shows an amber reason as soon
+as the trigger is rejected or the first confirmation window expires. A device
+with built-in control still gets a reason after two unanswered commands in a
+row while the level remains unconfirmed. The reason takes precedence over the
+other stepped lines (source:
 `resolveUnansweredStepLine` in `lib/plan/deviceStatusReadModel.ts`, from the
 executor's `stepCommandUnanswered`):
 
 | Device | Line |
 |---|---|
-| Levels set through the owner's Flow | `Level change not confirmed — check the Flow that reports the level back` |
+| Levels set through the owner's Flow | `Level change not confirmed — check the Flows that set and report the level` |
 | Levels set through the owner's Flow because that Flow holds built-in control back | `Level change not confirmed — disable your Flow to use built-in control` |
 | Levels set by built-in control | `Level change not confirmed by the device` |
 | A charger PELS can set the current of, with built-in control not selected and no Flow setting the current | `Level change not applied — finish Charging current setup` |
@@ -457,19 +459,19 @@ and leaves out the level-report card.
 
 Without it the card kept saying `Increasing to 16 A`, or a retry countdown, for
 as long as PELS kept asking: the Flow that never reports back read as PELS
-never resuming. One expiry is not enough, since a slow Flow or a busy device
-can miss one confirmation window. The line stays while PELS steps the plan back
+never resuming. The line stays while PELS steps the plan back
 to wait before asking again, as long as the device has reported no level at all:
 otherwise the retry countdown replaced it for all but a moment of each attempt.
 A device that reports any other level after
 a command has answered it, so it gets no such line: a charger asked for 16 A
 that clamps to 10 A and reports 10 A has a working Flow.
 
-The same fact also raises a dismissable setup recommendation, `<Device> does not
-report its level` (source: `resolveLevelReportRecommendations` in
+The same fact also raises a dismissable setup recommendation (source:
+`resolveLevelReportRecommendations` in
 `packages/settings-ui/src/ui/recommendationsModel.ts`, from the device list's
 `levelUnconfirmed`), because the card line reaches only an owner who opens the
-device. Under a Flow it names the card to add, **Report stepped load**, and the
+device. Under a Flow it says `Level change not confirmed for <Device>` and
+names the card to add, **Report stepped load**, and the
 way out for a device with no levels of its own: another way to control it on its
 device page. When a Flow holds built-in control back it instead says PELS can
 control the device directly and read its level without a Flow, gives the same

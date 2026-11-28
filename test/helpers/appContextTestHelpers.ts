@@ -351,7 +351,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getChargingFlowWritesStore: () => chargingFlowWritesStore,
     builtInControlFlowConflicts: partialDouble<BuiltInControlFlowConflicts>({
       resolveNativeWiringEnabled: () => false,
-      awaitsNativeStepRoute: () => false,
+      resolveGatedStepRoute: () => undefined,
       getFlowConflict: () => undefined,
       steppedLoadFlowSetup: () => 'ready',
       runBackgroundScan: vi.fn(),
