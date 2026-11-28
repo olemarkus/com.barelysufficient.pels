@@ -1,6 +1,6 @@
 import { readHubMarket } from '../../lib/home/hubMarket';
 import { CapacityMarketDefault } from '../../lib/power/capacityMarketDefault';
-import { CAPACITY_ENABLED, CAPACITY_FOLLOW_MONTH_PEAK } from '../../lib/utils/settingsKeys';
+import { CAPACITY_ENABLED, CAPACITY_FOLLOW_MONTH_PEAK, CAPACITY_PERIOD_MINUTES } from '../../lib/utils/settingsKeys';
 import { classifyInstallAtBoot, type InstallAtBoot } from '../../lib/utils/settingsKeyList';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
@@ -106,7 +106,7 @@ describe('the Capacity limit default on a new install', () => {
     expect(timers.has('capacityMarketDefault')).toBe(false);
   });
 
-  it('turns on following this month\'s peak for a new install in Belgium', async () => {
+  it('measures quarter-hours and follows this month\'s peak for a new install in Belgium', async () => {
     const settings = settingsWith(NEW_INSTALL_KEYS);
     const written: string[] = [];
     settings.on('set', (key: string) => written.push(key));
@@ -115,8 +115,22 @@ describe('the Capacity limit default on a new install', () => {
 
     await vi.advanceTimersByTimeAsync(0);
 
+    expect(settings.get(CAPACITY_PERIOD_MINUTES)).toBe(15);
     expect(settings.get(CAPACITY_FOLLOW_MONTH_PEAK)).toBe(true);
-    expect(written).toEqual([CAPACITY_FOLLOW_MONTH_PEAK]);
+    expect(written).toEqual([CAPACITY_PERIOD_MINUTES, CAPACITY_FOLLOW_MONTH_PEAK]);
+  });
+
+  it('keeps an hourly period the owner chose while the country was being read', async () => {
+    const settings = settingsWith(NEW_INSTALL_KEYS);
+    const api = hubIn('BE');
+    start(settings, async () => {
+      settings.set(CAPACITY_PERIOD_MINUTES, 60);
+      return readHubMarket(api.get);
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(settings.get(CAPACITY_PERIOD_MINUTES)).toBe(60);
   });
 
   it('leaves following this month\'s peak off in Norway, which bills the hourly peak', async () => {
@@ -127,6 +141,7 @@ describe('the Capacity limit default on a new install', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(settings.getKeys()).not.toContain(CAPACITY_FOLLOW_MONTH_PEAK);
+    expect(settings.getKeys()).not.toContain(CAPACITY_PERIOD_MINUTES);
   });
 
   it('keeps a month-peak switch the owner set while the country was being read', async () => {
