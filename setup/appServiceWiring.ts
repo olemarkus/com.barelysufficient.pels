@@ -62,7 +62,7 @@ import { wireHomeMembership } from './appInit/wireHomeMembership';
 import { buildAppHomeMembershipOptions } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import {
-  startPostStartupBackgroundTasks, startCapacityMarketDefault,
+  startPostStartupBackgroundTasks, startCapacityMarketDefault, startExportPriceMarketDefault,
 } from './appInit/startPostStartupBackgroundTasks';
 import { classifyInstallAtBoot, type InstallAtBoot } from '../lib/utils/settingsKeyList';
 import type { BackgroundTasksController } from './backgroundTasksController';
@@ -311,8 +311,9 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     requireInitializedAppContext(ctx);
     this.deps.powerTrackerHelpers.startPowerTrackerPruning();
-    // Run after settings handlers: only a new install adopts its capacity-market default.
+    // Run after settings handlers: only a new install adopts its market defaults.
     startCapacityMarketDefault(ctx.homey.settings, this.deps.timers, installAtBoot);
+    startExportPriceMarketDefault(ctx.homey.settings, this.deps.timers, installAtBoot);
     startPostStartupBackgroundTasks(
       ctx,
       this.taskEvaluationSource,

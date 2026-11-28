@@ -12,6 +12,7 @@ import { createTaskReservationSource } from './createTaskReservationSource';
 import { wireCurtailmentSurplus } from './wireCurtailmentSurplus';
 import { startSoleMeterAdoption } from '../soleMeterAdoption';
 export { startCapacityMarketDefault } from '../capacityMarketDefault';
+export { startExportPriceMarketDefault } from '../exportPriceMarketDefault';
 
 const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 
