@@ -423,6 +423,11 @@ export class PriceCoordinator {
     this.priceService.updateCombinedPrices();
   }
 
+  /** Norgespris can change the current price level as the home uses energy within the period. */
+  onMeterDrivenRebuild(): void {
+    this.priceLevelFlow?.onMeterDrivenRebuild();
+  }
+
   /** Answers whether PELS switched source, the cue to fetch prices from the new one. */
   private refreshPriceSource(market: SettingsUiHubMarketRead, powerhour: PowerhourPresence): boolean {
     const logger = this.deps.structuredLog;

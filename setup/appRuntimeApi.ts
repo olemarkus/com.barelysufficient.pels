@@ -13,6 +13,7 @@ import { getComponentLogger, setDebugTopics } from '../lib/logging/logger';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { PendingTargetObservationSource } from '../lib/plan/planTypes';
 import type { PlanService } from '../lib/plan/planService';
+import type { PowerSampleRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
 import {
   updateDailyBudgetAndRecordCapForApp,
@@ -67,6 +68,10 @@ abstract class AppRuntimeApi extends Base {
   public recordPowerSample(powerW: number, nowMs?: number): ReturnType<AppContext['recordPowerSample']> {
     return this.powerSamplePipeline.recordPowerSample(powerW, nowMs);
   }
+  protected readonly rebuildMainPlanFromMeter = (trigger: PowerSampleRebuildTrigger) => {
+    requirePriceCoordinator(this.context).onMeterDrivenRebuild();
+    return requirePlanService(this.context).rebuildPlanFromCache(trigger);
+  };
   public updateDailyBudgetState(options?: DailyBudgetUpdateStateOptions): void {
     this.updateDailyBudgetAndRecordCap(options);
   }

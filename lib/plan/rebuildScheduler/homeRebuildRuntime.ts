@@ -15,10 +15,9 @@ import type CapacityGuard from '../../power/capacityGuard';
 import type { Logger as PinoLogger } from 'pino';
 import type { HomeId } from '../../utils/settingsKeys';
 import type { TimerRegistry } from '../../utils/timerRegistry';
-import type { PlanService } from '../planService';
 import { PlanRebuildScheduler } from './scheduler';
 import { SchedulerTelemetryObserver } from './telemetryObserver';
-import { PlanRebuildThrottle } from './throttle';
+import { PlanRebuildThrottle, type PlanRebuildThrottleDeps } from './throttle';
 
 export type HomeRebuildRuntime = {
   scheduler: PlanRebuildScheduler;
@@ -37,7 +36,7 @@ export type HomeRebuildRuntime = {
  * childs `component: 'plan'` on again for its own emit, so a root logger works
  * too, but both homes pass the component logger.
  *
- * `getCapacityGuard` and `getPlanService` are late-bound: this home's guard and
+ * `getCapacityGuard` and `rebuildPlanFromCache` are late-bound: this home's guard and
  * service are built around this runtime, not before it.
  */
 export const createHomeRebuildRuntime = (
@@ -45,7 +44,7 @@ export const createHomeRebuildRuntime = (
   timers: TimerRegistry,
   timerKey: (suffix: string) => string,
   getCapacityGuard: () => CapacityGuard,
-  getPlanService: () => PlanService,
+  rebuildPlanFromCache: PlanRebuildThrottleDeps['rebuildPlanFromCache'],
   getStructuredLogger: () => PinoLogger,
 ): HomeRebuildRuntime => {
   // One monotonic clock for the scheduler, the throttle and the telemetry
@@ -63,7 +62,7 @@ export const createHomeRebuildRuntime = (
     getCapacityGuard,
     getNowMs: nowMs,
     getWallClockMs: () => Date.now(),
-    rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
+    rebuildPlanFromCache,
   });
   const telemetry = new SchedulerTelemetryObserver({
     homeId,

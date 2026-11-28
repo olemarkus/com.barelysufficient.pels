@@ -6,7 +6,11 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
-import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME, PRICE_THRESHOLD_PERCENT } from '../../lib/utils/settingsKeys';
+import {
+  FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, NORWAY_PRICE_MODEL, PRICE_SCHEME, PRICE_THRESHOLD_PERCENT,
+} from '../../lib/utils/settingsKeys';
+import { NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH } from '../../lib/price/norwayPriceDefaults';
+import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
 import { testLogger } from '../utils/testLogger';
@@ -120,9 +124,10 @@ describe('Price level flow cards', () => {
   });
 });
 
-describe('Price-level publication with no meter readings', () => {
+describe('Price-level publication', () => {
   let coordinator: PriceCoordinator;
   let priceStore: ReturnType<typeof createPriceDataStore>;
+  let tracker: PowerTrackerState;
 
   const setPrices = (
     dateKey: string,
@@ -152,13 +157,14 @@ describe('Price-level publication with no meter readings', () => {
     vi.useFakeTimers();
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
     priceStore = createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache());
+    tracker = {};
     coordinator = new PriceCoordinator({
       homey: mockHomeyInstance,
       flow: mockHomeyInstance.flow,
       priceDataStore: priceStore,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
       getTimeZone: () => 'Europe/Oslo',
-      getPowerTracker: () => ({}),
+      getPowerTracker: () => tracker,
       homeyWebApiGet: noHomeyWebApi,
       readHubMarket: unknownHubMarket,
       readHubLocation: async () => ({ kind: 'unavailable' }),
@@ -178,6 +184,9 @@ describe('Price-level publication with no meter readings', () => {
     setPrices('2026-06-01', start, 15, [3, 1, 1, 3]);
     expect(levels()).toEqual([]);
     coordinator.startPriceRefresh();
+    const readSchedule = vi.spyOn(coordinator['priceService'], 'getPriceLevelSchedule');
+    coordinator.onMeterDrivenRebuild();
+    expect(readSchedule).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(15 * 60_000 - 1);
     expect(levels()).toEqual([PriceLevel.EXPENSIVE]);
@@ -188,6 +197,32 @@ describe('Price-level publication with no meter readings', () => {
     });
     vi.advanceTimersByTime(45 * 60_000);
     expect(levels()).toEqual([PriceLevel.EXPENSIVE, PriceLevel.CHEAP, PriceLevel.EXPENSIVE, PriceLevel.UNKNOWN]);
+  });
+
+  it('publishes when metered usage crosses the Norgespris cap within a price period', () => {
+    const start = Date.parse('2026-06-20T08:00:00Z');
+    const hourMs = 60 * 60_000;
+    vi.setSystemTime(start);
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'norway');
+    mockHomeyInstance.settings.set(NORWAY_PRICE_MODEL, 'norgespris');
+    priceStore.writeSpotPrices(Array.from({ length: 7 }, (_, index) => ({
+      startsAt: new Date(start - (6 - index) * hourMs).toISOString(), spotPriceExVat: 160, currency: 'NOK',
+    })));
+    const bucket = new Date(start).toISOString();
+    tracker = { lastPowerW: 1000, buckets: { [bucket]: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH - 1 } };
+    const readSetting = vi.spyOn(mockHomeyInstance.settings, 'get');
+    coordinator.startPriceRefresh();
+    expect(levels()).toEqual([PriceLevel.NORMAL]);
+    expect(readSetting.mock.calls.filter(([key]) => key === NORWAY_PRICE_MODEL)).toHaveLength(1);
+
+    vi.advanceTimersByTime(10 * 60_000);
+    tracker = { ...tracker, buckets: { [bucket]: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH } };
+    coordinator.onMeterDrivenRebuild();
+    coordinator.onMeterDrivenRebuild();
+    expect(levels()).toEqual([PriceLevel.NORMAL, PriceLevel.EXPENSIVE]);
+
+    vi.advanceTimersByTime(50 * 60_000);
+    expect(levels()).toEqual([PriceLevel.NORMAL, PriceLevel.EXPENSIVE, PriceLevel.UNKNOWN]);
   });
 
   it('publishes changed inputs inside a period even with the same hourly average', () => {

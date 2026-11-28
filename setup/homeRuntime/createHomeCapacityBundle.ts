@@ -262,7 +262,7 @@ function createBundleSamplePipeline(
     ctx.timers,
     timerKey,
     () => guard,
-    () => planService,
+    (trigger) => planService.rebuildPlanFromCache(trigger),
     () => ctx.getStructuredLogger('plan'),
   );
   const pipeline = createHomePowerPipeline({
