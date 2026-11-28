@@ -18,9 +18,13 @@ export function projectStorageDischargeObservations(
   )));
 }
 
-export const readHomeBatteryDischargeW = (devices: readonly DeviceSurfaces[]): number => (
-  devices.reduce((dischargeW, { available, batteryPower }) => {
-    if (!available || !batteryPower) return dischargeW;
+/** `excludedDeviceIds`: batteries whose discharge the plan is about to stop. */
+export const readHomeBatteryDischargeW = (
+  devices: readonly DeviceSurfaces[],
+  excludedDeviceIds: ReadonlySet<string>,
+): number => (
+  devices.reduce((dischargeW, { id, available, batteryPower }) => {
+    if (!available || !batteryPower || excludedDeviceIds.has(id)) return dischargeW;
     return dischargeW + Math.max(0, -batteryPower.signedW);
   }, 0)
 );

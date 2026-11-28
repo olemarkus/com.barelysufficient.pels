@@ -288,8 +288,9 @@ export function buildMainHomeScope(
   const deferredObjectiveController = new DeferredObjectiveDecorationController(
     {
       ...taskEvaluationSource,
-      getHomeBatteryDischargeW: () => readHomeBatteryDischargeW(
+      getHomeBatteryDischargeW: (excludedDeviceIds) => readHomeBatteryDischargeW(
         requireHomeMembership(ctx).filterDevicesForHome(ctx.getDeviceSurfaces(), homeId),
+        excludedDeviceIds,
       ),
     },
     createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),

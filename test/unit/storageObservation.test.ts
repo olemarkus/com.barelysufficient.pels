@@ -14,9 +14,10 @@ describe('whole-home storage discharge observation', () => {
   it('uses accepted discharge even when its value has not changed, until the battery reports another value', () => {
     const discharging = battery(-1000, false);
     const charging = battery(3000);
-    expect(readHomeBatteryDischargeW([discharging, charging])).toBe(1000);
-    expect(readHomeBatteryDischargeW([battery(0, false), charging])).toBe(0);
-    expect(readHomeBatteryDischargeW([{ ...discharging, available: false }, charging])).toBe(0);
+    expect(readHomeBatteryDischargeW([discharging, charging], new Set())).toBe(1000);
+    expect(readHomeBatteryDischargeW([discharging, charging], new Set([discharging.id]))).toBe(0);
+    expect(readHomeBatteryDischargeW([battery(0, false), charging], new Set())).toBe(0);
+    expect(readHomeBatteryDischargeW([{ ...discharging, available: false }, charging], new Set())).toBe(0);
   });
 
   it('keeps unmanaged discharge and does not cancel it against another battery charging', () => {

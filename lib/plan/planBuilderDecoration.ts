@@ -4,7 +4,6 @@
  * release-intent attach resolves requested releases into the posture this plan
  * commands. Execution consumes that decision without reading policy.
  */
-import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { hasStorageInput } from './battery/storageLadder';
 import type { PowerCycleReading } from '../power/powerCycleReading';
 import type { PlanEngineState } from './planState';
@@ -113,9 +112,10 @@ export const holdScheduledDischargeDuringEvCharging = (
 ): PlanInputDevice[] => {
   const observedEvChargingHold = reading.isMeasured
     && state.holdDischargeForObservedEvCharging(hasObservedEvCharging(devices), nowTs);
-  const { admittedDevices, drivingDeviceIds } = decoration;
-  if (!observedEvChargingHold
-    && !admittedDevices.some(device => drivingDeviceIds.has(device.id) && isEvDevice(device))) return admittedDevices;
+  const { admittedDevices } = decoration;
+  // `bookedEvTask` is read before the charger's battery-discharge pause, so a
+  // paused charger still holds the battery it is protecting.
+  if (!observedEvChargingHold && !decoration.bookedEvTask) return admittedDevices;
   return admittedDevices.map(device => {
     if (!hasStorageInput(device) || device.storage.reading !== 'observed') return device;
     const { storage } = device;

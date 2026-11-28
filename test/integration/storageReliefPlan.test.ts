@@ -208,6 +208,8 @@ type Scenario = {
   dailyBudget?: boolean;
   hourUsedKWh?: number;
   evTaskIsDriving?: () => boolean;
+  /** The booked charger is paused for battery discharge: booked, but not driving. */
+  evTaskPaused?: boolean;
 };
 
 const buildHarness = (scenario: Scenario) => {
@@ -233,7 +235,9 @@ const buildHarness = (scenario: Scenario) => {
     ...planBuilderWiring(),
     decorateDeferredObjectives: ({ devices }) => ({
       ...buildIdentityDecorationBundle(devices),
-      drivingDeviceIds: new Set(scenario.evTaskIsDriving?.() ? ['ev'] : []),
+      // The battery-discharge pause takes a booked charger out of the driving set.
+      drivingDeviceIds: new Set(scenario.evTaskIsDriving?.() && !scenario.evTaskPaused ? ['ev'] : []),
+      ...(scenario.evTaskIsDriving?.() ? { bookedEvTask: true as const } : {}),
     }),
     getStorageDischargeObservations: () => storageDischargeObservationsFixture(observedDevices),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -286,6 +290,20 @@ describe('storage relief in the plan build', () => {
     const after = { ...storage, storage: { ...storage.storage, signedPowerW: 0 } } as typeof storage;
     expect(storageDecision(await build(3000, [ev, after], 30_000)))
       .toMatchObject({ kind: 'setpoint', setpointW: -2500 });
+  });
+
+  it('holds scheduled supply while the booked charger is paused for battery discharge', async () => {
+    const { build } = buildHarness({ paceKw: null, limitKw: 10, evTaskIsDriving: () => true, evTaskPaused: true });
+    const ev = { ...heater(false, 3, 'ev'), isEvCharger: true };
+    const storage = battery({
+      holdDischargeDuringEvCharging: true,
+      claimHeld: true,
+      signedPowerW: -1500,
+      continuousPlan: {
+        setpointW: -1500, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house', storesSurplus: false,
+      },
+    });
+    expect(storageDecision(await build(0, [ev, storage]))).toMatchObject({ kind: 'setpoint', setpointW: 0 });
   });
 
   it('lets power-limit protection discharge the battery during an EV booking', async () => {
