@@ -139,6 +139,8 @@ export const inputDevice = (
     deviceType: materialized.deviceType ?? 'onoff',
     isEvCharger: materialized.isEvCharger ?? false,
     isBatteryOrSolar: materialized.isBatteryOrSolar ?? false,
+    // Required planner input; a fixture that says nothing prices at its ladder.
+    chargingDrawPhases: (materialized as { chargingDrawPhases?: unknown }).chargingDrawPhases ?? { kind: 'ladder' },
     starvationSupported: materialized.starvationSupported ?? false,
     residualKw: fixtureResidualKw(materialized),
     control: fixtureControlPosture(materialized),
