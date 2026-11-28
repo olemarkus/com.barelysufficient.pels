@@ -95,10 +95,6 @@ export function isNativeSteppedLoadWiringCandidate(params: {
   return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
 }
 
-export function hasTargetPowerCapability(capabilities: readonly string[]): boolean {
-  return capabilities.includes(TARGET_POWER_CAPABILITY_ID);
-}
-
 /**
  * The capabilities PELS writes when it natively drives a stepped-load device,
  * mirroring `resolveNativeSteppedLoadCommand`'s write targets:
