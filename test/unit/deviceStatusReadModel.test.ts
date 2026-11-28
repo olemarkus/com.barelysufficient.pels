@@ -722,3 +722,32 @@ describe('charging installation controlled as one load', () => {
       + 'The chargers share the available current between the cars that are charging.');
   });
 });
+
+// Owner ruling 2026-11-28: with no limit on, a meter outage leaves the device as
+// it is. Its card keeps its own state word (never `Limited`) and says what it
+// waits for.
+describe('a device the silent-meter pass left as it is', () => {
+  const held = (overrides: Partial<DeviceStatusInput>): DeviceStatusInput => runningPowerHold({
+    reason: { code: PLAN_REASON_CODES.meterSilentHold },
+    ...overrides,
+  });
+
+  it('reads as running and names the missing reading', () => {
+    const status = buildDeviceStatus(held({
+      plannedState: 'keep',
+      execution: { ...runningPowerHold().execution, desiredBinary: 'on', binaryProgress: 'settled' },
+    }), false, 0);
+    expect(status).toMatchObject({ label: 'Running', limited: false });
+    expect(status.reason).toEqual({ text: 'Waiting for a new power reading' });
+  });
+
+  it('reads as off, not limited, for a device that was off', () => {
+    const status = buildDeviceStatus(held({
+      plannedState: 'inactive', currentState: 'off', currentDrawKw: 0,
+      execution: { ...runningPowerHold().execution, physicalState: 'off', desiredBinary: null, binaryProgress: 'undriven' },
+    }), false, 0);
+    expect(status.limited).toBe(false);
+    expect(status.label).toBe('Off');
+    expect(status.reason).toEqual({ text: 'Waiting for a new power reading' });
+  });
+});

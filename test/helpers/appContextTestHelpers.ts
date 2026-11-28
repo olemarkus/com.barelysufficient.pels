@@ -73,6 +73,7 @@ import { buildTaskEvaluationSource } from '../../setup/appInit/taskEvaluationSou
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
 import { resolveMainMeterRead } from '../../lib/home/homeMeters';
 import { testLogger } from '../utils/testLogger';
+import { meterSilenceLimitReads } from './meterSilenceLimitReads';
 
 const homeModeCatalogByContext = new WeakMap<AppContext, HomeModeCatalog>();
 
@@ -429,6 +430,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       getPowerTracker: () => powerTracker,
       nowMs: () => Date.now(),
       structuredLog: () => testLogger,
+      ...meterSilenceLimitReads(() => true),
     }),
     get capacitySettings() { return capacitySettings; },
     set capacitySettings(value) { capacitySettings = value; },

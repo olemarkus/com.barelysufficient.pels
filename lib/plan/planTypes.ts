@@ -5,6 +5,7 @@ import type { StepDownRetirement } from '../planContract/executionPlan';
 import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { CapacityPeriodMinutes, HardCapSource } from '../../packages/contracts/src/capacitySettings';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
@@ -892,6 +893,8 @@ export type PlanMeasuredMetaFields = {
 
 export type PlanUnmeasuredMetaFields = {
   powerIsMeasured: false;
+  /** What the silent-meter pass did: limited every device, or left them as they are. */
+  silentMeterDirective: SilentMeterDirective;
 };
 
 export type PlanMeta = PlanMetaBase & (PlanMeasuredMetaFields | PlanUnmeasuredMetaFields);

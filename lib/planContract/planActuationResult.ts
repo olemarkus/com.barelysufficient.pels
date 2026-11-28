@@ -1,3 +1,5 @@
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
+
 /**
  * Neutral result of materializing one complete plan, and the rebuild outcome
  * that carries it whole.
@@ -27,6 +29,8 @@ export type PlanActuationResult = {
 export type PlanRebuildOutcome = PlanActuationResult & {
   /** An available charger selected for the fail-closed pause has yet to report off. */
   sharedChargingPausePending?: true;
+  /** Set when the plan was the silent-meter pass: what it did with the devices. */
+  silentMeterDirective?: SilentMeterDirective;
   /** False while durable inverter ownership cannot be resolved at its owner. */
   inverterReleaseRecoveryReady: boolean;
   buildMs: number;

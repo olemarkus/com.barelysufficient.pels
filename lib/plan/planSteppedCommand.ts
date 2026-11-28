@@ -112,6 +112,9 @@ function resolveUnknownLimitPreparation(
 ): SteppedLoadTransition | null {
   // Only a hold or a decided step shed needs the lower limit. An unheld keep
   // initializes its unknown step through the ordinary planned step.
+  // A device the silent-meter hold left as it is keeps its level too: the
+  // preparation would lower a running charger the notice says was left alone.
+  if (dev.reason.code === PLAN_REASON_CODES.meterSilentHold) return null;
   const heldKeep = dev.plannedState === 'keep' && (ordinaryStartsHeld || isHeldByPlanReason(dev));
   if (!dev.control.commandAuthority || (!heldKeep && dev.plannedShedTargetKind !== 'step')
     || dev.controlAdapter?.activationOrder !== 'current_before_start'

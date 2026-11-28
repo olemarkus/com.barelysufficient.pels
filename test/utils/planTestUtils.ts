@@ -1336,6 +1336,7 @@ export const buildUnmeasuredPlanMeta = (
 ): DevicePlan['meta'] => ({
   ...buildPlanMetaBase(overrides),
   powerIsMeasured: false,
+  silentMeterDirective: 'shed',
 });
 
 const buildPlanMetaBase = (

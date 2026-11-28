@@ -10,7 +10,7 @@ import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.t
 import { staleDataBanner, staleDataBannerAction, staleDataBannerText } from './dom.ts';
 import { getChosenWholeHomeMeterName, hasChosenWholeHomeMeter } from './homeyEnergyMeter.ts';
 import { getHomeScope, getShownPanelHomeId, subscribeToHomeScope } from './homeScope.ts';
-import { isPlanUnmeasured } from './planMeasurementSignal.ts';
+import { getSilentMeterPass } from './planMeasurementSignal.ts';
 import { isNoReadingsCarriedBySetupPath, publishSetupPower } from './setupPathFacts.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { currentSetupJourney } from './setupJourneyState.ts';
@@ -53,7 +53,7 @@ const resolveMainBanner = ({ readings, source }: MainBannerRead): PowerReadingsB
   resolvePowerReadingsBannerContent({
     readings,
     nowMs: Date.now(),
-    planUnmeasured: isPlanUnmeasured(),
+    silentMeterPass: getSilentMeterPass(),
     // The select mirrors the persisted source (and a drafted Homey Energy
     // switch, where the picker hint is exactly right).
     source,

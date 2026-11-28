@@ -68,13 +68,13 @@ describe('resolvePowerReadingsBannerContent', () => {
 
   it('hides the banner while the last sample is fresh', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'received', lastPowerUpdateMs: base.nowMs - 1000 }, source: 'flow', meterChosen: false, planUnmeasured: false,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: base.nowMs - 1000 }, source: 'flow', meterChosen: false, silentMeterPass: null,
     })).toBeNull();
   });
 
   it('names both remedies for a flow home that never received a reading', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'never' }, source: 'flow', meterChosen: false, planUnmeasured: false,
+      ...base, readings: { state: 'never' }, source: 'flow', meterChosen: false, silentMeterPass: null,
     })).toEqual({
       text: 'No power readings yet. Pick a whole-home meter under Limits & safety, or set up a Flow '
         + 'with the Report power usage action.',
@@ -84,7 +84,7 @@ describe('resolvePowerReadingsBannerContent', () => {
 
   it('points a silent flow home at its Flow', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, planUnmeasured: false,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, silentMeterPass: null,
     })).toEqual({
       text: 'Last new power reading 9 min ago. PELS uses the last reading for its power plan. '
         + 'Check the Flow that runs Report power usage and the meter it reads from.',
@@ -94,21 +94,31 @@ describe('resolvePowerReadingsBannerContent', () => {
 
   it('points a Homey Energy home at its chosen meter, or at the picker before one is chosen', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'homey_energy', meterChosen: true, planUnmeasured: false,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'homey_energy', meterChosen: true, silentMeterPass: null,
     })?.text).toBe('Last new power reading 9 min ago. PELS uses the last reading for its power plan. Check that the selected whole-home '
       + 'meter is available in Homey Energy and its reading is changing.');
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'never' }, source: 'homey_energy', meterChosen: false, planUnmeasured: false,
+      ...base, readings: { state: 'never' }, source: 'homey_energy', meterChosen: false, silentMeterPass: null,
     })?.text).toBe('No power readings yet. Pick a whole-home meter under Limits & safety.');
   });
 
   it('names a selected meter and ages a longer outage from the producer timestamp', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, nowMs: 3 * 3_600_000, readings: { state: 'received', lastPowerUpdateMs: 0 },
-      source: 'homey_energy', meterChosen: true, meterName: 'HAN meter', planUnmeasured: false,
+      source: 'homey_energy', meterChosen: true, meterName: 'HAN meter', silentMeterPass: null,
     })).toEqual({
       text: 'Last new power reading 3 h ago. PELS uses the last reading for its power plan. '
         + 'Check that HAN meter is available in Homey Energy and its reading is changing.',
+      actionLabel: 'Check meter',
+    });
+  });
+
+  it('says the devices are left as they are when the pass held them (no limit on)', () => {
+    expect(resolvePowerReadingsBannerContent({
+      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, silentMeterPass: 'hold',
+    })).toEqual({
+      text: 'Last new power reading 9 min ago. No limit is on, so PELS leaves managed devices as they are, apart from '
+        + 'solar-surplus loads, until a new reading arrives. Check the Flow that runs Report power usage and the meter it reads from.',
       actionLabel: 'Check meter',
     });
   });
@@ -118,7 +128,7 @@ describe('resolvePowerReadingsBannerContent', () => {
     // hero draws nothing for it, so this line is the only place the page says
     // why every managed device below reads `Limited` (owner ruling 2026-09-02).
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, planUnmeasured: true,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, silentMeterPass: 'shed',
     })).toEqual({
       text: 'Last new power reading 9 min ago. PELS plans to keep managed devices limited until a new reading arrives. '
         + 'Check the Flow that runs Report power usage and the meter it reads from.',
@@ -127,11 +137,11 @@ describe('resolvePowerReadingsBannerContent', () => {
     // Fresh readings still win: the next admitted sample rebuilds, and a plan
     // one cycle behind must not keep the banner up.
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'received', lastPowerUpdateMs: base.nowMs - 1000 }, source: 'flow', meterChosen: false, planUnmeasured: true,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: base.nowMs - 1000 }, source: 'flow', meterChosen: false, silentMeterPass: 'shed',
     })).toBeNull();
     // A home that never received a reading keeps its own lead: nothing was shed on its account.
     expect(resolvePowerReadingsBannerContent({
-      ...base, readings: { state: 'never' }, source: 'flow', meterChosen: false, planUnmeasured: true,
+      ...base, readings: { state: 'never' }, source: 'flow', meterChosen: false, silentMeterPass: 'shed',
     })?.text).toMatch(/^No power readings yet\./);
   });
 });

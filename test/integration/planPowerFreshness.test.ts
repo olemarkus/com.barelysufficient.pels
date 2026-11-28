@@ -1,5 +1,5 @@
 import { buildPlanInputDevice } from '../utils/planTestUtils';
-import { buildPlannedBinaryCommand } from '../../lib/plan/planExecutionProjection';
+import { buildExecutionPlan, buildPlannedBinaryCommand } from '../../lib/plan/planExecutionProjection';
 import { planLimitsFixture } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
@@ -20,6 +20,7 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonFormatting';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { configuredHardCap } from '../helpers/configuredHardCap';
+import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 
 // The producer resolves the reading. Tests state the two real inputs — what
 // the meter read and when it last sampled — and receive either a measured
@@ -296,14 +297,13 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
   // not a sentinel headroom the ordinary pipeline sizes a slice against. With
   // the old `-1` it shed "about 1 kW" of devices, a policy nobody chose; three
   // 1.2 kW candidates would have lost one.
-  // The pass sheds in every limit mode (the released Grid import limit
-  // changelog keeps meter-outage protection), and its cause is the same in all of
-  // them: the meter stopped reporting. Under `capacity` the activity log and
-  // device detail read "Limited by the hard cap" even with Capacity limit off.
+  // The pass sheds whichever limit relies on the meter, and its cause is the
+  // same for each: the meter stopped reporting. Under `capacity` the activity
+  // log and device detail read "Limited by the hard cap" even with Capacity
+  // limit off. With no limit on at all the pass holds instead (below).
   it.each([
     ['Capacity limit on', { capacityEnabled: true, gridImportLimitKw: null }],
     ['grid import limit only', { capacityEnabled: false, gridImportLimitKw: 3.3 }],
-    ['both limits off', { capacityEnabled: false, gridImportLimitKw: null }],
   ] as const)('names the silent meter, not a ceiling, with %s', async (_label, controls) => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const structuredLog = { info: vi.fn(), warn: vi.fn() };
@@ -552,5 +552,123 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
 
     expect(plan.devices.find((dev) => dev.id === 'release')?.deferredReleaseIntent).toEqual({ kind: 'binary_release' });
     expect(plan.devices.find((dev) => dev.id === 'resume')?.deferredReleaseIntent).toBeUndefined();
+  });
+
+  // Owner ruling 2026-11-28: with no limit that relies on the meter there is
+  // nothing a missing reading can breach, so the pass leaves devices as they are.
+  describe('with no limit on', () => {
+    const NO_LIMITS: PowerLimitSettings = {
+      capacityEnabled: false, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60,
+    };
+    const silentTracker = () => ({ lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 });
+    const onAndOff = () => [
+      buildDevice({ id: 'on', name: 'On', priority: 1, currentDrawKw: 1.2 }),
+      buildDevice({ id: 'off', name: 'Off', priority: 2, currentDrawKw: 0, binaryControl: { on: false }, currentOn: false }),
+    ];
+
+    it('leaves an on device on and an off device off, with no write that adds load', async () => {
+      const state = createPlanEngineState();
+      const structuredLog = { info: vi.fn(), warn: vi.fn() };
+      const builder = buildBuilder({ tracker: silentTracker(), state, structuredLog, settings: NO_LIMITS });
+
+      const plan = await builder.buildDevicePlanSnapshot(onAndOff());
+
+      expect(plan.meta).toMatchObject({ powerIsMeasured: false, silentMeterDirective: 'hold' });
+      expect(plan.ordinaryStartsHeld).toBe(true);
+      expect(plan.devices.map((dev) => [dev.id, dev.plannedState, dev.reason.code])).toEqual([
+        ['on', 'keep', 'meter_silent_hold'],
+        ['off', 'inactive', 'meter_silent_hold'],
+      ]);
+      for (const dev of plan.devices) {
+        expect(formatDeviceReasonUserFacing(dev.reason)).toBe('Waiting for a new power reading');
+      }
+      // Nothing is turned on, and nothing is turned off: no binary command at all.
+      const commands = buildExecutionPlan(plan).devices.map((device) => device.commands);
+      expect(commands.map((command) => ('binary' in command ? command.binary : undefined))).toEqual([undefined, undefined]);
+      // Nothing was limited, so nothing is recorded as shed for the first measured cycle.
+      expect(state.shedDecisions.lastPlannedShedIds.size).toBe(0);
+      expect(state.sheddingActive).toBe(false);
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'plan_silent_meter_pass', directive: 'hold', shedDeviceCount: 0,
+      }));
+      expect(structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_reason_pair_invalid' }));
+    });
+
+    it('keeps a running thermostat at its own setpoint rather than the mode target', async () => {
+      const builder = new PlanBuilder({
+        ...planBuilderWiring(),
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+        getCapacitySettings: () => configuredHardCap(NO_LIMITS),
+        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+          getModeDeviceTargets: () => ({ Home: { thermo: 23 } }),
+          getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+        }),
+        getPowerTracker: silentTracker,
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+      }, createPlanEngineState());
+
+      const plan = await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'thermo',
+          name: 'Thermostat',
+          deviceType: 'temperature',
+          currentTemperature: 19,
+          currentTarget: 20,
+          currentDrawKw: 0.8,
+          targets: [{ id: 'target_temperature', value: 20, unit: 'C' }],
+        } as Partial<PlanInputDevice>),
+      ]);
+
+      const thermo = plan.devices.find((dev) => dev.id === 'thermo')!;
+      expect(thermo.plannedState).toBe('keep');
+      expect(isTemperaturePlanDevice(thermo) ? thermo.plannedTarget : undefined).toBe(20);
+      expect(thermo.targetCommand?.desired).toBe(20);
+    });
+
+    it('names a smart task\'s own hold, not the outage, on a device it keeps off', async () => {
+      const structuredLog = { info: vi.fn(), warn: vi.fn() };
+      const builder = new PlanBuilder({
+        ...planBuilderWiring(),
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+        getCapacitySettings: () => configuredHardCap(NO_LIMITS),
+        getPowerTracker: silentTracker,
+        decorateDeferredObjectives: (input) => ({
+          chargingPhaseRequirements: new Map(), admittedDevices: input.devices,
+          forceShedSet: new Set<string>(['task']),
+          deferredHoldCauseByDeviceId: new Map([['task', 'cheaper_hours' as const]]),
+          deferredReleaseIntentByDeviceId: {},
+          admittedDeviceIds: new Set<string>(),
+          drivingDeviceIds: new Set<string>(),
+          lentAuthorityDeviceIds: new Set<string>(),
+          externalOffHoldLiftedDeviceIds: new Set<string>(),
+        }),
+        structuredLog: structuredLog as never,
+      }, createPlanEngineState());
+
+      const plan = await builder.buildDevicePlanSnapshot([buildDevice({ id: 'task', name: 'Task', currentDrawKw: 1.2 })]);
+
+      expect(plan.devices[0]).toMatchObject({ plannedState: 'shed', reason: { code: 'deferred_objective_avoid' } });
+      expect(structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_reason_pair_invalid' }));
+    });
+
+    it.each([
+      ['main fuse protection', { getMainFuse: () => ({ kind: 'on', supply: 'three_phase_neutral', amps: 25 }) as const }],
+      ['a daily budget', {
+        getDailyBudgetSnapshot: () => buildBindingDailyBudgetSnapshot(Date.parse('2026-04-18T00:00:00.000Z')),
+      }],
+    ] as const)('still sheds every device with %s on', async (_label, wiring) => {
+      const builder = new PlanBuilder({
+        ...planBuilderWiring(),
+        ...wiring,
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+        getCapacitySettings: () => configuredHardCap(NO_LIMITS),
+        getPowerTracker: silentTracker,
+      }, createPlanEngineState());
+
+      const plan = await builder.buildDevicePlanSnapshot(onAndOff());
+
+      expect(plan.meta).toMatchObject({ powerIsMeasured: false, silentMeterDirective: 'shed' });
+      expect(plan.devices.map((dev) => dev.plannedState)).toEqual(['shed', 'shed']);
+    });
   });
 });

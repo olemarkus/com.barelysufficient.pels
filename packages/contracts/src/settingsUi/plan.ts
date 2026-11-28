@@ -2,6 +2,7 @@ import type { CapacityPeriodMinutes, HardCapSource } from '../capacitySettings.j
 import type { DeviceOverviewSnapshot } from '../deviceOverview.js';
 import type { DeviceStatus } from '../deviceStatus.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
+import type { SilentMeterDirective } from '../meterOutage.js';
 
 // One starved state, no cause bucket. The flat `capacity | budget` split was
 // removed 2026-08-04: it was a momentary snapshot of whichever constraint bound
@@ -111,6 +112,8 @@ export type SettingsUiPlanMetaMeasuredFields = {
 
 export type SettingsUiPlanMetaUnmeasuredFields = {
   powerIsMeasured: false;
+  /** What the silent-meter pass did: limited every device, or left them as they are. */
+  silentMeterDirective: SilentMeterDirective;
 };
 
 export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase

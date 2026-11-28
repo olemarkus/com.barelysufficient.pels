@@ -56,7 +56,7 @@ function formatPowerCheck(reason: DevicePlanDevice['reason']): string | undefine
 
 function powerCheck(dev: DevicePlanDevice): DecisionCheck | null {
   const { reason } = dev;
-  if (reason.code === CODE.meterSilent) {
+  if (reason.code === CODE.meterSilent || reason.code === CODE.meterSilentHold) {
     return { label: START_POWER, state: 'unverified', detail: 'Waiting for a new power reading.' };
   }
   if (reason.code === CODE.dailyBudget) {

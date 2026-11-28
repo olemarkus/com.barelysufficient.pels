@@ -51,7 +51,7 @@ import type { LearnedPowerPeakStore } from './lib/device/learnedPowerPeakStore';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PlanRebuildThrottle } from './lib/plan/rebuildScheduler/throttle';
 import { createBackgroundTasks, type BackgroundTasks } from './setup/appInit/createBackgroundTasks';
-import { createHomePowerPipeline, createMeterSilenceMonitor } from './setup/homeRuntime/createHomePowerPipeline';
+import { createHomePowerPipeline, createMainMeterSilenceMonitor } from './setup/homeRuntime/createHomePowerPipeline';
 import { SettingsRepository } from './setup/settingsRepository';
 import type { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
@@ -295,12 +295,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   );
   protected readonly planRebuildScheduler: PlanRebuildScheduler = this.rebuildRuntime.scheduler;
   public readonly planRebuildThrottle: PlanRebuildThrottle = this.rebuildRuntime.throttle;
-  public readonly meterSilenceMonitor = createMeterSilenceMonitor({
-    homeId: MAIN_HOME_ID,
-    getPowerTracker: () => this.powerTracker,
-    nowMs: () => Date.now(),
-    structuredLog: () => this.getStructuredLogger('power'),
-  });
+  public readonly meterSilenceMonitor = createMainMeterSilenceMonitor(this);
 
   // Main's devices by the membership owner's rule: all of them until membership is wired, as the Main pipeline reads.
   public readonly batterySolarScope: BatterySolarScopeSource = {

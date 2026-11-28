@@ -13,6 +13,10 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   // a reason of its own. `observation_unavailable` is a DEVICE's observations,
   // not the whole-home meter's, so it would misattribute the miss.
   meter_silent: { kind: 'restricted', cause: 'capacity_limited' },
+  // The same outage with no limit on: the device was left as it is. Off, it is
+  // PELS that withholds the start for want of a measurement, as `meter_silent`;
+  // on, it keeps delivering (`isRunningThroughMeterSilentHold`).
+  meter_silent_hold: { kind: 'restricted', cause: 'capacity_limited' },
   shortfall: { kind: 'restricted', cause: 'capacity_limited' },
   hourly_budget: { kind: 'restricted', cause: 'capacity_limited' },
   end_of_hour_drain: { kind: 'restricted', cause: 'capacity_limited' },
@@ -57,6 +61,14 @@ const isRunningThroughRestoreHold = (
   && execution.desiredBinary !== 'off'
   && isRestoreAdmissionHoldReason(device.reason);
 
+// Left on as it is by the silent-meter hold: it is delivering, nothing stops it.
+const isRunningThroughMeterSilentHold = (
+  device: DevicePlanDevice,
+  execution: DeviceExecutionState,
+): boolean => device.reason.code === 'meter_silent_hold'
+  && device.plannedState === 'keep'
+  && execution.physicalState === 'on';
+
 /** The decision owner explains imposed ceilings even when a device remains on. */
 export const resolveTaskDeliveryControl = (
   device: DevicePlanDevice,
@@ -68,6 +80,7 @@ export const resolveTaskDeliveryControl = (
   if (axes.includes('pending')) return { kind: 'pending' };
   if (axes.includes('unmet')) return { kind: 'failed' };
   if (axes.includes('unobserved')) return { kind: 'pending' };
+  if (isRunningThroughMeterSilentHold(device, execution)) return { kind: 'permitted' };
   const restriction = RESTRICTIONS[device.reason.code];
   // Restore admission can wait for the house meter while this device remains
   // on. The hold suppresses new intents; it does not interrupt delivery already

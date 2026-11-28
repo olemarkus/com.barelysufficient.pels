@@ -60,6 +60,9 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // today; it is listed so the classifier says so outright, where the budget
   // pair above is deliberately left out.
   PLAN_REASON_CODES.meterSilent,
+  // Its no-limit counterpart: a device left as it is rides `keep`, and nothing
+  // starts it without a measurement either.
+  PLAN_REASON_CODES.meterSilentHold,
   PLAN_REASON_CODES.cooldownRestore,
   PLAN_REASON_CODES.cooldownShedding,
   PLAN_REASON_CODES.insufficientHeadroom,

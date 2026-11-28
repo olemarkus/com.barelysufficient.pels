@@ -182,6 +182,7 @@ export const reportHomePlan = (plan: SettingsUiPlanSnapshot): SupportReportSecti
     ...(plan.meta ? {
       powerKw: plan.meta.totalKw,
       powerIsMeasured: plan.meta.powerIsMeasured,
+      ...(!plan.meta.powerIsMeasured ? { silentMeterDirective: plan.meta.silentMeterDirective } : {}),
       powerObservedAtMs: plan.meta.lastPowerUpdateMs,
       capacityPaceKw: plan.meta.capacitySoftLimitKw,
       budgetPaceKw: plan.meta.budgetPaceKw,

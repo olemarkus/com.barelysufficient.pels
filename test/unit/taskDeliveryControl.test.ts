@@ -24,6 +24,14 @@ describe('delivery control uses live convergence, not a command as proof', () =>
     expect(resolveTaskDeliveryControl(limited, state({ desiredBinary: 'off', binaryProgress: 'pending' }))).toEqual({ kind: 'pending' });
     expect(resolveTaskDeliveryControl(limited, state({ desiredBinary: 'off', binaryProgress: 'unmet' }))).toEqual({ kind: 'failed' });
   });
+  it('permits a device the silent-meter hold left running, and restricts one it left off', () => {
+    const held = { ...device(), reason: { code: 'meter_silent_hold' as const } };
+    expect(resolveTaskDeliveryControl(held, state({ desiredBinary: null, binaryProgress: 'undriven' })))
+      .toEqual({ kind: 'permitted' });
+    expect(resolveTaskDeliveryControl({ ...held, plannedState: 'inactive', currentState: 'off' },
+      state({ physicalState: 'off', desiredBinary: null, binaryProgress: 'undriven' })))
+      .toEqual({ kind: 'restricted', cause: 'capacity_limited' });
+  });
   it('records a confirmed capacity restriction', () => {
     expect(resolveTaskDeliveryControl({ ...device(), reason: { code: 'capacity' as const } },
       state({ physicalState: 'off', desiredBinary: 'off' }))).toEqual({ kind: 'restricted', cause: 'capacity_limited' });
