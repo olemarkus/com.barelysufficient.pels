@@ -916,5 +916,8 @@
   },
   "3.53.3": {
     "en": "Smart tasks can plan with the prices already available and schedule the remaining work on available power. The task details show that work and explain when the target becomes harder to reach. A charging task with a percentage target pauses while PELS waits for the battery level, and the charger card shows what to check.\n\nGuided setup can tailor the next steps to your goal and shows which home batteries PELS can control. Price-level Flows can fire even while the meter is quiet. If a Flow rejects a request to lower a device's level, PELS can try again when the next plan still needs to limit it."
+  },
+  "3.53.4": {
+    "en": "EV Smart tasks can keep the home battery from charging the car: turn on Pause scheduled discharge for EV charging on the battery plan, or Pause when the home battery supplies power on the charger. You can also set a usable car battery capacity for each charger, and a matched car's capacity takes precedence. Victron EV chargers now get built-in current control.\n\nPast tasks has moved to its own page under Smart tasks."
   }
 }
