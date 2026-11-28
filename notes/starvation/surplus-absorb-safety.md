@@ -85,9 +85,10 @@ B, C — starving them. The **fit-test** forecloses this:
   With several batteries it counts every one's discharge, never netted against
   another battery's charge: stored energy covering a device is import whatever
   another battery stores.
-  On a deficit a surplus hold is kept where it is: limiting the battery further
-  (capping its charge, then discharging it) is shedding's choice at the
-  battery's own place in the priority order, never a surplus decision.
+  On a deficit, shedding owns any additional battery limit. The battery's
+  allocated spare-solar charge keeps its Modes turn. Grid-charge reductions and
+  available discharge can take the first turn for a physical power limit. The
+  allocator continues to offer spare solar in priority order.
 - The capacity shed layer remains the ceiling regardless: the lift is
   **capacity-independent** (`resolveSurplusRawC` reads no capacity input), so
   if the home genuinely were near the cap, capacity shedding still applies on top

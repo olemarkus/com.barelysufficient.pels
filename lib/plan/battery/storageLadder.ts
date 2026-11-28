@@ -47,6 +47,24 @@ export const ownDischargeWOf = (storage: Pick<ObservedStorageInput, 'signedPower
   Math.max(0, -storage.signedPowerW)
 );
 
+/** A meter-following surface can use its discharge mode only within the full reported bound. */
+export function supportedDischargeCeilingW(storage: ObservedStorageInput): number {
+  if (storage.canSetDischargePower) return storage.deliveryCeilingW;
+  const modeMaximumW = Math.max(0, -storage.range.minW);
+  return modeMaximumW <= storage.deliveryCeilingW ? modeMaximumW : 0;
+}
+
+/** A battery already following its limit supplies first. Other observed supply comes next. */
+export function physicalDischargePreference(
+  storage: ObservedStorageInput,
+  lever: StorageLeverState | undefined,
+): number {
+  if (storage.signedPowerW >= 0) return 0;
+  if (lever?.purpose !== 'limit' || lever.setpointW >= 0) return 1;
+  const toleranceW = storageSetpointToleranceW(lever.setpointW, storage.range.stepW);
+  return Math.abs(storage.signedPowerW - lever.setpointW) <= toleranceW ? 2 : 1;
+}
+
 /**
  * Why PELS may not take this battery over, as the reason it hands back a hold
  * for: its verdict (`not_responding`, `sign_inverted`), not admissible

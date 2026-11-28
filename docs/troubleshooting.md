@@ -251,11 +251,10 @@ The banner above the Overview tells you which state you are in:
 
 While PELS holds your home battery, the battery's own app shows its Homey or API
 mode. That is PELS at work: the battery's card on the Overview reads
-**Supplying**, **Charging** or **Limited · Charging** and says why. When the
-job is done, PELS hands it back to the mode it was in; after a limit, that
-happens at the battery's turn in your priority order, once your home has room
-for it to charge again. PELS also hands it back at once if your meter stops
-reporting, and when PELS restarts.
+**Supplying**, **Charging** or **Limited · Charging** and says why. After a
+limit, PELS eases the battery's discharge as your home has room. It then
+returns the battery to its usual managed operation in priority order.
+If your meter stops reporting, PELS hands the battery back to its own mode.
 
 - **Want it back now?** Turn off **Managed by PELS** on the battery's device
   page (Settings → Devices → the battery). PELS hands it back and leaves it alone.
@@ -313,19 +312,19 @@ Check these, in order:
   FusionSolar cloud offers no charge or discharge power control, so PELS
   watches these.
 
-When PELS controls the battery and no charge or discharge is needed, the card reads **Waiting**. Its priority matters too. A battery high in the list discharges once the devices below it are limited. See
+When PELS controls the battery and no charge or discharge is needed, the card reads **Waiting**. Priority determines when it gets spare solar. PELS uses available battery power to hold your power limit before it limits other devices. See
 [Solar and a home battery](/use-cases/homey-solar-home-battery).
 
 ## My battery's night charge stopped
 
-With **Plan charging with PELS** on, grid charging counts like any other load.
-When your home nears its limit, PELS caps the battery's charge at its place in
-the priority list. Its card reads **Limited · Charging** with
-`Waiting to charge faster`. PELS can resume planned charging once the house
-has room.
+With **Plan charging with PELS** on, PELS can reduce the battery's grid
+charging before limiting other devices for your power limit. If only daily
+budget pace is pressing, the cut follows priority order. The card reads
+**Limited · Charging** with `Waiting to charge faster`. PELS can resume
+planned charging once the house has room.
 
-To let the night charge go ahead of other devices, move the battery up in your
-priority list (its device page → **Reorder**, or the **Modes** page). To return control to the battery’s own schedule, turn off **Managed by PELS** or **Power-limit control** on the battery.
+To return control to the battery's own schedule, turn off **Managed by PELS**
+or **Power-limit control** on the battery.
 
 ## A device doesn't keep PELS's changes
 

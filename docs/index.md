@@ -12,7 +12,7 @@ editLink: false
     <p class="landing-kicker">For Homey Pro</p>
     <h1 class="landing-title">Intelligent, automatic power management for Homey Pro.</h1>
     <p class="landing-app-type">Homey app for Homey Pro</p>
-    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your capacity limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day, automatically, every hour, without you watching the meter. With solar panels or a home battery, PELS sends your surplus to useful load and uses the battery to hold your limit at its place in your priority order, by default before it turns anything down.</p>
+    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your capacity limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day, automatically, every hour, without you watching the meter. With solar panels, PELS shares spare solar in your priority order. It uses available battery power to hold your power limit before turning down other devices.</p>
     <div class="landing-actions">
       <a class="VPButton brand" href="https://homey.app/a/com.barelysufficient.pels">Get the app on the Homey App Store</a>
       <a class="VPButton alt" href="#start-by-problem">See if PELS fits your home</a>
@@ -98,7 +98,7 @@ editLink: false
 
   ### Use more of your own solar with a home battery
 
-  With solar panels, PELS puts your surplus to work in hot water, heating or the car, even behind an inverter limited to zero export, and the Usage tab shows what your panels produced and what that saved you. A home battery joins your priority list: your sun goes to devices and the battery in your order, and when the house nears its limit the battery discharges on its turn, by default before anything is turned down.
+  With solar panels, PELS puts your surplus to work in hot water, heating or the car, even behind an inverter limited to zero export, and the Usage tab shows what your panels produced and what that saved you. Your devices and home battery get spare solar in your priority order. When your home needs help holding its power limit, PELS uses available battery power before turning down other devices.
 
   [Read the solar and home battery use case](./use-cases/homey-solar-home-battery.md) · [Solar and Self-Consumption](./solar.md) · [Solar accounting](./technical.md#solar-accounting)
 

@@ -71,7 +71,23 @@ describe('continuous battery reserve projection', () => {
       batteryPower: { signedW: 0, observedAtMs: nowMs },
       batteryLevel: { percent: 60, observedAtMs: 1000 },
     }), options(control));
-    expect(cluster).toMatchObject({ storage: { reading: 'observed', deliveryCeilingW: 2500 } });
+    expect(cluster).toMatchObject({
+      storage: { reading: 'observed', deliveryCeilingW: 2500, canSetDischargePower: true },
+    });
+  });
+
+  it('keeps the economic ceiling but identifies a battery that cannot set discharge wattage', () => {
+    const meterFollowing: BatteryLeverRead = {
+      ...control,
+      response: { kind: 'follows_meter', reportsSetpoint: () => false },
+    };
+    const cluster = resolveStorageCluster(planSource, device({
+      batteryPower: { signedW: 0, observedAtMs: nowMs },
+      batteryLevel: { percent: 60, observedAtMs: nowMs },
+    }), options(meterFollowing));
+    expect(cluster).toMatchObject({
+      storage: { reading: 'observed', deliveryCeilingW: 2500, canSetDischargePower: false },
+    });
   });
 
   it('caps charging by the taper band of the current level', () => {

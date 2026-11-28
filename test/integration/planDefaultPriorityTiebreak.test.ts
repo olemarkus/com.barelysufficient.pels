@@ -44,13 +44,14 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
 })) as PlanInputDevice;
 
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
+  nowTs: Date.now(),
   bypassRecentRestore: false,
   devices,
   needed: 1,
   deficitKw: 1,
   limitSource: 'capacity',
   physicalLimitBreached: true,
-  storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {} },
+  storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {}, surplusOffers: new Map() },
   temperatureSetpoints: new Map(),
   state: createPlanEngineState(),
   deps: {
@@ -99,12 +100,12 @@ describe('default-priority deterministic tiebreak (shed & restore)', () => {
       buildShedDevice('alpha'),
       buildShedDevice('bravo'),
       buildShedDevice('charlie'),
-    ]), Date.now());
+    ]));
     const reversed = buildSheddingCandidates(buildShedParams([
       buildShedDevice('charlie'),
       buildShedDevice('bravo'),
       buildShedDevice('alpha'),
-    ]), Date.now());
+    ]));
 
     const forwardIds = forward.candidates.map((c) => c.id);
     const reversedIds = reversed.candidates.map((c) => c.id);
@@ -165,7 +166,7 @@ describe('default-priority deterministic tiebreak (shed & restore)', () => {
     params.devices = params.devices.map((device) => (
       { ...device, priority: device.id === 'zulu' ? 1 : 9 }
     ));
-    const ids = buildSheddingCandidates(params, Date.now()).candidates.map((c) => c.id);
+    const ids = buildSheddingCandidates(params).candidates.map((c) => c.id);
     expect(ids).toEqual(['alpha', 'zulu']);
   });
 });

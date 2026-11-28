@@ -1,8 +1,9 @@
+import type { StorageDischargeBudget } from './storageDischargeBudget';
 import type { PlanLimitSource } from '../planContext';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { getDebugEmitter } from '../../logging/logger';
 import { chooseShedRung } from './steppedCandidates';
-import { resolveStorageSpend } from './storageCandidate';
+import { resolveStorageSpend, storageCandidateBelow, type StorageSpend } from './storageCandidate';
 import type { LoadShedCandidate, ShedCandidate, StorageSetpoint, StorageShedCandidate } from './types';
 import type { ShedRelief } from '../planState';
 import { permitsDemandRelief, type ShedPressure } from './pressure';
@@ -50,8 +51,8 @@ const debug = getDebugEmitter('plan', 'plan');
  * the meter has not caught up; for a battery only its stopped charge, which its
  * own reading shows falling (its discharge is the storage term's credit).
  *
- * A battery is spent like any candidate at its place in the order, but never
- * joins `shedSet`: the executor never sees a shed for it.
+ * Multiple turns for a battery share one signed target. Batteries leave
+ * selection through `storageSetpoints`.
  */
 export function selectShedDevices(
   candidates: ShedCandidate[],
@@ -59,6 +60,7 @@ export function selectShedDevices(
   reason: DeviceReason,
   shedAllCandidates: boolean,
   pressure: ShedPressure,
+  dischargeBudget?: StorageDischargeBudget,
 ): ShedSelection & { remainingKw: number } {
   const selection: ShedSelection = {
     shedSet: new Set<string>(),
@@ -72,7 +74,7 @@ export function selectShedDevices(
     if (shouldStopSelection(shedAllCandidates, remaining)) break;
     if (nextCandidate.effectivePower <= 0) continue;
     if (nextCandidate.kind === 'storage') {
-      remaining -= spendStorageCandidate(nextCandidate, remaining, selection);
+      remaining -= spendStorageCandidate(nextCandidate, remaining, selection, dischargeBudget);
       continue;
     }
     const spend = resolveCandidateSpend(nextCandidate, remaining, pressure);
@@ -132,19 +134,28 @@ function spendStorageCandidate(
   candidate: StorageShedCandidate,
   remainingKw: number,
   selection: ShedSelection,
+  dischargeBudget: StorageDischargeBudget | undefined,
 ): number {
-  const banked = !candidate.unconfirmedRelief;
-  if (!banked && candidate.hold.kind === 'limit') {
+  const staged = selection.storageSetpoints.get(candidate.id);
+  if (staged?.banked === false) return 0;
+  const remainder = staged === undefined ? candidate : storageCandidateBelow(candidate, staged.setpointW);
+  if (remainder.effectivePower <= 0) return 0;
+  if (candidate.unconfirmedRelief && candidate.hold.kind === 'limit') {
     selection.storageSetpoints.set(candidate.id, {
-      setpointW: candidate.hold.setpointW, banked, storage: candidate.storage,
+      setpointW: candidate.hold.setpointW, banked: false, storage: candidate.storage,
     });
     selection.reliefByDevice.set(candidate.id, { kind: 'electrical', creditedKw: 0 });
     return 0;
   }
-  const spend = resolveStorageSpend(candidate, remainingKw);
+  const spend = resolveStorageSpend(remainder, remainingKw, dischargeBudget?.roomW(remainder));
   if (spend === null) return 0;
+  const { banked, chargeKw, totalKw } = creditStorageSpend(candidate, spend);
   selection.storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked, storage: candidate.storage });
-  selection.reliefByDevice.set(candidate.id, { kind: 'electrical', creditedKw: banked ? spend.chargeReliefKw : 0 });
+  dischargeBudget?.reserve(candidate.id, spend.setpointW);
+  const priorChargeKw = selection.reliefByDevice.get(candidate.id)?.creditedKw ?? 0;
+  selection.reliefByDevice.set(candidate.id, {
+    kind: 'electrical', creditedKw: priorChargeKw + chargeKw,
+  });
   debug({
     event: 'plan_shed_storage_limit',
     deviceId: candidate.id,
@@ -155,7 +166,15 @@ function spendStorageCandidate(
     chargeReliefKw: spend.chargeReliefKw,
     banked,
   });
-  return banked ? spend.reliefKw : 0;
+  return totalKw;
+}
+
+function creditStorageSpend(
+  candidate: StorageShedCandidate, spend: StorageSpend,
+): { banked: boolean; chargeKw: number; totalKw: number } {
+  if (candidate.unconfirmedRelief) return { banked: false, chargeKw: 0, totalKw: 0 };
+  const banked = candidate.storage.canSetDischargePower || spend.setpointW >= 0;
+  return { banked, chargeKw: spend.chargeReliefKw, totalKw: banked ? spend.reliefKw : spend.chargeReliefKw };
 }
 
 /** What this candidate is taken FOR: how much it frees, and where it parks. */

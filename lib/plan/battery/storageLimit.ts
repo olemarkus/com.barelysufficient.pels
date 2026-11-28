@@ -2,14 +2,15 @@
 import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFootprint';
 import type { PlanInputDevice } from '../planTypes';
 import { withholdPhaseRoom } from '../phase/phasePower';
-import { spendLimitHeadroom } from '../planContext';
-import type { MeasuredPower } from '../planContext';
+import {
+  minLimitHeadroom, spendLimitHeadroom, type CapacityPlanLimit, type LimitHeadroom, type MeasuredPower,
+} from '../planContext';
 import type { StorageLeverState } from '../planState';
 import type { StorageSetpoint } from '../shedding/types';
 import {
   STORAGE_RELIEF_SETTLE_WINDOW_MS, hasStorageLeverInput, isStorageDrivable, ownDischargeWOf,
 } from './storageLadder';
-import { baselineLever, resolveEconomicResumeIncreaseW } from './storageContinuous';
+import { baselineLever, deferGridChargeIncrease, resolveEconomicResumeIncreaseW } from './storageContinuous';
 import {
   isSettling,
   sumWithheldKw,
@@ -99,6 +100,45 @@ export function applyStorageLimits(
   };
 }
 
+/**
+ * What a held battery may give back as import. A spent period retains the
+ * hold until it rolls over. The daily pace governs routine charging only.
+ */
+export function resolveStorageRecoveryHeadroom(
+  power: MeasuredPower, capacity: CapacityPlanLimit, capacityPeriodSpent: boolean, simulatedUndeliveredW: number,
+): LimitHeadroom {
+  if (capacityPeriodSpent) return { kind: 'on', kw: 0 };
+  const projection: LimitHeadroom = capacity.kind === 'on'
+    ? { kind: 'on', kw: capacity.shortfallThresholdKw - power.drawKw }
+    : { kind: 'off' };
+  const room = minLimitHeadroom(power.capacityHeadroom, power.gridHeadroom, projection);
+  return spendLimitHeadroom(room, -simulatedUndeliveredW / 1000);
+}
+
+/** A scheduled grid charge cannot start or increase on power another battery supplies. */
+export function deferGridChargeIncreases(relief: StorageRelief, devices: readonly PlanInputDevice[]): StorageRelief {
+  if (!Object.values(relief.levers).some((lever) => lever.setpointW < 0)) return relief;
+  const changed = new Map(devices.flatMap((device) => {
+    if (!hasStorageLeverInput(device) || device.storage.reading !== 'observed') return [];
+    const lever = relief.levers[device.id];
+    const offer = relief.surplusOffers.get(device.id);
+    if (lever === undefined || offer === undefined) return [];
+    const { storage } = device;
+    const next = deferGridChargeIncrease(storage, lever, offer);
+    if (next === lever) return [];
+    return [[device.id, { next, summary: summarizeHold(device.id, storage, next, 0) }] as const];
+  }));
+  if (changed.size === 0) return relief;
+  return {
+    ...relief,
+    levers: {
+      ...relief.levers,
+      ...Object.fromEntries([...changed].map(([deviceId, { next }]) => [deviceId, next])),
+    },
+    batteries: relief.batteries.map((battery) => changed.get(battery.deviceId)?.summary ?? battery),
+  };
+}
+
 /** Leave the capacity hold at idle. Routine solar or economic dispatch can
  * take over on the next measured cycle, through its normal admission gates.
  */
@@ -170,8 +210,8 @@ export function withoutStorageWithheld(
 
 /**
  * In capacity simulation nothing is sent, so a held battery never moves to its
- * setpoint and the reading never shows it. Each held battery is read as if it
- * had followed its last setpoint, as it would under live control, and the
+ * setpoint and the reading never shows it. When the held power is enforceable,
+ * read the battery as if it followed its last setpoint. The
  * difference is what the reading is missing, W: the storage stage's room and
  * import, and shedding's credit, count it as delivered. The battery's measured
  * reading stays as it is outside this cycle's storage and shedding stages.
@@ -184,6 +224,7 @@ export function simulateFollowedHolds(
   const followed = devices.map((device) => {
     const lever = levers[device.id];
     if (lever === undefined || !hasStorageLeverInput(device) || device.storage.reading !== 'observed') return device;
+    if (lever.setpointW < 0 && !device.storage.canSetDischargePower) return device;
     undeliveredW += device.storage.signedPowerW - lever.setpointW;
     return { ...device, storage: { ...device.storage, signedPowerW: lever.setpointW } };
   });

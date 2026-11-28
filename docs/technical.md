@@ -218,7 +218,12 @@ For EV chargers, resume is only attempted while the charger can actually be driv
 
 ## Home Battery
 
-A managed home battery is a limiting candidate at its place in the mode's priority list (last by default). When the [Limiting Order](#limiting-order) reaches it, PELS first caps its charge, then raises its discharge to cover the remaining overshoot. The discharge always leaves a small import under the house's draw (half the battery's own power step, at least 100 W), so holding the limit never pushes the house into export.
+For physical power limits, PELS first considers reductions to grid charging and
+available battery discharge. Spare-solar charging keeps its place in the mode's
+priority list. PELS uses the [Limiting Order](#limiting-order) for any remaining
+need, and keeps a small import margin when sizing battery discharge. When only
+daily budget pace binds, the battery's turn can reduce charging down to idle.
+Scheduled discharge follows the continuous battery plan.
 
 - **Credit while the battery settles.** A battery needs a moment to follow a new setpoint. For up to **30 seconds** after PELS caps a charge or raises a discharge, the relief it asked for counts as already delivered, so PELS does not limit extra devices for power that is on its way.
 - **No credit for a battery that does not follow.** Once those 30 seconds pass, a limit the battery has not followed counts for nothing: PELS stops asking it for more and limits the next devices as it would without a battery. A battery that keeps ignoring PELS is handed back. An empty battery delivers nothing, so PELS moves on in the same way.

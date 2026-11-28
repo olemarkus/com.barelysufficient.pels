@@ -88,6 +88,9 @@ write time (`requestStoragePower`, `releaseStorageControl` in
 `lib/device/transport/deviceWrites.ts`). Planner, executor and UI read only the
 resolved `HomeBatteryControlSurface`, in PELS's sign.
 
+See [Home battery discharge order](battery-discharge-order.md) for the
+planner policy for spare solar, limit relief and resuming after a limit.
+
 ## Meter-mode bindings
 
 A `meter_modes` binding is for a battery with no power setpoint that follows the

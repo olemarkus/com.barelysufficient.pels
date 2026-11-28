@@ -1184,7 +1184,7 @@ keeps the word for what PELS holds it to do.
 | Reason while the battery plan keeps its charge | `Keeping stored energy for later` |
 | Reason while the battery plan sells stored energy | `Selling stored energy while export pays more` |
 | Battery plan window, a sale | `Sell to grid` |
-| Device page, under Plan charging with PELS, while another battery also has the plan on | `PELS plans your batteries together, in priority order: a battery higher in the list goes first, and the next covers what it leaves. No battery charges from another.` (a battery left with nothing to do reads the ordinary `Waiting` / `Keeping stored energy for later`, never a fault) |
+| Battery Plan and Setup, while another battery also has planning enabled | `PELS schedules your batteries together. The battery highest in your priority list plans first, and each next battery covers what the others leave. In each planned period the batteries either charge or supply.` (a battery left with nothing to do reads the ordinary `Waiting` / `Keeping stored energy for later`, never a fault) |
 | Device page, a sale within a stricter export limit another battery's owner set | `Selling stays within 2 kW at your meter, the lowest export limit set on your batteries.` |
 | Device page, selling opt-in under Plan charging with PELS | `Sell stored energy when profitable`; its limit field `Export limit at your meter (kW)` |
 | Device page, selling decided | `Selling is planned. Estimated 0.43 EUR lower electricity cost than keeping the energy for your home over this plan.` / `Selling would not lower your cost in this plan, so PELS keeps the energy for your home.` / `Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.` |
@@ -1209,15 +1209,14 @@ keeps the word for what PELS holds it to do.
 | Device page, Managed hint | `PELS controls charging and discharging to store spare solar and hold your limit.`; with Power limits off, `PELS controls charging to store spare solar in priority order.` |
 | Setup, `Choose what PELS does`, battery row | Switch `Plan charging with PELS` (the device page's), `PELS plans charging and household supply around your prices and solar. With planning off, PELS stores spare solar and uses the battery to hold your limit.`; while off, a `Usable capacity (kWh)` field (`From your battery’s specification. PELS needs it to plan.`), empty until a capacity was saved, and the switch waits for it; while on, `Planned for 10 kWh usable capacity.` (+ ` The plan runs once you start managing.` in Simulation mode). Review lists `Plan charging with PELS on`. |
 | Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |
-| Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.` |
+| Device page, Power-limit control hint (greyed out while Managed is off) | `PELS can reduce charging from the grid or use the battery to hold your power limit. The battery shares spare solar with your devices in priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
 | Device page, legacy claim awaiting recovery (amber) | `Restore the battery’s own control`. Turn off `Managed by PELS`, then `Restore selected plant` for the original plant or choose `I restored it manually` after turning off remote EMS and removing both limits in the battery’s app. |
 | Device-list row, takeover notice (Managed off) | `You changed its mode in the battery app. PELS leaves it alone until you turn on Managed.` |
 | Device page, priority value | `N of M in <mode>` (e.g. `9 of 9 in Home`) |
-| Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |
-| Device page, priority hint, battery above other devices | `Devices below it are limited first, so it protects only those above it.` |
-| Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.` |
-| Modes page note, under a list holding a battery PELS can drive (none for a battery it can only watch) | `<battery>: <priority hint for its place in this list>`, e.g. `Sessy battery: last in the list, it covers the whole house before any device is limited.`; one per such battery |
+| Device page, priority hint, Power-limit control on | `Your priority order decides when the battery gets spare solar. When your home needs help holding its power limit, PELS uses available battery power before limiting devices.` |
+| Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let the battery help hold your power limit and store spare solar in priority order.` |
+| Modes page note, under a list holding a battery PELS can drive (none for a battery it can only watch) | The battery's name followed by the same priority hint, with one hint per battery |
 
 In **Simulation mode** PELS plans the battery as live control would but sends
 nothing, so the battery stays in its own mode. A battery PELS would hold reads

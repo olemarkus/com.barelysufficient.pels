@@ -657,7 +657,7 @@ describe('surplus beside a full battery', () => {
       claimHeld: false,
       admissible: true,
       verdict: 'unverified',
-      deliveryCeilingW: 2500,
+      deliveryCeilingW: 2500, canSetDischargePower: true,
       chargeCeilingW: 0,
       ownModeGridCharge: { kind: 'observed' },
       powerLimitControl: true,

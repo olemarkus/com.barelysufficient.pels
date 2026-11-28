@@ -239,19 +239,18 @@ describe('battery device page for a battery PELS cannot drive', () => {
 });
 
 describe('Modes priority note', () => {
-  it('names each battery PELS can drive with what its place means, and skips one it can only watch', async () => {
+  it('gives batteries the same explanation at any rank and skips a watch-only battery', async () => {
     const { state } = await loadState({}, {});
-    const drivable = { ...battery, id: 'battery-2', name: 'Marstek' };
+    const drivable = { ...battery, id: 'battery-2', name: 'Battery 2' };
     state.latestDevices = [watchOnlyBattery, drivable, heater];
     state.batteryControl = { status: 'resolved', devices: {} };
     const { resolvePriorityBatteryNote } = await import('../src/ui/deviceDetail/batterySection.ts');
-    expect(resolvePriorityBatteryNote(['heater-1', 'battery-1', 'battery-2']))
-      .toBe('Marstek: last in the list, it covers the whole house before any device is limited.');
-    expect(resolvePriorityBatteryNote(['battery-2', 'battery-1', 'heater-1']))
-      .toBe('Marstek: devices below it are limited first, so it protects only those above it.');
+    const note = 'Battery 2: your priority order decides when the battery gets spare solar. When your home needs help holding its power limit, PELS uses available battery power before limiting devices.';
+    expect(resolvePriorityBatteryNote(['heater-1', 'battery-1', 'battery-2'])).toBe(note);
+    expect(resolvePriorityBatteryNote(['battery-2', 'battery-1', 'heater-1'])).toBe(note);
     state.controllableMap = { 'battery-2': false };
     expect(resolvePriorityBatteryNote(['heater-1', 'battery-2']))
-      .toBe('Marstek: turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.');
+      .toBe('Battery 2: turn on Power-limit control to let the battery help hold your power limit and store spare solar in priority order.');
     expect(resolvePriorityBatteryNote(['heater-1', 'battery-1'])).toBeNull();
   });
 });

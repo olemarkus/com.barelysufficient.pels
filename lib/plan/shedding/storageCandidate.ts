@@ -1,16 +1,8 @@
 /**
- * A home battery as a shed candidate (owner ruling, 2026-10-06): its charging
- * is a ranked load, and its limiting ladder runs from its charge, through 0 W,
- * to its deepest discharge, at its own place in the priority order. Devices
- * ranked below it are limited first; its discharge protects only the devices
- * ranked above it. Last in the order (the default), it covers the house before
- * any device is limited.
- *
- * One candidate covers both halves, so a charging battery facing a deficit
- * caps its charge and then discharges in one decision: its relief is priced
- * from where it is (`baseW`) down to its delivery ceiling, bounded by the
- * house's draw less the margin its limit leaves under it (`drawMarginWFor`), so
- * the limit never tips the house into export.
+ * Price a battery's available electrical relief. The caller orders it with
+ * the other candidates and can restrict the amount of discharge it spends.
+ * Charge and discharge are parts of one signed setpoint. A meter-following
+ * mode can stop charge at idle but does not accept a bounded discharge.
  *
  * Offered only when PELS may limit it: Managed and Power-limit control on, its
  * storage read (`isStorageLimitScope`), and drivable now (`isStorageDrivable`,
@@ -27,7 +19,7 @@ import type { PlanInputDevice } from '../planTypes';
 import type { ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 import type { StorageLeverState } from '../planState';
 import {
-  STORAGE_RELIEF_SETTLE_WINDOW_MS,
+  STORAGE_RELIEF_SETTLE_WINDOW_MS, supportedDischargeCeilingW,
   drawMarginWFor,
   hasStorageInput,
   isLowerVisible,
@@ -58,6 +50,15 @@ export function isStorageLimitScope(device: PlanInputDevice): device is Limitabl
 /** Whether a battery in limit scope can be limited this cycle: shedding asks this of the cycle, not of candidacy. */
 export function isDrivableLimitScope(device: PlanInputDevice): device is LimitableStorageDevice {
   return isStorageLimitScope(device) && isStorageDrivable(device.storage);
+}
+
+/** A battery that can accept bounded new discharge, including while at its current ceiling. */
+export function isBoundedDischargeLimitScope(device: PlanInputDevice, neededKw: number): boolean {
+  if (!isDrivableLimitScope(device)) return false;
+  const { storage } = device;
+  const ceilingW = supportedDischargeCeilingW(storage);
+  return storage.canSetDischargePower
+    || (ceilingW > 0 && Math.max(0, storage.signedPowerW) + ceilingW <= neededKw * 1000);
 }
 
 /**
@@ -106,7 +107,7 @@ export function buildStorageCandidate(
   const baseW = storageBaseW(storage, lever);
   // The draw once the held part lands, less the margin the limit leaves under it.
   const drawAfterHeldW = drawKw * 1000 - (storage.signedPowerW - baseW);
-  const ceilingW = chargeOnly ? Math.max(0, baseW) : baseW + storage.deliveryCeilingW;
+  const ceilingW = chargeOnly ? Math.max(0, baseW) : baseW + supportedDischargeCeilingW(storage);
   const maxReliefW = Math.max(0, Math.min(ceilingW, drawAfterHeldW - drawMarginWFor(storage)));
   if (!isLowerVisible(storage, baseW, baseW - maxReliefW)) return 'storage_nothing_to_release';
   return {
@@ -154,22 +155,54 @@ export type StorageSpend = {
  * The setpoint that covers what is still open, plus the margin the limit
  * leaves as the increase's hysteresis, and at least a step the battery could
  * visibly answer; within the candidate's ladder. Snapped to the battery's grid
- * (nearest, so a discharge is not rounded short of the deficit, then floored
- * if that ran past the ladder). Null when the battery could not visibly answer
- * what is left.
+ * to nearest within the ladder and the shared room for additional discharge.
+ * Meter-following chooses either a 0 W charge stop or its bounded full mode.
+ * Returns null when the battery could not visibly answer what is left.
  */
-export function resolveStorageSpend(candidate: StorageShedCandidate, remainingKw: number): StorageSpend | null {
+export function resolveStorageSpend(
+  candidate: StorageShedCandidate,
+  remainingKw: number,
+  dischargeRoomW = Infinity,
+): StorageSpend | null {
   const { storage, baseW } = candidate;
-  const maxReliefW = candidate.effectivePower * 1000;
+  const maxReliefW = Math.min(candidate.effectivePower * 1000, Math.max(0, baseW) + dischargeRoomW);
+  const minimumW = baseW - maxReliefW;
+
   const openW = remainingKw * 1000 + drawMarginWFor(storage);
   const wantedW = Math.min(maxReliefW, resolveVisibleReliefW(storage, baseW, openW));
-  let setpointW = toTargetPowerCapabilityValue(baseW - wantedW, storage.range);
-  if (baseW - setpointW > maxReliefW) setpointW = floorStorageSetpointW(baseW - maxReliefW, storage.range);
-  if (!isLowerVisible(storage, baseW, setpointW)) return null;
+  const setpointW = storage.canSetDischargePower
+    ? snapStorageLimitW(baseW - wantedW, minimumW, storage.range)
+    : resolveMeterFollowingSetpoint(storage, baseW, minimumW, remainingKw);
+  if (setpointW < minimumW || !isLowerVisible(storage, baseW, setpointW)) return null;
   const reliefW = baseW - setpointW;
   return {
     setpointW,
     reliefKw: reliefW / 1000,
     chargeReliefKw: (Math.max(0, baseW) - Math.max(0, setpointW)) / 1000,
   };
+}
+
+function resolveMeterFollowingSetpoint(
+  storage: ObservedStorageInput, baseW: number, minimumW: number, remainingKw: number,
+): number {
+  const fullW = -supportedDischargeCeilingW(storage);
+  return fullW < 0 && fullW >= minimumW && baseW - fullW <= remainingKw * 1000 ? fullW : 0;
+}
+
+/** More relief from a candidate that has already been staged at a shallower target this build. */
+export function storageCandidateBelow(
+  candidate: StorageShedCandidate, stagedW: number,
+): StorageShedCandidate {
+  const baseW = Math.min(candidate.baseW, stagedW);
+  const effectivePower = candidate.effectivePower - (candidate.baseW - baseW) / 1000;
+  return { ...candidate, baseW, effectivePower };
+}
+
+/** Snap toward the safe side of the minimum, including a positive solar charge floor. */
+function snapStorageLimitW(setpointW: number, minimumW: number, range: ObservedStorageInput['range']): number {
+  const nearestW = toTargetPowerCapabilityValue(setpointW, range);
+  if (nearestW >= minimumW) return nearestW;
+  if (minimumW <= 0) return floorStorageSetpointW(minimumW, range);
+  const safeStep = Math.ceil(Math.max(minimumW, range.excludeMaxW) / range.stepW);
+  return toTargetPowerCapabilityValue(safeStep * range.stepW, range);
 }

@@ -1,4 +1,6 @@
+import { resolveStorageRecoveryHeadroom } from '../../lib/plan/battery/storageLimit';
 import { storageSurplusFixture as resolveStorageSurplus } from '../helpers/storageSurplusFixture';
+import { decideStorageReliefFixture } from '../helpers/storageReliefFixture';
 import { withoutStorageWithheld } from '../../lib/plan/battery/storageLimit';
 import {
   STORAGE_DECREASE_MIN_INTERVAL_MS,
@@ -55,6 +57,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     claimHeld: false,
     admissible: true,
     verdict: 'unverified',
+    canSetDischargePower: true,
     deliveryCeilingW: 2500,
     chargeCeilingW: 2500,
     ownModeGridCharge: { kind: 'observed' },
@@ -103,7 +106,7 @@ const cycle = (
   nowTs = NOW,
   drawKw = 5,
   offers: ReadonlyMap<string, SpecOffer> = NO_OFFERS,
-): StorageRelief => decideStorageRelief(
+): StorageRelief => decideStorageReliefFixture(
   [device], buildMeasuredPower({ drawKw, headroomKw }), levers, withAddedBack(device, levers, drawKw, offers), nowTs, 0,
 );
 
@@ -131,7 +134,7 @@ const lever = (overrides: Partial<StorageLeverState> = {}): StorageLeverState =>
 });
 
 describe('the storage stage before shedding', () => {
-  it('never limits a battery for a deficit: that is shedding\'s choice, at its place in the order', () => {
+  it('leaves the choice of new battery relief to shedding', () => {
     const relief = cycle(battery({ signedPowerW: 800 }), -1.2);
 
     expect(decisionsOf(relief).get('battery')).toMatchObject({ kind: 'setpoint', setpointW: 0 });
@@ -220,9 +223,80 @@ describe('storage relief hysteresis', () => {
   });
 
   it('steps to 0 W once the discharge needed is under the deadband, the charge still stopped', () => {
-    const relief = cycle(battery({ signedPowerW: -300 }), 0.15, { battery: lever({ setpointW: -300 }) });
+    const relief = cycle(battery({ signedPowerW: -300 }), 0.3, { battery: lever({ setpointW: -300 }) });
     expect(decisionsOf(relief).get('battery')).toMatchObject({ setpointW: 0 });
     expect(relief.batteries[0]).toMatchObject({ claim: 'charge_limit' });
+  });
+
+  it('defers a new grid charge before reserving the room for discharge recovery', () => {
+    const held = battery({ signedPowerW: -1500 });
+    const charging = {
+      ...battery({ continuousPlan: { reason: 'charge_grid', setpointW: 2500, validUntilMs: NOW + 60_000 } }),
+      id: 'charging',
+    };
+    const offer = { availableW: 0, demandAbove: 'none', belowW: 0, addedBackW: 0 } as const;
+    const offers = new Map([['battery', offer], ['charging', offer]]);
+    const power = buildMeasuredPower({ drawKw: 3, headroomKw: 0.7, capacityHeadroomKw: 0.7 });
+    const relief = decideStorageReliefFixture([held, charging], power, { battery: lever() }, offers, NOW, 0);
+    expect(decisionsOf(relief).get('battery')).toMatchObject({ setpointW: -1000 });
+    expect(decisionsOf(relief).get('charging')).toMatchObject({ setpointW: 0 });
+  });
+
+  it('keeps a small hold when returning to zero would breach the physical limit', () => {
+    const relief = cycle(battery({ signedPowerW: -300 }), 0.15, { battery: lever({ setpointW: -300 }) });
+    expect(decisionsOf(relief).get('battery')).toMatchObject({ setpointW: -300 });
+  });
+
+  it('eases a hard hold during daily-only pressure without exposing its discharge to admission', () => {
+    const power = buildMeasuredPower({ drawKw: 3, headroomKw: -1, capacityHeadroomKw: 0.7, budgetHeadroomKw: -1 });
+    const device = battery({ signedPowerW: -1500 });
+    const levers = { battery: lever() };
+    const room = resolveStorageRecoveryHeadroom(
+      power, { kind: 'on', paceKw: 3.7, shortfallThresholdKw: 4 }, false, 0,
+    );
+    const relief = decideStorageRelief([device], power, levers, withAddedBack(device, levers, power.drawKw, NO_OFFERS),
+      NOW, 0, room);
+
+    expect(decisionsOf(relief).get('battery')).toMatchObject({ setpointW: -1000 });
+    expect(withoutStorageWithheld(power, relief, [device], 0).capacityHeadroom).toEqual({ kind: 'on', kw: -0.8 });
+    expect(relief.shed.netCreditKw).toBe(0);
+  });
+
+  it('eases the last battery first and reserves its pending taper across readings', () => {
+    const first = battery({ signedPowerW: -1500 });
+    const last = { ...first, id: 'later', priority: 1 };
+    const devices = [last, first];
+    const power = buildMeasuredPower({ drawKw: 3, headroomKw: 0.7 });
+    const offers = new Map([
+      ['battery', { availableW: 0, demandAbove: 'none', belowW: 0, addedBackW: 0 } as const],
+      ['later', { availableW: 0, demandAbove: 'none', belowW: 0, addedBackW: 0 } as const],
+    ]);
+    const relief = decideStorageReliefFixture(devices, power, { battery: lever(), later: lever() }, offers, NOW, 0);
+    expect(decisionsOf(relief).get('later')).toMatchObject({ setpointW: -1000 });
+    expect(decisionsOf(relief).get('battery')).toMatchObject({ setpointW: -1500 });
+
+    const lagging = decideStorageReliefFixture(devices, power, relief.levers, offers, NOW + 1000, 0);
+    expect(decisionsOf(lagging).get('later')).toMatchObject({ setpointW: -1000 });
+    expect(decisionsOf(lagging).get('battery')).toMatchObject({ setpointW: -1500 });
+  });
+
+  it.each([
+    { change: 'hand-back', purpose: 'limit', powerLimitControl: false, decision: 'release' },
+    { change: 'scheduled withdrawal', purpose: 'continuous', powerLimitControl: true, decision: 'setpoint' },
+  ] as const)('reserves $change before easing a held discharge', ({ purpose, powerLimitControl, decision }) => {
+    const held = battery({ signedPowerW: -1500, claimHeld: true });
+    const withdrawing = { ...battery({ signedPowerW: -600, claimHeld: true, powerLimitControl }), id: 'withdrawing' };
+    const offers = new Map([
+      ['battery', { availableW: 0, demandAbove: 'none', belowW: 0, addedBackW: 0 } as const],
+      ['withdrawing', { availableW: 0, demandAbove: 'none', belowW: 0, addedBackW: 0 } as const],
+    ]);
+    const power = buildMeasuredPower({ drawKw: 3, headroomKw: 1.4 });
+    const levers = { battery: lever(), withdrawing: lever({ purpose, setpointW: -400 }) };
+    const relief = decideStorageReliefFixture([held, withdrawing], power, levers, offers, NOW, 0);
+
+    expect(decisionsOf(relief).get('withdrawing')).toMatchObject({ kind: decision });
+    expect(decisionsOf(relief).get('battery')).toMatchObject({ setpointW: -900 });
+    expect(relief.shed.netCreditKw).toBeCloseTo(-0.6);
   });
 
   it('paces step-downs', () => {
@@ -324,11 +398,11 @@ describe('storage relief without a reading', () => {
 
   it('hands back a hold whose battery left the plan after the missing-input window', () => {
     const heater = buildPlanInputDevice({ id: 'heater', controllable: true });
-    const kept = decideStorageRelief([heater], buildMeasuredPower(), { battery: lever() }, new Map(), NOW, 0);
+    const kept = decideStorageReliefFixture([heater], buildMeasuredPower(), { battery: lever() }, new Map(), NOW, 0);
     expect(kept.levers.battery).toBeDefined();
     expect(decisionsOf(kept).size).toBe(0);
 
-    const dropped = decideStorageRelief(
+    const dropped = decideStorageReliefFixture(
       [heater], buildMeasuredPower(), kept.levers, new Map(), NOW + STORAGE_INPUT_MISSING_RELEASE_MS, 0,
     );
     expect(dropped.levers).toEqual({});
@@ -500,7 +574,7 @@ describe('battery charge ranked against the consumers below it', () => {
       getConfig: () => ({ enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusLiftC: 2 }),
       nowTs: NOW,
     });
-    const relief = decideStorageRelief(
+    const relief = decideStorageReliefFixture(
       devices, buildMeasuredPower({ drawKw: signedNetW / 1000, headroomKw: 8 }), levers, offers, NOW, 0,
     );
     const chargeOf = (id: string, observedW: number): number => {

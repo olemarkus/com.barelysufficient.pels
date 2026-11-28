@@ -212,6 +212,8 @@ export type ObservedStorageInput = {
    * an increase plateaued short of what it asked.
    */
   deliveryCeilingW: number;
+  /** The device accepts a bounded discharge wattage for live limit relief. */
+  canSetDischargePower: boolean;
   /**
    * The most charge PELS may ask for, W, at the battery's current charge
    * level: the charge range, or less once a charge stopped short of what it

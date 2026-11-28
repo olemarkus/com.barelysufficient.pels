@@ -1,22 +1,19 @@
-import { phaseRoomFor, resolvePhaseRoomAxis, type PhaseRoomAxis } from '../phase/phaseRoom';
+import { phaseRoomFor, resolvePhaseRoomAxis, spendPhaseRoom, type PhaseRoomAxis } from '../phase/phaseRoom';
 import { chargeWithinPhaseRoom } from './storagePhaseCharge';
 import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFootprint';
 /**
  * The home-battery stage that runs before shedding selection, every measured
  * cycle: it keeps, steps down or hands back the holds PELS already has, decides
  * the surplus claim, and tells shedding what a held battery's discharge still
- * owes (`StorageShedTerm`). It never limits a battery for a deficit: that is
- * shedding's choice, at the battery's own place in the priority order (owner
- * ruling, 2026-10-06; `lib/plan/shedding/storageCandidate.ts`), and the limit
+ * owes (`StorageShedTerm`). Shedding selects any additional battery relief
+ * (`lib/plan/shedding/storageCandidate.ts`), and the limit
  * step after selection (`storageLimit.ts`) turns the choice into a hold. A
  * limit hold is handed back by the restore lane, in priority order
  * (`lib/plan/restore/storageHandBack.ts`).
  *
- * The battery protects the devices ranked above it. Its discharge never
- * creates headroom for restoring more: restore and admission see the headroom
- * less the discharge PELS holds, and less a charge increase not measured yet
- * (`withoutStorageWithheld`). Every uncertainty resolves toward shedding and
- * toward handing the battery back.
+ * Battery discharge never creates room for a resume. Admission withholds
+ * existing discharge and charge increases not measured yet
+ * (`withoutStorageWithheld`).
  *
  * The battery has no generic command authority (`isBatteryOrSolar`); the
  * storage stages alone decide a signed setpoint or a hand-back for it from its
@@ -24,11 +21,11 @@ import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFo
  * carries out (`lib/executor/batteryExecutor.ts`).
  *
  * **Limit hold.** Held where shedding put it: a capped charge stays capped. A
- * held discharge steps down on headroom, but only past the deadband
+ * held discharge steps down within physical room, but only past the deadband
  * (`max(step, 200 W)`), no sooner than `STORAGE_DECREASE_MIN_INTERVAL_MS` after
  * the last step down, and never while an increase is still settling; once the
- * discharge needed falls below the deadband it steps to 0 W, the charge still
- * stopped, until the restore lane hands the battery back.
+ * observed discharge fits entirely in that room it can step to 0 W. The
+ * charge stays stopped until the restore lane hands the battery back.
  *
  * **Power-limit control off.** PELS never takes the battery over at all
  * (owner ruling, 2026-10-06): no charge cap, no discharge and no surplus
@@ -64,19 +61,16 @@ import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFo
  * setpoint (`simulateFollowedHolds`); its owner refuses every claim, and hands a held one back.
  */
 import type { StorageDischargeObservation } from '../../../packages/planner-types/src/storageDischarge';
-import type {
-  MissingStorageInput,
-  ObservedStorageInput,
-} from '../../../packages/planner-types/src/planInputDevice';
+import type { MissingStorageInput, ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 import {
-  type StorageDecision,
-  type StoragePlanKind,
-  type StorageReleaseReason,
-  type StorageReleaseIntent,
+  type StorageDecision, type StoragePlanKind, type StorageReleaseReason, type StorageReleaseIntent,
 } from '../../planContract/storageDecision';
 import { floorStorageSetpointW } from '../../utils/storageSetpoint';
 import { getLogger } from '../../logging/logger';
-import type { MeasuredPower } from '../planContext';
+import {
+  minLimitHeadroom, spendLimitHeadroom, type LimitHeadroom, type MeasuredPower,
+} from '../planContext';
+import { compareDeviceIdAsc } from '../planSort';
 import type { StorageLeverState } from '../planState';
 import type {
   StorageSurplusClaimant,
@@ -92,8 +86,9 @@ import {
   hasStorageLeverInput,
   ownChargeWOf,
   ownDischargeWOf,
+  physicalDischargePreference,
   resolveStorageHoldBlock,
-  toSetpointW,
+  supportedDischargeCeilingW, toSetpointW,
 } from './storageLadder';
 
 import type {
@@ -103,7 +98,7 @@ import {
   resolveClaimReason, summarizeHold, toSetpointDecision,
 } from './storageHold';
 import {
-  baselineLever, baselineSolarChargeW, continuousLever, resolveEconomicResumeIncreaseW,
+  baselineLever, baselineSolarChargeW, continuousLever, deferGridChargeIncrease, resolveEconomicResumeIncreaseW,
 } from './storageContinuous';
 export type { StorageRelief, StorageStateSummary } from './storageReliefTypes';
 export { summarizeHold } from './storageHold';
@@ -122,6 +117,7 @@ export const NO_STORAGE_RELIEF: StorageRelief = Object.freeze({
   shed: NO_STORAGE_SHED_TERM,
   levers: Object.freeze({}),
   batteries: [],
+  surplusOffers: new Map<string, StorageSurplusOffer>(),
 });
 
 /**
@@ -239,17 +235,23 @@ export function resolveStorageDischargeW(
 const resolveLoweredDischargeW = (
   storage: ObservedStorageInput,
   lever: StorageLeverState,
-  balance: StorageBalance,
+  room: LimitHeadroom,
   nowTs: number,
 ): number => {
   const heldW = -lever.setpointW;
   if (isSettling(lever, nowTs) || nowTs - lever.lastDecreaseAtMs < STORAGE_DECREASE_MIN_INTERVAL_MS) return heldW;
-  if (balance.headroomW === null) return 0;
+  if (room.kind === 'off') return 0;
+  const headroomW = room.kw * 1000;
   const deadbandW = deadbandWFor(storage);
-  const baseW = Math.min(heldW, ownDischargeWOf(storage));
-  if (baseW - balance.headroomW < deadbandW) return 0;
-  if (balance.headroomW <= deadbandW) return heldW;
-  return -floorStorageSetpointW(-Math.max(0, Math.min(heldW, baseW - (balance.headroomW - deadbandW))), storage.range);
+  const observedW = ownDischargeWOf(storage);
+  if (headroomW <= 0) return heldW;
+  if (!storage.canSetDischargePower) return observedW <= headroomW ? 0 : heldW;
+  if (observedW <= headroomW && heldW - headroomW < deadbandW) return 0;
+  if (headroomW <= deadbandW) return heldW;
+  const targetW = Math.min(heldW, Math.max(0, observedW - headroomW + deadbandW));
+  const roundedW = -floorStorageSetpointW(-targetW, storage.range);
+  // A step across the exclude band can jump all the way to idle.
+  return observedW - roundedW <= headroomW ? roundedW : heldW;
 };
 
 /** The hold as this cycle's reading of the battery leaves it. */
@@ -268,14 +270,14 @@ const readLever = (storage: ObservedStorageInput, lever: StorageLeverState): Sto
 const keepLimitLever = (
   storage: ObservedStorageInput,
   lever: StorageLeverState,
-  balance: StorageBalance,
+  room: LimitHeadroom,
   nowTs: number,
 ): ObservedStep => {
   const reading = readLever(storage, lever);
   const heldDischargeW = -lever.setpointW;
   // Keep the export limit until the restore lane checks both directions.
   if (lever.exportPhase !== undefined) {
-    const setpointW = toSetpointW(Math.min(heldDischargeW, storage.deliveryCeilingW));
+    const setpointW = toSetpointW(Math.min(heldDischargeW, supportedDischargeCeilingW(storage)));
     return { kind: 'hold', lever: {
       ...reading,
       setpointW,
@@ -283,8 +285,8 @@ const keepLimitLever = (
     } };
   }
   if (heldDischargeW <= 0) return { kind: 'hold', lever: reading };
-  const keptW = balance.deficitW > 0 ? heldDischargeW : resolveLoweredDischargeW(storage, lever, balance, nowTs);
-  const dischargeW = Math.min(keptW, storage.deliveryCeilingW);
+  const keptW = resolveLoweredDischargeW(storage, lever, room, nowTs);
+  const dischargeW = Math.min(keptW, supportedDischargeCeilingW(storage));
   return {
     kind: 'hold',
     lever: {
@@ -302,7 +304,7 @@ const keepLimitLever = (
  * A selling hold earns none.
  */
 export const resolveCreditW = (storage: ObservedStorageInput, lever: StorageLeverState, nowTs: number): number => {
-  if (!isStorageReliefCreditable(storage) || !isSettling(lever, nowTs)) return 0;
+  if (!storage.canSetDischargePower || !isStorageReliefCreditable(storage) || !isSettling(lever, nowTs)) return 0;
   // A sale is no relief PELS may bank before it lands: its export creates no
   // speculative credit for shedding to spend.
   if (lever.continuousReason === 'export_energy') return 0;
@@ -313,6 +315,15 @@ const NO_DECISION = {
   claim: 'none', decision: { kind: 'none' }, setpointW: 0, heldBackChargeW: 0, creditW: 0, withheldW: 0,
 } as const;
 
+function pendingWithdrawalKw(storage: ObservedStorageInput, setpointW: number): number {
+  if (setpointW < 0 && !storage.canSetDischargePower) return 0;
+  return Math.max(0, ownDischargeWOf(storage) - Math.max(0, -setpointW)) / 1000;
+}
+
+const pendingLimitWithdrawalKw = (storage: ObservedStorageInput, lever: StorageLeverState | undefined): number => (
+  lever?.purpose === 'limit' ? pendingWithdrawalKw(storage, lever.setpointW) : 0
+);
+
 /** One cycle's decisions, accumulated battery by battery, and the relief they add up to. */
 class StorageReliefCycle {
   readonly levers: Record<string, StorageLeverState> = {};
@@ -320,6 +331,7 @@ class StorageReliefCycle {
   private creditW = 0;
   private releasedDischargeW = 0;
   private drawMarginW = 0;
+  private relieving = false;
 
   constructor(
     public balance: StorageBalance,
@@ -328,24 +340,28 @@ class StorageReliefCycle {
     private readonly nowTs: number,
     /** In simulation, last: what held batteries would deliver (or, charging, draw) that the reading misses. */
     private phaseRoom: PhaseRoomAxis, private readonly simulatedUndeliveredW: number,
+    private physicalRoom: LimitHeadroom, private readonly hadDischarge: boolean,
   ) {}
 
-  release(
+  private release(
     reason: StorageReleaseReason,
     dischargeW: number,
     deferred: boolean,
+    footprint: PhaseFootprint,
+    reservedKw: number,
   ): { decision: StorageDecision; withheldW: number } {
-    if (!deferred) this.releasedDischargeW += Math.max(0, dischargeW);
-    return { decision: { kind: 'release', reason }, withheldW: Math.max(0, dischargeW) };
+    if (!deferred) {
+      this.releasedDischargeW += dischargeW;
+      this.reserveWithdrawal(footprint, dischargeW / 1000 - reservedKw);
+    }
+    return { decision: { kind: 'release', reason }, withheldW: dischargeW };
   }
 
-  /** A held discharge may only step down within what its phases can take back as import. */
-  private balanceWithinPhases(footprint: PhaseFootprint): StorageBalance {
-    const room = phaseRoomFor(this.phaseRoom, footprint);
-    if (room.kind === 'off') return this.balance;
-    const roomW = Math.max(0, room.kw * 1000);
-    const headroomW = this.balance.headroomW === null ? roomW : Math.min(this.balance.headroomW, roomW);
-    return { ...this.balance, headroomW };
+  /** Reserve a return of import before another battery can spend it. */
+  reserveWithdrawal(footprint: PhaseFootprint, importKw: number): void {
+    if (importKw <= 0) return;
+    this.physicalRoom = spendLimitHeadroom(this.physicalRoom, importKw);
+    this.phaseRoom = spendPhaseRoom(this.phaseRoom, footprint, importKw);
   }
 
   decideObserved(
@@ -357,12 +373,16 @@ class StorageReliefCycle {
     const observedDischargeW = ownDischargeWOf(storage);
     if (storage.handBackDeferred && resolveStorageHoldBlock(storage) === 'holdable') {
       if (previous !== undefined) this.levers[deviceId] = previous;
+      if (previous !== undefined && previous.setpointW < 0 && observedDischargeW > 0) {
+        this.relieving = true;
+      }
       return {
         deviceId, reading: 'observed', claimHeld: storage.claimHeld, powerLimitOff: false,
         ...NO_DECISION, withheldW: observedDischargeW,
       };
     }
     const step = this.resolveObservedStep(deviceId, storage, previous, footprint);
+    const reservedKw = pendingLimitWithdrawalKw(storage, previous);
     if (step.kind === 'release') {
       const summary = {
         deviceId, reading: 'observed' as const, claimHeld: storage.claimHeld, powerLimitOff: !storage.powerLimitControl,
@@ -370,11 +390,16 @@ class StorageReliefCycle {
       if (previous === undefined && !storage.claimHeld) return { ...summary, ...NO_DECISION };
       const deferred = !storage.claimHeld || storage.handBackDeferred;
       // The observed discharge may stop as soon as native control resumes.
-      const { decision, withheldW } = this.release(step.reason, observedDischargeW, deferred);
+      const { decision, withheldW } = this.release(step.reason, observedDischargeW, deferred, footprint, reservedKw);
       return { ...summary, ...NO_DECISION, decision, withheldW };
     }
     const next = this.boundObservedHold(storage, footprint, step.lever);
-    return this.recordObservedHold(deviceId, storage, previous, next);
+    const withdrawalKw = pendingWithdrawalKw(storage, next.setpointW);
+    this.reserveWithdrawal(footprint, withdrawalKw - reservedKw);
+    // The charge bound already debited the positive charging share on its phases.
+    const newChargeKw = Math.max(0, next.setpointW - ownChargeWOf(storage)) / 1000;
+    this.physicalRoom = spendLimitHeadroom(this.physicalRoom, newChargeKw);
+    return this.recordObservedHold(deviceId, storage, next, withdrawalKw);
   }
 
   private boundObservedHold(
@@ -397,17 +422,12 @@ class StorageReliefCycle {
   private recordObservedHold(
     deviceId: string,
     storage: ObservedStorageInput,
-    previous: StorageLeverState | undefined,
     next: StorageLeverState,
+    withdrawalKw: number,
   ): StorageStateSummary {
-    const observedDischargeW = ownDischargeWOf(storage);
     this.levers[deviceId] = next;
     const nextDischargeW = -next.setpointW;
-    const previousDischargeW = previous === undefined ? observedDischargeW : -previous.setpointW;
-    const continuousChange = previous?.purpose === 'continuous' || next.purpose === 'continuous';
-    const headroomDebitW = continuousChange
-      ? Math.max(0, next.setpointW - storage.signedPowerW)
-      : Math.max(0, previousDischargeW - nextDischargeW);
+    const headroomDebitW = Math.max(0, next.setpointW - storage.signedPowerW);
     const creditW = resolveCreditW(storage, next, this.nowTs);
     this.balance = {
       ...this.balance,
@@ -416,11 +436,12 @@ class StorageReliefCycle {
         ? null
         : Math.max(0, this.balance.headroomW - headroomDebitW),
     };
-    if (continuousChange) {
-      this.releasedDischargeW += Math.max(0, observedDischargeW - Math.max(0, nextDischargeW));
-    }
+    if (next.purpose === 'continuous') this.releasedDischargeW += withdrawalKw * 1000;
     this.creditW += creditW;
-    if (nextDischargeW > 0) this.drawMarginW = Math.max(this.drawMarginW, drawMarginWFor(storage));
+    if (nextDischargeW > 0 && (storage.canSetDischargePower || storage.signedPowerW < 0)) {
+      this.relieving = true;
+      this.drawMarginW = Math.max(this.drawMarginW, drawMarginWFor(storage));
+    }
     return summarizeHold(deviceId, storage, next, creditW);
   }
 
@@ -440,6 +461,7 @@ class StorageReliefCycle {
     deviceId: string,
     carrier: UnreadCarrier,
     previous: StorageLeverState | undefined,
+    footprint: PhaseFootprint,
   ): StorageStateSummary {
     const summary = { deviceId, reading: toUnreadReading(carrier), claimHeld: true, powerLimitOff: false };
     if (previous === undefined) return { ...summary, ...NO_DECISION };
@@ -450,13 +472,16 @@ class StorageReliefCycle {
     if (!admissible || expired) {
       const reason = carrier === 'absent' || !admissible ? 'not_admissible' : 'input_missing';
       const deferred = typeof carrier === 'object' && carrier.handBackDeferred;
-      const { decision, withheldW } = this.release(reason, heldDischargeW, deferred);
+      const { decision, withheldW } = this.release(reason, heldDischargeW, deferred, footprint, 0);
       return { ...summary, ...NO_DECISION, decision, withheldW };
     }
     const event = { deviceId, heldSetpointW: previous.setpointW };
     if (previous.reading.kind === 'read') logger.warn({ event: 'storage_relief_input_missing', ...event });
     const lever = keepUnreadLever(previous, sinceMs);
-    if (lever.setpointW !== previous.setpointW) logger.warn({ event: 'storage_relief_unread_sale_stopped', ...event });
+    if (lever.setpointW !== previous.setpointW) {
+      if (carrier !== 'absent') this.reserveWithdrawal(footprint, heldDischargeW / 1000);
+      logger.warn({ event: 'storage_relief_unread_sale_stopped', ...event });
+    }
     this.levers[deviceId] = lever;
     return {
       ...summary,
@@ -489,11 +514,12 @@ class StorageReliefCycle {
     return {
       shed: {
         netCreditKw: (this.creditW + this.simulatedUndeliveredW - this.releasedDischargeW) / 1000,
-        relieving: Object.values(this.levers).some((lever) => lever.setpointW < 0),
+        relieving: this.relieving,
         drawMarginKw: this.drawMarginW / 1000,
       },
       levers: this.levers,
       batteries: this.batteries,
+      surplusOffers: this.offers,
     };
   }
 
@@ -511,10 +537,12 @@ class StorageReliefCycle {
     if (blocked !== 'holdable') return { kind: 'release', reason: blocked };
     const offer = this.offerFor(deviceId);
     if (previous?.purpose === 'limit') {
-      return keepLimitLever(storage, previous, this.balanceWithinPhases(footprint), this.nowTs);
+      const room = minLimitHeadroom(this.physicalRoom, phaseRoomFor(this.phaseRoom, footprint));
+      return keepLimitLever(storage, previous, room, this.nowTs);
     }
     if (storage.continuousPlan !== undefined && storage.continuousPlan.validUntilMs > this.nowTs) {
-      return { kind: 'hold', lever: continuousLever(storage, previous, this.balance, offer, this.nowTs) };
+      const lever = continuousLever(storage, previous, this.balance, offer, this.nowTs);
+      return { kind: 'hold', lever: this.hadDischarge ? deferGridChargeIncrease(storage, lever, offer) : lever };
     }
     const setpointW = offer.baselineChargeW
       ?? baselineSolarChargeW(storage, previous, offer, this.balance.headroomW, this.nowTs);
@@ -544,12 +572,7 @@ export const sumWithheldKw = (batteries: readonly StorageStateSummary[]): number
   batteries.reduce((totalW, battery) => totalW + battery.withheldW, 0) / 1000
 );
 
-/**
- * Decide every battery's hold or hand-back for this measured cycle, and the
- * term shedding counts. Batteries take the headroom in plan order, each
- * covering what the ones before it left open; each stores surplus from its own
- * offer, which the allocator already ranked in priority order.
- */
+/** Decide releases and routine operation first, then ease hard discharge in reverse dispatch order. */
 export function decideStorageRelief(
   devices: readonly PlanInputDevice[],
   power: MeasuredPower,
@@ -558,29 +581,44 @@ export function decideStorageRelief(
   nowTs: number,
   /** In simulation, what held batteries deliver that the reading misses (`simulateFollowedHolds`), W. */
   simulatedUndeliveredW: number,
+  physicalRoom: LimitHeadroom,
 ): StorageRelief {
   const cycle = new StorageReliefCycle({
-    deficitW: power.headroom.kind === 'off' ? 0 : Math.max(0, -power.headroom.kw * 1000 - simulatedUndeliveredW),
     headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000 + simulatedUndeliveredW),
     netImportW: power.drawKw * 1000 - simulatedUndeliveredW,
     sampledAtMs: power.sampledAtMs,
-  }, offers, nowTs, resolvePhaseRoomAxis(power.phase), simulatedUndeliveredW);
-  const seen = new Set<string>();
-  for (const device of devices) {
-    // A battery PELS only watches is decided like one without a cluster: it
-    // has nothing to hold, and a hold left on it is read as `no_input` below.
-    if (!hasStorageLeverInput(device)) continue;
-    seen.add(device.id);
+  }, offers, nowTs, resolvePhaseRoomAxis(power.phase), simulatedUndeliveredW, physicalRoom,
+  Object.values(levers).some(({ setpointW }) => setpointW < 0));
+  const batteries = devices.filter(hasStorageLeverInput);
+  for (const device of batteries) {
+    if (device.storage.reading !== 'observed') continue;
+    cycle.reserveWithdrawal(device.phaseFootprint, pendingLimitWithdrawalKw(device.storage, levers[device.id]));
+  }
+  const recovering = batteries
+    .filter(({ id, storage }) => levers[id]?.purpose === 'limit' && levers[id].setpointW < 0
+      && storage.reading === 'observed' && resolveStorageHoldBlock(storage) === 'holdable')
+    .sort((left, right) => {
+      const leftRank = left.storage.reading === 'observed'
+        ? physicalDischargePreference(left.storage, levers[left.id]) : 0;
+      const rightRank = right.storage.reading === 'observed'
+        ? physicalDischargePreference(right.storage, levers[right.id]) : 0;
+      return leftRank - rightRank || compareDeviceIdAsc(right, left);
+    });
+  const recoveringIds = new Set(recovering.map(({ id }) => id));
+  const orderedBatteries = batteries.filter(({ id }) => !recoveringIds.has(id)).concat(recovering);
+  const seen = new Set(batteries.map(({ id }) => id));
+  for (const [deviceId, previous] of Object.entries(levers)) {
+    if (seen.has(deviceId)) continue;
+    const device = devices.find(({ id }) => id === deviceId);
+    const carrier = device === undefined ? 'absent' : 'no_input';
+    cycle.record(cycle.decideUnread(deviceId, carrier, previous, device?.phaseFootprint ?? { kind: 'unknown' }));
+  }
+  for (const device of orderedBatteries) {
     const { storage } = device;
     const previous = levers[device.id];
     cycle.record(storage.reading === 'observed'
       ? cycle.decideObserved(device.id, storage, previous, device.phaseFootprint)
-      : cycle.decideUnread(device.id, storage, previous));
-  }
-  for (const [deviceId, previous] of Object.entries(levers)) {
-    if (seen.has(deviceId)) continue;
-    const carrier = devices.some((device) => device.id === deviceId) ? 'no_input' : 'absent';
-    cycle.record(cycle.decideUnread(deviceId, carrier, previous));
+      : cycle.decideUnread(device.id, storage, previous, device.phaseFootprint));
   }
   return cycle.toRelief();
 }

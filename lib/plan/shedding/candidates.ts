@@ -28,11 +28,13 @@ import {
 } from './types';
 import { SOFT_OVERSHOOT_DEADBAND_KW } from '../planConstants';
 import {
-  buildStorageCandidate, isDrivableLimitScope, isStorageLimitScope, type LimitableStorageDevice,
+  buildStorageCandidate, isBoundedDischargeLimitScope, isDrivableLimitScope,
+  isStorageLimitScope, type LimitableStorageDevice,
 } from './storageCandidate';
-import { drawMarginWFor } from '../battery/storageLadder';
 import type { StorageRelief } from '../battery/storageRelief';
-import { resolveShedNeedKw, resolveShedPressure } from './pressure';
+import { resolveShedNeedKw, resolveShedPressure, type ShedPressure } from './pressure';
+import { drawMarginWFor, physicalDischargePreference } from '../battery/storageLadder';
+import { offeredChargeW } from '../battery/storageContinuous';
 
 /** One build's shed candidate walk, as selection and the shortfall verdict both ask it. */
 /**
@@ -50,18 +52,17 @@ export function resolveStorageAdjustedDeficitKw(power: MeasuredPower, storage: S
  * - `shed_everything`: without a battery that could answer it, every
  *   candidate is shed whatever the reading, as always.
  * - `import_target`: a battery PELS holds discharging, or one it may limit
- *   now, answers in priority order instead, down to the import the battery
- *   deliberately leaves (`importKw`): the devices ranked below it first, then
- *   the battery, and the devices above it only for what it cannot cover. Keyed
+ *   now, answers the measured import above the safety allowance (`importKw`).
+ *   Battery relief uses the physical order, then loads cover the residual. Keyed
  *   on the battery being there to answer, never on its candidacy: a battery
  *   already at its ceiling offers nothing more, and that is no reason to shed
  *   everything.
- * - `not_exhausted`: the hour is not spent, or a battery holds the house at
- *   the pace. "At the pace" forgives the soft-overshoot deadband and the margin
+ * - `not_exhausted`: the period is not spent.
+ * - `covered`: import is inside the soft-overshoot deadband and the margin
  *   the battery leaves under the house's draw (`resolveStorageDrawMarginKw`).
  */
 export type ExhaustedHourAnswer =
-  | { kind: 'not_exhausted' }
+  | { kind: 'not_exhausted' | 'covered' }
   | { kind: 'shed_everything' }
   | { kind: 'import_target'; importKw: number };
 
@@ -85,11 +86,28 @@ export function resolveExhaustedHourAnswer(
   // period is still tracked, and still spent, but no limit spends it.
   if (!state.capacityPeriodSpentFor(context)) return { kind: 'not_exhausted' };
   const { devices } = context;
-  if (!storage.relieving && !devices.some(isDrivableLimitScope)) return { kind: 'shed_everything' };
   const toleranceKw = SOFT_OVERSHOOT_DEADBAND_KW + resolveStorageDrawMarginKw(devices, storage);
   const importKw = power.drawKw - storage.netCreditKw - toleranceKw;
-  return importKw > 0 ? { kind: 'import_target', importKw } : { kind: 'not_exhausted' };
+  if (!storage.relieving && !devices.some((device) => isBoundedDischargeLimitScope(device, importKw))) {
+    return { kind: 'shed_everything' };
+  }
+  return importKw > 0 ? { kind: 'import_target', importKw } : { kind: 'covered' };
 }
+
+function resolveCyclePressure(
+  context: PlanContext, power: MeasuredPower, storage: StorageShedTerm, period: ExhaustedHourAnswer,
+): ShedPressure {
+  const pressure = resolveShedPressure(power, context.capacity, storage);
+  // The spent-period target already answers the capacity axis, including its
+  // allowed import margin. An independent grid breach still has to be answered.
+  return period.kind === 'covered' && pressure.kind !== 'grid' ? { kind: 'soft' } : pressure;
+}
+
+type MeasuredShedCycle = ShedCandidateParams & {
+  pressure: ShedPressure;
+  period: ExhaustedHourAnswer;
+  prioritizeStorage: boolean;
+};
 
 export function buildShedCandidateParams(
   context: PlanContext,
@@ -98,36 +116,69 @@ export function buildShedCandidateParams(
   deps: SheddingDeps,
   /** This cycle's storage stage: the term it counts against the deficit, and the holds a battery is priced from. */
   storage: StorageRelief,
-): ShedCandidateParams {
+): MeasuredShedCycle {
   const hour = resolveExhaustedHourAnswer(context, state, power, storage.shed);
-  const hourlyBudgetExhausted = hour.kind !== 'not_exhausted';
-  const bindingDeficitKw = hour.kind === 'import_target'
-    ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage.shed);
-  const needed = hourlyBudgetExhausted ? bindingDeficitKw : resolveShedNeedKw(
-    resolveShedPressure(power, context.capacity, storage.shed), bindingDeficitKw,
-  );
+  const hourlyBudgetExhausted = hour.kind === 'import_target' || hour.kind === 'shed_everything';
+  const pressure = resolveCyclePressure(context, power, storage.shed, hour);
+  const prioritizeStorage = context.devices.some(isDrivableLimitScope)
+    && (hour.kind === 'import_target' || pressure.kind !== 'soft');
+  const physicalLimitBreached = hour.kind === 'covered' ? pressure.kind === 'grid'
+    : power.physicalLimitBreached || prioritizeStorage;
+  const deficitKw = resolveCycleDeficitKw(power, storage.shed, hour, pressure, prioritizeStorage);
   return {
+    pressure,
+    period: hour,
+    prioritizeStorage,
     devices: context.devices,
+    nowTs: context.nowTs,
     relayRetryMeterAtMs: state.isNewRelayMeterDecision(power.sampledAtMs) ? power.sampledAtMs : undefined,
-    needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
+    needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : deficitKw,
     bypassRecentRestore: power.gridBreached,
     // The measured deficit, never the severity sentinel: rung sizing compares
     // kW against it. See `ShedCandidateParams`.
-    deficitKw: needed,
-    limitSource: power.gridBreached ? 'grid' : resolveShedLimitSource(context, hourlyBudgetExhausted),
-    // Resolved once on the measurement; no candidate walk re-derives it from a total.
-    physicalLimitBreached: power.physicalLimitBreached,
+    deficitKw,
+    limitSource: resolveCycleLimitSource(context, hour, pressure, prioritizeStorage),
+    physicalLimitBreached,
     temperatureSetpoints: context.temperatureSetpoints,
-    storageLimit: { kind: 'measured', drawKw: power.drawKw, levers: storage.levers },
+    storageLimit: {
+      kind: 'measured', drawKw: power.drawKw, levers: storage.levers, surplusOffers: storage.surplusOffers,
+    },
     state,
     deps,
   };
 }
 
+function resolveCycleDeficitKw(
+  power: MeasuredPower, storage: StorageShedTerm, hour: ExhaustedHourAnswer, pressure: ShedPressure,
+  prioritizeStorage: boolean,
+): number {
+  if (hour.kind === 'import_target') return hour.importKw;
+  if (hour.kind === 'covered' && pressure.kind === 'soft') {
+    return power.budgetHeadroom.kind === 'on' ? Math.max(0, -power.budgetHeadroom.kw - storage.netCreditKw) : 0;
+  }
+  const combinedNeed = resolveStorageAdjustedDeficitKw(power, storage);
+  // The load-only capacity-pace path keeps its existing sizing and pending
+  // demand policy. Isolate physical need when storage can otherwise spend it.
+  if (pressure.kind === 'capacity' && !prioritizeStorage) return combinedNeed;
+  return resolveShedNeedKw(pressure, combinedNeed);
+}
+
+function resolveCycleLimitSource(
+  context: PlanContext, hour: ExhaustedHourAnswer, pressure: ShedPressure, prioritizeStorage: boolean,
+): PlanLimitSource | 'none' {
+  if (pressure.kind === 'grid') return 'grid';
+  if (hour.kind === 'covered' && pressure.kind === 'soft') return 'daily';
+  if (hour.kind === 'shed_everything' || hour.kind === 'import_target') return 'daily';
+  if (prioritizeStorage) return 'capacity';
+  return context.binding.kind === 'bound' ? context.binding.source : 'none';
+}
+
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function buildSheddingCandidates(params: ShedCandidateParams, nowTs: number): {
+export function buildSheddingCandidates(params: ShedCandidateParams): {
   candidates: ShedCandidate[];
+  availableCandidates: ShedCandidate[];
   physicalLimitBreached: boolean;
+  physicalStorageCount: number;
   diagnostics: ShedCandidateSkipRecorder;
 } {
   const candidates: ShedCandidate[] = [];
@@ -138,7 +189,7 @@ export function buildSheddingCandidates(params: ShedCandidateParams, nowTs: numb
   const recorder = createShedCandidateSkipRecorder();
 
   for (const device of params.devices) {
-    const walked = walkDevice(device, params, recorder, nowTs);
+    const walked = walkDevice(device, params, recorder, params.nowTs);
     if (walked === null) continue;
     if (walked.allowedByLimitPolicy === false) {
       recorder.record(walked.candidate, 'budget_exempt_daily_only');
@@ -147,8 +198,13 @@ export function buildSheddingCandidates(params: ShedCandidateParams, nowTs: numb
     candidates.push(walked.candidate);
   }
 
+  const { storageLimit, physicalLimitBreached } = params;
+  const physical = storageLimit.kind === 'measured' && physicalLimitBreached
+    ? rankPhysicalStorage(candidates, storageLimit) : { first: [], ranked: candidates };
   return {
-    candidates: rankCandidates(candidates),
+    candidates: [...physical.first, ...rankCandidates(physical.ranked)],
+    physicalStorageCount: physical.first.length,
+    availableCandidates: candidates,
     diagnostics: recorder,
     // Surfaced so the shed reason is attributed from the SAME breach decision that
     // gated budget-exempt candidates above, rather than a recomputation that could
@@ -233,7 +289,7 @@ function addStorageCandidate(
     bound.drawKw,
     restore.recentlyRestored,
     nowTs,
-    bound.chargeOnly,
+    bound.chargeOnly || !params.physicalLimitBreached,
   );
   if (typeof candidate !== 'string') return candidate;
   recorder.recordStorage({ device, batterySignedPowerW: device.storage.signedPowerW, reasonCode: candidate });
@@ -296,19 +352,41 @@ function addCandidatePower(
   return buildBinaryCandidate(device, priority, recentlyRestored, deps.pendingBinaryCommandStore, recorder);
 }
 
-/**
- * The ranked order selection spends candidates in. A home battery holds its
- * place by priority: devices ranked below it go first and the ones above it
- * after (owner ruling, 2026-10-06). Among the loads between two batteries (or
- * all of them, without a battery), preemptive step-down candidates go first,
- * so that step reductions are attempted before any device in that stretch is
- * turned off. A stepped device already at its lowest active step (going to
- * off) is effectively a turn-off and follows normal priority ordering. The
- * preemptive rule never moves a load past a battery: a stepped tank whose
- * upper rung covers the deficit must not be stepped down ahead of a battery
- * ranked last.
- */
+/** Grid-charge stops and available supply precede ranked loads and allocated solar charge. */
+function rankPhysicalStorage(
+  candidates: readonly ShedCandidate[], storage: Extract<ShedCandidateParams['storageLimit'], { kind: 'measured' }>,
+): { first: StorageShedCandidate[]; ranked: ShedCandidate[] } {
+  const batteries = candidates.flatMap((candidate) => candidate.kind === 'storage'
+    ? [{ candidate, solarW: protectedSolarChargeW(storage, candidate) }] : []);
+  const gridCharge = [...batteries.flatMap(({ candidate, solarW }) => {
+    const reliefKw = Math.min((candidate.baseW - solarW) / 1000, candidate.effectivePower);
+    return reliefKw > 0 ? [{ ...candidate, effectivePower: reliefKw }] : [];
+  })].sort(compareDeviceIdAsc);
+  const discharge = batteries
+    .filter(({ candidate, solarW }) => solarW <= 0 && candidate.effectivePower > Math.max(0, candidate.baseW) / 1000)
+    .map(({ candidate }) => candidate)
+    .sort((a, b) => (
+      physicalDischargePreference(b.storage, storage.levers[b.id])
+      - physicalDischargePreference(a.storage, storage.levers[a.id])
+      || compareDeviceIdAsc(a, b)
+    ));
+  const loads = candidates.filter((candidate) => candidate.kind !== 'storage');
+  const solar = batteries.flatMap(({ candidate, solarW }) => solarW > 0 ? [candidate] : []);
+  return { first: gridCharge.concat(discharge), ranked: [...loads, ...solar] };
+}
 
+function protectedSolarChargeW(
+  storage: Extract<ShedCandidateParams['storageLimit'], { kind: 'measured' }>, candidate: StorageShedCandidate,
+): number {
+  const positiveW = Math.max(0, candidate.baseW);
+  const offer = storage.surplusOffers.get(candidate.id);
+  if (offer === undefined) return positiveW;
+  const lever = storage.levers[candidate.id];
+  if (lever?.purpose === 'limit' || (lever?.baseline === true && candidate.storage.claimHeld)) return positiveW;
+  return Math.min(positiveW, offeredChargeW(candidate.storage, offer, drawMarginWFor(candidate.storage)));
+}
+
+/** Apply load rules between the battery charge turns that retain their Modes position. */
 function rankCandidates(candidates: readonly ShedCandidate[]): ShedCandidate[] {
   const byPriority = [...candidates].sort(comparePriority);
   const batteryIndexes = byPriority.flatMap((candidate, index) => (candidate.kind === 'storage' ? [index] : []));
@@ -347,9 +425,4 @@ function comparePriority(a: ShedCandidate, b: ShedCandidate): number {
   // Defensive final tiebreak for partial/legacy inputs (active-home plan
   // inputs have unique ranks), shared with restore via compareDeviceIdAsc.
   return compareDeviceIdAsc(a, b);
-}
-
-function resolveShedLimitSource(context: PlanContext, hourlyBudgetExhausted: boolean): PlanLimitSource | 'none' {
-  if (hourlyBudgetExhausted) return 'daily';
-  return context.binding.kind === 'bound' ? context.binding.source : 'none';
 }

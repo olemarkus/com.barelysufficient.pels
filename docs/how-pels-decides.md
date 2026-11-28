@@ -65,20 +65,17 @@ your bedroom can outrank the water heater at night and not during the day.
 
 ### Where a home battery fits
 
-A [home battery](/glossary#home-battery) has a place in that same list, last by
-default. When its turn comes, PELS first caps the battery's charge, then asks it
-to discharge enough to cover the rest. Discharge happens only on the battery's
-turn: the devices below it are limited first, and every device above it is
-protected. Left last, the battery's turn comes before any device's, so it covers
-the whole house before anything is turned down. An empty battery delivers
-nothing, and PELS moves on to the next device. The same order shares your
-[solar surplus](/glossary#solar-surplus): devices above the battery get the sun
-first, then the battery, then the grid. See
+A [home battery](/glossary#home-battery) shares spare solar with your devices
+in priority order. It is last by default, so devices get the sun first. When
+your home needs help holding its power limit, PELS can reduce grid charging or
+use available battery power before limiting other devices. Spare-solar charging
+keeps its place in the priority order. If the battery cannot cover the whole
+peak, PELS limits devices for the rest. See
 [Solar and a home battery](/use-cases/homey-solar-home-battery).
 
 ## How PELS brings devices back
 
-As power frees up, PELS resumes devices in the **opposite** order — most important
+As power frees up, PELS resumes devices in **priority order**, most important
 first. It waits between steps (60 seconds after limiting, 5–10 minutes after a
 resume) so devices don't rapidly flip on and off. If the day is
 running ahead of its daily budget, resumes wait a little longer.

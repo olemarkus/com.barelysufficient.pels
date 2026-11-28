@@ -1,3 +1,5 @@
+import { StorageDischargeBudget } from './storageDischargeBudget';
+import { resolveStorageSpend, storageCandidateBelow } from './storageCandidate';
 import { isOverShortfallThreshold } from '../../power/capacityGuard';
 import { applyShortfallPeriodCoverage } from './shortfallAvailability';
 import type { PlanInputCapacityStateSummary } from '../../power/capacityStateSummary';
@@ -91,9 +93,9 @@ function buildShortfallCapacityStateSummary(
     power.capacityBreached,
   ));
   const candidates = walkShedCandidates(context, power, state, deps, storage);
-  const remainingActionableControlledLoadW = roundPowerW(
-    candidates.reduce((sumKw, candidate) => sumKw + resolveReliefLeftKw(candidate, selection), 0),
-  );
+  const remainingActionableControlledLoadW = roundPowerW(sumActionableReliefKw(
+    candidates, selection, new StorageDischargeBudget(context, power, storage),
+  ));
 
   return {
     // Any direction: the incident record counts devices mid-actuation, and a
@@ -143,26 +145,35 @@ function walkShedCandidates(
     // The verdict reads the measurement alone: no battery credit or debit. A
     // held battery is still priced from its hold.
     buildShedCandidateParams(context, power, state, deps, { ...storage, shed: NO_STORAGE_SHED_TERM }),
-    context.nowTs,
-  ).candidates;
+  ).availableCandidates;
 }
 
-/**
- * What a shed candidate can still relieve once selection has chosen. An
- * unchosen candidate keeps all of it. A chosen one keeps only the deeper rungs
- * of its ladder below the one it was parked at (a battery, the rest of its
- * discharge below its setpoint): limiting a charger to its
- * middle step leaves the step to off still on the table, and reading that as
- * nothing left would open an incident with an option in hand.
- */
-function resolveReliefLeftKw(candidate: ShedCandidate, selection: PlanSheddingResult): number {
-  if (candidate.kind === 'temperature' || (candidate.kind === 'binary' && candidate.relayShedNoAck)) return 0;
-  if (candidate.kind === 'storage') {
-    // A battery chosen keeps the rest of its ladder below the setpoint it was spent at.
+/** Count only relief that remains selectable within the same battery bounds as the planner. */
+function sumActionableReliefKw(
+  candidates: readonly ShedCandidate[], selection: PlanSheddingResult, dischargeBudget: StorageDischargeBudget,
+): number {
+  for (const [deviceId, chosen] of selection.storageSetpoints) dischargeBudget.reserve(deviceId, chosen.setpointW);
+  let availableKw = 0;
+  for (const candidate of candidates) {
+    if (candidate.kind !== 'storage') {
+      availableKw += resolveLoadReliefLeftKw(candidate, selection);
+      continue;
+    }
+    if (candidate.unconfirmedRelief) continue;
     const chosen = selection.storageSetpoints.get(candidate.id);
-    if (chosen === undefined) return candidate.effectivePower;
-    return Math.max(0, candidate.effectivePower - (candidate.baseW - chosen.setpointW) / 1000);
+    const remaining = chosen === undefined ? candidate : storageCandidateBelow(candidate, chosen.setpointW);
+    const spend = resolveStorageSpend(remaining, remaining.effectivePower, dischargeBudget.roomW(remaining));
+    if (spend === null) continue;
+    dischargeBudget.reserve(candidate.id, spend.setpointW);
+    availableKw += spend.reliefKw;
   }
+  return availableKw;
+}
+
+function resolveLoadReliefLeftKw(
+  candidate: Exclude<ShedCandidate, { kind: 'storage' }>, selection: PlanSheddingResult,
+): number {
+  if (candidate.kind === 'temperature' || (candidate.kind === 'binary' && candidate.relayShedNoAck)) return 0;
   if (!selection.shedSet.has(candidate.id)) return candidate.effectivePower;
   if (candidate.kind !== 'stepped') return 0;
   const parkedAt = selection.shedStepTargets.get(candidate.id);

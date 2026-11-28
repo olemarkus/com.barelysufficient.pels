@@ -222,6 +222,7 @@ export class SilentMeterPlanBuilder {
   private shedEverything(context: PlanContext, nowTs: number): SheddingPlan {
     const deps = buildSheddingDeps(this.deps);
     const { candidates, diagnostics } = buildSheddingCandidates({
+      nowTs: context.nowTs,
       bypassRecentRestore: false,
       devices: context.devices,
       needed: Number.POSITIVE_INFINITY,
@@ -234,7 +235,7 @@ export class SilentMeterPlanBuilder {
       storageLimit: { kind: 'unmeasured' },
       state: this.state,
       deps,
-    }, context.nowTs);
+    });
     diagnostics.emit();
     const selection = selectShedDevices(
       candidates,

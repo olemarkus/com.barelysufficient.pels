@@ -1,7 +1,7 @@
 import { storageSurplusFixture as resolveStorageSurplus } from '../helpers/storageSurplusFixture';
 import { describe, expect, it } from 'vitest';
-import { decideStorageRelief } from '../../lib/plan/battery/storageRelief';
-import { resumeStorageAfterLimit, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
+import { decideStorageReliefFixture as decideStorageRelief } from '../helpers/storageReliefFixture';
+import { resumeStorageAfterLimit, applyStorageLimits, simulateFollowedHolds } from '../../lib/plan/battery/storageLimit';
 import { buildStorageCandidate, resolveStorageSpend } from '../../lib/plan/shedding/storageCandidate';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { StorageLeverState } from '../../lib/plan/planState';
@@ -15,7 +15,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}, id = 'battery'):
   storage: {
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false, signedPowerW: 0, observedAtMs: 0, claimHeld: true, admissible: true,
-    verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
+    verdict: 'responding', deliveryCeilingW: 2500, canSetDischargePower: true, chargeCeilingW: 2500, powerLimitControl: true,
     ownModeGridCharge: { kind: 'observed' },
     continuousPlan: { setpointW: 0, validUntilMs: NOW + 60_000, reason: 'hold_energy', storesSurplus: true },
     ...overrides,
@@ -26,6 +26,25 @@ const offers = (ids = ['battery']) => new Map(ids.map(id => [id, {
 }]));
 
 describe('continuous battery execution decisions', () => {
+  it('counts a meter-following discharge only after its own power reports supply', () => {
+    const waiting = battery({
+      canSetDischargePower: false,
+      continuousPlan: { setpointW: -600, validUntilMs: NOW + 60_000, reason: 'supply_house', storesSurplus: false },
+    });
+    const power = buildMeasuredPower({ drawKw: 1.1 });
+    const requested = decideStorageRelief([waiting], power, {}, offers(), NOW, 0);
+
+    expect(requested.batteries[0].setpointW).toBeLessThan(0);
+    expect(requested.shed).toEqual({ netCreditKw: 0, relieving: false, drawMarginKw: 0 });
+    expect(simulateFollowedHolds([waiting], requested.levers).undeliveredW).toBe(0);
+
+    const supplying = { ...waiting, storage: { ...waiting.storage, signedPowerW: -800 } };
+    const exporting = buildMeasuredPower({ drawKw: -0.5 });
+    const followed = decideStorageRelief([supplying], exporting, requested.levers, offers(), NOW + 1000, 0);
+    expect(followed.batteries[0].setpointW).toBe(-200);
+    expect(followed.shed).toEqual({ netCreditKw: 0, relieving: true, drawMarginKw: 0.1 });
+  });
+
   it('restores a limit to managed idle, and keeps control after the price period ends', () => {
     const native = battery();
     const power = buildMeasuredPower({ drawKw: 3, headroomKw: 3 });

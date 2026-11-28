@@ -4,8 +4,8 @@ import type { StorageShedTerm } from './types';
 
 /** Ordinary pacing may give a demand restriction a bounded opportunity to respond. */
 export type ShedPressure =
-  | { kind: 'soft' | 'capacity' | 'directive' }
-  | { kind: 'hard_cap' | 'grid'; deficitKw: number };
+  | { kind: 'soft' | 'directive' }
+  | { kind: 'capacity' | 'hard_cap' | 'grid'; deficitKw: number };
 
 export function resolveShedPressure(
   power: MeasuredPower, capacity: CapacityPlanLimit, storage: StorageShedTerm,
@@ -21,14 +21,15 @@ export function resolveShedPressure(
   const deficitKw = Math.max(0, capacityDeficitKw, hardCapDeficitKw, gridDeficitKw) - storage.netCreditKw;
   if (gridDeficitKw > 0) return { kind: 'grid', deficitKw: Math.max(0, deficitKw) };
   if (hardCapDeficitKw > 0) return { kind: 'hard_cap', deficitKw: Math.max(0, deficitKw) };
-  return { kind: power.capacityBreached ? 'capacity' : 'soft' };
+  if (power.capacityBreached) return { kind: 'capacity', deficitKw: Math.max(0, deficitKw) };
+  return { kind: 'soft' };
 }
 
 export const permitsDemandRelief = (pressure: ShedPressure): boolean => (
   pressure.kind === 'soft' || pressure.kind === 'capacity'
 );
 
-/** Urgent action answers the physical breach; residual pacing is reconsidered on the next reading. */
+/** Physical action answers its own breach. Daily pacing is reconsidered on the next reading. */
 export function resolveShedNeedKw(pressure: ShedPressure, bindingDeficitKw: number): number {
   return 'deficitKw' in pressure ? Math.min(bindingDeficitKw, pressure.deficitKw) : bindingDeficitKw;
 }

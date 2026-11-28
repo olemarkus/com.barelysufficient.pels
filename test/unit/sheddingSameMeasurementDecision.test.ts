@@ -52,7 +52,7 @@ const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
 
 const decide = (state: ReturnType<typeof shedState>, atMs: number, powerW: number) => (
   resolveSameMeasurementSheddingDecision(
-    state, devices, { atMs, powerW }, NOW, { kind: 'capacity' }, {}, state.shedPlanLatch,
+    state, devices, { atMs, powerW }, NOW, { kind: 'capacity', deficitKw: 1 }, {}, state.shedPlanLatch,
   )
 );
 

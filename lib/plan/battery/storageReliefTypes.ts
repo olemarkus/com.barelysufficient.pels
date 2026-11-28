@@ -1,6 +1,7 @@
 import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
+import type { StorageSurplusOffer } from '../planSurplusAbsorb';
 import type { StorageShedTerm } from '../shedding/types';
 
 /** The capacity, solar or economic reason for the battery's current target. */
@@ -46,17 +47,13 @@ export type StorageRelief = {
   /** The stage's holds after this cycle: the next `PlanEngineState.storageLeverByDevice`. */
   levers: Readonly<Record<string, StorageLeverState>>;
   batteries: readonly StorageStateSummary[];
+  /** Ranked offers used by this cycle's storage stage. */
+  surplusOffers: ReadonlyMap<string, StorageSurplusOffer>;
 };
 
 /**
- * The headroom still to give back, W, as each battery takes its share; the
- * deficit, which keeps a surplus hold where it is for shedding to decide; and
- * the net import, W, moved by each battery's decided change, against which a
- * battery plan sizes its discharge to the house.
- */
-/**
- * The measured cycle the batteries are decided in: the deficit and headroom
- * left so far, the whole-home net import, W, and when the meter took the
+ * The measured cycle the batteries are decided in: the headroom left so far,
+ * the whole-home net import, W, and when the meter took the
  * reading behind them, ms.
  */
-export type StorageBalance = { deficitW: number; headroomW: number | null; netImportW: number; sampledAtMs: number };
+export type StorageBalance = { headroomW: number | null; netImportW: number; sampledAtMs: number };
