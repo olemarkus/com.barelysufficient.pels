@@ -113,6 +113,28 @@ describe('charger car picker', () => {
     expect(document.querySelector('[data-car-current-limits]')).toBeNull();
   });
 
+  it('saves and clears a selected car’s capacity without changing the charger fallback', async () => {
+    const { state } = await import('../src/ui/state.ts');
+    state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
+    const saved = { 'charger-1': { usableBatteryKWh: 45, pauseOnBatteryDischarge: true } };
+    getSettingFresh.mockResolvedValue(saved);
+    const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    renderCarAssociation(charger());
+    await flush();
+
+    const field = document.querySelector<HTMLElement & { value: string }>('[data-car-battery-capacity="car-1"]');
+    if (!field) throw new Error('Missing car capacity field');
+    field.value = '72,5';
+    field.dispatchEvent(new Event('change'));
+    const carOverride = { ...saved, 'car-1': { usableBatteryKWh: 72.5 } };
+    await vi.waitFor(() => expect(setSetting).toHaveBeenLastCalledWith('ev_smart_task_settings', carOverride));
+
+    getSettingFresh.mockResolvedValue(carOverride);
+    field.value = '';
+    field.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(setSetting).toHaveBeenLastCalledWith('ev_smart_task_settings', saved));
+  });
+
   it('offers the backend-resolved eligible cars without repeating eligibility checks', async () => {
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
     renderCarAssociation(charger());

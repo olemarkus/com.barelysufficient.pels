@@ -319,6 +319,7 @@ const buildSettings = (params: {
 type PreviewContext = {
   nowMs?: number;
   buildPriceHorizon?: TaskEvaluationSource['buildPriceHorizon'];
+  evSmartTaskSettings?: TaskEvaluationSource['evSmartTaskSettings'];
   allocationRoster?: TaskAllocationRoster;
   device: MeteredPlanInputDevice | undefined;
   devices?: MeteredPlanInputDevice[];
@@ -362,6 +363,7 @@ const runPreview = (params: {
   const devices = params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : []);
   const source: TaskEvaluationSource = {
     prefersContinuousCharging: () => false,
+    evSmartTaskSettings: params.ctx.evSmartTaskSettings,
     getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: params.ctx.allocationRoster ?? new TaskAllocationRoster(() => new Date(NOW_MS)),
     hasSolarProduction: () => params.ctx.hasSolarProduction ?? false,
@@ -421,6 +423,29 @@ const temperatureCandidate = (
 } as DeferredObjectivePlanPreviewCandidate);
 
 describe('previewDeferredObjectivePlan', () => {
+  it.each([
+    { carId: 'car-1', chargerCapacity: 45, secondCapacity: 72, expected: 12 },
+    { carId: 'car-2', chargerCapacity: 45, secondCapacity: 72, expected: 16 },
+    { carId: 'car-2', chargerCapacity: 45, secondCapacity: undefined, expected: 10 },
+    { carId: null, chargerCapacity: 45, secondCapacity: 72, expected: 10 },
+    { carId: null, chargerCapacity: undefined, secondCapacity: 72, expected: 4 },
+  ])('estimates $expected kWh with car $carId and charger capacity $chargerCapacity',
+    ({ carId, chargerCapacity, secondCapacity, expected }) => {
+      const capacities: Record<string, number | undefined> = {
+        'ev-1': chargerCapacity, 'car-1': 54, 'car-2': secondCapacity,
+      };
+      const ctx: PreviewContext = {
+        device: buildEvDevice({ ...(carId ? { associatedCar: { carId } } : {}) }),
+        evSmartTaskSettings: (id) => ({ usableBatteryKWh: capacities[id] }),
+        powerTracker: buildEvPowerTracker(),
+        dailyBudgetSnapshot: buildSnapshot(),
+        priceOptimizationEnabled: true,
+        capacitySettings: { limitKw: 10, marginKw: 0 },
+      };
+      const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+      expect(estimate.energyEstimateKWh).toBeCloseTo(expected, 3);
+    });
+
   it.each([null, 1] as const)('uses the held cap only before month-end with grid limit %s', (gridImportLimitKw) => {
     const monthEndMs = Date.parse('2026-09-30T22:00:00Z');
     const nowMs = monthEndMs - 2 * 60_000;

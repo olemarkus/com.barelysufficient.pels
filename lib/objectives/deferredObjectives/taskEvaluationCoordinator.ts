@@ -196,7 +196,10 @@ export const buildTaskEvaluationSnapshot = (
   const envelopes = source.getChargingPhaseEnvelopes(nowMs);
   const futureDevices = withPermittedChargingEnvelopes(devices, envelopes);
   const objectiveDevices = resolveObjectiveDeviceInputs(futureDevices, source.getThermalDirection).map((device) => {
-    const usableEvBatteryKWh = source.evSmartTaskSettings?.(device.id)?.usableBatteryKWh;
+    if (!device.isEvCharger || !source.evSmartTaskSettings) return device;
+    const carId = device.associatedCar?.carId;
+    const carCapacity = carId === undefined ? undefined : source.evSmartTaskSettings(carId)?.usableBatteryKWh;
+    const usableEvBatteryKWh = carCapacity ?? source.evSmartTaskSettings(device.id)?.usableBatteryKWh;
     return usableEvBatteryKWh === undefined ? device : { ...device, usableEvBatteryKWh };
   });
   if (lane.kind !== 'preview') {

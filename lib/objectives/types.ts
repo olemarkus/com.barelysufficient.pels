@@ -8,7 +8,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { ObjectiveProfileProgressDirection } from '../../packages/contracts/src/objectiveProfileTypes';
 import type { ChargingPhaseEnvelope } from '../../packages/planner-types/src/chargingPhases';
-import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { DeviceControlPosture, PlanInputDeviceBase } from '../../packages/planner-types/src/planInputDevice';
 
 export type {
   DeviceObjectiveProfile,
@@ -78,6 +78,7 @@ export const resolveObjectiveProgressDirectionRead = (params: {
  */
 export type ObjectiveDeviceInput = {
   usableEvBatteryKWh?: number;
+  associatedCar?: PlanInputDeviceBase['associatedCar'];
   /** Future permissions set admission geometry. A sole matching live rung supplies learned delivery. */
   permittedChargingEnvelopes?: readonly ChargingPhaseEnvelope[];
   id: string;

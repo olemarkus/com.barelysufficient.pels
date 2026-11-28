@@ -200,9 +200,11 @@ Which devices can take one: plain on/off devices and EV chargers, including char
 **For an EV charger**, open **New smart task** while the car is plugged in. If PELS has live charger power and no battery level, choose an energy target such as `20 kWh` by `07:00`. The **Create smart task** widget offers the same kind of task with one-tap choices from `10 kWh` to `40 kWh`. If the picker offers a battery target and you specifically want kWh, use the **Add energy task** Flow card. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
 
 In the charger's **Charging** settings, enter **Usable car battery capacity** for
-the car usually plugged in there. Percentage tasks estimate charger energy from
-that capacity and assume 90% AC charging efficiency. Clear the field to use
-PELS's learned rate again. An energy task always uses the kWh amount you enter.
+the car usually plugged in there. You can also set the capacity for a car in
+the charger's **Car** section. When PELS matches that car to a charger, the
+car's setting takes precedence. Percentage tasks use the configured capacity
+and assume 90% AC charging efficiency. If neither capacity is set, PELS uses
+its learned rate. An energy task always uses the kWh amount you enter.
 
 **Pause when the home battery supplies power** is off by default. When enabled,
 EV Smart tasks pause if available home batteries report more than 500 W of

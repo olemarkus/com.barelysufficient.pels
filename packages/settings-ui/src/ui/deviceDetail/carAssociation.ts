@@ -1,3 +1,4 @@
+import { createCarCapacityField } from './evSmartTaskSettings.ts';
 import {
   loadEvCarCurrentLimits, loadEvChargerCurrentLimits, renderCarCurrentLimits,
 } from './chargingCurrentLimits.tsx';
@@ -368,6 +369,8 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
   if (!deviceDetailCarList) return;
   const editors = new Map([...deviceDetailCarList.querySelectorAll<HTMLElement>('[data-car-current-limits]')]
     .map((element) => [element.dataset.carCurrentLimits, element]));
+  const capacityFields = new Map([...deviceDetailCarList.querySelectorAll<HTMLElement>('[data-car-battery-capacity]')]
+    .map((element) => [element.dataset.carBatteryCapacity, element]));
   deviceDetailCarList.replaceChildren();
   if (deviceDetailCarIntro) deviceDetailCarIntro.hidden = false;
 
@@ -401,6 +404,7 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     editor.dataset.carCurrentLimits = car.id;
     deviceDetailCarList.append(editor);
     renderCarCurrentLimits(editor, car, device, () => renderCarAssociation(currentDevice));
+    deviceDetailCarList.append(capacityFields.get(car.id) ?? createCarCapacityField(car.id, car.name));
   }
 };
 

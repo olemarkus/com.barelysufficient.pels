@@ -17,7 +17,7 @@ type AllKeys<T> = T extends unknown ? keyof T : never;
  * should declare, or a field to strip below. Do not add to this list.
  */
 type UndeclaredPlanInputField =
-  | 'associatedCar' | 'binaryControllable' | 'canSetControl' | 'capabilities' | 'controllable'
+  | 'binaryControllable' | 'canSetControl' | 'capabilities' | 'controllable'
   | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs' | 'lastFreshDataMs'
   | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'planningPowerKw' | 'powerCapable'
   | 'priority' | 'reportedStepObservedAtMs' | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge';
