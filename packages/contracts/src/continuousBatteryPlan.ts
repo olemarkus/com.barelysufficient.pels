@@ -11,6 +11,8 @@ export type ContinuousBatteryPlanConfig = {
   priceUnit: string;
   /** Whether PELS may sell stored energy. Absent in a stored legacy config, it resolves to household-only. */
   exportPolicy: BatteryEnergyExportPolicy;
+  /** Preserve stored energy in EV Smart task charging periods. Off when absent. */
+  holdDischargeDuringEvCharging?: true;
 };
 
 export type ContinuousBatteryPlanConfigs = Record<string, ContinuousBatteryPlanConfig>;

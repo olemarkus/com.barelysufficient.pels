@@ -4,6 +4,8 @@
  * release-intent attach resolves requested releases into the posture this plan
  * commands. Execution consumes that decision without reading policy.
  */
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
+import { hasStorageInput } from './battery/storageLadder';
 import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
@@ -92,3 +94,29 @@ function resolveShedReleasePosture(device: DevicePlanDevice, behavior: ShedBehav
   });
   return undefined;
 }
+
+/**
+ * A booked EV can start in this plan, so remove economic discharge before
+ * computing surplus and admission. Keep the hold through the booking even
+ * if power limits temporarily stop the charger.
+ */
+export const holdScheduledDischargeDuringEvTasks = (
+  decoration: DeferredDecorationBundle,
+): PlanInputDevice[] => {
+  const { admittedDevices, drivingDeviceIds } = decoration;
+  if (!admittedDevices.some(device => drivingDeviceIds.has(device.id) && isEvDevice(device))) return admittedDevices;
+  return admittedDevices.map(device => {
+    if (!hasStorageInput(device) || device.storage.reading !== 'observed') return device;
+    const { storage } = device;
+    const plan = storage.continuousPlan;
+    if (!storage.holdDischargeDuringEvCharging || !plan || plan.setpointW >= 0) return device;
+    const storesSurplus = plan.reason === 'supply_house' && plan.storesSurplus;
+    return {
+      ...device,
+      storage: {
+        ...storage,
+        continuousPlan: { reason: 'hold_energy', setpointW: 0, validUntilMs: plan.validUntilMs, storesSurplus },
+      },
+    };
+  });
+};

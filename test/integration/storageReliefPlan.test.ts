@@ -5,6 +5,7 @@ import { storageDischargeObservationsFixture } from '../helpers/storageSurplusFi
 // in that order, and without a usable battery the shed is exactly what it is
 // today. Drives the real `PlanBuilder` end to end; only its outward seams are
 // fixtures.
+import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -206,6 +207,7 @@ type Scenario = {
   gridImportLimitKw?: number | null;
   dailyBudget?: boolean;
   hourUsedKWh?: number;
+  evTaskIsDriving?: () => boolean;
 };
 
 const buildHarness = (scenario: Scenario) => {
@@ -229,6 +231,10 @@ const buildHarness = (scenario: Scenario) => {
   } as const;
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
+    decorateDeferredObjectives: ({ devices }) => ({
+      ...buildIdentityDecorationBundle(devices),
+      drivingDeviceIds: new Set(scenario.evTaskIsDriving?.() ? ['ev'] : []),
+    }),
     getStorageDischargeObservations: () => storageDischargeObservationsFixture(observedDevices),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => configuredHardCap(capacitySettings),
@@ -262,6 +268,63 @@ const storageDecision = (plan: DevicePlan): StorageDecision | undefined => {
 };
 
 describe('storage relief in the plan build', () => {
+  it('holds scheduled supply for an opted-in battery and releases it after the EV booking', async () => {
+    let evTaskIsDriving = true;
+    const { build } = buildHarness({ paceKw: null, limitKw: 10, evTaskIsDriving: () => evTaskIsDriving });
+    const ev = { ...heater(true, 3, 'ev'), isEvCharger: true };
+    const storage = battery({
+      holdDischargeDuringEvCharging: true,
+      claimHeld: true,
+      signedPowerW: -1500,
+      continuousPlan: {
+        setpointW: -1500, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house', storesSurplus: false,
+      },
+    });
+    expect(storageDecision(await build(1500, [ev, storage]))).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+
+    evTaskIsDriving = false;
+    const after = { ...storage, storage: { ...storage.storage, signedPowerW: 0 } } as typeof storage;
+    expect(storageDecision(await build(3000, [ev, after], 30_000)))
+      .toMatchObject({ kind: 'setpoint', setpointW: -2500 });
+  });
+
+  it('lets power-limit protection discharge the battery during an EV booking', async () => {
+    const { build } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 4,
+      evTaskIsDriving: () => true });
+    const ev = { ...heater(true, 5, 'ev', 1), isEvCharger: true };
+    const storage = battery({
+      holdDischargeDuringEvCharging: true,
+      claimHeld: true,
+      continuousPlan: {
+        setpointW: -1500, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house', storesSurplus: false,
+      },
+    });
+    const plan = await build(5000, [ev, storage]);
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+    expect(plannedState(plan, 'ev')).toBe('keep');
+  });
+
+  it('holds a scheduled sale before a booked EV starts drawing power', async () => {
+    const { build } = buildHarness({ paceKw: null, capacityEnabled: false, evTaskIsDriving: () => true });
+    const ev = { ...heater(false, 3, 'ev'), isEvCharger: true };
+    const storage = battery({
+      holdDischargeDuringEvCharging: true,
+      claimHeld: true,
+      signedPowerW: -1500,
+      continuousPlan: {
+        setpointW: -1500, validUntilMs: START_MS + HOUR_MS, reason: 'export_energy', netExportCeilingW: 2500,
+      },
+    });
+    expect(storageDecision(await build(-1000, [ev, storage]))).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+  });
+
+  it('leaves scheduled grid charging available during an EV booking', async () => {
+    const { build } = buildHarness({ paceKw: null, capacityEnabled: false, evTaskIsDriving: () => true });
+    const ev = { ...heater(true, 3, 'ev'), isEvCharger: true };
+    const storage = battery({ holdDischargeDuringEvCharging: true, continuousPlan: priceGrid(1500) });
+    expect(storageDecision(await build(3000, [ev, storage]))).toMatchObject({ kind: 'setpoint', setpointW: 1500 });
+  });
+
   it('counts a stopped continuous charge before selecting extra capacity relief', async () => {
     const { build, state } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 4 });
     const continuousPlan = (setpointW: number) => ({

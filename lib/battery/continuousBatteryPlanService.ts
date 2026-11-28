@@ -30,7 +30,7 @@ type FleetBattery = ConfiguredBattery & { input: ReadyHorizon };
  */
 type BatteryInputs = { deviceId: string; exportUnsupported: boolean } & (
   | { inputs: PlanInputs }
-  | { waiting: string; exportPolicy: string }
+  | { waiting: string; policy: string }
 );
 /**
  * Every enabled battery's read, made together and kept together: a battery
@@ -80,6 +80,7 @@ const planInputs = (input: ReadyHorizon, config: ContinuousBatteryPlanConfig): P
   return {
     exact: JSON.stringify({
       exportPolicy: config.exportPolicy,
+      holdDischargeDuringEvCharging: config.holdDischargeDuringEvCharging,
       priceUnit: input.priceUnit,
       exportPricing: input.exportPricing,
       battery: exactBattery,
@@ -131,7 +132,7 @@ const sameInputs = (made: readonly BatteryInputs[], current: readonly BatteryInp
     }
     if ('waiting' in battery || 'waiting' in now) {
       return 'waiting' in battery && 'waiting' in now && battery.waiting === now.waiting
-        && battery.exportPolicy === now.exportPolicy;
+        && battery.policy === now.policy;
     }
     return withinTolerance(battery.inputs, now.inputs);
   })
@@ -292,7 +293,8 @@ export class ContinuousBatteryPlanService {
       const horizon = horizons.get(deviceId);
       if (horizon === undefined) throw new Error('Every enabled battery has a horizon read');
       return horizon.kind === 'waiting'
-        ? { deviceId, exportUnsupported, waiting: horizon.reason, exportPolicy: JSON.stringify(config.exportPolicy) }
+        ? { deviceId, exportUnsupported, waiting: horizon.reason,
+          policy: JSON.stringify([config.exportPolicy, config.holdDischargeDuringEvCharging]) }
         : { deviceId, exportUnsupported, inputs: planInputs(horizon, config) };
     });
     const previous = this.fleet;
