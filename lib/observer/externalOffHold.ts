@@ -126,6 +126,8 @@ export type ExternalOffHoldPolicy = {
   /** Clears a hold. Returns `true` only when one was actually present. */
   clearHold: (deviceId: string) => boolean;
   heldDeviceIds: () => string[];
+  /** Reconcile opt-outs, then release holds for the selector's affirmative observations. */
+  releaseObservedOnHolds: (selectObservedOn: (heldDeviceIds: readonly string[]) => string[]) => string[];
   /**
    * PELS is releasing a standing off-hold of its own on a device that is still
    * observed off — today, the "Use solar surplus" posture the owner has just
@@ -199,9 +201,7 @@ export const createExternalOffHoldPolicy = (
    * the next read instead of on the next restart. It costs one `get` of an
    * already-set marker once migrated, which is the steady state forever after.
    */
-  const ensureMigrated = (): void => {
-    migrateExternalOffHoldsToPerKey(store);
-  };
+  const ensureMigrated = (): boolean => migrateExternalOffHoldsToPerKey(store);
 
   const isEnabledForDevice = (deviceId: string): boolean => {
     const read = deps.readOptIn();
@@ -218,10 +218,9 @@ export const createExternalOffHoldPolicy = (
     return read.status !== 'resolved' || read.optIn[deviceId] === true;
   };
 
-  const heldDeviceIds = (): string[] => {
-    ensureMigrated();
+  const readHeldDeviceIds = (): string[] | null => {
     const keyList = readSettingsKeyList(store);
-    if (keyList.status !== 'resolved') return [];
+    if (keyList.status !== 'resolved') return null;
     return keyList.keys
       .filter((key) => key.startsWith(PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX))
       // Sliced, never trimmed: the id has to round-trip back through
@@ -233,32 +232,32 @@ export const createExternalOffHoldPolicy = (
       .filter((deviceId) => deviceId.length > 0);
   };
 
+  const heldDeviceIds = (): string[] => {
+    ensureMigrated();
+    return readHeldDeviceIds() ?? [];
+  };
+
+  const unsetHold = (deviceId: string): boolean => {
+    try {
+      store.unset(perDeviceKey(deviceId));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const clearHold = (deviceId: string): boolean => {
     ensureMigrated();
     const keyList = readSettingsKeyList(store);
     const wasHeld = keyList.status === 'resolved'
       && keyList.keys.includes(perDeviceKey(deviceId));
-    // The observed-ON sweep calls this every plan cycle for every device it sees
-    // on, and almost none of them is held. A key list that resolved without the
-    // key is a clean answer that there is nothing to clear, so no write is spent.
     if (keyList.status === 'resolved' && !wasHeld) return false;
-    try {
-      // Idempotent: unsetting a key cannot touch another device, so an
-      // unreadable key list is no reason to hold back. The unset lands either
-      // way, and there is no pending-write state to carry. A throw leaves the
-      // key in place; the next sweep retries, so the retry is the ordinary path
-      // rather than machinery this module has to own.
-      store.unset(perDeviceKey(deviceId));
-    } catch {
-      return false;
-    }
-    // `false` under an unreadable key list means one lost debug line, not a lost
-    // release — the unset above already happened, whatever the list said.
-    return wasHeld;
+    // A blind unset still releases the hold during a read outage. Only a
+    // confirmed key presence counts as a release for diagnostics.
+    return unsetHold(deviceId) && wasHeld;
   };
 
-  const dropDeOptedHolds = (): string[] => {
-    const held = heldDeviceIds();
+  const dropDeOptedHolds = (held = heldDeviceIds(), release = clearHold): string[] => {
     // Nothing held ⇒ nothing to reconcile, and no reason to spend a settings
     // read. This is the case for everyone who has not opted a device in.
     if (held.length === 0) return [];
@@ -269,7 +268,7 @@ export const createExternalOffHoldPolicy = (
     if (read.status !== 'resolved') return [];
     return held
       .filter((deviceId) => read.optIn[deviceId] !== true)
-      .filter((deviceId) => clearHold(deviceId));
+      .filter((deviceId) => release(deviceId));
   };
 
   // An opt-in cleared while the app was down would otherwise leave the stored
@@ -323,10 +322,23 @@ export const createExternalOffHoldPolicy = (
       // Reconcile opt-outs here too, not only on the settings-change edge. That
       // edge's read can fail, and nothing else would retry it — the device would
       // stay held until the user changed a setting again or turned it on by hand.
-      // This runs once per plan cycle (the pull-path release sweep) and costs
-      // one key-list read while no device is held.
       dropDeOptedHolds();
       return heldDeviceIds();
+    },
+    releaseObservedOnHolds: (selectObservedOn) => {
+      const held = ensureMigrated() ? readHeldDeviceIds() : null;
+      if (held === null) {
+        // Preserve migration retries and blind clears when settings cannot
+        // establish a complete held set for this sweep.
+        return selectObservedOn(policy.heldDeviceIds()).filter(clearHold);
+      }
+      if (held.length === 0) {
+        selectObservedOn(held);
+        return [];
+      }
+      const deOpted = new Set(dropDeOptedHolds(held, unsetHold));
+      const remaining = new Set(held.filter((deviceId) => !deOpted.has(deviceId)));
+      return selectObservedOn([...remaining]).filter((deviceId) => remaining.has(deviceId) && unsetHold(deviceId));
     },
     holdOnRelease: (deviceId) => {
       const optIn = deps.readOptIn();
@@ -367,17 +379,17 @@ export const createExternalOffHoldPolicy = (
  */
 export const migrateExternalOffHoldsToPerKey = (
   store: ExternalOffHoldSettingsStore,
-): void => {
+): boolean => {
   let marker: unknown;
   try {
     marker = store.get(EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED);
   } catch {
-    return;
+    return false;
   }
-  if (marker === true) return;
+  if (marker === true) return true;
 
   const keyList = readSettingsKeyList(store);
-  if (keyList.status !== 'resolved') return;
+  if (keyList.status !== 'resolved') return false;
 
   if (!keyList.keys.includes(EXTERNAL_OFF_HOLDS)) {
     try {
@@ -385,18 +397,19 @@ export const migrateExternalOffHoldsToPerKey = (
     } catch {
       // Retry next boot. Step 3 is reached again and stays correct: the blob is
       // still absent, so nothing is resurrected.
+      return false;
     }
-    return;
+    return true;
   }
 
   let rawBlob: unknown;
   try {
     rawBlob = store.get(EXTERNAL_OFF_HOLDS);
   } catch {
-    return;
+    return false;
   }
   const heldDeviceIds = readLegacyBlobDeviceIds(rawBlob);
-  if (!heldDeviceIds) return;
+  if (!heldDeviceIds) return false;
 
   const present = new Set(keyList.keys);
   try {
@@ -414,7 +427,9 @@ export const migrateExternalOffHoldsToPerKey = (
   } catch {
     // A throw part-way leaves the blob in place and the marker unset, so the
     // next boot re-runs and the absent-only copy finishes what is left.
+    return false;
   }
+  return true;
 };
 
 /**

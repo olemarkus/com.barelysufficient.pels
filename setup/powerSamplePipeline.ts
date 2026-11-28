@@ -380,7 +380,7 @@ export class PowerSamplePipeline {
           feedPhaseLearning(capacityGuard, this.deps.getDeviceSurfaces(), planEngine.state.actuation, nowMs);
           feedPhasePeaks(
             capacityGuard,
-            this.deps.getDeviceSurfaces(),
+            () => this.deps.getDeviceSurfaces(),
             planEngine.computePhasePower(requireLastTotalPowerKw(admittedTracker)),
             nowMs,
           );

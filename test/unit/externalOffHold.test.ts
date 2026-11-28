@@ -580,6 +580,52 @@ describe('external-off hold policy — only a stored hold keeps a released devic
 });
 
 
+describe('observed-on hold sweep', () => {
+  it('lists holds once and clears only the affirmative held device', () => {
+    const store = fakeStore({
+      [EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED]: true,
+      [holdKey('a')]: true,
+      [holdKey('b')]: true,
+    });
+    const policy = build(store);
+    const get = vi.spyOn(store, 'get');
+    const getKeys = vi.spyOn(store, 'getKeys');
+    const unset = vi.spyOn(store, 'unset');
+    const select = vi.fn(() => ['a', 'unheld']);
+
+    expect(policy.releaseObservedOnHolds(select)).toEqual(['a']);
+    expect(select).toHaveBeenCalledExactlyOnceWith(['a', 'b']);
+    expect(get).toHaveBeenCalledExactlyOnceWith(EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED);
+    expect(getKeys).toHaveBeenCalledTimes(1);
+    expect(unset).toHaveBeenCalledExactlyOnceWith(holdKey('a'));
+    expect(store.backing.has(holdKey('b'))).toBe(true);
+  });
+
+  it('tries again for an observed-on hold whose de-opt unset failed', () => {
+    const store = fakeStore({ [EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED]: true, [holdKey('a')]: true });
+    const readOptIn = vi.fn(() => optedIn({ a: true }));
+    const policy = build(store, readOptIn);
+    readOptIn.mockReturnValue(optedIn({}));
+    const unset = vi.spyOn(store, 'unset').mockImplementationOnce(() => { throw new Error('temporary failure'); });
+    const select = vi.fn(() => ['a']);
+
+    expect(policy.releaseObservedOnHolds(select)).toEqual(['a']);
+    expect(select).toHaveBeenCalledExactlyOnceWith(['a']);
+    expect(unset).toHaveBeenCalledTimes(2);
+    expect(store.backing.has(holdKey('a'))).toBe(false);
+  });
+
+  it('runs its selector once and releases known on devices during an unreadable list', () => {
+    const store = fakeStore({ [EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED]: true, [holdKey('a')]: true });
+    const policy = build(store);
+    store.failKeys.current = true;
+    const select = vi.fn(() => ['a']);
+    expect(policy.releaseObservedOnHolds(select)).toEqual([]);
+    expect(select).toHaveBeenCalledExactlyOnceWith([]);
+    expect(store.backing.has(holdKey('a'))).toBe(false);
+  });
+});
+
 describe('the last-resort upgrade', () => {
   it('preserves existing relays without changing the default for later setups', () => {
     const store = fakeStore({
@@ -623,6 +669,18 @@ describe('the last-resort upgrade', () => {
     expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBe(true);
   });
 
+  it('releases a last-resort hold seeded during the same sweep', () => {
+    const store = fakeStore({ [LAST_RESORT_DEVICES]: 'garbage' });
+    const policy = createSettingsExternalOffHoldPolicy(store);
+    store.set(LAST_RESORT_DEVICES, { relay: 6000 });
+    const select = vi.fn(() => ['relay']);
+
+    expect(policy.releaseObservedOnHolds(select)).toEqual(['relay']);
+    expect(select).toHaveBeenCalledExactlyOnceWith(['relay']);
+    expect(store.get(LAST_RESORT_EXTERNAL_OFF_MIGRATED)).toBe(true);
+    expect(store.backing.has(holdKey('relay'))).toBe(false);
+  });
+
   it('keeps last-resort starts gated until a partial migration can finish', () => {
     const store = fakeStore({ [LAST_RESORT_DEVICES]: { relay: 6000 } });
     const set = store.set;
@@ -650,7 +708,7 @@ describe('the last-resort upgrade', () => {
     });
     const policy = createSettingsExternalOffHoldPolicy(store);
     expect(policy.heldDeviceIds()).toEqual(['relay']);
-    policy.clearHold('relay'); // The observation sweep saw the relay turned on.
+    expect(policy.releaseObservedOnHolds(() => ['relay'])).toEqual(['relay']);
     expect(store.get(holdKey('relay'))).toBeNull();
 
     writes.mockRestore();

@@ -141,8 +141,8 @@ export class PlanBuilder {
    * live control's would. The reading, its freshness and every displayed figure
    * stay on the measured tracker.
    */
-  private get pacingTracker(): PowerTrackerState {
-    return this.deps.getCapacityDryRun()
+  private getPacingTracker(dryRun = this.deps.getCapacityDryRun()): PowerTrackerState {
+    return dryRun
       ? this.state.simulatedPeriodEnergy.planningView(this.powerTracker)
       : this.powerTracker;
   }
@@ -198,7 +198,7 @@ export class PlanBuilder {
 
   /** The capacity pace as a plain read: `null` when Capacity limit is off, and no write. */
   private readCapacityPace(settings: PowerLimitSettings, nowTs: number): number | null {
-    return settings.capacityEnabled ? this.resolveCapacityPace(settings, nowTs).paceKw : null;
+    return settings.capacityEnabled ? this.resolveCapacityPace(settings, this.getPacingTracker(), nowTs).paceKw : null;
   }
 
   /**
@@ -213,19 +213,18 @@ export class PlanBuilder {
    * every decision gates on that (`PlanEngineState.capacityPeriodSpentFor`,
    * `PacingGrace`), never on a fact forced to a stand-in.
    */
-  private stampCapacityPace(settings: PowerLimitSettings, nowTs: number): number | null {
-    const resolved = this.resolveCapacityPace(settings, nowTs);
+  private stampCapacityPace(settings: PowerLimitSettings, tracker: PowerTrackerState, nowTs: number): number | null {
+    const resolved = this.resolveCapacityPace(settings, tracker, nowTs);
     this.state.hourlyRemainingKWh = resolved.remainingKWh;
     this.state.hourlyBudgetExhausted = resolved.hourlyBudgetExhausted;
     return settings.capacityEnabled ? resolved.paceKw : null;
   }
 
-  private resolveCapacityPace(settings: PowerLimitSettings, nowTs: number): {
+  private resolveCapacityPace(settings: PowerLimitSettings, tracker: PowerTrackerState, nowTs: number): {
     paceKw: number;
     remainingKWh: number;
     hourlyBudgetExhausted: boolean;
   } {
-    const tracker = this.pacingTracker;
     const drainStart = this.state.capacityDrainStart.startFor(settings, tracker, nowTs);
     const result = computeDynamicSoftLimit(settings, tracker, nowTs, drainStart);
     return {
@@ -254,7 +253,7 @@ export class PlanBuilder {
   }
 
   public computeShortfallThreshold(): number | null {
-    return resolveShortfallThresholdKw(this.capacitySettings, this.pacingTracker, Date.now());
+    return resolveShortfallThresholdKw(this.capacitySettings, this.getPacingTracker(), Date.now());
   }
 
   /**
@@ -275,14 +274,16 @@ export class PlanBuilder {
     settings: PowerLimitSettings,
     nowTs: number,
   ): Promise<CapacityPlanLimit> {
-    this.accrueSimulatedPeriodEnergy();
-    const paceKw = this.stampCapacityPace(settings, nowTs);
+    const dryRun = this.deps.getCapacityDryRun();
+    this.accrueSimulatedPeriodEnergy(dryRun);
+    const tracker = this.getPacingTracker(dryRun);
+    const paceKw = this.stampCapacityPace(settings, tracker, nowTs);
     if (paceKw === null) {
       await this.capacityGuard.recordCapacityDisabled();
       return { kind: 'off' };
     }
     return {
-      kind: 'on', paceKw, shortfallThresholdKw: computeShortfallThreshold(settings, this.pacingTracker, nowTs),
+      kind: 'on', paceKw, shortfallThresholdKw: computeShortfallThreshold(settings, tracker, nowTs),
     };
   }
 
@@ -350,7 +351,7 @@ export class PlanBuilder {
       const cycleContext = buildPlanContext(
         decoration.admittedDevices,
         settings,
-        this.pacingTracker,
+        this.getPacingTracker(),
         // Every stage reads the capacity axis with the timed-run allowance.
         buildPlanLimits(
           settings, timedRun.limit, this.computeDailySoftLimit(dailyBudgetSnapshot, installations.usageDevices, nowTs),
@@ -374,7 +375,7 @@ export class PlanBuilder {
     // drew as the level the drain falls from (`CapacityDrainStart`). Before
     // that, this build's pace already started from the same draw.
     this.state.capacityDrainStart.record(
-      settings, this.pacingTracker, nowTs, this.resolvePacingDrawKw(reading.totalKw),
+      settings, this.getPacingTracker(), nowTs, this.resolvePacingDrawKw(reading.totalKw),
     );
     const power = resolveMeasuredPower(reading, context, installations.usageDevices, this.deps.getMainFuse());
     // Smart-task precedence for the standing postures, shared by the
@@ -695,8 +696,8 @@ export class PlanBuilder {
    * Simulation counts what its last plan would have kept off the meter since
    * that plan's reading; a build that actuates drops the count.
    */
-  private accrueSimulatedPeriodEnergy(): void {
-    if (this.deps.getCapacityDryRun()) {
+  private accrueSimulatedPeriodEnergy(dryRun: boolean): void {
+    if (dryRun) {
       this.state.simulatedPeriodEnergy.accrue(this.powerTracker);
       return;
     }
@@ -717,7 +718,7 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     nowTs: number,
   ): DailySoftLimitResolution | null {
-    const bucket = resolveDailySoftLimitBucket(snapshot, this.pacingTracker, nowTs);
+    const bucket = resolveDailySoftLimitBucket(snapshot, this.getPacingTracker(), nowTs);
     if (!bucket) return null;
     // No `?? 0` here any more. The sum used to return `null` when exempt devices
     // existed but none reported power, and defaulting that to 0 shortened the

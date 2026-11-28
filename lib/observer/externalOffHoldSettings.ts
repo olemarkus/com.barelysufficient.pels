@@ -100,25 +100,37 @@ export function createExternalOffHoldPolicy(
       return read;
     },
   });
+  const retryMigration = (): void => {
+    if (migrated) return;
+    // The retry may change persisted opt-ins before the next read succeeds.
+    lastGoodOptIn = null;
+    migrated = migrateLastResortExternalOff(store, lastResort, observedOnDuringMigration);
+    if (migrated) observedOnDuringMigration.clear();
+  };
+
+  const rememberObservedOn = (id: string): void => {
+    // A retry must respect ON even if PELS switches the relay off in between.
+    if (!migrated && lastResort.isConfigured(id)) observedOnDuringMigration.add(id);
+  };
+
   return {
     ...policy,
     isHeld: (id) => (!migrated && lastResort.isConfigured(id)) || policy.isHeld(id),
     clearHold: (id) => {
-      // A later retry must not re-seed the hold after an accepted ON. PELS
-      // may itself switch the relay off between the observation and retry.
-      if (!migrated && lastResort.isConfigured(id)) observedOnDuringMigration.add(id);
+      rememberObservedOn(id);
       return policy.clearHold(id);
     },
     heldDeviceIds: () => {
-      // This is called by the affirmative ON sweep before each planner input
-      // build. Retry here so any newly seeded holds are released on that sweep.
-      if (!migrated) {
-        // A retry can change the persisted opt-ins before the next read succeeds.
-        lastGoodOptIn = null;
-        migrated = migrateLastResortExternalOff(store, lastResort, observedOnDuringMigration);
-        if (migrated) observedOnDuringMigration.clear();
-      }
+      retryMigration();
       return policy.heldDeviceIds();
+    },
+    releaseObservedOnHolds: (selectObservedOn) => {
+      retryMigration();
+      return policy.releaseObservedOnHolds((held) => {
+        const observedOn = selectObservedOn(held);
+        if (!migrated) observedOn.forEach(rememberObservedOn);
+        return observedOn;
+      });
     },
   };
 }

@@ -32,8 +32,8 @@ import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 const buildPaceBuilder = (params: {
   state: PlanEngineState;
   getPowerTracker: () => PowerTrackerState;
-}): PlanBuilder => new PlanBuilder({
-  ...planBuilderWiring(),
+}, wiring = planBuilderWiring()): PlanBuilder => new PlanBuilder({
+  ...wiring,
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: params.getPowerTracker,
@@ -53,6 +53,22 @@ describe('capacity pace: the build stamps, everyone else reads', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each([false, true])('reads dry-run once for the synchronous capacity stage (%s)', async (dryRun) => {
+    const state = createPlanEngineState();
+    const getCapacityDryRun = vi.fn(() => dryRun);
+    const getDailyBudgetSnapshot = vi.fn(() => {
+      expect(getCapacityDryRun).toHaveBeenCalledTimes(1);
+      return null;
+    });
+    const builder = buildPaceBuilder({ state, getPowerTracker: () => trackerWithHourUsage(1) }, {
+      ...planBuilderWiring(), getCapacityDryRun, getDailyBudgetSnapshot,
+    });
+
+    await builder.buildDevicePlanSnapshot([]);
+    expect(getDailyBudgetSnapshot).toHaveBeenCalledTimes(1);
+    expect(state.hourlyRemainingKWh).toBe(4);
   });
 
   it('a pace read outside a build leaves the hour the build stamped', async () => {

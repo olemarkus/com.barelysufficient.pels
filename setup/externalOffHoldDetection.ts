@@ -313,10 +313,11 @@ export function releaseExternalOffHoldsForObservedOn(params: {
     policy, deviceIds, isObservedOn, onObservedOn,
   } = params;
   if (!policy) return [];
-  const observedOn = Array.from(new Set([...policy.heldDeviceIds(), ...deviceIds]))
-    .filter((deviceId) => isObservedOn(deviceId));
-  for (const deviceId of observedOn) onObservedOn?.(deviceId);
-  const released = observedOn.filter((deviceId) => policy.clearHold(deviceId));
+  const released = policy.releaseObservedOnHolds((held) => {
+    const observedOn = Array.from(new Set([...held, ...deviceIds])).filter(isObservedOn);
+    for (const deviceId of observedOn) onObservedOn?.(deviceId);
+    return observedOn;
+  });
   for (const deviceId of released) {
     emitReconcileDebug({ event: 'external_off_hold_cleared', deviceId, cause: 'observed_on_sweep' });
   }
