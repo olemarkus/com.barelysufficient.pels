@@ -72,14 +72,15 @@ const resolveFrozenReadInputs = (
     activePlans,
   );
   if (activePlan === undefined) return null;
+  const { latest } = activePlan;
   // Keep the existing all-elapsed recovery on the hourly clock. Ending the last
   // quarter is a control transition, not permission for an extra allocation.
   const currentHourStartMs = Math.floor(nowMs / 3_600_000) * 3_600_000;
   // An idle task still governs the intervals it intentionally did not book.
-  if (!keepElapsedSchedule && !activePlan.commitmentHours.some((hour) => hour.endsAtMs > currentHourStartMs)) {
+  if (!keepElapsedSchedule && latest.partialPriceSchedule?.fallbackStartsAtMs === undefined
+    && !activePlan.commitmentHours.some((hour) => hour.endsAtMs > currentHourStartMs)) {
     return null;
   }
-  const { latest } = activePlan;
   return {
     planStatus: latest.planStatus,
     floorShortfallCause: toKnownFloorShortfallCause(latest.floorShortfallCause),
@@ -89,6 +90,7 @@ const resolveFrozenReadInputs = (
     // frozen path never falls back to the commitment floor for control data.
     hours: latest.hours,
     drawWindows: resolveDrawWindows(latest, objective.deadlineAtMs),
+    ...(latest.partialPriceSchedule === undefined ? {} : { partialPriceSchedule: latest.partialPriceSchedule }),
   };
 };
 

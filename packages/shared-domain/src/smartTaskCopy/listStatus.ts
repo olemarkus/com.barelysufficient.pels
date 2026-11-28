@@ -393,7 +393,7 @@ type SmartTaskListStatusPlan = Pick<
   DeferredObjectiveActivePlanV1,
   'pending' | 'pendingReason' | 'diagnosticReasonCode' | 'liveCompletion' | 'carChargeLimit' | 'targetValue'
 > & {
-  latest: Pick<DeferredObjectiveActivePlanRevisionV1, 'planStatus' | 'hours'> | null;
+  latest: Pick<DeferredObjectiveActivePlanRevisionV1, 'planStatus' | 'hours' | 'partialPriceSchedule'> | null;
 };
 
 export const resolveSmartTaskListStatus = (

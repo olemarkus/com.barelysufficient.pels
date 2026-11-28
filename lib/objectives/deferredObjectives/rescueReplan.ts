@@ -2,14 +2,17 @@ import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import {
   buildDeferredObjectivePolicyHorizon,
   resolveDeferredObjectivePowerLimit,
+  resolveKnownPriceCoverageEnd,
   type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePolicyHorizonResult,
 } from './policyHorizon';
 import type { ScheduledDeferredObjective } from './priorityAllocation';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
-import { resolveCommittedHours } from './resolveCommittedHours';
+import type { ResolvedActiveCommittedPlan } from './resolveCommittedHours';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
 import { smoothEvChargingPlan } from './evChargingSessionSmoothing';
+import { withPartialPriceSchedule } from './partialPriceSchedule';
+import { getActiveObjectiveSteps, normalizeObjectiveSteps } from './stepSelection';
 
 // Reserve a flat 1-hour safety buffer before the deadline. The horizon planner
 // allocates into the primary window (now → deadline − reserve) first and only dips
@@ -44,12 +47,13 @@ export const resolveHorizonPlanWithRescue = (
   task: ScheduledDeferredObjective,
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>,
   steps: DeferredObjectiveStep[],
-  commitment: ReturnType<typeof resolveCommittedHours>,
+  activeCommitment: ResolvedActiveCommittedPlan | undefined,
   aheadOfHourMilestone: boolean,
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>,
   horizonInputs: DeferredObjectivePolicyHorizonInputs,
 ): DeferredObjectiveHorizonPlan => {
   const { deviceId, objective } = task;
+  const commitment = activeCommitment?.commitmentHours;
   // `fullyReserved` resolved here, at the rescue boundary that already owns
   // rescue-permission interpretation. Three conjuncts:
   //  1. exempt-from-budget `'always'` lifts the soft daily-budget cap.
@@ -69,6 +73,8 @@ export const resolveHorizonPlanWithRescue = (
     && rescuePermissions.budgetExempt
     && rescuePermissions.limitLowerPriority;
   const powerLimit = resolveDeferredObjectivePowerLimit(horizonInputs.powerLimits, horizonInputs.hasSolarProduction);
+  const coveredUntilMs = resolveKnownPriceCoverageEnd(horizonInputs);
+  const isPartial = coveredUntilMs !== null && coveredUntilMs < objective.deadlineAtMs;
   const planForBuckets = (
     buckets: ResolvedHorizonBuckets,
   ): DeferredObjectiveHorizonPlan => {
@@ -92,9 +98,18 @@ export const resolveHorizonPlanWithRescue = (
         : { kind: 'committed', hours: commitment },
       aheadOfHourMilestone,
     });
-    return task.prefersContinuousCharging
+    const pricedPlan = task.prefersContinuousCharging
       ? smoothEvChargingPlan(plan, steps, horizonInputs.priceHorizon, commitment)
       : plan;
+    if (!isPartial || pricedPlan.status === 'satisfied' || pricedPlan.status === 'invalid') return pricedPlan;
+    const ceilingKw = powerLimit.kind === 'limited' ? powerLimit.admissionCeilingKw : null;
+    const slowest = getActiveObjectiveSteps(normalizeObjectiveSteps(steps))
+      .find((step) => ceilingKw === null || step.admissionPowerKw <= ceilingKw);
+    return withPartialPriceSchedule(
+      { ...pricedPlan, pricesAvailableUpToMs: coveredUntilMs },
+      slowest?.usefulPowerKw,
+      activeCommitment?.latest.partialPriceSchedule,
+    );
   };
 
   if (!rescuePermissions.budgetExempt) {

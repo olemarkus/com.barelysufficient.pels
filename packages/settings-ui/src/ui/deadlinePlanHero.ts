@@ -151,7 +151,7 @@ export const resolveDeadlineHeroTone = (
 // headline. Without a plan to read, the booked hour is all there is to go on.
 export const resolveHeroHeadline = (
   labels: DeadlineLabels,
-  firstChargingHour: HorizonHour | undefined,
+  firstChargingHour: Pick<HorizonHour, 'startsAtMs'> | undefined,
   nowMs: number,
   tone: DeadlinePlanHeroTone,
   liveCause: SmartTaskLiveCause | null,
@@ -186,7 +186,7 @@ export const resolveHeroHeadline = (
 // schedule chart's bars.
 export const resolveQueuedHeadlineReason = (
   labels: DeadlineLabels,
-  firstChargingHour: HorizonHour | undefined,
+  firstChargingHour: Pick<HorizonHour, 'startsAtMs'> | undefined,
   nowMs: number,
   cannotMeet: boolean,
   deadlineAtMs: number,
@@ -352,6 +352,44 @@ const resolveFiniteNumber = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
+const resolveHeroScheduleHeadline = (
+  input: ObjectivePayloadReady,
+  schedule: DeadlinePlanSchedule,
+  tone: DeadlinePlanHeroTone,
+  liveCause: SmartTaskLiveCause | null,
+) => {
+  const { activePlan, deadlineAtMs, deviceStatus, nowMs } = input.ctx;
+  const { currentChargeByStartMs, labels, planStatus } = schedule;
+  const partialPriceSchedule = activePlan.latest.partialPriceSchedule;
+  const fallbackStartAtMs = partialPriceSchedule?.fallbackStartsAtMs;
+  const pricedStart = input.hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs)
+    && (partialPriceSchedule === undefined || hour.endMs > nowMs));
+  const firstChargingHour = fallbackStartAtMs !== undefined
+    && (pricedStart === undefined || fallbackStartAtMs < pricedStart.startsAtMs)
+    ? { startsAtMs: fallbackStartAtMs } : pricedStart;
+  return {
+    headline: resolveHeroHeadline(
+      labels, firstChargingHour, nowMs, tone, liveCause, deviceStatus === null || deviceStatus.kind === 'active',
+    ),
+    headlineReason: partialPriceSchedule !== undefined ? null : resolveQueuedHeadlineReason(
+      labels,
+      firstChargingHour,
+      nowMs,
+      isCannotMeetStatus(planStatus),
+      deadlineAtMs,
+      resolveFiniteNumber(activePlan.latest.computedFromPricesUpTo),
+      resolvePlannedWindowCheaperThanNow(input.hours, currentChargeByStartMs, nowMs),
+    ),
+  };
+};
+
+const resolveEstimatedPlanCost = (input: ObjectivePayloadReady, plannedTotalCost: number): string | null => (
+  input.ctx.activePlan.latest.partialPriceSchedule?.fallbackWindows.length ? null : formatEstimatedCostStatValue({
+    plannedTotalCost,
+    costUnit: input.costDisplay.unit,
+  })
+);
+
 // Resolves the "Delivered X kWh · …" subline: the energy delivered so far beside
 // the reading. A battery-level or temperature task states no energy total: what
 // is still needed is the Needs stat, which follows the reading, and a total built
@@ -386,7 +424,7 @@ export const buildHero = (
   schedule: DeadlinePlanSchedule,
 ): DeadlinePlanPayload['hero'] => {
   const { ctx, energy } = input;
-  const { activePlan, nowMs } = ctx;
+  const { activePlan } = ctx;
   const { labels, planStatus, currentChargeByStartMs } = schedule;
   if (planStatus === 'device_idle') {
     const { currentValue, targetValue } = input.progress;
@@ -429,7 +467,6 @@ export const buildHero = (
   const liveCause = resolveSmartTaskLiveCause(activePlan.diagnosticReasonCode, carChargeLimit, budgetRole);
   const cannotMeet = isCannotMeetStatus(planStatus);
   const tone = resolveDeadlineHeroTone(planStatus);
-  const firstChargingHour = input.hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const costAndDelivery = resolveLiveCostAndDelivery(input, currentChargeByStartMs);
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
   const target = formatTarget(ctx.objective);
@@ -454,10 +491,7 @@ export const buildHero = (
   ];
   // Non-finite / no-unit values suppress the stat at the formatter: Flow /
   // Homey schemes without a unit don't get a misleading Norwegian-specific label.
-  const estimatedCost = formatEstimatedCostStatValue({
-    plannedTotalCost: costAndDelivery.plannedTotalCost,
-    costUnit: input.costDisplay.unit,
-  });
+  const estimatedCost = resolveEstimatedPlanCost(input, costAndDelivery.plannedTotalCost);
   if (estimatedCost !== null) {
     stats.push({ label: SMART_TASK_HERO_STAT_LABELS.cost, value: estimatedCost });
   }
@@ -480,20 +514,7 @@ export const buildHero = (
   return {
     chips: buildHeroChips(labels, resolveHeroStatusChip({ labels, planStatus }), confidenceChipText),
     tone,
-    headline: resolveHeroHeadline(
-      labels, firstChargingHour, nowMs, tone, liveCause,
-      ctx.deviceStatus === null || ctx.deviceStatus.kind === 'active',
-    ),
-    headlineReason: resolveQueuedHeadlineReason(
-      labels,
-      firstChargingHour,
-      nowMs,
-      cannotMeet,
-      ctx.deadlineAtMs,
-      resolveFiniteNumber(activePlan.latest.computedFromPricesUpTo),
-      // Resolved from the same hour set the timeline + cost sums consume.
-      resolvePlannedWindowCheaperThanNow(input.hours, currentChargeByStartMs, nowMs),
-    ),
+    ...resolveHeroScheduleHeadline(input, schedule, tone, liveCause),
     subline,
     stats,
     metaLine,

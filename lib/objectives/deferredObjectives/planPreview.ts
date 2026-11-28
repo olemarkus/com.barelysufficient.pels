@@ -1,5 +1,7 @@
 import { resolveFloorShortfallCause } from './floorShortfallCause';
-import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
+import {
+  hoursWithPlannedEnergy, scheduledTaskIntervals,
+} from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import type { PowerLimitAxis, PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { powerLimitsAt } from '../../power/heldCapacityLimit';
@@ -240,7 +242,12 @@ const buildEstimateFromDiagnostic = (
   }
   // The hours the device is planned to run; a 0 kWh booking promises nothing to show.
   const scheduledHours: DeferredObjectivePlanPreviewInterval[] = hoursWithPlannedEnergy(
-    buildHoursFromHorizonPlan(diag.evaluation) ?? [],
+    scheduledTaskIntervals({
+      hours: buildHoursFromHorizonPlan(diag.evaluation) ?? [],
+      ...(diag.horizonPlan.partialPriceSchedule === undefined ? {} : {
+        partialPriceSchedule: diag.horizonPlan.partialPriceSchedule,
+      }),
+    }),
   );
   const priceHorizon = buildPriceHorizon(nowMs, deadlineAtMs);
   const cost = resolveCostEstimate(diag.horizonPlan, priceHorizon);
@@ -328,6 +335,7 @@ const resolveCostEstimate = (
   horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
   priceHorizon: readonly PriceHorizonEntry[],
 ): number | null => {
+  if (horizonPlan.partialPriceSchedule?.fallbackWindows.length) return null;
   const pricesByBucketId = buildDeferredObjectivePolicyBucketPrices(priceHorizon);
   if (pricesByBucketId.size === 0) return null;
   let cost = 0;

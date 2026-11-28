@@ -2538,15 +2538,15 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeDefined();
   });
 
-  it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
+  it('rolls a past local deadline to tomorrow and allocates the known prices', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '16:00' })),
       dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }),
     });
 
     expect(diagnostic).toMatchObject({
-      trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
-      reasonCode: 'objective_missing_price_horizon',
+      trajectory: { kind: 'resolved', status: 'on_track' },
+      horizonPlan: { partialPriceSchedule: { fallbackWindows: [] } },
       currentPercent: 40,
       energyNeededKWh: 4,
       kWhPerUnitBanded: 0.2,

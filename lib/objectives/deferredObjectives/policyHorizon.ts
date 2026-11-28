@@ -138,12 +138,11 @@ export const resolveDeferredObjectivePowerLimit = (
   return { kind: 'limited', admissionCeilingKw };
 };
 
-// Availability depends only on the price source, never budget overlays or
-// reservations. Walk the unsplit spans in the same order as the bucket builder.
-export const resolveDeferredObjectivePolicyHorizonReason = (
-  inputs: DeferredObjectivePolicyHorizonInputs,
-): DeferredObjectivePolicyHorizonUnavailableReason | null => {
-  if (!inputs.priceOptimizationEnabled) return 'objective_price_feature_disabled';
+// A continuous prefix can be scheduled even when tomorrow's prices have not
+// been published. A hole before another priced period stays a read gap.
+export const resolveKnownPriceCoverageEnd = (
+  inputs: Pick<DeferredObjectivePolicyHorizonInputs, 'nowMs' | 'deadlineAtMs' | 'priceHorizon'>,
+): number | null => {
   let coveredUntilMs = inputs.nowMs;
   for (const entry of inputs.priceHorizon) {
     if (entry.endMs <= inputs.nowMs || entry.startMs >= inputs.deadlineAtMs) continue;
@@ -151,11 +150,18 @@ export const resolveDeferredObjectivePolicyHorizonReason = (
     const startMs = Math.min(entry.startMs, entry.endMs);
     const endMs = Math.max(entry.startMs, entry.endMs);
     if (endMs === startMs) continue;
-    if (startMs > coveredUntilMs) return 'objective_missing_price_horizon';
+    if (startMs > coveredUntilMs) return null;
     if (endMs > coveredUntilMs) coveredUntilMs = endMs;
-    if (coveredUntilMs >= inputs.deadlineAtMs) return null;
+    if (coveredUntilMs >= inputs.deadlineAtMs) return coveredUntilMs;
   }
-  return 'objective_missing_price_horizon';
+  return coveredUntilMs > inputs.nowMs ? coveredUntilMs : null;
+};
+
+export const resolveDeferredObjectivePolicyHorizonReason = (
+  inputs: DeferredObjectivePolicyHorizonInputs,
+): DeferredObjectivePolicyHorizonUnavailableReason | null => {
+  if (!inputs.priceOptimizationEnabled) return 'objective_price_feature_disabled';
+  return resolveKnownPriceCoverageEnd(inputs) === null ? 'objective_missing_price_horizon' : null;
 };
 
 export const resolveDeadlineAwarePolicyHorizonReason = (

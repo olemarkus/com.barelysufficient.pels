@@ -312,14 +312,16 @@ export const resolveProjectedFinishAtMs = (
       lastPlannedBucket = bucket;
     }
   }
-  if (lastPlannedBucket === null) return null;
+  const fallbackFinish = horizonPlan.partialPriceSchedule?.fallbackWindows.at(-1)?.endsAtMs ?? null;
+  if (lastPlannedBucket === null) return fallbackFinish;
   const bucketDurationMs = lastPlannedBucket.endMs - lastPlannedBucket.startMs;
-  if (bucketDurationMs <= 0) return null;
+  if (bucketDurationMs <= 0) return fallbackFinish;
   const capacity = lastPlannedBucket.usefulEnergyCapacityKWh;
   const fraction = capacity > 0
     ? Math.min(1, Math.max(0, lastPlannedBucket.plannedUsefulEnergyKWh / capacity))
     : 1;
-  return Math.round(lastPlannedBucket.startMs + fraction * bucketDurationMs);
+  const pricedFinish = Math.round(lastPlannedBucket.startMs + fraction * bucketDurationMs);
+  return Math.max(pricedFinish, fallbackFinish ?? pricedFinish);
 };
 
 // User-facing notification gate. Fires when total scheduled duration changes;

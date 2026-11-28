@@ -231,14 +231,26 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isFiniteOrNull(v.computedFromPricesUpTo)
     && isReason(v.reason)
     && isOptionalProgressDirection(v.progressDirection)
-    && Array.isArray(v.hours)
-    && v.hours.every(isPlanHour)
-    && isOptionalReservationSegments(v.reservationSegments)
+    && hasValidRevisionSchedule(v)
     && isOptionalAllocationRank(v.allocationRank)
     && isOptionalNonEmptyString(v.allocationContextSignature)
     && isOptionalLowerPriorityContext(v.lowerPriorityContext)
     && hasValidRevisionEnergyFields(v)
     && hasValidRevisionDurationFields(v);
+};
+
+const hasValidRevisionSchedule = (v: Record<string, unknown>): boolean => (
+  Array.isArray(v.hours) && v.hours.every(isPlanHour)
+  && isOptionalPartialPriceSchedule(v.partialPriceSchedule)
+  && isOptionalReservationSegments(v.reservationSegments)
+);
+
+const isOptionalPartialPriceSchedule = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || !('fallbackWindows' in value)) return false;
+  const fallbackStartsAtMs = 'fallbackStartsAtMs' in value ? value.fallbackStartsAtMs : undefined;
+  return Array.isArray(value.fallbackWindows) && value.fallbackWindows.every(isPlanHour)
+    && (fallbackStartsAtMs === undefined || isFiniteNumber(fallbackStartsAtMs));
 };
 
 const isProvenanceConfidence = (value: unknown): value is 'low' | 'medium' | 'high' | null => (

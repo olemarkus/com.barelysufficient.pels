@@ -103,6 +103,13 @@ export type DeferredObjectiveActivePlanCommitmentV1 = {
   hours: DeferredObjectivePlanInterval[];
 };
 
+/** Projected work on available power while the rest of the prices are unpublished. */
+export type DeferredObjectivePartialPriceSchedule = {
+  fallbackWindows: DeferredObjectivePlanInterval[];
+  /** Once this time has passed, available-power work stays enabled through the deadline. */
+  fallbackStartsAtMs?: number;
+};
+
 // Mirrors `DeferredObjectiveHorizonStatus` in `lib/objectives/deferredObjectives/types`.
 // Duplicated here because contracts must stay browser-safe and cannot import
 // from `lib/`.
@@ -139,6 +146,7 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // heating-only records written before directional thermostat planning.
   progressDirection?: 'increasing' | 'decreasing' | 'unknown';
   hours: DeferredObjectivePlanInterval[];
+  partialPriceSchedule?: DeferredObjectivePartialPriceSchedule;
   reservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
   // Total energy the planner thinks is required to meet the deadline. Lets the
   // UI render a meaningful timeline even when allocated hours sum to zero
