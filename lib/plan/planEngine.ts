@@ -42,6 +42,7 @@ export type PlanEngine = {
   handleShortfall: (deficitKw: number) => Promise<void>;
   handleShortfallCleared: () => Promise<void>;
   applyPlanActions: (plan: ExecutionPlan) => Promise<PlanActuationResult>;
+  hasDischargeHoldReleaseWork?: () => boolean;
   isInverterReleaseRecoveryReady: () => boolean;
   getPendingInverterReleaseCount: (plan: ExecutionPlan) => number;
   hasPendingSharedChargingPause: (plan: ExecutionPlan) => boolean;

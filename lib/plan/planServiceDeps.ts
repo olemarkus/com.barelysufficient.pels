@@ -36,6 +36,7 @@ type PlanServicePlanEngine = Pick<
   | 'handleShortfall'
   | 'handleShortfallCleared'
   | 'applyPlanActions'
+  | 'hasDischargeHoldReleaseWork'
   | 'isInverterReleaseRecoveryReady'
   | 'getPendingInverterReleaseCount'
   | 'hasPendingSharedChargingPause'

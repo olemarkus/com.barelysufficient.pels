@@ -120,6 +120,8 @@ export class DeferredObjectiveDecorationController {
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions, devices),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
+      ...(devices.some(device => isEvDevice(device) && admitted.get(device.id)?.kind === 'planned')
+        ? { bookedEvTask: true as const } : {}),
       lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
       externalOffHoldLiftedDeviceIds: admission.externalOffHoldLiftedDeviceIds,
     };

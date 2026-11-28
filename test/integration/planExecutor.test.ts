@@ -446,6 +446,44 @@ describe('PlanExecutor shortfall side-effect retry', () => {
   });
 });
 
+describe('PlanExecutor EV discharge hold', () => {
+  const activePlan = () => buildExecutionPlan({ ...buildPlan(), devices: [], activeEvTask: true });
+
+  it('delivers an admitted EV task to the hold lane without awaiting cloud work', async () => {
+    const hasWork = vi.fn((hold: boolean) => hold);
+    const apply = vi.fn((_hold: boolean, _canHold: () => boolean) => new Promise<void>(() => {}));
+    const { executor } = buildExecutor(undefined, [], { evDischargeHold: { hasWork, apply } });
+    const plan = activePlan();
+
+    expect(executor.hasExecutionWorkOutstanding(plan, 0)).toBe(true);
+    const outcome = await Promise.race([
+      executor.applyPlanActions(plan).then(() => 'applied'),
+      new Promise<'pending'>((resolve) => { setTimeout(() => resolve('pending'), 0); }),
+    ]);
+
+    expect(outcome).toBe('applied');
+    expect(apply).toHaveBeenCalledExactlyOnceWith(true, expect.any(Function));
+    expect(apply.mock.calls[0]![1]()).toBe(true);
+  });
+
+  it('submits only release intent during capacity simulation even when an EV task is admitted', async () => {
+    const hasWork = vi.fn((hold: boolean) => !hold);
+    const apply = vi.fn<(hold: boolean, canHold: () => boolean) => void>();
+    const { executor } = buildExecutor(undefined, [], {
+      evDischargeHold: { hasWork, apply },
+      getCapacityDryRun: () => true,
+    });
+
+    expect(executor.hasDischargeHoldReleaseWork()).toBe(true);
+    expect(hasWork).toHaveBeenCalledExactlyOnceWith(false);
+
+    await executor.applyPlanActions(activePlan());
+
+    expect(apply).toHaveBeenCalledExactlyOnceWith(false, expect.any(Function));
+    expect(apply.mock.calls[0]![1]()).toBe(false);
+  });
+});
+
 describe('PlanExecutor declined actuator requests', () => {
   it('does not record a fenced binary request as a write or leave pending state', async () => {
     const state = createPlanEngineState();

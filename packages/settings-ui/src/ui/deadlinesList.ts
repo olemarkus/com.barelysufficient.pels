@@ -71,6 +71,7 @@ import {
   type DeadlinesHistoryListState,
 } from './views/DeadlinesHistoryList.tsx';
 import { renderModePreparationPanel } from './views/ModePreparationPanel.tsx';
+import { mountDeyeDischargeHold } from './deyeDischargeHold.tsx';
 
 // The card's line beside the target: the same live cause the widget and the
 // detail hero name (stopped taking power, the car's own limit
@@ -306,6 +307,7 @@ let schedulesNotRunning = 0;
 export const refreshDeadlinesList = async (): Promise<void> => {
   const surface = getSurface();
   if (!surface) return;
+  mountDeyeDischargeHold();
   void refreshModePreparation();
   const generation = ++refreshGeneration;
   renderDeadlinesList(surface, { status: 'loading' }, listActions);

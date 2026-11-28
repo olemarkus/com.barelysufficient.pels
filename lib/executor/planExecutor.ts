@@ -46,6 +46,7 @@ import { resolveDeviceExecutionState, resolvePlannedCommandValues } from './devi
 import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
 import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 import type { ChargingPhaseOwner } from '../ports/chargingPhases';
+import type { EvDischargeHoldLane } from '../ports/evDischargeHold';
 import { ChargingPhaseExecutor } from './chargingPhaseExecutor';
 
 const logger = getLogger('executor/plan');
@@ -101,6 +102,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
    * no storage lane at all.
    */
   storageLane: StorageLaneBinding;
+  evDischargeHold?: EvDischargeHoldLane;
   inverterLane: import('../ports/inverterControl').InverterExecution;
 };
 
@@ -485,11 +487,14 @@ export class PlanExecutor {
   public hasExecutionWorkOutstanding(plan: ExecutionPlan, observationRevisionAtBuild: number): boolean {
     if (this.getObservationRevision() !== observationRevisionAtBuild) return false;
     return plan.devices.some((device) => device.stepDownToRetire !== undefined)
+      || this.deps.evDischargeHold?.hasWork(plan.activeEvTask === true) === true
       || this.deps.inverterLane.hasWork(plan.inverterDecisions)
       || plan.chargingPhaseDecisions.length > 0
       || plan.devices.some(({ commands }) => hasBinaryCommand(commands) && this.relayShed.allowsRepeat(commands.binary))
       || hasPlanExecutionDriftAgainstIntent(plan, this.driftObservationDeps());
   }
+
+  public hasDischargeHoldReleaseWork(): boolean { return this.deps.evDischargeHold?.hasWork(false) === true; }
 
   public isInverterReleaseRecoveryReady(): boolean { return this.deps.inverterLane.releaseRecoveryReady(); }
 
@@ -536,6 +541,7 @@ export class PlanExecutor {
 
   public async applyPlanActions(plan: ExecutionPlan): Promise<PlanActuationResult> {
     if (this.deps.getCapacityDryRun()) {
+      this.deps.evDischargeHold?.apply(false, () => false);
       const phases = await this.chargingPhases.apply(
         plan.chargingPhaseDecisions.filter((decision) => decision.kind === 'release'), Date.now(),
       );
@@ -573,6 +579,7 @@ export class PlanExecutor {
         }),
         phaseWork,
       ]);
+      this.deps.evDischargeHold?.apply(plan.activeEvTask === true, () => !this.deps.getCapacityDryRun());
       const inverterResult = await this.deps.inverterLane.apply(plan.inverterDecisions);
       return {
         ...result,

@@ -431,7 +431,10 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH)]: () => async () => {
     throw new Error('Configure a car association handler to test clearing confirmation');
   },
-  [buildRouteKey('GET', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
+  [buildRouteKey('GET', CHARGING_ACCESS_PATH)]: () => async ({ uri }) => {
+    const provider = new URLSearchParams(uri.split('?')[1]).get('provider');
+    return provider === 'deye' ? { enabled: false, state: 'disabled' } : { configured: false, state: 'not_configured' };
+  },
   [buildRouteKey('POST', CHARGING_ACCESS_CHECK_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
   [buildRouteKey('DELETE', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
   [buildRouteKey('PUT', CHARGING_ACCESS_PATH)]: () => async () => {

@@ -464,8 +464,8 @@ export class PlanBuilder {
     );
     return {
       plan: installations.withSwitches({
-        meta,
-        devices: decidedDevices,
+        meta, devices: decidedDevices,
+        ...(decoration.bookedEvTask ? { activeEvTask: true as const } : {}),
         ...(restoreResult.lastResortPriorityHold !== null ? { ordinaryStartsHeld: true as const } : {}),
         inverterDecisions: this.decideInverters(
           power, sheddingPlan, decidedDevices, restoreResult, storageRelief, nowTs,
