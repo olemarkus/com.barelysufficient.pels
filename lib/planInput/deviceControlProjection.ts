@@ -1,5 +1,7 @@
 import type {
+  DeviceControlAdapterSnapshot,
   DeviceControlModel,
+  MeasuredPowerObservedProbe,
   ObservedDeviceState,
   ReportedStepObservedProbe,
   SteppedLoadProfile,
@@ -8,6 +10,7 @@ import {
   getSteppedLoadStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { resolveCurrentActionStep } from '../executor/currentActionStep';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
 import { resolveCurrentOn, resolveSelectedStepId } from '../observer/observedState';
 import { resolveTemperatureDeniedControlModel } from './temperatureControlDenial';
@@ -23,8 +26,12 @@ import { projectLifecycleFallbackDevice } from './lifecycleFallbackDeviceProject
  * passes without claiming fields it does not carry.
  */
 export type DeviceControlProjectionSource = Pick<ObservedDeviceState, 'id' | 'binaryControl'>
-  & ReportedStepObservedProbe
-  & { controlModel?: DeviceControlModel; steppedLoadProfile?: SteppedLoadProfile };
+  & ReportedStepObservedProbe & MeasuredPowerObservedProbe
+  & {
+    controlAdapter?: DeviceControlAdapterSnapshot;
+    controlModel?: DeviceControlModel;
+    steppedLoadProfile?: SteppedLoadProfile;
+  };
 
 
 /** Pure composition: the device owner has already chosen the profile and admitted its report. */
@@ -51,7 +58,9 @@ function projectSteppedDeviceControl<T extends DeviceControlProjectionSource>(
   device: T, profile: SteppedLoadProfile, store: SteppedCommandStore,
 ): T & DeviceControlDecoration {
   const currentDesired = store.getDesired(device.id);
-  const selectedStepId = resolveSelectedStepId(profile, device.reportedStepId);
+  const actionStep = device.binaryControl?.on === true
+    ? resolveCurrentActionStep(currentDesired, device.controlAdapter, profile, device) : undefined;
+  const selectedStepId = resolveSelectedStepId(profile, device.reportedStepId) ?? actionStep;
   return {
     ...device,
     desiredStepId: getSteppedLoadStep(profile, currentDesired?.stepId)?.id,

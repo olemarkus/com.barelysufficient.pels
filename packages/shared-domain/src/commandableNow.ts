@@ -10,7 +10,7 @@
  */
 import { isEvObserved } from './evObservedState';
 import { isEvDevice, isEvPlugStateCommandable, type EvDeviceIdentity } from './evPlugState';
-import type { EvObservedProbe } from '../../contracts/src/types';
+import type { DeviceControlAdapterSnapshot, EvObservedProbe } from '../../contracts/src/types';
 
 export { isEvDevice } from './evPlugState';
 
@@ -21,11 +21,12 @@ export { isEvDevice } from './evPlugState';
  */
 export type CommandableNowInput = EvDeviceIdentity & {
   available: boolean;
+  controlAdapter?: DeviceControlAdapterSnapshot;
 } & EvObservedProbe;
 
 /**
  * Can the controller issue a control command to this device right now and expect
- * it to land and matter? A plain boolean: the two inputs are the EV plug-state
+ * it to land and matter? A plain boolean based on the plug state
  * (for an EV charger) and the device's availability, and neither the answer nor
  * anything derived from it is carried alongside the device — consumers that need
  * to explain the answer derive that from the same observed state, at the surface
@@ -34,6 +35,7 @@ export type CommandableNowInput = EvDeviceIdentity & {
  * An EV without an accepted plug observation remains visible but cannot start.
  */
 export function resolveCommandableNow(dev: CommandableNowInput): boolean {
+  if (dev.controlAdapter?.unavailableStatus !== undefined) return false;
   if (isEvDevice(dev) && (!isEvObserved(dev) || !isEvPlugStateCommandable(dev.evChargingState))) return false;
   return dev.available;
 }

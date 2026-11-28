@@ -115,6 +115,7 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
     withdrawsCurrentLadder: () => false,
     withholdsInstallationSteps: () => false,
     isInstallationMain: () => false,
+    routesBuiltIn: () => false,
   },
 });
 

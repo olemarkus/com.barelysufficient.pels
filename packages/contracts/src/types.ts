@@ -296,6 +296,8 @@ export type ChargingInstallation = {
 export type DeviceControlAdapterSnapshot = {
     activationOrder?: 'current_before_start';
     currentControl?: 'built_in';
+    /** Current-setting actions may confirm commands during this control session. */
+    currentActionEpoch?: number;
     chargingInstallation?: ChargingInstallation;
     kind: 'capability_adapter';
     activationAvailable?: boolean;

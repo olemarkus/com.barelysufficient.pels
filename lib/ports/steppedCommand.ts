@@ -1,4 +1,5 @@
 import type { SteppedDeviceLimitChange } from './deviceLimitEvents';
+import type { CurrentActionReceipt } from './steppedLoadWrite';
 
 /** A stepped command issued through the actuator, including its acknowledgement policy. */
 export type MarkSteppedLoadDesiredStepIssuedParams = {
@@ -7,6 +8,7 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
   previousStepId?: string;
   issuedAtMs?: number;
   deviceLimitChange?: SteppedDeviceLimitChange;
+  currentActionReceipt?: CurrentActionReceipt;
   confirmationPolicy?: 'required' | 'assume_applied';
   planningPowerW?: number;
   previousPlanningPowerW?: number;

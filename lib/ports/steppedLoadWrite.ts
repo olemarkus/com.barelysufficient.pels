@@ -37,8 +37,19 @@ export type TargetPowerControlClaimResult =
  * Whether the rung was issued, and over which channel. Acceptance only: the
  * device's reported step reaches the executor through the observer.
  */
+export type CurrentActionReceipt = {
+  epoch: number;
+  acknowledgedAtMs: number;
+  planningPowerW: number;
+};
+
 export type SteppedLoadStepRequestResult =
   | { requested: false }
   | { requested: false; reason: 'flow_trigger_rejected' }
-  | { requested: true; acknowledged: true; transport: SteppedLoadStepRequestTransport }
+  | {
+    requested: true;
+    acknowledged: true;
+    transport: SteppedLoadStepRequestTransport;
+    currentActionReceipt?: CurrentActionReceipt;
+  }
   | { requested: true; acknowledged: false; transport: 'flow'; reasonCode: 'flow_trigger_timeout' };

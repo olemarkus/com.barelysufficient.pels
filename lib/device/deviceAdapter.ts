@@ -48,6 +48,10 @@ export type ChargingCurrentBinding = {
   current: ChargingCurrentSurface;
   /** Whether PELS supports executing the app action for this current binding. */
   supportsAppAction: boolean;
+  /** A successful action response is the setting confirmation for this binding. */
+  confirmsCurrentWithAction?: true;
+  /** Independently reported ceiling on this action’s accepted current settings. */
+  actionCurrentCeilingA?: number;
   actionId: string;
   appUri: string;
   /** What one current command reaches: a car, a whole installation, or this charger alone. */

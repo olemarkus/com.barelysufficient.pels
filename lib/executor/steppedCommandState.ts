@@ -1,3 +1,4 @@
+import type { CurrentActionReceipt } from '../ports/steppedLoadWrite';
 import type { SteppedDeviceLimitChange } from '../ports/deviceLimitEvents';
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
@@ -37,6 +38,7 @@ export type SteppedLoadDesiredRuntimeState = {
   changedAtMs: number;
   lastIssuedAtMs?: number;
   deviceLimitChange?: SteppedDeviceLimitChange;
+  currentActionReceipt?: CurrentActionReceipt;
   retryCount: number;
   /** Whether the device has reported anything back since PELS began asking for this step. */
   answer: SteppedLoadCommandAnswer;
@@ -212,6 +214,7 @@ export const markSteppedLoadDesiredStepIssued = (
     previousStepId,
     issuedAtMs = Date.now(),
     confirmationPolicy = 'required',
+    currentActionReceipt,
     deviceLimitChange,
   } = command;
   if (confirmationPolicy === 'assume_applied') {
@@ -226,6 +229,9 @@ export const markSteppedLoadDesiredStepIssued = (
   const retryCount = shouldIncrementRetryCount
     ? previousDesired.retryCount + 1
     : 0;
+  const priorAnswer = shouldIncrementRetryCount ? previousDesired.answer : NOT_YET_ANSWERED;
+  const powerMetadata = currentActionReceipt
+    ? { currentActionReceipt } : buildSteppedLoadPowerMetadata(previousDesired, command, issuedAtMs);
   runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
     capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     stepId: desiredStepId,
@@ -234,10 +240,10 @@ export const markSteppedLoadDesiredStepIssued = (
     lastIssuedAtMs: issuedAtMs,
     ...(deviceLimitChange === undefined ? {} : { deviceLimitChange }),
     retryCount,
-    answer: shouldIncrementRetryCount ? previousDesired.answer : NOT_YET_ANSWERED,
+    answer: currentActionReceipt ? ANSWERED : priorAnswer,
     nextRetryAtMs: undefined,
-    status: 'pending',
-    ...buildSteppedLoadPowerMetadata(previousDesired, command, issuedAtMs),
+    status: currentActionReceipt ? 'success' : 'pending',
+    ...powerMetadata,
   });
 };
 

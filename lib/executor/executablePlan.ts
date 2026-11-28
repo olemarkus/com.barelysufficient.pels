@@ -1,3 +1,4 @@
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type {
   PlannedBinaryCommand, PlannedDeviceCommands, PlannedReleaseCommand, PlannedStepBaseline, PlannedSteppedCommand,
   PlannedStepTransition,
@@ -6,6 +7,7 @@ import type { SteppedLoadDesiredRuntimeState } from './steppedCommandState';
 import type { PlannedTargetCommand } from '../planContract/targetCommand';
 import type { EvDeviceIdentity } from '../../packages/shared-domain/src/evPlugState';
 import type {
+  MeasuredPowerObservedProbe,
   ObservedDeviceState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -96,7 +98,7 @@ export const hasReleaseCommand = <T extends PlannedDeviceCommands>(
 export type ExecutableObservedDeviceState = {
   id: string;
   name: string;
-  snapshot: ExecutorDeviceSnapshot;
+  snapshot: ExecutorDeviceSnapshot & MeasuredPowerObservedProbe & Pick<DeviceConfigurationRead, 'controlAdapter'>;
   available: boolean;
   commandableNow: boolean;
   // The raw observed binary bag, still carried for readers that take it whole.
@@ -264,7 +266,8 @@ export const resolveCommandPreviousStepId = (action: ExecutableSteppedLoadDevice
 
 export type ExecutableSteppedLoadCommandSession = {
   /** The executor's tracked command, independent of the plan's historical inputs. */
-  command?: Pick<SteppedLoadDesiredRuntimeState, 'stepId' | 'status' | 'retryCount' | 'nextRetryAtMs'>;
+  command?: Pick<SteppedLoadDesiredRuntimeState,
+    'stepId' | 'status' | 'retryCount' | 'nextRetryAtMs' | 'currentActionReceipt'>;
   initializationAssumedStepId?: string;
   hasPriorStepCommand: boolean;
   reportedStepId?: string;

@@ -1,6 +1,6 @@
 import type { ChargingInstallation } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import type { ChargingCurrentRead } from '../../packages/contracts/src/chargingControl';
+import type { ChargingCurrentRead, ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import type { ChargingCurrentBinding } from './deviceAdapter';
 
 export function projectedInstallationRole(installation: ChargingInstallation | undefined, deviceId: string) {
@@ -52,4 +52,32 @@ export function withCurrentRoute(source: TransportDeviceSnapshot, builtIn: boole
   if (source.controlAdapter.currentControl === undefined) return source;
   const { currentControl: _heldBack, ...controlAdapter } = source.controlAdapter;
   return { ...source, controlAdapter };
+}
+
+export function withCurrentActionHold(
+  source: TransportDeviceSnapshot, reason: string | undefined,
+): TransportDeviceSnapshot {
+  const { controlAdapter } = source;
+  if (reason === undefined || !controlAdapter || controlAdapter.unavailableStatus) return source;
+  return { ...source, controlAdapter: {
+    ...controlAdapter, unavailableStatus: { kind: 'idle', factText: null, reasonText: reason },
+  } };
+}
+
+export function readChargingCurrentSetup(value: unknown): ChargingCurrentSetup | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  if (!('method' in value) || (value.method !== 'flow' && value.method !== 'built_in')) return undefined;
+  if (!('confirmation' in value)) return undefined;
+  const { confirmation } = value;
+  if (confirmation !== 'none' && confirmation !== 'vehicle' && confirmation !== 'single_charger') return undefined;
+  return { method: value.method, confirmation };
+}
+
+export function lazyChargingCurrentSetup(read: () => ChargingCurrentSetup): () => ChargingCurrentSetup {
+  let setup: ChargingCurrentSetup | undefined;
+  return () => setup ??= read();
+}
+
+export function trustEpochOf(trust: { connected: boolean; revision: number }): string {
+  return `${trust.connected}:${trust.revision}`;
 }

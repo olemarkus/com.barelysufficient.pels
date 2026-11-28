@@ -1,3 +1,4 @@
+import { resolveCurrentActionStep } from './currentActionStep';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import {
   getSteppedLoadLowestActiveStep,
@@ -74,7 +75,13 @@ export class SteppedDeviceControl {
   ): void {
     for (const device of devices) {
       const configuration = this.source.getDeviceConfiguration(device.id);
-      if (configuration) this.store.reconcileConfiguration(configuration);
+      if (!configuration) continue;
+      this.store.reconcileConfiguration(configuration);
+      const command = this.store.getDesired(device.id);
+      if (command?.currentActionReceipt && 'steppedLoadProfile' in configuration && !resolveCurrentActionStep(
+        command, configuration.controlAdapter, configuration.steppedLoadProfile,
+        this.source.getObservedState(device.id),
+      )) this.store.clearCommandSession(device.id);
     }
     this.store.reconcileFlowStepFeedback((deviceId) => this.source.getDeviceConfiguration(deviceId));
     this.targetPower.reconcile(devices, nowMs);

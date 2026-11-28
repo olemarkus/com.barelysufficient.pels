@@ -46,6 +46,7 @@ export class TargetPowerCommandLifecycle {
       previousStepId: command.previousStepId,
       issuedAtMs: command.issuedAtMs,
       confirmationPolicy: command.confirmationPolicy,
+      currentActionReceipt: command.currentActionReceipt,
       ...(command.unacknowledged === true ? planningPowers : powers),
     });
     const desired = this.store.getDesired(command.deviceId);
