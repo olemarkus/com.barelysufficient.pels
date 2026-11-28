@@ -12,7 +12,7 @@ import type {
   TargetCapabilitySnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../contracts/src/types.js';
-import type { PhaseFootprint } from './phaseFootprint.js';
+import type { ChargingDrawPhases, PhaseFootprint } from './phaseFootprint.js';
 
 
 /**
@@ -337,6 +337,11 @@ export type PlanInputDeviceBase = {
   associatedCar?: Pick<AssociatedCarSnapshot, 'carId'>;
   /** Which phases this device loads (`lib/phaseFootprint/`). Required: unknown is its own answer. */
   phaseFootprint: PhaseFootprint;
+  /**
+   * The phases a car draws on through this charger (`lib/phaseFootprint/`).
+   * Prices solar surplus only; capacity and fuse room follow `phaseFootprint`.
+   */
+  chargingDrawPhases: ChargingDrawPhases;
   /**
    * Resolved by device configuration from the inventory class: a home battery
    * or solar device, never a load the generic shed/restore lanes command (a
@@ -973,7 +978,7 @@ export type PlanDeviceCarriedKey =
 export type PlanDeviceStrippedKey =
   'acknowledgedStep' | 'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
   | 'binaryControl' | 'binaryControlObservation' | 'builtInSteppedLoadControl'
-  | 'carConfirmation' | 'carCurrentRangeUnavailable' | 'chargerPhaseCurrentsA'
+  | 'carConfirmation' | 'carCurrentRangeUnavailable' | 'chargerPhaseCurrentsA' | 'chargerSessionDrawPhases'
   | 'evChargingState' | 'manualFlowSteppedLoad' | 'measuredPowerKw' | 'nativeRelayMeter' | 'powerSetupRequirement'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

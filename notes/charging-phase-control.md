@@ -31,6 +31,12 @@ The phase setting acknowledges a request. Independent per-phase watts, checked
 against total charger power, resolve the observed envelope. Idle retains the
 last accepted envelope. Planning uses the permitted phase ceiling: unrestricted
 charging retains the installation geometry even when a car draws on one phase.
+Solar surplus is the exception: the surplus allocator prices a rung at the
+phases the car draws on (`PlanInputDevice.chargingDrawPhases`, from the
+charger's `chargerSessionDrawPhases`: the most phases seen since plug-in, never
+lowered before a plug-out), so a one-phase car climbs with the surplus. Phase
+room stays in the installation geometry; the allocator converts surplus kW to
+it with `surplusDrawShare` (`lib/plan/surplusStepPricing.ts`).
 A forced-single setting uses one-phase geometry only with admitted independent
 one-phase evidence. Before drawing evidence exists, the installation supplies
 conservative planning geometry.

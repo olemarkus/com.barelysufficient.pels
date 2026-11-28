@@ -51,6 +51,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         ...projectSteppedLoadProfile(snapshot),
         ...projectHomeBatteryObservation(snapshot),
         ...(snapshot.chargerPhaseCurrentsA ? { chargerPhaseCurrentsA: snapshot.chargerPhaseCurrentsA } : {}),
+        ...(snapshot.chargerSessionDrawPhases ? { chargerSessionDrawPhases: snapshot.chargerSessionDrawPhases } : {}),
         ...(snapshot.inverterObservation ? { inverterObservation: {
             production: { ...snapshot.inverterObservation.production },
             limit: { ...snapshot.inverterObservation.limit },

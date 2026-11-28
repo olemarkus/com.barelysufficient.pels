@@ -1,5 +1,5 @@
 import type { TargetPowerSteppedLoadPreset } from '../../packages/contracts/src/types';
-import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
+import type { ChargingDrawPhases, PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import type { DevicePhaseConnection } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
 import { chargingSingleHousePhase, resolveChargingPhaseFootprint } from './chargingPhaseFootprints';
 
@@ -86,3 +86,30 @@ export function resolvePhaseFootprintWithSource(facts: PhaseFootprintFacts): Res
 export const resolvePhaseFootprint = (facts: PhaseFootprintFacts): PhaseFootprint => (
   resolvePhaseFootprintWithSource(facts).footprint
 );
+
+/** What the draw-phase answer is resolved from. */
+export type ChargingDrawPhaseFacts = {
+  isEvCharger: boolean;
+  /** The charger's own per-phase current, A, when it reports all three. */
+  chargerPhaseCurrentsA: readonly [number, number, number] | undefined;
+  /** The most phases the car has drawn on this plug-in session (`chargerSessionDrawPhases`). */
+  sessionDrawPhases: 1 | 2 | 3 | undefined;
+  /** What PELS has settled from its own steps against the meter, when it has. */
+  learned: PhaseFootprint | undefined;
+};
+
+/**
+ * The phases a car draws on through its charger: what this plug-in session has
+ * shown, then what it draws on right now, then a phase pattern PELS has settled
+ * for it, otherwise the ladder's own geometry. Prices solar surplus only; the
+ * footprint above keeps its own rules for fuse and capacity room.
+ */
+export function resolveChargingDrawPhases(facts: ChargingDrawPhaseFacts): ChargingDrawPhases {
+  if (!facts.isEvCharger) return { kind: 'ladder' };
+  const drawing = facts.chargerPhaseCurrentsA?.filter((amps) => amps > CHARGER_PHASE_DRAWING_A).length ?? 0;
+  const seen = facts.sessionDrawPhases ?? (drawing === 1 || drawing === 2 || drawing === 3 ? drawing : undefined);
+  if (seen !== undefined) return { kind: 'observed', phases: seen };
+  if (facts.learned?.kind === 'single') return { kind: 'observed', phases: 1 };
+  if (facts.learned?.kind === 'all_three') return { kind: 'observed', phases: 3 };
+  return { kind: 'ladder' };
+}

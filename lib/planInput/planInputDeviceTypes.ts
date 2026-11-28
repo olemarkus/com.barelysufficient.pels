@@ -76,7 +76,7 @@ export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'objectiveKind' | 'objectiveSessionInactive' | 'waitingForCarAssociation' | 'boostSupported' | 'boostRequested'
   | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
-  | 'carCurrentRangeUnavailable' | 'targetPowerClaimNeeded' | 'phaseFootprint'
+  | 'carCurrentRangeUnavailable' | 'targetPowerClaimNeeded' | 'phaseFootprint' | 'chargingDrawPhases'
   | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt' | 'lastResort'>
   & SteppedClusterFields
   // Not `StorageClusterFields`: its empty member is `Record<string, never>`,

@@ -1,6 +1,6 @@
 import { buildPlannedTargetCommand } from '../../lib/plan/planTargetCommand';
 import type { ChargeTargetHold, DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
+import type { ChargingDrawPhases, PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import type { PhasePower } from '../../lib/plan/phase/phasePower';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import type { SheddingPlan } from '../../lib/plan/shedding/types';
@@ -756,9 +756,11 @@ export const withFixtureResidualKw = <T extends object>(
   currentState: ObservedCurrentState;
   budgetExempt: boolean;
   phaseFootprint: PhaseFootprint;
+  chargingDrawPhases: ChargingDrawPhases;
 } => {
   const priority = (fields as { priority?: number }).priority ?? 1;
   const phaseFootprint = (fields as { phaseFootprint?: PhaseFootprint }).phaseFootprint ?? { kind: 'unknown' };
+  const chargingDrawPhases = (fields as { chargingDrawPhases?: ChargingDrawPhases }).chargingDrawPhases ?? { kind: 'ladder' };
   // Both REQUIRED on the input contract, and resolved by the producer for every
   // device; a literal passed straight through gets what the producer would stamp.
   const currentState = resolveFixtureCurrentState(fields as Parameters<typeof resolveFixtureCurrentState>[0]);
@@ -794,6 +796,7 @@ export const withFixtureResidualKw = <T extends object>(
       currentState,
       budgetExempt,
       phaseFootprint,
+      chargingDrawPhases,
       residualKw: { shed: declared.shed, restore: declared.restore },
     };
   }
@@ -808,6 +811,7 @@ export const withFixtureResidualKw = <T extends object>(
     currentState,
     budgetExempt,
     phaseFootprint,
+    chargingDrawPhases,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,
@@ -1208,6 +1212,7 @@ export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides 
     isBatteryOrSolar: overrides.isBatteryOrSolar ?? false,
     starvationSupported: overrides.starvationSupported ?? false,
     phaseFootprint: overrides.phaseFootprint ?? { kind: 'unknown' },
+    chargingDrawPhases: overrides.chargingDrawPhases ?? { kind: 'ladder' },
     // The two producer-resolved boost bits, materialized from the fixture's own
     // config and readings by the SAME resolvers `toPlanDevice` calls, so a
     // fixture cannot express a boost state the producer would never emit. An

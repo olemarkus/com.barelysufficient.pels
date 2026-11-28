@@ -31,10 +31,9 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
-import {
-  isSteppedLoadDevice,
-  resolveHighestStepWithinKw,
-} from './planSteppedLoad';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { resolveHighestSurplusStepWithinKw, surplusDrawShare, surplusStepKw } from './surplusStepPricing';
+import type { ChargingDrawPhases } from '../../packages/planner-types/src/phaseFootprint';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { ObservedStorageInput } from '../../packages/planner-types/src/planInputDevice';
 import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
@@ -554,16 +553,19 @@ function claimForTrackingDevice(
     clearSurplusTracking(state, dev.id);
     return NO_CLAIM;
   }
-  // Every rung is priced at its nameplate here, as `resolveHighestStepWithinKw`
-  // fits it: the claim on the pool is what the rung may draw, never a learned
-  // figure that can only be lower.
-  const floorKw = floorStep.planningPowerW / 1000;
+  // Every rung is priced at what it may draw from the surplus: its nameplate,
+  // scaled to the phases the car is seen drawing on (`surplusStepPricing.ts`),
+  // never a learned figure that can only be lower.
+  const drawPhases = dev.chargingDrawPhases;
+  const floorKw = surplusStepKw(floorStep, drawPhases);
 
   const { eligible } = syncSurplusEligibilityState(state, dev.id, poolKw, floorKw, hardOff, nowTs);
 
   if (eligible) {
-    const paced = paceCeilingClimb(dev, state, resolveTrackingRung(dev, state, poolKw, floorStep), nowTs);
-    const rungKw = paced.planningPowerW / 1000;
+    const paced = paceCeilingClimb(
+      dev, state, resolveTrackingRung(dev, state, poolKw, floorStep, drawPhases), nowTs,
+    );
+    const rungKw = surplusStepKw(paced, drawPhases);
     state.surplusTrackingByDevice[dev.id] = {
       kind: 'rung', stepId: paced.id, funded: rungKw <= poolKw,
     };
@@ -597,11 +599,14 @@ function resolveTrackingRung(
   state: PlanEngineState,
   poolKw: number,
   floorStep: SteppedLoadStep,
+  drawPhases: ChargingDrawPhases,
 ): SteppedLoadStep {
   // What the pool would buy from scratch, reserve included.
-  const affordable = resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW);
+  const affordable = isSteppedLoadDevice(dev)
+    ? resolveHighestSurplusStepWithinKw(dev.steppedLoadProfile, poolKw - SURPLUS_ABSORB_RESERVE_KW, drawPhases)
+    : null;
   const held = resolveHeldStep(dev, state);
-  if (held && held.planningPowerW / 1000 <= poolKw) {
+  if (held && surplusStepKw(held, drawPhases) <= poolKw) {
     // The held rung is still covered on the bare pool, so keep it — and move
     // only for something strictly HIGHER. Answering `affordable` here instead
     // would step the device DOWN the moment the pool dipped inside the reserve,
@@ -828,7 +833,7 @@ class RankedSurplusAllocation {
     this.poolKw -= claim.claimKw;
     this.phaseBudget = claim.incomingPerPhaseKw
       ? spendPhaseBudgetVector(this.phaseBudget, claim.incomingPerPhaseKw)
-      : spendPhaseBudget(this.phaseBudget, dev.phaseFootprint, increaseKw);
+      : spendPhaseBudget(this.phaseBudget, dev.phaseFootprint, increaseKw / surplusDrawShare(dev));
     const waitingKw = claim.want.kind === 'waiting' ? claim.want.runKw : 0;
     // A tracker can still rise after its present draw was measured.
     this.storageKw -= dev.surplusTracking ? Math.max(waitingKw, increaseKw) : waitingKw;
@@ -862,14 +867,18 @@ function claimForOrdinaryDevice(
   dev: MeteredPlanInputDevice, state: PlanEngineState, phaseBudget: PhaseBudget,
   poolKw: number, measuredKw: number, hardOff: boolean, nowTs: number,
 ): SurplusClaim {
+  // Phase room is in ladder kW; a car drawing on fewer phases takes `share` of it.
+  const share = surplusDrawShare(dev);
   const devicePoolKw = Math.max(
-    phaseBoundedPoolKw(phaseBudget.room, dev.phaseFootprint, poolKw, measuredKw),
-    phaseExportPoolKw(phaseBudget.exportRemainder, dev.phaseFootprint, phaseBudget.room),
+    phaseBoundedPoolKw(phaseBudget.room, dev.phaseFootprint, poolKw / share, measuredKw / share) * share,
+    phaseExportPoolKw(phaseBudget.exportRemainder, dev.phaseFootprint, phaseBudget.room) * share,
   );
   return dev.surplusTracking
     ? claimForTrackingDevice(dev, state, devicePoolKw, nowTs)
     : claimForFixedDevice(dev, state, devicePoolKw, hardOff, nowTs);
 }
+
+const LADDER_GEOMETRY: ChargingDrawPhases = { kind: 'ladder' };
 
 /** The phase owner's allocation remains owned during an independently observed firmware pause. */
 function claimForChargingPhase(
@@ -907,7 +916,8 @@ function resolvePhaseTrackingRung(
   dev: MeteredPlanInputDevice, state: PlanEngineState, availableKw: number, floor: SteppedLoadStep, nowTs: number,
 ): SteppedLoadStep {
   if (state.chargingPhaseCycle.hasReservation(dev.id)) return floor;
-  return paceCeilingClimb(dev, state, resolveTrackingRung(dev, state, availableKw, floor), nowTs);
+  // The phase owner's ladder already names the envelope it switched to.
+  return paceCeilingClimb(dev, state, resolveTrackingRung(dev, state, availableKw, floor, LADDER_GEOMETRY), nowTs);
 }
 
 function recordPhaseTrackingRung(

@@ -1,7 +1,7 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
-  NativeRelayMeter, TargetDeviceSnapshot,
+  EvChargingState, NativeRelayMeter, TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
@@ -32,7 +32,7 @@ import {
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
-import { resolveChargerPhaseCurrentsA } from '../chargerPhaseCurrents';
+import { resolveChargerPhaseCurrentsA, resolveChargerSessionDrawPhases } from '../chargerPhaseCurrents';
 import {
     resolveCandidateCapabilities,
     resolveFlowCapabilityOverlay,
@@ -306,7 +306,9 @@ export function assembleDeviceSnapshot(params: {
         controlModel: overlay.controlModel,
         binaryControllable: control.binaryControl !== undefined,
         isEvCharger: deviceClassKey === 'evcharger',
-        ...resolveParsedChargerPhaseCurrents(deviceClassKey, effectiveDevice, previousSnapshot),
+        ...resolveParsedChargerPhaseCurrents(
+            deviceClassKey, effectiveDevice, previousSnapshot, control.evChargingState,
+        ),
         isBatteryOrSolar: isBatteryOrSolarClassKey(deviceClassKey),
         steppedLoadProfile: overlay.steppedLoadProfile,
         pendingSteppedLoad: overlay.pendingSteppedLoad,
@@ -365,10 +367,17 @@ function resolveParsedChargerPhaseCurrents(
     deviceClassKey: string,
     device: HomeyDeviceLike,
     previousSnapshot: TransportDeviceSnapshot | undefined,
-): Pick<TransportDeviceSnapshot, 'chargerPhaseCurrentsA'> {
+    evChargingState: EvChargingState | undefined,
+): Pick<TransportDeviceSnapshot, 'chargerPhaseCurrentsA' | 'chargerSessionDrawPhases'> {
     if (deviceClassKey !== 'evcharger') return {};
     const chargerPhaseCurrentsA = resolveChargerPhaseCurrentsA(device, previousSnapshot?.chargerPhaseCurrentsA);
-    return chargerPhaseCurrentsA ? { chargerPhaseCurrentsA } : {};
+    const chargerSessionDrawPhases = resolveChargerSessionDrawPhases(
+        chargerPhaseCurrentsA, evChargingState, previousSnapshot?.chargerSessionDrawPhases,
+    );
+    return {
+        ...(chargerPhaseCurrentsA ? { chargerPhaseCurrentsA } : {}),
+        ...(chargerSessionDrawPhases ? { chargerSessionDrawPhases } : {}),
+    };
 }
 
 function resolveParsedDeviceSettings(

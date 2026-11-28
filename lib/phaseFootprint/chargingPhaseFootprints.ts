@@ -2,18 +2,25 @@ import type { ChargingPhaseCount, ChargingPhaseName } from '../../packages/contr
 import type { ChargingPhasePoint } from '../../packages/planner-types/src/chargingPhases';
 import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import type { DevicePhaseConnection } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
+
+/** The phases an amp rung is priced at: 230 W per amp per phase, or undefined for any other rung. */
+export function resolveStepChargingPhases(
+  step: Pick<SteppedLoadStep, 'planningPowerW' | 'planningCurrentA'>,
+): ChargingPhaseCount | undefined {
+  if (step.planningCurrentA === undefined || step.planningCurrentA <= 0) return undefined;
+  const wattsPerAmp = step.planningPowerW / step.planningCurrentA;
+  if (wattsPerAmp === 230) return 1;
+  if (wattsPerAmp === 690) return 3;
+  return undefined;
+}
 
 /** The already-resolved amp ladder names its operating envelope, never a saved installation preset. */
 export function resolveOperatingChargingPhases(
   profile: SteppedLoadProfile | undefined,
 ): ChargingPhaseCount | undefined {
   const step = profile?.steps.find((entry) => (entry.planningCurrentA ?? 0) > 0);
-  if (!step || step.planningCurrentA === undefined) return undefined;
-  const wattsPerAmp = step.planningPowerW / step.planningCurrentA;
-  if (wattsPerAmp === 230) return 1;
-  if (wattsPerAmp === 690) return 3;
-  return undefined;
+  return step ? resolveStepChargingPhases(step) : undefined;
 }
 type ChargingPhaseMeasurement = {
   currentLimitA: number;
