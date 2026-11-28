@@ -1,3 +1,4 @@
+import type { EvSmartTaskSettings } from '../../../packages/shared-domain/src/settings/evSmartTaskSettings';
 import type { TaskAllocationRoster, TaskAllocationRosterSnapshot } from './taskAllocationRoster';
 import type { ScheduledPowerLimits } from '../../power/heldCapacityLimit';
 import {
@@ -131,6 +132,7 @@ export type TaskEvaluationSnapshot = {
 
 // The readers an evaluation consults, supplied once by the lane that owns them.
 export type TaskEvaluationReaders = {
+  evSmartTaskSettings?: (deviceId: string) => EvSmartTaskSettings | undefined;
   prefersContinuousCharging: (deviceId: string) => boolean;
   // Price-layer source for the allocation horizon (price + grid). The snapshot's
   // daily budget is only the optional budget overlay.
@@ -166,6 +168,7 @@ export type TaskEvaluationSource = TaskEvaluationReaders & {
   getChargingPhaseEnvelopes: (nowMs: number) => ReadonlyMap<string,
     readonly import('../../../packages/planner-types/src/chargingPhases').ChargingPhaseEnvelope[]>;
   allocationRoster: TaskAllocationRoster;
+  getHomeBatteryDischargeW?: (nowMs: number) => number;
   getTimeZone: () => string;
   getThermalDirection: (deviceId: string) => ThermalDirection;
   getPowerTracker: () => PowerTrackerState;
@@ -192,7 +195,10 @@ export const buildTaskEvaluationSnapshot = (
 ): TaskEvaluationSnapshot => {
   const envelopes = source.getChargingPhaseEnvelopes(nowMs);
   const futureDevices = withPermittedChargingEnvelopes(devices, envelopes);
-  const objectiveDevices = resolveObjectiveDeviceInputs(futureDevices, source.getThermalDirection);
+  const objectiveDevices = resolveObjectiveDeviceInputs(futureDevices, source.getThermalDirection).map((device) => {
+    const usableEvBatteryKWh = source.evSmartTaskSettings?.(device.id)?.usableBatteryKWh;
+    return usableEvBatteryKWh === undefined ? device : { ...device, usableEvBatteryKWh };
+  });
   if (lane.kind !== 'preview') {
     source.allocationRoster.observe(
       objectiveDevices, nowMs, buildObjectiveDeviceExclusionPredicate(source.resolveDeviceExclusion),

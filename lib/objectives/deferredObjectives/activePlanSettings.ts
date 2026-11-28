@@ -39,8 +39,8 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
   'flow_permission_changed',
 ]);
 
-const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' | 'exact' => (
-  value === 'learned' || value === 'bootstrap' || value === 'exact'
+const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' | 'exact' | 'configured' => (
+  value === 'learned' || value === 'bootstrap' || value === 'exact' || value === 'configured'
 );
 
 const isOptionalProgressDirection = (value: unknown): boolean => (

@@ -85,7 +85,8 @@ function isRequestingPower(state: DeviceStatusInput['evChargingState']): boolean
 function hasPersonalHoldReason(device: DeviceStatusInput, hasChargeTargetHold: boolean): boolean {
   const { code } = device.reason;
   return hasChargeTargetHold || code === PLAN_REASON_CODES.awaitingPelsStart
-    || code === PLAN_REASON_CODES.deferredObjectiveAvoid || code === PLAN_REASON_CODES.deferredObjectiveSatisfied;
+    || code === PLAN_REASON_CODES.deferredObjectiveAvoid || code === PLAN_REASON_CODES.deferredObjectiveSatisfied
+    || code === PLAN_REASON_CODES.deferredObjectiveBatteryDischarge;
 }
 
 /**

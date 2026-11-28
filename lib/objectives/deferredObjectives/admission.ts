@@ -70,6 +70,18 @@ const resolveReleaseIntent = (
   return device?.control.commandAuthority === false ? 'shed_release' : undefined;
 };
 
+const resolveBatteryPauseRelease = (device: PlanInputDevice): 'binary_release' | 'shed_release' | undefined => {
+  if (usesBinaryReleaseControl(device)) return 'binary_release';
+  return device.control.commandAuthority ? undefined : 'shed_release';
+};
+
+export const buildBatteryDischargePause = (device: PlanInputDevice): DeferredAdmissionDecision => ({
+  kind: 'idle',
+  budgetExempt: false,
+  holdCause: 'battery_discharging',
+  releaseIntent: resolveBatteryPauseRelease(device),
+});
+
 const resolveDecision = (
   evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
@@ -285,6 +297,10 @@ const resolveDeferredHold = (
   device: PlanInputDevice,
 ): PlanInputDevice['deferredHold'] => {
   if (decision.kind !== 'idle') return undefined;
+  if (decision.holdCause === 'battery_discharging') {
+    const canPause = device.control.commandAuthority || contributesCommandAuthority(decision, device);
+    return canPause ? 'battery_pause' : undefined;
+  }
   if (followsSurplusWhileWaiting(device)) return undefined;
   if (device.control.commandAuthority) return 'off';
   return contributesCommandAuthority(decision, device) ? 'configured' : undefined;

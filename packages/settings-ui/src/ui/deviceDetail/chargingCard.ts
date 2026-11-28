@@ -8,6 +8,7 @@ import {
   supportsEvChargeTargetDevice,
 } from './evChargeTarget.ts';
 
+import { initEvSmartTaskSettings, renderEvSmartTaskSettings } from './evSmartTaskSettings.ts';
 import { initEvChargingSessionSmoothingHandlers, renderEvChargingSessionSmoothing }
   from './evChargingSessionSmoothing.ts';
 
@@ -44,10 +45,12 @@ export const renderChargingCardSettings = (device: SettingsUiDeviceView | null) 
   renderEvChargeTargetSettings(device);
   renderEvBoostSettings(device);
   void renderEvChargingSessionSmoothing(device);
+  void renderEvSmartTaskSettings(device);
 };
 
 export const initChargingCardHandlers = (deps: Parameters<typeof initEvBoostHandlers>[0]) => {
   initEvBoostHandlers(deps);
+  initEvSmartTaskSettings(deps);
   initEvChargingSessionSmoothingHandlers(deps);
   initEvChargeTargetHandlers(deps);
 };

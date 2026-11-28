@@ -173,6 +173,8 @@ const allocationRosterEntry = (entry: OrderedDeferredObjective): string => JSON.
   entry.deviceId,
   entry.priority,
   objectiveSignature(entry),
+  ...(entry.objective.kind === 'ev_soc' && entry.device?.usableEvBatteryKWh !== undefined
+    ? [entry.device.usableEvBatteryKWh] : []),
 ]);
 
 /** An ordered task with the stable context of its complete allocation prefix. */

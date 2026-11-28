@@ -1,3 +1,5 @@
+import { EV_SMART_TASK_SETTINGS, normalizeEvSmartTaskSettings }
+  from '../../../shared-domain/src/settings/evSmartTaskSettings.ts';
 import {
   isEvChargingCurrentLimitsMap, normalizeEvChargingCurrentLimitsMap,
 } from '../../../shared-domain/src/settings/evChargingCurrentLimits.ts';
@@ -86,6 +88,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
     ...Object.keys(state.evChargingSessionSmoothingSettings),
+    ...Object.keys(state.evSmartTaskSettings),
     ...Object.keys(state.evChargeTargetSettings),
     ...Object.keys(state.evCarCurrentLimits),
     ...Object.keys(state.evChargerCurrentLimits),
@@ -260,6 +263,11 @@ const PURGED_MAPS: readonly PurgedMap[] = [
     (map) => { state.temperatureBoostSettings = map; },
   ),
   purgedRecord(EV_BOOST_SETTINGS, () => state.evBoostSettings, (map) => { state.evBoostSettings = map; }),
+  purgedRecord(
+    EV_SMART_TASK_SETTINGS,
+    () => state.evSmartTaskSettings,
+    (map) => { state.evSmartTaskSettings = normalizeEvSmartTaskSettings(map); },
+  ),
   purgedMap(
     EV_CHARGING_SESSION_SMOOTHING,
     (value) => isEvChargingSessionSmoothingSettings(value) ? normalizeEvChargingSessionSmoothingSettings(value) : null,

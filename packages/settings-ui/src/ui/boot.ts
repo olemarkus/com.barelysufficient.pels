@@ -1,3 +1,4 @@
+import { loadEvSmartTaskSettings } from './deviceDetail/evSmartTaskSettings.ts';
 import { scrollSettingsAnchorWhenVisible } from './settingsAnchor.ts';
 import { initPowerHistoryRecovery } from './powerHistoryRecovery.ts';
 import { loadEvCarCurrentLimits, loadEvChargerCurrentLimits } from './deviceDetail/chargingCurrentLimits.tsx';
@@ -432,7 +433,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadDeviceControlProfiles(),
     loadShedBehaviors(),
     loadTemperatureBoostSettings(),
-    loadEvBoostSettings(), loadEvChargingSessionSmoothingSettings(),
+    loadEvBoostSettings(), loadEvChargingSessionSmoothingSettings(), loadEvSmartTaskSettings(),
     loadEvChargeTargetSettings(),
     loadDeviceExpectedPowerOverrides(),
     loadEvCarAssociations(),

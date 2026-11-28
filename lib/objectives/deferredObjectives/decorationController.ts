@@ -10,6 +10,7 @@ import { addPerfDuration } from '../../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
 import {
   applyDeferredAdmissionToInput,
+  buildBatteryDischargePause,
   followsSurplusWhileWaiting,
   applyDeferredObjectiveAdmission,
   buildDeferredDemandDeviceIds,
@@ -29,12 +30,36 @@ import { getDebugEmitter } from '../../logging/logger';
 import { buildObjectiveSignatureForEntry } from './activePlanSignature';
 import type { ChargingPhaseEnvelope } from '../../../packages/planner-types/src/chargingPhases';
 
+import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
+
+const BATTERY_DISCHARGE_DEADBAND_W = 500;
+const RETRY_QUARTER_MS = 15 * 60 * 1000;
+
 const emitTaskDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
-type BudgetExemptClaim = {
+type TaskIntervalClaim = {
   taskSignature: string;
   startsAtMs: number;
   endsAtMs: number;
+};
+
+const canPauseCharging = (decision: DeferredAdmissionDecision, device: PlanInputDevice): boolean => (
+  decision.kind === 'planned'
+  || (decision.kind === 'idle' && decision.holdCause === 'cheaper_hours' && followsSurplusWhileWaiting(device))
+);
+
+const isCurrentClaim = (claim: TaskIntervalClaim | undefined, signature: string, nowMs: number):
+claim is TaskIntervalClaim => (
+  claim?.taskSignature === signature && nowMs >= claim.startsAtMs && nowMs < claim.endsAtMs
+);
+
+const getBatteryPauseEnd = (evaluation: TaskEvaluationReport['evaluation'], nowMs: number): number => {
+  if (evaluation.planning.kind === 'allocated') {
+    const { plan } = evaluation.planning;
+    const bucket = plan.plannedBuckets.find((entry) => entry.id === plan.currentBucket?.bucketId);
+    if (bucket) return bucket.endMs;
+  }
+  return (Math.floor(nowMs / RETRY_QUARTER_MS) + 1) * RETRY_QUARTER_MS;
 };
 
 /**
@@ -56,7 +81,8 @@ export class DeferredObjectiveDecorationController {
   // The latest cycle's decision per live task, for diagnostics reports only.
   // Replaced whole each cycle, so an ended task drops out with it.
   private latestCycles: ReadonlyMap<string, SmartTaskCycleRecord> = new Map();
-  private budgetExemptClaims: ReadonlyMap<string, BudgetExemptClaim> = new Map();
+  private batteryPauses: ReadonlyMap<string, TaskIntervalClaim> = new Map();
+  private budgetExemptClaims: ReadonlyMap<string, TaskIntervalClaim> = new Map();
 
   constructor(
     private readonly source: TaskEvaluationSource,
@@ -79,7 +105,8 @@ export class DeferredObjectiveDecorationController {
     // committed plan (via the diagnostics build above, which consults
     // `resolveCommittedHours`) to decorate the device inputs — reading is free
     // every cycle; only the write rides the clock. See the carve-out note.
-    const decisions = this.withoutSuspendedDevices(applyDeferredObjectiveAdmission(evaluations, devices));
+    const admitted = this.withoutSuspendedDevices(applyDeferredObjectiveAdmission(evaluations, devices));
+    const decisions = this.applyBatteryDischargePauses(admitted, reports, input, settings);
     const admission = applyDeferredAdmissionToInput(devices, decisions);
     this.latestCycles = recordCycles(reports, decisions, nowTs, this.latestCycles);
     this.budgetExemptClaims = recordBudgetExemptClaims(reports, decisions, settings, nowTs);
@@ -96,6 +123,49 @@ export class DeferredObjectiveDecorationController {
       lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
       externalOffHoldLiftedDeviceIds: admission.externalOffHoldLiftedDeviceIds,
     };
+  }
+
+  private batteryDischargeExceedsDeadband(nowMs: number): boolean {
+    return (this.source.getHomeBatteryDischargeW?.(nowMs) ?? 0) > BATTERY_DISCHARGE_DEADBAND_W;
+  }
+
+  private findProtectedCharger(devices: PlanInputDevice[], deviceId: string): PlanInputDevice | undefined {
+    if (!this.source.evSmartTaskSettings?.(deviceId)?.pauseOnBatteryDischarge) return undefined;
+    return devices.find((device) => device.id === deviceId && isEvDevice(device));
+  }
+
+  private applyBatteryDischargePauses(
+    decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+    reports: readonly TaskEvaluationReport[],
+    input: DeferredDecorationInput,
+    settings: DeferredObjectiveRoster | undefined,
+  ): ReadonlyMap<string, DeferredAdmissionDecision> {
+    const { devices, nowTs } = input;
+    const pauses = new Map<string, TaskIntervalClaim>();
+    const result = new Map(decisions);
+    let discharging: boolean | undefined;
+    for (const { evaluation } of reports) {
+      const { deviceId } = evaluation;
+      const device = this.findProtectedCharger(devices, deviceId);
+      const task = settings?.objectivesByDeviceId[deviceId];
+      const decision = decisions.get(deviceId);
+      if (!device || !task || !decision) continue;
+      const canRun = canPauseCharging(decision, device);
+      const signature = buildObjectiveSignatureForEntry(task, 'unknown');
+      const prior = this.batteryPauses.get(deviceId);
+      if (isCurrentClaim(prior, signature, nowTs)) {
+        pauses.set(deviceId, prior);
+      } else if (canRun) {
+        discharging ??= this.batteryDischargeExceedsDeadband(nowTs);
+        if (!discharging) continue;
+        pauses.set(deviceId, {
+          taskSignature: signature, startsAtMs: nowTs, endsAtMs: getBatteryPauseEnd(evaluation, nowTs),
+        });
+      }
+      if (canRun && pauses.has(deviceId)) result.set(deviceId, buildBatteryDischargePause(device));
+    }
+    this.batteryPauses = pauses;
+    return result;
   }
 
   /**
@@ -195,8 +265,8 @@ const recordBudgetExemptClaims = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
   settings: DeferredObjectiveRoster | undefined,
   nowMs: number,
-): ReadonlyMap<string, BudgetExemptClaim> => {
-  const claims = new Map<string, BudgetExemptClaim>();
+): ReadonlyMap<string, TaskIntervalClaim> => {
+  const claims = new Map<string, TaskIntervalClaim>();
   for (const { evaluation } of reports) {
     if (decisions.get(evaluation.deviceId)?.budgetExempt !== true || evaluation.planning.kind !== 'allocated') continue;
     const task = settings?.objectivesByDeviceId[evaluation.deviceId];
@@ -255,7 +325,8 @@ const resolveAdmittedDeviceIds = (
   const surplusFollowers = new Set(devices.filter(followsSurplusWhileWaiting).map((device) => device.id));
   const admitted = new Set<string>();
   for (const [deviceId, decision] of decisions) {
-    if (decision.kind === 'planned' || (decision.kind === 'idle' && !surplusFollowers.has(deviceId))) {
+    if (decision.kind === 'planned' || (decision.kind === 'idle'
+      && (decision.holdCause === 'battery_discharging' || !surplusFollowers.has(deviceId)))) {
       admitted.add(deviceId);
     }
   }

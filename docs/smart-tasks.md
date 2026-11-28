@@ -199,6 +199,18 @@ Which devices can take one: plain on/off devices and EV chargers, including char
 
 **For an EV charger**, open **New smart task** while the car is plugged in. If PELS has live charger power and no battery level, choose an energy target such as `20 kWh` by `07:00`. The **Create smart task** widget offers the same kind of task with one-tap choices from `10 kWh` to `40 kWh`. If the picker offers a battery target and you specifically want kWh, use the **Add energy task** Flow card. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
 
+In the charger's **Charging** settings, enter **Usable car battery capacity** for
+the car usually plugged in there. Percentage tasks estimate charger energy from
+that capacity and assume 90% AC charging efficiency. Clear the field to use
+PELS's learned rate again. An energy task always uses the kWh amount you enter.
+
+**Pause when the home battery supplies power** is off by default. When enabled,
+EV Smart tasks pause if available home batteries report more than 500 W of
+discharge. PELS can try again in the next scheduled period. If your battery
+usually powers the house in the evening, the task may wait long enough to miss
+its ready-by time. The pause uses recent battery readings and cannot detect
+discharge when those readings are unavailable.
+
 A task starts when it is created. For a nightly task, use **Settings → Schedules** to create it at 22:00 with ready-by `06:00`. A Flow running **Add energy task** at 22:00 works too. Running that card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 
 A device that switches itself off when it is done stops taking energy. A water heater's own thermostat does this once the tank is hot. When the device takes no power for about 15 minutes while its task is scheduled and PELS lets it run, the task shows **At risk** with the reason "Device stopped taking power", and it can end as missed even though the tank is full. Pick an amount the heater actually takes on a normal night, or treat that outcome as "the tank was already hot". From then on the task stops holding its scheduled periods for itself, so other Smart tasks can take them at the next hourly re-plan. It holds them again when the device draws power, and also after a period the task does not keep or a moment PELS holds the device back: the next time PELS lets it run, the device gets another 15 minutes before they are freed again. The task stays **At risk** for that reason until the device draws power again; PELS limiting the device in the meantime does not change it back to **On track**.

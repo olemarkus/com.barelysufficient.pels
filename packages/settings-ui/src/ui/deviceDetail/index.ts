@@ -66,6 +66,7 @@ import {
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
 import { loadEvBoostSettings } from './evBoost.ts';
+import { resetEvSmartTaskSettings } from './evSmartTaskSettings.ts';
 import { loadEvChargingSessionSmoothingSettings } from './evChargingSessionSmoothing.ts';
 import { loadEvChargeTargetSettings } from './evChargeTarget.ts';
 import {
@@ -372,6 +373,7 @@ export const openDeviceDetail = (deviceId: string) => {
 };
 
 export const closeDeviceDetail = () => {
+  resetEvSmartTaskSettings();
   setChargingCurrentDevice('', false);
   setContinuousBatteryPlanDevice(null);
   setBatteryApiKeyDevice(null);
