@@ -168,7 +168,7 @@ export type TaskEvaluationSource = TaskEvaluationReaders & {
   getChargingPhaseEnvelopes: (nowMs: number) => ReadonlyMap<string,
     readonly import('../../../packages/planner-types/src/chargingPhases').ChargingPhaseEnvelope[]>;
   allocationRoster: TaskAllocationRoster;
-  getHomeBatteryDischargeW?: (nowMs: number) => number;
+  getHomeBatteryDischargeW?: () => number;
   getTimeZone: () => string;
   getThermalDirection: (deviceId: string) => ThermalDirection;
   getPowerTracker: () => PowerTrackerState;

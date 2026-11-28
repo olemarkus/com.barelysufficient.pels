@@ -125,8 +125,8 @@ export class DeferredObjectiveDecorationController {
     };
   }
 
-  private batteryDischargeExceedsDeadband(nowMs: number): boolean {
-    return (this.source.getHomeBatteryDischargeW?.(nowMs) ?? 0) > BATTERY_DISCHARGE_DEADBAND_W;
+  private batteryDischargeExceedsDeadband(): boolean {
+    return (this.source.getHomeBatteryDischargeW?.() ?? 0) > BATTERY_DISCHARGE_DEADBAND_W;
   }
 
   private findProtectedCharger(devices: PlanInputDevice[], deviceId: string): PlanInputDevice | undefined {
@@ -156,7 +156,7 @@ export class DeferredObjectiveDecorationController {
       if (isCurrentClaim(prior, signature, nowTs)) {
         pauses.set(deviceId, prior);
       } else if (canRun) {
-        discharging ??= this.batteryDischargeExceedsDeadband(nowTs);
+        discharging ??= this.batteryDischargeExceedsDeadband();
         if (!discharging) continue;
         pauses.set(deviceId, {
           taskSignature: signature, startsAtMs: nowTs, endsAtMs: getBatteryPauseEnd(evaluation, nowTs),

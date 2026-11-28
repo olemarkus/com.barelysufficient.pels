@@ -135,6 +135,53 @@ describe('charger car picker', () => {
     await vi.waitFor(() => expect(setSetting).toHaveBeenLastCalledWith('ev_smart_task_settings', saved));
   });
 
+  it('loads a saved car capacity after an unavailable read and keeps a later edit', async () => {
+    const { state } = await import('../src/ui/state.ts');
+    state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
+    getSettingFresh.mockRejectedValueOnce(new Error('settings unavailable'));
+    const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    const { loadEvSmartTaskSettings } = await import('../src/ui/deviceDetail/evSmartTaskSettings.ts');
+    renderCarAssociation(charger());
+    await flush();
+    const field = document.querySelector<HTMLElement & { value: string }>('[data-car-battery-capacity="car-1"]');
+    if (!field) throw new Error('Missing car capacity field');
+    expect(field.hasAttribute('disabled')).toBe(true);
+    expect(field.getAttribute('supporting-text')).toBe('Car battery capacity is unavailable.');
+
+    getSettingFresh.mockResolvedValue({ 'car-1': { usableBatteryKWh: 72 } });
+    await loadEvSmartTaskSettings();
+    expect(field.hasAttribute('disabled')).toBe(false);
+    expect(field.value).toBe('72');
+    field.value = '74';
+    await loadEvSmartTaskSettings();
+    expect(field.value).toBe('74');
+  });
+
+  it('restores the newly saved charger capacity after a rapid invalid edit', async () => {
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="device-detail-ev-smart-task-settings" hidden>
+        <md-filled-text-field id="device-detail-ev-usable-battery"></md-filled-text-field>
+      </div>
+    `);
+    const { state } = await import('../src/ui/state.ts');
+    state.managedMap = { 'charger-1': true };
+    getSettingFresh.mockResolvedValue({ 'charger-1': { usableBatteryKWh: 45 } });
+    let finishSave = () => {};
+    setSetting.mockImplementationOnce(() => new Promise<void>((resolve) => { finishSave = resolve; }));
+    const { initEvSmartTaskSettings, renderEvSmartTaskSettings } = await import('../src/ui/deviceDetail/evSmartTaskSettings.ts');
+    initEvSmartTaskSettings({ getCurrentDetailDeviceId: () => 'charger-1' });
+    await renderEvSmartTaskSettings(charger());
+    const field = document.querySelector<HTMLElement & { value: string }>('#device-detail-ev-usable-battery');
+    if (!field) throw new Error('Missing charger capacity field');
+    field.value = '70';
+    field.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(setSetting).toHaveBeenCalledTimes(1));
+    field.value = 'wrong';
+    field.dispatchEvent(new Event('change'));
+    finishSave();
+    await vi.waitFor(() => expect(field.value).toBe('70'));
+  });
+
   it('offers the backend-resolved eligible cars without repeating eligibility checks', async () => {
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
     renderCarAssociation(charger());

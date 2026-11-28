@@ -210,8 +210,7 @@ its learned rate. An energy task always uses the kWh amount you enter.
 EV Smart tasks pause if available home batteries report more than 500 W of
 discharge. PELS can try again in the next scheduled period. If your battery
 usually powers the house in the evening, the task may wait long enough to miss
-its ready-by time. The pause uses recent battery readings and cannot detect
-discharge when those readings are unavailable.
+its ready-by time. The pause uses the last accepted readings from available batteries.
 
 A task starts when it is created. For a nightly task, use **Settings → Schedules** to create it at 22:00 with ready-by `06:00`. A Flow running **Add energy task** at 22:00 works too. Running that card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 
