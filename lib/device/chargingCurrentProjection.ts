@@ -58,7 +58,11 @@ export function withCurrentActionHold(
   source: TransportDeviceSnapshot, reason: string | undefined,
 ): TransportDeviceSnapshot {
   const { controlAdapter } = source;
-  if (reason === undefined || !controlAdapter || controlAdapter.unavailableStatus) return source;
+  // A charging charger stays commandable so the planner can stop it; the
+  // transport still refuses its starts and current writes (`assertControlAllowed`).
+  if (reason === undefined || !controlAdapter || controlAdapter.unavailableStatus || source.evCharging === true) {
+    return source;
+  }
   return { ...source, controlAdapter: {
     ...controlAdapter, unavailableStatus: { kind: 'idle', factText: null, reasonText: reason },
   } };
