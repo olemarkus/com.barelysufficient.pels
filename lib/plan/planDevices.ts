@@ -254,6 +254,8 @@ function isSurplusOnlyHoldShed(
 
 function temperatureIntentFields(dev: PlanInputDevice, setpoints: TemperatureSetpointsByDevice) {
   if (!isTemperaturePlanDevice(dev)) return { temporaryTemperatureActive: false };
-  const { temporaryTemperatureActive, modePreparation } = temperatureSetpointsFor(setpoints, dev.id);
-  return { temporaryTemperatureActive, modePreparation };
+  const { temporaryTemperatureActive, manualTemperatureHold, modePreparation } = (
+    temperatureSetpointsFor(setpoints, dev.id)
+  );
+  return { temporaryTemperatureActive, manualTemperatureHold, modePreparation };
 }

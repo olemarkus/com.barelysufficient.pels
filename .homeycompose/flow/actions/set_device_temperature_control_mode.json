@@ -6,7 +6,7 @@
     "en": "Set what happens when the temperature of [[device]] changes outside PELS: [[choice]]"
   },
   "hint": {
-    "en": "The same setting as \"When the temperature changes outside PELS\" in the device's Setup section. With \"Keep the new temperature\", PELS stops setting this device's temperature: mode targets and price and solar adjustments stop, and PELS cannot limit its power by lowering the temperature. With \"Save as current mode target\", price and solar adjustments stop and power limiting continues. While the device has an active Smart task, only \"Return to mode target\" is accepted. Switching back to \"Return to mode target\" lets PELS set the temperature again: the mode target, with price and solar adjustments and power limiting on top."
+    "en": "The same setting as \"When the temperature changes outside PELS\" in the device's Setup section. With \"Keep the new temperature\", PELS stops setting this device's temperature: mode targets and price and solar adjustments stop, and PELS cannot limit its power by lowering the temperature. With \"Save as current mode target\", price and solar adjustments stop and power limiting continues. With \"Keep until the next change\", PELS holds an outside temperature change until the price level or mode changes, or a Smart task is set. Power limiting still applies. While the device has an active Smart task, only \"Return to mode target\" is accepted. Switching back to \"Return to mode target\" lets PELS set the temperature again: the mode target, with price and solar adjustments and power limiting on top."
   },
   "args": [
     {
@@ -42,6 +42,12 @@
           "id": "update_mode",
           "label": {
             "en": "Save as current mode target"
+          }
+        },
+        {
+          "id": "hold_until_change",
+          "label": {
+            "en": "Keep until the next change"
           }
         }
       ]

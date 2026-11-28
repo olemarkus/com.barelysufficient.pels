@@ -1,14 +1,15 @@
 import { isUnknownRecord } from '../recordGuards';
 
 /** Per-device temperature authority. Explicit entries override the legacy disable toggle. */
-export type TemperatureControlMode = 'mode' | 'external' | 'update_mode';
+export type TemperatureControlMode = 'mode' | 'external' | 'update_mode' | 'hold_until_change';
 export type TemperatureControlModes = Record<string, TemperatureControlMode>;
 
 export function readTemperatureControlModes(value: unknown): TemperatureControlModes | null {
   if (!isUnknownRecord(value)) return null;
   const entries = Object.entries(value);
   if (!entries.every((entry): entry is [string, TemperatureControlMode] => entry[0].length > 0
-    && (entry[1] === 'mode' || entry[1] === 'external' || entry[1] === 'update_mode'))) return null;
+    && (entry[1] === 'mode' || entry[1] === 'external'
+      || entry[1] === 'update_mode' || entry[1] === 'hold_until_change'))) return null;
   return Object.fromEntries(entries);
 }
 

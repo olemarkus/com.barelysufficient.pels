@@ -40,6 +40,7 @@ const buildDom = () => {
             <md-select-option value="mode"></md-select-option>
             <md-select-option value="external"></md-select-option>
             <md-select-option value="update_mode"></md-select-option>
+            <md-select-option value="hold_until_change"></md-select-option>
           </md-filled-select>
           <small id="device-detail-temperature-control-hint"></small>
           <small id="device-detail-temperature-control-power-hint" hidden></small>
@@ -762,11 +763,27 @@ describe('device detail "Disable temperature control"', () => {
     expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent).toContain('cannot limit');
   });
 
-  it('blocks saving as current mode target while a Smart task needs temperature control', async () => {
+  it('saves Keep until the next change without disabling price adjustments or power limiting', async () => {
+    const { homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
+    const select = temperatureControlToggle()!;
+    select.value = 'hold_until_change';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(temperatureConfirmation().open).toBe(false);
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ 'heater-1': 'hold_until_change' });
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(false);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(true);
+    expect((document.querySelector('#device-detail-controllable') as MdSwitchLike).disabled).toBe(false);
+    expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent)
+      .toContain('still limits');
+  });
+
+  it.each(['update_mode', 'hold_until_change'])('blocks setting %s during an active Smart task', async (choice) => {
     const { homey } = await openPanel({ device: buildTemperatureBinaryDevice(), activeSmartTask: true });
     const select = temperatureControlToggle()!;
-    expect(select.querySelector('[value="update_mode"]')?.hasAttribute('disabled')).toBe(true);
-    select.value = 'update_mode';
+    expect(select.querySelector(`[value="${choice}"]`)?.hasAttribute('disabled')).toBe(true);
+    select.value = choice;
     select.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
     expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();

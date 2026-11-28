@@ -1,6 +1,6 @@
 import { notifySetupPathChange } from '../setupPathFacts.ts';
 import { manualTemperaturePowerHint } from './temperaturePolicy.ts';
-import { confirmTemperatureControlChange } from './temperatureControlConfirmation.ts';
+import { confirmTemperatureControlChange, turnsOffTemperatureAdjustments } from './temperatureControlConfirmation.ts';
 import { TEMPERATURE_CONTROL_MODES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   readTemperatureControlModes,
@@ -32,6 +32,8 @@ const HINTS: Record<TemperatureControlMode, string> = {
   update_mode: 'Temperature changes on the device, in Homey, or from another app or Flow '
     + 'are saved as this device’s target in the current mode. PELS uses saved targets when modes change. '
     + 'Price and solar temperature adjustments are not applied.',
+  hold_until_change: 'PELS keeps temperature changes made on the device, in Homey, or from another app or Flow. '
+    + 'Normal control resumes when the price level or mode changes, or a Smart task is set.',
 };
 
 const syncPowerHint = (device: SettingsUiDeviceDetailItem, selected: TemperatureControlMode): void => {
@@ -50,7 +52,7 @@ export const syncTemperatureControlDisabledRow = (device: SettingsUiDeviceDetail
   selectEl.value = selected;
   selectEl.disabled = pendingSelections.has(id);
   const hasTask = hasActiveDeadlineObjective(id);
-  for (const value of ['external', 'update_mode']) {
+  for (const value of ['external', 'update_mode', 'hold_until_change']) {
     selectEl.querySelector(`[value="${value}"]`)?.toggleAttribute('disabled', hasTask && selected !== value);
   }
   syncPowerHint(device, selected);
@@ -107,7 +109,7 @@ export const initTemperatureControlDisabledHandler = (deps: HandlerDeps): void =
     deps.refreshOpenDeviceDetail();
     const device = findLatestDevice(deviceId);
     if (!device) return;
-    if (previous === 'mode' && next !== 'mode'
+    if (!turnsOffTemperatureAdjustments(previous) && turnsOffTemperatureAdjustments(next)
       && !await confirmTemperatureControlChange(device, next)) return;
     if (deps.getCurrentDetailDeviceId() !== deviceId
       || (next !== 'mode' && hasActiveDeadlineObjective(deviceId))

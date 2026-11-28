@@ -1,10 +1,13 @@
+import { PriceLevel } from '../../lib/price/priceLevels';
+import { writeObjectiveForDevice } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { buildDeviceActuator } from '../../setup/appInit/buildDeviceActuator';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 /** Realtime `device.update` frames arrive on the live feed's socket, as in externalOffHoldRealtime. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { connectLiveFeed, emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const deviceId = 'heater-1';
@@ -133,11 +136,11 @@ describe('external temperature changes reach the mode through observation', () =
     const app = await start('update_mode');
     emitDeviceUpdate(update(22));
     const actuator = buildDeviceActuator(app)!;
-    expect(await actuator.apply({ kind: 'target', target: 'temperature', deviceId, value: 16 }))
+    expect(await actuator.apply({ kind: 'target', target: 'temperature', purpose: 'plan', deviceId, value: 16 }))
       .toEqual({ requested: false });
     mockHomeyInstance.settings.set('operating_mode', 'Away');
     await drainPending();
-    expect(await actuator.apply({ kind: 'target', target: 'temperature', deviceId, value: 16 }))
+    expect(await actuator.apply({ kind: 'target', target: 'temperature', purpose: 'plan', deviceId, value: 16 }))
       .toMatchObject({ requested: true, requestedTargetValue: 16 });
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
   });
@@ -210,8 +213,142 @@ describe('external temperature changes reach the mode through observation', () =
     emitDeviceUpdate(update(22));
     const actuator = buildDeviceActuator(app)!;
 
-    expect(await actuator.apply({ kind: 'target', target: 'temperature', deviceId, value: 22 }))
+    expect(await actuator.apply({ kind: 'target', target: 'temperature', purpose: 'plan', deviceId, value: 22 }))
       .toMatchObject({ requested: true });
+  });
+
+  describe('Keep until the next change', () => {
+    const startHoldPolicy = () => start('hold_until_change');
+    const targetFor = (app: Awaited<ReturnType<typeof start>>) => (
+      app.planService!.getLatestPlanSnapshot()?.devices.find((device) => device.id === deviceId)
+    );
+    const rebuildWithPower = async (app: Awaited<ReturnType<typeof start>>, power: number) => {
+      await vi.advanceTimersByTimeAsync(60_000);
+      const before = app.planService!.getLatestPlanSnapshot();
+      await mockHomeyInstance.flow._actionCardListeners.report_power_usage({ power });
+      await vi.advanceTimersByTimeAsync(2000);
+      await drainUntil(() => app.planService!.getLatestPlanSnapshot() !== before);
+      return targetFor(app);
+    };
+
+    it('keeps the outside change through the same price level and resumes at the next level', async () => {
+      const app = await startHoldPolicy();
+      const priceLevel = vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.EXPENSIVE);
+      mockHomeyInstance.settings.set('price_optimization_enabled', true);
+      mockHomeyInstance.settings.set('price_optimization_settings', {
+        [deviceId]: { enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: true, surplusDelta: 3 },
+      });
+      await drainPending();
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 21.5 });
+
+      const put = vi.spyOn(mockHomeyInstance.api, 'put');
+      const rebuild = vi.spyOn(app.planService!, 'rebuildPlanFromCache');
+      emitDeviceUpdate(update(25));
+      await drainPending();
+      expect(rebuild).not.toHaveBeenCalled();
+      expect(put).not.toHaveBeenCalled();
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({
+        plannedTarget: 25,
+        manualTemperatureHold: { targetC: 25, releasesOnPriceLevelChange: true },
+      });
+      expect(put).not.toHaveBeenCalled();
+
+      priceLevel.mockReturnValue(PriceLevel.NORMAL);
+      const resumed = await rebuildWithPower(app, 1000);
+      expect(resumed).toMatchObject({ plannedTarget: 23.5 });
+      expect(resumed?.manualTemperatureHold).toBeUndefined();
+      expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 23.5 } });
+    });
+
+    it('does not hold a transaction echo or a reported value matching a PELS write', async () => {
+      const app = await startHoldPolicy();
+      const put = vi.spyOn(mockHomeyInstance.api, 'put');
+      await app.deviceManager!.requestTemperatureTarget(deviceId, 18);
+      const transactionId = ownWriteTransactionId(put, deviceId, 'target_temperature');
+      await emitCapability(deviceId, 'target_temperature', 18, transactionId);
+      emitDeviceUpdate(update(18));
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 23.5 });
+      expect(targetFor(app)?.manualTemperatureHold).toBeUndefined();
+    });
+
+    it('releases when the operating mode changes', async () => {
+      const app = await startHoldPolicy();
+      await rebuildWithPower(app, 1000);
+      emitDeviceUpdate(update(26));
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 26 });
+      mockHomeyInstance.settings.set('operating_mode', 'Away');
+      await drainPending();
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 16 });
+      expect(targetFor(app)?.manualTemperatureHold).toBeUndefined();
+    });
+
+    it('accepts a second change during scheduled preparation and lets preparation resume at release', async () => {
+      const app = await startHoldPolicy();
+      const priceLevel = vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.EXPENSIVE);
+      mockHomeyInstance.settings.set('price_optimization_settings', {
+        [deviceId]: { enabled: true, cheapDelta: 0, expensiveDelta: 0 },
+      });
+      mockHomeyInstance.settings.set('mode_device_targets', { Home: { [deviceId]: 23.5 }, Morning: { [deviceId]: 29 } });
+      await drainPending();
+      await rebuildWithPower(app, 1000);
+      emitDeviceUpdate(update(25));
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 25 });
+      await mockHomeyInstance.flow._actionCardListeners.prepare_operating_mode({ mode: 'Morning', ready_by: '14:12' });
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 25 });
+      expect(app.readSchedules(true)).toMatchObject({
+        ok: true,
+        data: { preparationPlan: { devices: [{ deviceId, state: 'manual_temperature_hold' }] } },
+      });
+
+      emitDeviceUpdate(update(27));
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({
+        plannedTarget: 27, manualTemperatureHold: { targetC: 27 },
+      });
+      priceLevel.mockReturnValue(PriceLevel.NORMAL);
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({
+        plannedTarget: 29, modePreparation: { mode: 'Morning' },
+      });
+      expect(targetFor(app)?.manualTemperatureHold).toBeUndefined();
+    });
+
+    it('releases when a Smart task is set and does not re-arm during it', async () => {
+      const app = await startHoldPolicy();
+      emitDeviceUpdate(update(26));
+      expect(await rebuildWithPower(app, 1000)).toMatchObject({ plannedTarget: 26 });
+      writeObjectiveForDevice(mockHomeyInstance.settings, deviceId, {
+        enabled: true, kind: 'temperature', enforcement: 'soft',
+        targetTemperatureC: 24, deadlineAtMs: Date.now() + 6 * 60 * 60_000,
+      });
+      await rebuildWithPower(app, 1000);
+      expect(targetFor(app)?.manualTemperatureHold).toBeUndefined();
+      emitDeviceUpdate(update(29));
+      await rebuildWithPower(app, 1000);
+      expect(targetFor(app)?.manualTemperatureHold).toBeUndefined();
+    });
+
+    it('blocks a stale normal write to the limit value and still lowers the target to limit power', async () => {
+      const app = await start('hold_until_change', false);
+      mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
+      await drainPending();
+      await rebuildWithPower(app, 1000);
+      await emitCapability(deviceId, 'target_temperature', 26);
+      const actuator = buildDeviceActuator(app)!;
+      expect(await actuator.apply({
+        kind: 'target', target: 'temperature', deviceId, purpose: 'plan', value: 16,
+      })).toEqual({ requested: false });
+
+      const put = vi.spyOn(mockHomeyInstance.api, 'put');
+      expect(await rebuildWithPower(app, 15_000)).toMatchObject({
+        plannedState: 'shed', shedAction: 'set_temperature', plannedTarget: 16,
+        manualTemperatureHold: { targetC: 26 },
+      });
+      expect(put).toHaveBeenCalledWith(
+        `manager/devices/device/${deviceId}/capability/target_temperature`, pelsCapabilityWrite(16),
+      );
+      // A clamped limit report must not replace the hold.
+      await emitCapability(deviceId, 'target_temperature', 18);
+      expect(await rebuildWithPower(app, 15_000)).toMatchObject({ manualTemperatureHold: { targetC: 26 } });
+    });
   });
 
   it('never adopts a delayed echo of its own temperature write', async () => {

@@ -225,7 +225,7 @@ describe('MeterResponseCapture', () => {
     expect(droppedReason(runScene(turnOnScene(DISPATCH_AT + 20_000, {
       otherCommands: [{
         atMs: DISPATCH_AT + 40_000,
-        command: { kind: 'target', target: 'temperature', deviceId: 'thermostat', value: 21 },
+        command: { kind: 'target', target: 'temperature', purpose: 'plan', deviceId: 'thermostat', value: 21 },
       }],
     })))).toBe('concurrent_command');
   });

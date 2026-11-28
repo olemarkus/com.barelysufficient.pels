@@ -12,7 +12,7 @@ import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import type { StableSampleRevision } from '../../lib/power/sampleIngestQueue';
 
-const command: DeviceCommand = { kind: 'target', deviceId: 'd1', target: 'temperature', value: 21 };
+const command: DeviceCommand = { kind: 'target', deviceId: 'd1', target: 'temperature', purpose: 'plan', value: 21 };
 const acceptedTargetOutcome = (): ActuatorOutcome => ({
   requested: true,
   kind: 'target',

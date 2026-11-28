@@ -29,6 +29,7 @@ export type ModePreparationReads = {
   thermalDirection(deviceId: string): ThermalDirection;
   canSetTemperature(deviceId: string): boolean;
   temporaryTemperatureC(deviceId: string): number | null;
+  hasManualTemperatureHold(deviceId: string): boolean;
   smartTaskState(deviceId: string): 'open' | 'none' | 'unavailable';
   leadMs(device: PreparationLeadDevice, fromC: number, targetC: number): number;
 };
@@ -158,8 +159,9 @@ export class ModePreparationResolver {
 
   private preparationBlocker(
     deviceId: string, started: PreparationWindow['started'] | undefined,
-  ): 'override' | 'smart_task' | 'unavailable' | 'none' {
+  ): 'override' | 'manual_temperature_hold' | 'smart_task' | 'unavailable' | 'none' {
     if (this.reads.temporaryTemperatureC(deviceId) !== null) return 'override';
+    if (this.reads.hasManualTemperatureHold(deviceId)) return 'manual_temperature_hold';
     const task = this.reads.smartTaskState(deviceId);
     // A failed read preserves a started device's last accepted state for this window.
     const state = task === 'unavailable' ? started?.get(deviceId) ?? task : task;

@@ -30,10 +30,16 @@ function limitingWarnings(device: SettingsUiDeviceDetailItem): string[] {
     : 'When limiting power, PELS will turn this device off instead of changing its temperature.'];
 }
 
+type AdjustmentBlockingPolicy = 'external' | 'update_mode';
+
+export const turnsOffTemperatureAdjustments = (policy: TemperatureControlMode): policy is AdjustmentBlockingPolicy => (
+  policy === 'external' || policy === 'update_mode'
+);
+
 /** Everything the owner should hear before the policy changes, in the order it matters. */
 function policyChangeWarnings(
   device: SettingsUiDeviceDetailItem,
-  next: Exclude<TemperatureControlMode, 'mode'>,
+  next: AdjustmentBlockingPolicy,
 ): string[] {
   const warnings: string[] = next === 'external' ? limitingWarnings(device) : [];
   if (next === 'update_mode' && resolveShedBehavior(state.shedBehaviors, device.id).action === 'set_temperature') {
@@ -58,7 +64,7 @@ function policyChangeWarnings(
  */
 export async function confirmTemperatureControlChange(
   device: SettingsUiDeviceDetailItem,
-  next: Exclude<TemperatureControlMode, 'mode'>,
+  next: AdjustmentBlockingPolicy,
 ): Promise<boolean> {
   const warnings = policyChangeWarnings(device, next);
   if (warnings.length === 0) return true;

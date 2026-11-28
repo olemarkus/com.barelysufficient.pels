@@ -107,7 +107,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     await expect(actuator!.apply({
       kind: 'target',
       deviceId: 'missing-thermostat',
-      target: 'temperature',
+      target: 'temperature', purpose: 'plan',
       value: 5,
     })).resolves.toEqual({ requested: false });
     expect(applyDeviceTargets).not.toHaveBeenCalled();

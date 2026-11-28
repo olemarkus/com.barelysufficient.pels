@@ -40,6 +40,9 @@ export const bindTemperatureSetpoints = (
     getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getTemporaryTemperatureC: bindTemporaryTemperatureRead(ctx),
+    beginManualTemperaturePlan: (mode) => (
+      ctx.observedTemperatureModeUpdates.beginManualTemperaturePlan(scope.homeId, mode)
+    ),
     getPreparedModeTargets,
   })
 );
@@ -66,4 +69,5 @@ export const bindModePreparationResolver = (
   thermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
   canSetTemperature: (deviceId) => ctx.observedTemperatureModeUpdates.allowsLimiting(deviceId),
   temporaryTemperatureC: bindTemporaryTemperatureRead(ctx),
+  hasManualTemperatureHold: (deviceId) => ctx.observedTemperatureModeUpdates.hasManualTemperatureHold(deviceId),
 });

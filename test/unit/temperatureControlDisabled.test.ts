@@ -252,7 +252,7 @@ describe('disabled temperature control', () => {
     );
 
     await expect(actuator.apply({
-      kind: 'target', deviceId: 'thermostat-1', target: 'temperature', value: 18,
+      kind: 'target', deviceId: 'thermostat-1', target: 'temperature', purpose: 'plan', value: 18,
     })).resolves.toEqual({ requested: false });
     await expect(actuator.apply({
       kind: 'step',
@@ -283,7 +283,7 @@ describe('disabled temperature control', () => {
 
     disabled = false;
     await actuator.apply({
-      kind: 'target', deviceId: 'thermostat-1', target: 'temperature', value: 20,
+      kind: 'target', deviceId: 'thermostat-1', target: 'temperature', purpose: 'plan', value: 20,
     });
     expect(apply).toHaveBeenCalledTimes(4);
   });

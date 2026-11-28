@@ -72,7 +72,7 @@ export const applyShedReleaseTemperature = async (
     desired: shedTemperature,
     observedValue: target.observedValue,
     isRestoring: false,
-  }, forceAgainstReleasedOpposing);
+  }, forceAgainstReleasedOpposing, 'shed_release');
   if (wrote) {
     // applyTargetUpdate only records on the restore axis. Record the shed here too, as
     // any shed write does: the per-device `pels_shed` event must fire for the release write so

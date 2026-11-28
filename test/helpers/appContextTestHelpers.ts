@@ -318,6 +318,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
       () => false, () => [], () => null, () => null,
+      () => 'none',
     ),
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),

@@ -32,6 +32,7 @@ const statusLine = (device: ModePreparationPlanDevice, plan: ReadyPlan): string 
     case 'preparing': return `Using the ${plan.destinationMode} temperature now`;
     case 'smart_task': return 'Its Smart task comes first';
     case 'override': return 'Its temperature override comes first';
+    case 'manual_temperature_hold': return 'Keeps its manual temperature for now';
     case 'unavailable': return 'Waits until PELS can check its Smart tasks';
   }
 };

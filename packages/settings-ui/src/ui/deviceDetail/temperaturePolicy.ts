@@ -14,7 +14,7 @@ export function followsDeviceTemperature(device: SettingsUiDeviceDetailItem | nu
   ) === 'update_mode';
 }
 
-/** Price and solar offsets: switched off under both non-default policies. */
+/** Whether the policy allows PELS to adjust the temperature for price and solar. */
 export function supportsTemperatureAdjustments(device: SettingsUiDeviceDetailItem | null): boolean {
   return supportsTemperatureControlDevice(device) && !followsDeviceTemperature(device);
 }
@@ -54,6 +54,10 @@ export function manualTemperaturePowerHint(
   if (policy === 'update_mode') {
     return 'PELS still limits this device’s power as configured. '
       + 'While PELS is limiting its temperature, a change made outside PELS is not saved as the mode target.';
+  }
+  if (policy === 'hold_until_change') {
+    return 'PELS still limits this device’s power as configured. '
+      + 'Changes made while PELS is limiting the temperature do not start a hold.';
   }
   if (isSteppedLoadControlModel(device)) return 'PELS can still limit power using this device’s power levels.';
   if (device.binaryControllable === true) return 'PELS can still limit power by turning this device off and on.';
