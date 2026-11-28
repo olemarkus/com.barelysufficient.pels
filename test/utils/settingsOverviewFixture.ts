@@ -14,6 +14,7 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getIdleClassification'
   | 'getAssociatedCarChargingState'
   | 'getCarIdentificationState'
+  | 'getCarAssociationCarIds'
   | 'getSteppedLoadProfileById'
   | 'getDeviceControlAdapter'
   | 'getUnusedBuiltInControl'
@@ -37,6 +38,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getIdleClassification: () => undefined,
   getAssociatedCarChargingState: () => undefined,
   getCarIdentificationState: () => 'not_waiting',
+  getCarAssociationCarIds: () => [],
   getSteppedLoadProfileById: () => new Map(),
   getDeviceControlAdapter: () => undefined,
   getUnusedBuiltInControl: () => 'none' as const,

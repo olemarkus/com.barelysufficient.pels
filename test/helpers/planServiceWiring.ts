@@ -7,6 +7,7 @@ import { testLogger } from '../utils/testLogger';
 type PlanServiceWiring = Pick<PlanServiceDeps,
   | 'getAssociatedCarChargingState'
   | 'getCarIdentificationState'
+  | 'getCarAssociationCarIds'
   | 'observed'
   | 'getSteppedLoadProfileById'
   | 'schedulePostActuationRefresh'
@@ -27,6 +28,7 @@ type PlanServiceWiring = Pick<PlanServiceDeps,
 export const planServiceWiring = (): PlanServiceWiring => ({
   getAssociatedCarChargingState: () => undefined,
   getCarIdentificationState: () => 'not_waiting',
+  getCarAssociationCarIds: () => [],
   observed: noPlanServiceObservedReads,
   getSteppedLoadProfileById: () => new Map(),
   schedulePostActuationRefresh: () => undefined,

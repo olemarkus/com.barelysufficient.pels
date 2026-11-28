@@ -50,6 +50,7 @@ import type { PlanServiceDeps } from './planServiceDeps';
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'observed' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
+  | 'getCarAssociationCarIds'
   | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'getUnusedBuiltInControl' | 'isTargetPowerControlRefused'
   | 'hasStandingCommandGrant'
   | 'isCapacityControlEnabled'
@@ -293,6 +294,7 @@ function buildLoadOverviewDevice(
     evChargingState: resolveOverviewEvChargingState(device.id, deps),
     carChargingState: deps.getAssociatedCarChargingState(device.id),
     carIdentificationState: deps.getCarIdentificationState(device.id, deps.nowMs),
+    hasSelectedCars: device.isEvCharger && deps.getCarAssociationCarIds(device.id).length > 0,
   };
   const presentation = withChargingInstallation(
     overviewShape, buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs),

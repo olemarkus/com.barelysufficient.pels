@@ -112,6 +112,7 @@ export type PlanServiceDeps = {
   getAssociatedCarChargingState: (deviceId: string) => EvChargingState | undefined;
   /** Live device-owned wait state, used only for presentation and Activity. */
   getCarIdentificationState: (deviceId: string, nowMs: number) => CarIdentificationState;
+  getCarAssociationCarIds: (deviceId: string) => readonly string[];
   /**
    * A home battery's card facts for the settings-UI overview: its control
    * surface from the transport and its own power and level from the observer.

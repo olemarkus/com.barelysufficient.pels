@@ -16,6 +16,9 @@ import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceSt
 import type { HomeBatteryDelivery } from '../../lib/ports/batteryControlOwner';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import { formatStarvationDurationLabel } from '../../packages/shared-domain/src/planStarvation';
+import {
+  CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED, CAR_ASSOCIATION_TIMED_OUT,
+} from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 
 
 type SpecDeps = Omit<SettingsOverviewReadModelDeps,
@@ -770,6 +773,28 @@ describe('settingsOverviewReadModel', () => {
       getCarIdentificationState: () => 'waiting',
     });
     expect(wire.status.factText).toBe(factText);
+  });
+
+  it.each([
+    ['waiting', true, 'Waiting for battery level', true, undefined],
+    ['selected_cars_unplugged', true, CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED, true, undefined],
+    ['timed_out', true, CAR_ASSOCIATION_TIMED_OUT, true, 'warning'],
+    ['not_waiting', true, 'Waiting for battery level. Check the car’s battery reading in Homey.', undefined, undefined],
+    ['not_waiting', false, 'Waiting for battery level. Use the Report battery level for charger Flow card.', undefined, undefined],
+  ] as const)('explains an unknown battery level (%s, selected cars: %s)', (
+    carIdentificationState, hasSelectedCars, text, offersCarConfirmation, tone,
+  ) => {
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'off',
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.awaitingBatteryLevel } });
+    const wire = buildDeviceCard(device, {
+      ...absentTemperature,
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const) },
+      getCarIdentificationState: () => carIdentificationState,
+      getCarAssociationCarIds: () => hasSelectedCars ? ['car-1'] : [],
+    });
+    expect(wire.status.reason?.text).toBe(text);
+    expect(wire.status.reason?.offersCarConfirmation).toBe(offersCarConfirmation);
+    expect(wire.status.reason?.tone).toBe(tone);
   });
 
   it('offers an Overview warning when the device power predates its switch-off', () => {

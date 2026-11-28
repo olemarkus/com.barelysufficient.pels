@@ -1,4 +1,4 @@
-import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
+import type { HeldChargeTarget, PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type {
   DeferredHoldCause, DeferredReleaseIntent,
 } from '../../../packages/planner-types/src/deferredDecoration';
@@ -11,6 +11,7 @@ export type { DeferredReleaseIntent };
 export type DeferredAdmissionDecision = (
   | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: never }
   | { kind: 'waiting'; budgetExempt: false; releaseIntent?: never }
+  | { kind: 'hold_charge_target'; hold: HeldChargeTarget; budgetExempt: false; releaseIntent?: never }
   | {
       kind: 'planned';
       budgetExempt: boolean;
@@ -177,7 +178,9 @@ const resolveAllocatedDecision = (
 const resolveDecisionWithAvailablePower = (
   evaluation: TaskEvaluation, device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
-  const decision = resolveDecision(evaluation, device);
+  const decision: DeferredAdmissionDecision = evaluation.targetControl.kind === 'battery_hold'
+    ? { kind: 'hold_charge_target', hold: evaluation.targetControl.hold, budgetExempt: false }
+    : resolveDecision(evaluation, device);
   return evaluation.usesAvailablePower === true ? { ...decision, usesAvailablePower: true } : decision;
 };
 
@@ -381,9 +384,8 @@ const resolveHourClaims = (
     // A charger's target battery level gives way the same way: a smart task wins
     // during its booked hours, so a task that books this hour may charge past the
     // target. Again only on `planned`: an `idle` task wants the charger off
-    // anyway, and an `inactive` one (no battery level, no session) is not driving
-    // it, so a hold that waits for a level is never lifted by a task that cannot
-    // see one. The producer's answer, read directly, for the boundary reason
+    // anyway, and a percentage task waiting for its level supplies its own
+    // hold. The producer's answer, read directly, for the boundary reason
     // above (`resolveHeldChargeTarget`, `lib/plan/shedding/chargeTargetHold.ts`).
     liftsChargeTargetHold: planned
       && (device.chargeTargetHold.kind === 'target_reached' || device.chargeTargetHold.kind === 'awaiting_level'),
@@ -404,6 +406,14 @@ const decoratePlanningWait = (device: PlanInputDevice, override: boolean): PlanI
   ...(device.startPolicyInForce === 'pels_only' && device.currentState === 'on'
     ? { startPolicyHoldLifted: true as const } : {}),
 });
+
+const decorateChargeTargetHold = (
+  device: PlanInputDevice, hold: HeldChargeTarget, override: boolean,
+): PlanInputDevice => (
+  device.control.commandAuthority || override
+    ? { ...device, ...overrideCommandAuthority(device, override), chargeTargetHold: hold }
+    : device
+);
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
@@ -430,6 +440,9 @@ export const applyDeferredAdmissionToInput = (
     const override = contributesCommandAuthority(decision, device);
     if (override) lentAuthorityDeviceIds.add(device.id);
     if (decision.kind === 'waiting') return decoratePlanningWait(device, override);
+    if (decision.kind === 'hold_charge_target') {
+      return decorateChargeTargetHold(device, decision.hold, override);
+    }
     const deadlineFloorTargetC = decision.kind === 'inactive' ? undefined : decision.deadlineFloorTargetC;
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     const deferredHold = resolveDeferredHold(decision, device);

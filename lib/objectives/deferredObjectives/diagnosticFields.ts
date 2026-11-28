@@ -223,6 +223,53 @@ export const withUnavailableTrajectory = (
   expectedStepId: null,
 });
 
+export const resolveBatteryLevelWaitReason = (
+  objective: DeferredObjectiveSettingsEntry,
+  progress: DeferredObjectiveProgressResolution,
+  priceOptimizationEnabled: boolean,
+  nowMs: number,
+): 'objective_waiting_for_car' | 'objective_progress_stale' | null => {
+  if (!priceOptimizationEnabled || objective.kind !== 'ev_soc' || objective.deadlineAtMs <= nowMs) return null;
+  // The progress producer handles unplugged and non-creditable sessions as
+  // objective_invalid_session before it looks up a battery level.
+  const { reasonCode } = progress;
+  return reasonCode === 'objective_waiting_for_car' || reasonCode === 'objective_progress_stale'
+    ? reasonCode : null;
+};
+
+export const buildBatteryLevelWaitDiagnostic = (
+  base: DeferredObjectiveDiagnostic,
+  objective: DeferredObjectiveSettingsEntry,
+  progress: DeferredObjectiveProgressResolution,
+  reasonCode: 'objective_waiting_for_car' | 'objective_progress_stale',
+): DeferredObjectiveDiagnostic => {
+  const evaluation: TaskEvaluation = {
+    ...buildUnallocatedTaskEvaluation(base.deviceId, objective, progress),
+    permissions: NO_TASK_PERMISSIONS,
+    targetControl: { kind: 'battery_hold', hold: { kind: 'awaiting_level' } },
+  };
+  return withUnavailableTrajectory({ ...base, evaluation, completion: evaluation.completion }, reasonCode);
+};
+
+export const applySatisfiedTaskControl = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  objective: DeferredObjectiveSettingsEntry,
+  priceOptimizationEnabled: boolean,
+  nowMs: number,
+): DeferredObjectiveDiagnostic => {
+  if (!priceOptimizationEnabled) {
+    return { ...diagnostic, evaluation: { ...diagnostic.evaluation, planning: { kind: 'inactive' } } };
+  }
+  if (objective.kind !== 'ev_soc' || objective.deadlineAtMs <= nowMs) return diagnostic;
+  return {
+    ...diagnostic,
+    evaluation: {
+      ...diagnostic.evaluation,
+      targetControl: { kind: 'battery_hold', hold: { kind: 'target_reached', targetPercent: objective.targetPercent } },
+    },
+  };
+};
+
 export const buildKnownEnergyFields = (params: {
   objective: DeferredObjectiveSettingsEntry;
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;

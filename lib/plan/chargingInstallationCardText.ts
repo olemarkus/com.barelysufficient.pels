@@ -1,5 +1,6 @@
 import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
 import type { ChargingInstallationCard, DeviceStatusInput } from './deviceStatusInput';
+import { isWaitingForBatteryLevel, mayShowInstallationMemberHold } from './deviceStatusReasonOffers';
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
 import { EV_BLOCK_REASON_CODES } from '../../packages/shared-domain/src/commandableNowReason';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -81,6 +82,12 @@ function isRequestingPower(state: DeviceStatusInput['evChargingState']): boolean
     : resolveEvChargeAction(state) !== 'offer';
 }
 
+function hasPersonalHoldReason(device: DeviceStatusInput, hasChargeTargetHold: boolean): boolean {
+  const { code } = device.reason;
+  return hasChargeTargetHold || code === PLAN_REASON_CODES.awaitingPelsStart
+    || code === PLAN_REASON_CODES.deferredObjectiveAvoid || code === PLAN_REASON_CODES.deferredObjectiveSatisfied;
+}
+
 /**
  * A card as a charging installation shapes it, from the card the device would
  * have on its own: a secondary's card is replaced by its own observation, and
@@ -90,14 +97,17 @@ function isRequestingPower(state: DeviceStatusInput['evChargingState']): boolean
 export function withChargingInstallation(device: DeviceStatusInput, status: DeviceStatus): DeviceStatus {
   const installation = device.chargingInstallation;
   if (installation === undefined) return status;
+  const hasChargeTargetHold = device.chargeTargetHeld !== undefined || isWaitingForBatteryLevel(device);
   const secondary = buildSecondaryChargerStatus(device, status.cardKind, status.reading);
   if (secondary) {
-    const { code } = device.reason;
-    const hasTaskHold = code === PLAN_REASON_CODES.awaitingPelsStart
-      || code === PLAN_REASON_CODES.deferredObjectiveAvoid || code === PLAN_REASON_CODES.deferredObjectiveSatisfied;
-    return hasTaskHold && status.reason !== null ? { ...secondary, reason: status.reason } : secondary;
+    return hasPersonalHoldReason(device, hasChargeTargetHold) && status.reason !== null
+      ? { ...secondary, reason: status.reason } : secondary;
   }
-  const primaryHeld = installation.role === 'main' && device.startPolicyHoldActive === true
+  // The installation can be applying a shared current limit without giving the
+  // primary's off switch a reason. In that case its own start policy explains it.
+  const canShowStartPolicy = status.reason === null || mayShowInstallationMemberHold(device);
+  const primaryHeld = installation.role === 'main' && canShowStartPolicy
+    && !hasChargeTargetHold && device.startPolicyHoldActive === true
     && device.execution.available && device.execution.physicalState === 'off';
   return {
     ...status,

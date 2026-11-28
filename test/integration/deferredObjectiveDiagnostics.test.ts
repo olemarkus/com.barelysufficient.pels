@@ -2590,7 +2590,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [disabled] = buildDeferredObjectiveDiagnostics({ ...params, priceOptimizationEnabled: false });
 
     expect(enabled?.evaluation.completion.kind).toBe('target_reached');
-    expect(applyDeferredObjectiveAdmission([enabled!.evaluation]).get(enabled!.deviceId)?.kind).toBe('idle');
+    expect(applyDeferredObjectiveAdmission([enabled!.evaluation]).get(enabled!.deviceId)).toMatchObject({
+      kind: 'hold_charge_target', hold: { kind: 'target_reached', targetPercent: 60 },
+    });
     expect(disabled?.evaluation.completion.kind).toBe('target_reached');
     expect(disabled && resolvedTrajectoryStatus(disabled)).toBe('satisfied');
     expect(applyDeferredObjectiveAdmission([disabled!.evaluation]).get(disabled!.deviceId))

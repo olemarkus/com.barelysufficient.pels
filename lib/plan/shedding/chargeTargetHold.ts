@@ -6,7 +6,7 @@ import {
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 
 /**
- * Standing hold for a charger's target battery level: "charge to N% and stop".
+ * Hold for a charger's target battery level: "charge to N% and stop".
  *
  * The same shape as the start-policy hold (`./startPolicyHold.ts`), and read at
  * the same sites, for the same reasons; read that module's notes first. This one
@@ -17,8 +17,9 @@ import {
  * The producer resolves the setting, the observed level and the plug state into
  * `PlanInputDevice.chargeTargetHold` (`projectChargeTargetHold`,
  * `lib/planInput/chargeTargetHold.ts`), including the command-authority gate: a
- * charger PELS only watches resolves to `none`. Nothing here reads the setting
- * or the level.
+ * charger PELS only watches resolves to `none`. Deferred admission can supply
+ * the hold for an active percentage task. The planner consumes the resolved
+ * posture.
  *
  * The hold is OFF, not the owner's power-limiting floor: a stepped charger parked
  * at its lowest current keeps charging past the target. The shed-behaviour
@@ -33,8 +34,9 @@ import {
  *
  * `PlanInputDevice.chargeTargetHoldLifted` is stamped by deferred admission on a
  * `planned` decision: the task booked this hour and may charge past the target.
- * `idle` and `inactive` decisions leave the hold in place. A task whose car has
- * no battery level is `inactive`, so it never lifts a hold that waits for one.
+ * `idle` and `inactive` decisions leave the hold in place. An active percentage
+ * task supplies its own hold while its battery level is missing or its target
+ * has been reached.
  *
  * ## Not capacity pressure
  *

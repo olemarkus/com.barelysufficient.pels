@@ -107,6 +107,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
       getCarIdentificationState: () => 'not_waiting',
+      getCarAssociationCarIds: () => [],
       // The mode catalog asks which devices are home batteries when it ranks.
       isBatteryDevice: () => false,
       requestBinaryControl: vi.fn(async () => undefined),
@@ -1442,6 +1443,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
       getCarIdentificationState: () => 'not_waiting',
+      getCarAssociationCarIds: () => [],
       isBatteryDevice: () => false,
       setCapability,
       requestBinaryControl: (deviceId: string, desired: boolean) => (

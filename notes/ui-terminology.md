@@ -3024,8 +3024,8 @@ in force now, Setup & recommendations shows a recommendation
   car is plugged in says `no battery level` in the battery level's place on its fact
   line: `Charging · no battery level · level 16 A`, `Waiting for car · no battery
   level · Level 16 A`, `No battery level` while off, or `Plugged in · no battery
-  level` on a charger without charging levels. When nothing else explains the card
-  (no other reason, or the wait for a battery level), its reason starts as `Waiting
+  level` on a charger without charging levels. When nothing else explains the card,
+  its reason starts as `Waiting
   to identify the connected car`. While every selected car reports unplugged, no
   match can come until one reports a plug-in, so it says `No selected car reports
   a plug-in. Confirm the connected car in the charger’s Car section.` without
@@ -3042,6 +3042,12 @@ in force now, Setup & recommendations shows a recommendation
   connected car` button sits right under that car, ahead of its current limits. A charger linked to a car outside its selection, or whose
   selected cars have all been removed from Homey, shows none of this. Activity
   records the same reason. Matching or explicit confirmation ends this message.
+- A charger held off for a missing battery level says `Waiting for battery
+  level` in the matching window and offers `Confirm car` immediately. The
+  selected-cars-unplugged and matching-timeout messages above take precedence.
+  With a car selected and none to confirm, it adds `Check the car’s battery
+  reading in Homey.` With no car selected, it adds `Use the Report battery
+  level for charger Flow card.`
 
 ## Mode preparation
 
