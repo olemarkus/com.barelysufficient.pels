@@ -158,13 +158,17 @@ export class ChargingCurrentControl {
     if (this.synchronizeTrust()) this.sessions.observeDevices(devices, readAtMs);
   }
 
-  /** `capabilityId`: the capability a write sets; refused on a charging installation's secondary. */
-  assertControlAllowed(device: HomeyDeviceLike, capabilityId?: string): void {
+  /**
+   * `capabilityId`: the capability a write sets; refused on a charging installation's secondary.
+   * `stopsCharging`: the write stops the charger, which a held current action never blocks.
+   */
+  assertControlAllowed(device: HomeyDeviceLike, capabilityId?: string, stopsCharging = false): void {
     if (capabilityId !== undefined) this.assertInstallationWrite(device.id, capabilityId);
     const connected = this.synchronizeTrust();
     const adapter = resolveChargingCurrentAdapter(device);
     const readSetup = lazyChargingCurrentSetup(() => this.setup(device.id));
-    const hold = actionControlHoldReason(adapter, readSetup, this.flowInventoryReady, this.flowWrites);
+    const hold = stopsCharging ? undefined
+      : actionControlHoldReason(adapter, readSetup, this.flowInventoryReady, this.flowWrites);
     if (hold !== undefined) throw new Error(hold);
     this.sessions.assertAllowed(device, readSetup, connected);
   }

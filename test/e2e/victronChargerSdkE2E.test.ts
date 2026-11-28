@@ -30,6 +30,7 @@ afterEach(async () => {
 
 async function setupCharger(
   mode: 'Auto' | 'Manual', hasCurrentFlow: boolean, initiallyCharging = true, rejectsCurrent = false, ceilingA: number | null = 32,
+  flowsReadable = true,
 ) {
   const device = new MockDevice(ID, 'Victron EV Charging Station', [
     'evcharger_charging', 'evcharger_charging_state', 'measure_power', 'meter_power',
@@ -64,6 +65,7 @@ async function setupCharger(
     if (path === 'manager/energy/live') return {
       items: [{ type: 'cumulative', id: 'meter-main', values: { W: backgroundW + powerW() } }],
     };
+    if (!flowsReadable && path.startsWith('manager/flow/')) throw new Error('Flows unavailable');
     if (path === 'manager/flow/flow/') return hasCurrentFlow
       ? { current: { name: 'Change current', actions: [{ id: CARD, args: { device: { id: ID } } }] } } : {};
     if (path === 'manager/flow/advancedflow/') return {};
@@ -72,6 +74,7 @@ async function setupCharger(
   });
   const actions: number[] = [];
   const startCurrents: number[] = [];
+  let stops = 0;
   const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path, body) => {
     const response = await originalPut(path, body);
@@ -80,6 +83,13 @@ async function setupCharger(
       startCurrents.push(currentA);
       charging = true;
       device.setActualCapabilityValue('sensor_status', 'Charging');
+      device.setActualCapabilityValue('measure_power', powerW());
+    }
+    if (path === `manager/devices/device/${ID}/capability/evcharger_charging`
+      && body && typeof body === 'object' && 'value' in body && body.value === false) {
+      stops += 1;
+      charging = false;
+      device.setActualCapabilityValue('sensor_status', 'Waiting for start');
       device.setActualCapabilityValue('measure_power', powerW());
     }
     return response;
@@ -100,7 +110,7 @@ async function setupCharger(
     };
   });
   vi.stubGlobal('fetch', fetch);
-  return { actions, startCurrents, currentA: () => currentA,
+  return { actions, startCurrents, currentA: () => currentA, stops: () => stops,
     setBackground: (watts: number) => { backgroundW = watts; } };
 }
 
@@ -147,6 +157,28 @@ it('keeps the charger stopped while its ceiling is unavailable', async () => {
   await vi.advanceTimersByTimeAsync(400_000);
   expect(charger.actions).toEqual([]);
   expect(charger.startCurrents).toEqual([]);
+});
+
+it('stops a charging Victron for the power limit while its ceiling is unavailable', async () => {
+  const charger = await setupCharger('Manual', false, true, false, null);
+  charger.setBackground(3_000);
+  await createApp().onInit();
+  await vi.advanceTimersByTimeAsync(400_000);
+  expect(charger.stops()).toBeGreaterThan(0);
+  expect(charger.actions).toEqual([]);
+  expect(charger.startCurrents).toEqual([]);
+});
+
+it('keeps a charging Victron commandable while Homey Flows cannot be checked', async () => {
+  const charger = await setupCharger('Manual', false, true, false, 32, false);
+  const app = createApp();
+  await app.onInit();
+  await vi.advanceTimersByTimeAsync(125_000);
+  const planned = app.planService.getLatestPlanSnapshot()?.devices.find((device) => device.id === ID);
+  expect(planned?.control.commandAuthority).toBe(true);
+  expect(app.getPlanInputSnapshot().find((device) => device.id === ID)?.controlAdapter?.unavailableStatus)
+    .toBeUndefined();
+  expect(charger.actions).toEqual([]);
 });
 
 it('ramps above the first higher rung within the charger ceiling after headroom returns', async () => {

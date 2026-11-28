@@ -129,13 +129,15 @@ export class DeviceWriteService {
     return snapshot !== undefined && this.chargingCurrentControl.sessions.controls(snapshot);
   }
 
-  private assertControlAllowed(deviceId: string, capabilityId?: string): HomeyDeviceLike | undefined {
+  private assertControlAllowed(
+    deviceId: string, capabilityId?: string, stopsCharging = false,
+  ): HomeyDeviceLike | undefined {
     const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
     this.snapshotStore.externalPower?.assertAllowsWrite(deviceId);
     if (!raw && this.requiresAdapterControl(deviceId)) {
       throw new Error('Device control metadata is unavailable.');
     }
-    if (raw) this.chargingCurrentControl.assertControlAllowed(raw, capabilityId);
+    if (raw) this.chargingCurrentControl.assertControlAllowed(raw, capabilityId, stopsCharging);
     return raw;
   }
 
@@ -203,8 +205,9 @@ export class DeviceWriteService {
     if (!hasRestClient()) throw new Error('REST client not ready');
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const binaryAuthority = captureBinaryWriteAuthority(snapshotBefore, capabilityId);
-    const raw = this.assertControlAllowed(deviceId, capabilityId);
     const normalizedValue = normalizeCapabilityValue(snapshotBefore, capabilityId, value);
+    const raw = this.assertControlAllowed(deviceId, capabilityId,
+      capabilityId === snapshotBefore?.binaryCapabilityId && normalizedValue === false);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);
     this.currentLimitPolicy.assertInstallationCapability(deviceId, raw, requested);
@@ -460,7 +463,7 @@ export class DeviceWriteService {
     if (isSteppedLoadOffStep(profile, desiredStepId)) {
       this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
     }
-    const rawDevice = this.assertControlAllowed(deviceId);
+    const rawDevice = this.assertControlAllowed(deviceId, undefined, isSteppedLoadOffStep(profile, desiredStepId));
     if (rawDevice && resolveChargingCurrentAdapter(rawDevice)) {
       if (isSteppedLoadOffStep(profile, desiredStepId)) {
         if (!snapshot?.binaryCapabilityId) return { requested: false };
