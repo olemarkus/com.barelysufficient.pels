@@ -33,7 +33,7 @@ export type ContinuousBatteryPlanProps = {
 
 type Draft = {
   enabled: boolean; capacity: string; reserve: string; efficiency: string; wear: string;
-  sell: boolean; exportCeiling: string;
+  sell: boolean; exportCeiling: string; holdDischargeDuringEvCharging?: boolean;
 };
 const draftFrom = (config: ContinuousBatteryPlanConfig): Draft => ({
   enabled: config.enabled,
@@ -41,6 +41,7 @@ const draftFrom = (config: ContinuousBatteryPlanConfig): Draft => ({
   reserve: String(config.minimumReservePercent),
   efficiency: String(Math.round(config.roundTripEfficiency * 100)),
   wear: isBatteryPlanUnitSettled(config) ? String(config.wearCostPerKWh) : '0',
+  holdDischargeDuringEvCharging: config.holdDischargeDuringEvCharging === true,
   sell: config.exportPolicy.kind === 'price_export',
   exportCeiling: config.exportPolicy.kind === 'price_export' ? String(config.exportPolicy.netExportCeilingKW) : '',
 });
@@ -59,6 +60,7 @@ export const readBatteryPlanDraft = (
     roundTripEfficiency: Number(draft.efficiency) / 100,
     wearCostPerKWh: Number(draft.wear),
     priceUnit,
+    ...(draft.holdDischargeDuringEvCharging ? { holdDischargeDuringEvCharging: true as const } : {}),
     exportPolicy: savedExportPolicy ?? (draft.sell
       ? { kind: 'price_export', netExportCeilingKW: Number(draft.exportCeiling) }
       : { kind: 'household_only' }),
@@ -314,6 +316,14 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     </div>}
     {draft.enabled && <p class="field__hint">Check usable capacity against your battery’s specification before saving. PELS also respects the battery’s own limits.</p>}
     {draft.enabled && props.otherEnabledPlans > 0 && <p class="field__hint">{BATTERY_PLAN_ORDER_LINE}</p>}
+    {draft.enabled && <label class="md-switch-row">
+      <span class="md-switch-row__content">
+        <span class="md-switch-row__label pels-text-settings-label">Pause scheduled discharge for EV Smart tasks</span>
+        <small class="field__hint">Applies during scheduled EV charging and leaves the preview as planned. The battery can still discharge to hold your home’s power limits.</small>
+      </span>
+      <MdSwitch aria-label="Pause scheduled discharge for EV Smart tasks" selected={draft.holdDischargeDuringEvCharging === true}
+        disabled={props.busy} onChange={(event: Event) => update('holdDischargeDuringEvCharging', readSwitchSelected(event))} />
+    </label>}
     {showExportSettings && <BatteryExportFields sell={draft.sell} exportCeiling={draft.exportCeiling}
       busy={props.busy} update={update} />}
     {draft.enabled && <details class="battery-plan-advanced"><summary>Losses and battery wear</summary>

@@ -226,6 +226,7 @@ export type ObservedStorageInput = {
   /** Present only while the owner has an executable continuous strategy. Its absence
    * means the battery's own schedule remains the routine policy. */
   continuousPlan?: ContinuousStoragePlan;
+  holdDischargeDuringEvCharging?: true;
 };
 
 /**

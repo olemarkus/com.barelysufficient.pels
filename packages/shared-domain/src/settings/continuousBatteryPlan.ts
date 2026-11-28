@@ -64,6 +64,7 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
     || !inRange(value.minimumReservePercent, 0, 95)
     || !inRange(value.roundTripEfficiency, 0.5, 1)
     || !inRange(value.wearCostPerKWh, 0, 1000)
+    || (value.holdDischargeDuringEvCharging !== undefined && typeof value.holdDischargeDuringEvCharging !== 'boolean')
     || typeof value.priceUnit !== 'string' || !value.priceUnit.trim() || value.priceUnit.length > 64) return null;
   const exportPolicy = parseExportPolicy(value.exportPolicy);
   if (exportPolicy === null) return null;
@@ -75,6 +76,7 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
     wearCostPerKWh: value.wearCostPerKWh,
     priceUnit: value.priceUnit.trim(),
     exportPolicy,
+    ...(value.holdDischargeDuringEvCharging === true ? { holdDischargeDuringEvCharging: true as const } : {}),
   };
 }
 

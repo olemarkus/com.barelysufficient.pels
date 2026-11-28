@@ -108,6 +108,7 @@ export const resolveStorageCluster = (
       ownModeGridCharge: control.ownModeGridCharge,
       ...(currentPeriod === undefined || continuous.status !== 'planned' ? {} : {
         continuousPlan: resolveContinuousStoragePlan(currentPeriod, continuous),
+        holdDischargeDuringEvCharging: continuous.config.holdDischargeDuringEvCharging,
       }),
     },
   };
