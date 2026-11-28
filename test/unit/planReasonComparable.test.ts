@@ -34,6 +34,18 @@ describe('buildComparableDeviceReason', () => {
 
   });
 
+  describe('awaitingSolarSurplus floor', () => {
+    it('keeps the bare code for a binary dump load', () => {
+      expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.awaitingSolarSurplus }))
+        .toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
+    });
+
+    it('folds a tracking device floor in as integer watts', () => {
+      expect(buildComparableDeviceReason({ code: PLAN_REASON_CODES.awaitingSolarSurplus, needKw: 4.14 }))
+        .toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus, needW: 4100 });
+    });
+  });
+
   describe('insufficientHeadroom kW quantization', () => {
     const baseReason = (overrides: Partial<{
       needKw: number;

@@ -254,6 +254,26 @@ describe('Modes priority note', () => {
       .toBe('Marstek: turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.');
     expect(resolvePriorityBatteryNote(['heater-1', 'battery-1'])).toBeNull();
   });
+
+  it('names spare solar, not a limit, when no power limit is in force', async () => {
+    const { state } = await loadState({}, {});
+    const drivable = { ...battery, id: 'battery-2', name: 'Thuisbatterij' };
+    state.latestDevices = [drivable, heater];
+    state.batteryControl = { status: 'resolved', devices: {} };
+    const { publishSetupHardCapRead } = await import('../src/ui/setupPathFacts.ts');
+    publishSetupHardCapRead(true, {
+      capacityEnabled: false, gridImportLimitKw: null,
+      limitKw: 10, marginKw: 0.2, dryRun: false, periodMinutes: 60, followMonthPeak: false,
+    });
+    const { resolvePriorityBatteryNote } = await import('../src/ui/deviceDetail/batterySection.ts');
+    expect(resolvePriorityBatteryNote(['heater-1', 'battery-2']))
+      .toBe('Thuisbatterij: last in the list, it stores the spare solar the devices above it leave.');
+    expect(resolvePriorityBatteryNote(['battery-2', 'heater-1']))
+      .toBe('Thuisbatterij: it stores spare solar before the devices below it get any.');
+    state.controllableMap = { 'battery-2': false };
+    expect(resolvePriorityBatteryNote(['heater-1', 'battery-2']))
+      .toBe('Thuisbatterij: turn on Power-limit control to let it store spare solar when its turn comes.');
+  });
 });
 
 describe('battery device list row', () => {

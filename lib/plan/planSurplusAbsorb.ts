@@ -575,7 +575,7 @@ function claimForTrackingDevice(
   // the ordinary shed path (`resolveSteppedLoadDirectShedStepId`), so a solar
   // stop and a capacity stop park the device in the same place instead of this
   // module inventing a second answer out of the ladder's rungs.
-  state.surplusTrackingByDevice[dev.id] = { kind: 'stopped' };
+  state.surplusTrackingByDevice[dev.id] = { kind: 'stopped', needKw: floorKw };
   return { claimKw: positiveOrZero(dev.currentDrawKw), want: waitingWant(poolKw, floorKw) };
 }
 /* eslint-enable functional/immutable-data, no-param-reassign */
@@ -918,7 +918,8 @@ function recordPhaseTrackingRung(
   if (!eligible) state.chargingPhaseCycle.withdrawSolarOffer(dev.id);
   // eslint-disable-next-line functional/immutable-data, no-param-reassign -- Planner owns this cycle's solar tracker.
   state.surplusTrackingByDevice[dev.id] = eligible
-    ? { kind: 'rung', stepId: rung.id, funded: rung.planningPowerW / 1000 <= availableKw } : { kind: 'stopped' };
+    ? { kind: 'rung', stepId: rung.id, funded: rung.planningPowerW / 1000 <= availableKw }
+    : { kind: 'stopped', needKw: targetKw };
   return eligible;
 }
 

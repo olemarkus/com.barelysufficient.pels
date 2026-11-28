@@ -722,3 +722,17 @@ describe('charging installation controlled as one load', () => {
       + 'The chargers share the available current between the cars that are charging.');
   });
 });
+
+describe('a device waiting for solar surplus', () => {
+  it('marks the hold as its own solar wait, not a power limit', () => {
+    const waiting = runningPowerHold({
+      currentState: 'off', currentDrawKw: 0, powerLimitControlEnabled: false,
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, needKw: 4.14 },
+      execution: { ...runningPowerHold().execution, physicalState: 'off', binaryProgress: 'settled' },
+    });
+    expect(buildDeviceStatus(waiting, false, 0)).toMatchObject({
+      holdCause: 'solar_surplus',
+      reason: { text: 'Waiting for 4.1 kW of solar surplus' },
+    });
+  });
+});

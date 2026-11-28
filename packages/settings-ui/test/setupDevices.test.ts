@@ -2,6 +2,7 @@ import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { DeviceSetupCandidates } from '../src/ui/views/DeviceSetupCandidates.tsx';
 import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
+import type { CapacityScalarSettings } from '../../contracts/src/capacitySettings.ts';
 
 const load = async () => {
   vi.resetModules();
@@ -15,6 +16,11 @@ const load = async () => {
   const { createGuidedSetupActions, readGuidedDeviceChoices, readSetupDeviceChoices } =
     await import('../src/ui/setupDevices.ts');
   return { state, createGuidedSetupActions, readGuidedDeviceChoices, readSetupDeviceChoices };
+};
+
+const running: CapacityScalarSettings = {
+  capacityEnabled: true, gridImportLimitKw: null,
+  limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60, followMonthPeak: false,
 };
 
 const device = (id: string, name: string, extra: Partial<SettingsUiDeviceListItem> = {}): SettingsUiDeviceListItem => ({
@@ -71,6 +77,32 @@ describe('Setup device choices', () => {
     expect(before.devices.map(({ id }) => id)).toEqual(['a', 'm']);
     expect(after.devices.map(({ id }) => id)).toEqual(['a', 'm']);
     expect(after.devices[1]?.managed).toBe(true);
+  });
+
+  it('says what PELS does for a charger when no limit is in force', async () => {
+    const { state, readSetupDeviceChoices } = await load();
+    const { publishSetupHardCapRead } = await import('../src/ui/setupPathFacts.ts');
+    const charger = device('ev', 'Car charger', { deviceClass: 'evcharger', isEvCharger: true });
+    const hint = (): string | null | undefined => {
+      const choices = readSetupDeviceChoices([charger]);
+      if (choices.state !== 'ready') throw new Error('Choices unavailable');
+      return choices.devices[0]?.hint;
+    };
+    // Until the limits are read the limit line stands.
+    expect(hint()).toBe('PELS may lower or pause this device.');
+    publishSetupHardCapRead(true, { ...running, capacityEnabled: false });
+    expect(hint()).toBe('PELS can charge it by a set time.');
+    state.hasExhibitedExport = true;
+    expect(hint()).toBe('PELS can charge it on solar surplus or by a set time.');
+  });
+
+  it('keeps the limit line for a charger while a limit is in force', async () => {
+    const { readSetupDeviceChoices } = await load();
+    const { publishSetupHardCapRead } = await import('../src/ui/setupPathFacts.ts');
+    publishSetupHardCapRead(true, running);
+    const choices = readSetupDeviceChoices([device('ev', 'Car charger', { deviceClass: 'evcharger', isEvCharger: true })]);
+    if (choices.state !== 'ready') throw new Error('Choices unavailable');
+    expect(choices.devices[0]?.hint).toBe('PELS may lower or pause this device.');
   });
 
   it('shows class, zone and zero observed power, without inventing absent readings', async () => {

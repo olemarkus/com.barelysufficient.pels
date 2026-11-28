@@ -216,8 +216,8 @@ test('one solar device can be configured without prices and the action reaches i
 
 // A Dutch home with a heat pump and an EV charger and no limit to hold: after
 // the required steps, setup offers what PELS can do with them.
-const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
-  await page.addInitScript(({ managedAtStart }) => {
+const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false, exported = false) => {
+  await page.addInitScript(({ managedAtStart, exported }) => {
     const devices = [{
       id: 'setup-heatpump', name: 'Heat pump', zone: 'z-hall', zoneName: 'Hall', available: true,
       deviceClass: 'heater', deviceType: 'temperature', isEvCharger: false,
@@ -247,7 +247,7 @@ const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
         price_scheme: 'homey',
         homey_prices_today: { dateKey: new Date().toISOString().slice(0, 10), pricesByHour: { 0: 0.21, 1: 0.2 } },
         ui_hub_market_country: 'NL',
-        ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: false,
+        ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: exported,
         ui_devices_surplus_pool_reachable: false,
       },
       unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'],
@@ -256,11 +256,11 @@ const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
           devices: devices.map((device) => ({ ...device, managed: managed()[device.id] === true }))
             .sort((a, b) => Number(b.managed) - Number(a.managed)),
           chargerPhasePresets: { state: 'resolved', presets: {} },
-          hasManagedSolarDevice: false, hasExhibitedExport: false, surplusPoolReachable: false,
+          hasManagedSolarDevice: false, hasExhibitedExport: exported, surplusPoolReachable: false,
         }),
       },
     };
-  }, { managedAtStart });
+  }, { managedAtStart, exported });
 };
 
 test('setup offers what PELS can do before the review, and the review names it', async ({ page }, testInfo) => {
@@ -290,7 +290,7 @@ test('setup offers what PELS can do before the review, and the review names it',
   await expect(page).toHaveURL(/setup=goals/);
   const header = page.locator('#devices-panel .setup-journey');
   await expect(header).toContainText('Choose what PELS does');
-  await expect(header.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
+  await expect(header.getByRole('button', { name: 'Review setup', exact: true })).toBeEnabled();
   const picker = page.locator('#device-card-list');
   await expect(picker.locator('[data-device-id="setup-charger"]').getByText('New smart task', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -301,15 +301,10 @@ test('setup offers what PELS can do before the review, and the review names it',
     return map['setup-heatpump']?.enabled;
   }).toBe(true);
 
-  await header.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page).toHaveURL(/setup=priorities/);
-  const priorityHeader = page.locator('#modes-panel .setup-journey');
-  await expect(priorityHeader).toContainText('Choose what stays on longest');
-  await expect(page.locator('#priority-list .device-row')).toHaveCount(2);
-  await expect(page.locator('#mode-select')).toBeHidden();
-  await expect(page.locator('#priority-list .mode-target-input')).toBeHidden();
-  await page.screenshot({ path: testInfo.outputPath('priorities.png'), scale: 'css', fullPage: true });
-  await priorityHeader.getByRole('button', { name: 'Review setup', exact: true }).click();
+  // With Power limits off and no solar the order decides nothing yet, so setup
+  // skips the priority step and goes on to the review; the order stays in Modes.
+  await header.getByRole('button', { name: 'Review setup', exact: true }).click();
+  await expect(page).not.toHaveURL(/setup=priorities/);
   const review = page.locator('#setup-review-root');
   await expect(review).toContainText('Power limits off');
   await expect(review).toContainText('Price-based control on');
@@ -396,7 +391,9 @@ test('simulation review withdraws mode metadata when the Main catalog cannot be 
 });
 
 test('pending priorities remain offered after leaving, and explicit Continue skips them without looping', async ({ page }) => {
-  await seedHeatPumpAndCharger(page, true);
+  // With Power limits off the order decides only who gets spare solar first, so
+  // the step is offered in a home that has exported solar.
+  await seedHeatPumpAndCharger(page, true, true);
   await page.goto('/?page=settings/devices&setup=goals');
   await expect(page.locator('#devices-panel .setup-journey')).toContainText('Choose what PELS does');
   await page.evaluate(() => {
@@ -430,6 +427,8 @@ test('pending priorities remain offered after leaving, and explicit Continue ski
   await goals.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page).toHaveURL(/setup=priorities/);
   const priorities = page.locator('#modes-panel .setup-journey');
+  await expect(priorities).toContainText('Choose what gets spare solar first');
+  await expect(priorities).toContainText('the top device gets spare solar first.');
   await priorities.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page).toHaveURL(/setup=review/);
   await page.evaluate(() => {

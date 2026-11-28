@@ -99,7 +99,12 @@ export type SurplusTrackingDecision =
      */
     funded: boolean;
   }
-  | { kind: 'stopped' };
+  /**
+   * `needKw` is the surplus the allocator requires before it engages the device:
+   * the floor figure its eligibility gate measured the pool against. The held
+   * card names it ("Waiting for 4.1 kW of solar surplus").
+   */
+  | { kind: 'stopped'; needKw: number };
 
 /**
  * The rung a tracking device is clamped to, or undefined when it holds no rung

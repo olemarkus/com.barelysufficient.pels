@@ -16,7 +16,7 @@ describe('solar-only charger reductions stay outside capacity recovery timing', 
   ])('classifies a $name without a capacity shed timestamp', ({ surplusOnly, surplusTracking, stopped }) => {
     const state = createPlanEngineState();
     state.surplusTrackingByDevice.charger = stopped
-      ? { kind: 'stopped' }
+      ? { kind: 'stopped', needKw: 1.25 }
       : { kind: 'rung', stepId: 'low', funded: true };
     const charger = steppedInputDevice({
       id: 'charger', isEvCharger: true, surplusTracking,
@@ -51,7 +51,7 @@ describe('solar-only charger reductions stay outside capacity recovery timing', 
     'preserves capacity recording under $code (tracking: $tracking)',
     ({ code, tracking }) => {
       const state = createPlanEngineState();
-      state.surplusTrackingByDevice.charger = { kind: 'stopped' };
+      state.surplusTrackingByDevice.charger = { kind: 'stopped', needKw: 1.25 };
       const charger = steppedInputDevice({
         id: 'charger', isEvCharger: true, surplusTracking: tracking,
         ...(!tracking ? { surplusOnly: true as const } : {}),

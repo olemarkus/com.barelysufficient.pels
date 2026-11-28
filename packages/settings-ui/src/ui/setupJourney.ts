@@ -21,6 +21,7 @@ import {
   isSetupDeviceLimitable, readUnchosenSetupHardCap,
 } from './setupPathFacts.ts';
 import type { SetupStep, SetupPath } from './setupPathModel.ts';
+import { resolveSetupPriorityFraming, setupPriorityDetail, setupPriorityTitle } from './setupPriorityStep.ts';
 import { isMainFuseMarket, nextSetupStep } from './setupPathModel.ts';
 import {
   currentSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
@@ -150,9 +151,12 @@ const mainFuseComesNext = (path: SetupPath): boolean => {
   return !limitsShown && path.offersMainFuse && (step === 'power' || step === 'devices');
 };
 
+const resolvePriorityFraming = () => resolveSetupPriorityFraming(readSetupLimitsInForce(), resolveHomeHasSolar());
+
 const prioritiesComeNext = (): boolean => {
   const managed = readMainHomeManagedDevices();
-  return !prioritiesShown && managed.state === 'ready' && managed.devices.length >= 2;
+  return !prioritiesShown && managed.state === 'ready' && managed.devices.length >= 2
+    && resolvePriorityFraming() !== 'none';
 };
 
 const continueSetup = (): void => {
@@ -286,7 +290,7 @@ const headerTitle = (step: SetupJourneyStep): string => {
   if (step === 'devices') return 'Choose one device to start';
   if (step === 'hardCap') return 'Confirm your limits';
   if (step === 'goals') return 'Choose what PELS does';
-  if (step === 'priorities') return 'Choose what stays on longest';
+  if (step === 'priorities') return setupPriorityTitle(resolvePriorityFraming());
   return 'Confirm your price source';
 };
 
@@ -308,9 +312,9 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
     return reading ?? fact?.detail ?? 'Reading meter settings…';
   }
   if (step === 'goals') return setupGoalsHeaderDetail();
-  if (step === 'priorities') return `Optional. In ${state.activeMode}, the top device keeps running longest. `
-    + (countSetupBatteryPlansOn() >= 2 ? 'Batteries higher in the list are also planned first. ' : '')
-    + 'Drag to change the order, or continue with the current order. You can change it later in Modes.';
+  if (step === 'priorities') {
+    return setupPriorityDetail(resolvePriorityFraming(), state.activeMode, countSetupBatteryPlansOn());
+  }
   if (step === 'devices') return fact?.status === 'done' ? fact.detail : null;
   return fact?.detail ?? null;
 };

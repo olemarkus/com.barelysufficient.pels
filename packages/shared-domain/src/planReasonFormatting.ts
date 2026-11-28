@@ -6,6 +6,7 @@ import {
   PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS,
   PLAN_STATE_AWAITING_PELS_START_STATUS,
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  formatAwaitingSolarSurplusNeedStatus,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
@@ -66,7 +67,6 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveBatteryDischarge }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveWaitingForPlan }
-  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
   | { code: typeof PLAN_REASON_CODES.carCurrentRangeUnavailable }
@@ -102,7 +102,6 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.deferredObjectiveSatisfied,
   PLAN_REASON_CODES.deferredObjectiveBatteryDischarge,
   PLAN_REASON_CODES.deferredObjectiveWaitingForPlan,
-  PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
   PLAN_REASON_CODES.awaitingBatteryLevel,
   PLAN_REASON_CODES.carCurrentRangeUnavailable,
@@ -130,7 +129,6 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.deferredObjectiveWaitingForPlan]: 'waiting for a plan',
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: 'smart task done, held until its ready-by time',
   [PLAN_REASON_CODES.deferredObjectiveBatteryDischarge]: 'home battery supplying power',
-  [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
   [PLAN_REASON_CODES.awaitingPelsStart]: 'waiting for a smart task to start it',
   [PLAN_REASON_CODES.awaitingBatteryLevel]: 'waiting for battery level',
   [PLAN_REASON_CODES.carCurrentRangeUnavailable]: 'no charging level within car current limits',
@@ -308,6 +306,10 @@ export function formatDeviceReason(reason: DeviceReason): string {
         + `${reason.limit} ceiling`;
     case PLAN_REASON_CODES.phaseLimit:
       return `shed due to main fuse on ${reason.phase}`;
+    case PLAN_REASON_CODES.awaitingSolarSurplus:
+      return reason.needKw === undefined
+        ? 'waiting for solar surplus'
+        : `waiting for solar surplus (need ${reason.needKw.toFixed(1)} kW)`;
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -494,7 +496,6 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.deferredObjectiveWaitingForPlan]: PLAN_STATE_DEFERRED_OBJECTIVE_WAITING_FOR_PLAN_STATUS,
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   [PLAN_REASON_CODES.deferredObjectiveBatteryDischarge]: PLAN_STATE_DEFERRED_OBJECTIVE_BATTERY_DISCHARGE_STATUS,
-  [PLAN_REASON_CODES.awaitingSolarSurplus]: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   // States what the device needs: a smart task to start it. A task holding the
   // device for a cheaper hour gives it that task's reason instead
   // (`getInactiveReason`), so this line covers a missing task and one that
@@ -616,6 +617,12 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
       return formatLastResortAboveLimitStatus(reason);
     case PLAN_REASON_CODES.phaseLimit:
       return formatPhaseLimitStatus(reason.phase);
+    // A tracking device names what it needs; a binary dump load has no fixed
+    // floor to name and keeps the bare line.
+    case PLAN_REASON_CODES.awaitingSolarSurplus:
+      return reason.needKw === undefined
+        ? PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS
+        : formatAwaitingSolarSurplusNeedStatus(reason.needKw);
     default: {
       const exhaustive: never = reason;
       return exhaustive;

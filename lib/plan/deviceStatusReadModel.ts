@@ -477,6 +477,7 @@ function resolveHoldCause(device: DeviceStatusInput): DeviceStatus['holdCause'] 
     || device.reason.code === PLAN_REASON_CODES.deferredObjectiveBatteryDischarge
     || device.reason.code === PLAN_REASON_CODES.deferredObjectiveWaitingForPlan) return 'smart_task';
   if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveSatisfied) return 'smart_task_done';
+  if (device.reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) return 'solar_surplus';
   return device.reason.code === PLAN_REASON_CODES.dailyBudget ? 'daily_budget' : null;
 }
 

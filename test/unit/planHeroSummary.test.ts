@@ -547,6 +547,41 @@ describe('buildDecisionSentence', () => {
     })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours, 1 held until a smart task’s ready-by time.');
   });
 
+  it('says a device waiting for solar surplus is waiting, never held back, when no limit is in force', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 1,
+      solarSurplusWaitingCount: 1,
+      safePaceKw: null,
+    }))).toEqual({ text: '1 device is waiting for solar surplus.', positive: true });
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 3,
+      solarSurplusWaitingCount: 2,
+      deferredObjectiveAvoidCount: 1,
+      safePaceKw: null,
+    }))).toEqual({
+      text: '2 devices are waiting for solar surplus. Waiting for cheaper hours before running 1 device.',
+      positive: true,
+    });
+  });
+
+  it('keeps Holding back for the devices a limit holds beside a solar wait', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 3,
+      solarSurplusWaitingCount: 1,
+    })).text).toBe('Holding back 3 devices, 1 waiting for solar surplus, 2 so the house stays under 12.0 kW.');
+  });
+
+  it('does not count a solar wait as held back for the grid', () => {
+    expect(buildDecisionSentence(baseline({
+      gridImportHigh: true,
+      sheddableManagedRunningCount: 0,
+      limitedCount: 1,
+      solarSurplusWaitingCount: 1,
+    })).text).toBe(
+      'Grid import is high and PELS has no more devices to ease off. Turn off other appliances to stay under your limit.',
+    );
+  });
+
   it('names today’s budget when every held device is on daily-budget pacing', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 2,

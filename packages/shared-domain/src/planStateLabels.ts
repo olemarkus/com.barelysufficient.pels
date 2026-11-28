@@ -172,6 +172,13 @@ export const formatReservedForStartStatus = (targetName: string): string => (
 // is OFF; PELS turns it on only while the home exports enough solar to cover
 // its draw. Registered in `notes/ui-terminology.md` § "Solar surplus vocabulary".
 export const PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS = 'Waiting for solar surplus';
+// The same hold for a surplus-tracking device (an EV charger on "Charge on
+// solar surplus"): names the export its lowest running step needs, so an owner
+// who sees some solar export can tell why the device has not started. The kW is
+// the surplus allocator's own floor figure (`awaitingSolarSurplus.needKw`).
+export const formatAwaitingSolarSurplusNeedStatus = (needKw: number): string => (
+  `Waiting for ${needKw.toFixed(1)} kW of solar surplus`
+);
 // Reason line for a charger held off by its target battery level (reason code
 // `chargeTargetReached`): the car is at or above the owner's target. Names the
 // target, never the car. Registered in `notes/ui-terminology.md`.

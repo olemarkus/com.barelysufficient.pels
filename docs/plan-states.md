@@ -53,6 +53,7 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | **Waiting for cheaper hours** | A smart task booked this load into cheaper hours. More power would not start it. |
 | **Smart task done, held until its ready-by time** | The smart task reached its target. Until its ready-by time, the device runs only in the hours the task booked. |
 | **Waiting for solar surplus** | A "run on solar surplus" device, waiting for the home to export enough. |
+| **Waiting for 4.1 kW of solar surplus** | A device set to charge on or match solar surplus, waiting until the export covers its lowest level. |
 | **Turned off elsewhere — turn it on to resume** | The device was switched off outside PELS. |
 | **Holding at 6 A — cannot increase while 2 devices are limited** | A stepped device may not climb past its lowest useful level while other devices are still limited. Resuming those devices lifts it, not more power. |
 | **Waiting so … can start** | A device is about to start and has reserved the power it needs, so this one waits its turn. The power is there — it is spoken for. |

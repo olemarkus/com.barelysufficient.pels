@@ -18,11 +18,12 @@ import { DeviceSetupCandidates } from './views/DeviceSetupCandidates.tsx';
 import {
   requiresNativeWiringForActivation, supportsTemperatureDevice, supportsPowerDevice, type SettingsUiDeviceListItem,
 } from './deviceUtils.ts';
-import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from './deviceKind.ts';
+import { isEvChargerDevice, resolveDeviceDetailControlMode, resolveDeviceDetailKind } from './deviceKind.ts';
 import { resolveDeviceDetailControlState } from './deviceDetail/controlState.ts';
 import { isSurplusTrackingDeviceShape } from './deviceDetail/solarSurplusTracking.ts';
 import { isDumpLoadDeviceShape } from './deviceDetail/solarSurplus.ts';
-import { hasActiveDeadlineObjective, resolveManagedState, state } from './state.ts';
+import { hasActiveDeadlineObjective, resolveHomeHasSolar, resolveManagedState, state } from './state.ts';
+import { readSetupLimitsInForce } from './setupPathFacts.ts';
 import { sleep } from './homey.ts';
 import { captureManagedControlIntent } from './managedControlIntent.ts';
 import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplusTrackingCopy.ts';
@@ -116,6 +117,19 @@ const formatSetupPower = (kw: number): string => (
   kw < 2 ? `${kw.toFixed(2).replace(/\.?0+$/, '')} kW` : `${kw.toFixed(1)} kW`
 );
 
+// With no limit in force nothing lowers a charger, so its hint names what PELS
+// does for it instead: charge on solar surplus where the home has solar, and by
+// a set time through a Smart task. Until the limits are read, and while one is
+// in force, the limit line stands.
+const powerDeviceHint = (device: SettingsUiDeviceListItem): string => {
+  if (readSetupLimitsInForce() !== false || !isEvChargerDevice(device)) {
+    return 'PELS may lower or pause this device.';
+  }
+  return resolveHomeHasSolar()
+    ? 'PELS can charge it on solar surplus or by a set time.'
+    : 'PELS can charge it by a set time.';
+};
+
 const setupDeviceHint = (
   device: SettingsUiDeviceListItem,
   manageability: ReturnType<typeof resolveDeviceManageability>,
@@ -132,7 +146,7 @@ const setupDeviceHint = (
       ? 'Choose how to set up power limiting.'
       : `${HOMEY_ENERGY_SETUP_REASON} if its draw stays steady while on.`;
   }
-  if (manageability.supportsPower) return 'PELS may lower or pause this device.';
+  if (manageability.supportsPower) return powerDeviceHint(device);
   return manageability.supportsTemperature
     ? 'PELS may adjust its temperature.' : 'PELS needs a power reading to limit this device.';
 };

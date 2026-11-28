@@ -71,7 +71,7 @@ const isStatusReading = (value: unknown): boolean => {
   return reading.kind === 'temperature' && isFiniteNumber(reading.currentC) && isFiniteNumber(reading.targetC);
 };
 
-const HOLD_CAUSES = new Set<unknown>([null, 'smart_task', 'smart_task_done', 'daily_budget']);
+const HOLD_CAUSES = new Set<unknown>([null, 'smart_task', 'smart_task_done', 'daily_budget', 'solar_surplus']);
 const isStatus = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const status = value as Record<string, unknown>;

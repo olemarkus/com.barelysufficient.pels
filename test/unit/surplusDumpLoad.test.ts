@@ -362,6 +362,8 @@ describe('awaitingSolarSurplus reason adoption', () => {
 
   it('renders the canonical user-facing copy', () => {
     expect(formatDeviceReasonUserFacing(AWAITING)).toBe('Waiting for solar surplus');
+    // A surplus-tracking device names the surplus its lowest step needs.
+    expect(formatDeviceReasonUserFacing({ ...AWAITING, needKw: 4.14 })).toBe('Waiting for 4.1 kW of solar surplus');
   });
 });
 
