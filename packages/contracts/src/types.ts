@@ -766,6 +766,13 @@ export type TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState;
 export type ChargerPhaseCurrentsObservedProbe = {
     /** An EV charger's own per-phase current, A, when it reports all three phases. */
     chargerPhaseCurrentsA?: readonly [number, number, number];
+    /**
+     * The most phases the car has drawn on through this charger since it was
+     * plugged in, from the charger's own per-phase current. Never lowered within
+     * a plug-in session, because the three currents update one at a time and a
+     * ramp-down passes through fewer phases; a plug-out clears it.
+     */
+    chargerSessionDrawPhases?: 1 | 2 | 3;
 };
 
 export type EvObservedFields = {

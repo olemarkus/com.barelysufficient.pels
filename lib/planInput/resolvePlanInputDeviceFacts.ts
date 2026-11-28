@@ -38,7 +38,7 @@ import {
 } from './planInputDeviceHelpers';
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
 import { resolveStorageCluster } from './storageProjection';
-import { resolvePhaseFootprint } from '../phaseFootprint/resolvePhaseFootprint';
+import { resolveChargingDrawPhases, resolvePhaseFootprint } from '../phaseFootprint/resolvePhaseFootprint';
 import { resolveOperatingChargingPhases } from '../phaseFootprint/chargingPhaseFootprints';
 import { projectChargeTargetHold } from './chargeTargetHold';
 import {
@@ -223,6 +223,7 @@ export const resolvePlanInputDeviceFacts = (
     source, device, capacityControlEnabled, lastResort !== undefined, startPolicy,
   );
   const externalOffHoldActive = source.isExternalOffHoldActive(device.id, device);
+  const learnedPhases = source.getLearnedPhaseFootprint(device.id);
   const hasStandingDemand = !isEvDevice(device);
   const { surplusOnly, surplusTracking } = lastResort ? { surplusOnly: false, surplusTracking: false }
     : resolveSurplusPostureForDevice(
@@ -276,8 +277,14 @@ export const resolvePlanInputDeviceFacts = (
       isEvCharger: device.isEvCharger,
       chargerPhaseCurrentsA: device.chargerPhaseCurrentsA,
       evPreset: device.targetPowerConfig?.preset,
-      learned: source.getLearnedPhaseFootprint(device.id),
+      learned: learnedPhases,
       operatingPhases: device.isEvCharger ? resolveOperatingChargingPhases(device.steppedLoadProfile) : undefined,
+    }),
+    chargingDrawPhases: resolveChargingDrawPhases({
+      isEvCharger: device.isEvCharger,
+      chargerPhaseCurrentsA: device.chargerPhaseCurrentsA,
+      sessionDrawPhases: device.chargerSessionDrawPhases,
+      learned: learnedPhases,
     }),
     ...resolveStorageCluster(source, device, options),
   };

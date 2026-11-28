@@ -1,4 +1,6 @@
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
+import type { EvChargingState } from '../../packages/contracts/src/types';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 
 type CapabilityRecord = Record<string, { value?: unknown } | undefined>;
 type PhaseCurrents = NonNullable<TransportDeviceSnapshot['chargerPhaseCurrentsA']>;
@@ -32,4 +34,24 @@ export function resolveChargerPhaseCurrentsA(
   const currents = [l1, l2, l3].map((id) => usableAmps(capabilities[id]?.value));
   const [a, b, c] = currents;
   return a === undefined || b === undefined || c === undefined ? previous : [a, b, c];
+}
+
+/** A charger phase at or below this is not carrying the car. */
+const DRAWING_PHASE_A = 1;
+
+/**
+ * The most phases the car has drawn on in this plug-in session. Each of the
+ * three currents arrives on its own, so one reading can catch a three-phase car
+ * half way through a ramp-down; the session keeps its highest count instead. An
+ * observed plug-out ends the session; an unreadable plug state keeps it.
+ */
+export function resolveChargerSessionDrawPhases(
+  currentsA: PhaseCurrents | undefined,
+  evChargingState: EvChargingState | undefined,
+  previous: 1 | 2 | 3 | undefined,
+): 1 | 2 | 3 | undefined {
+  if (evChargingState !== undefined && !isEvPlugStateConnected(evChargingState)) return undefined;
+  const drawing = currentsA?.filter((amps) => amps > DRAWING_PHASE_A).length ?? 0;
+  if (drawing !== 1 && drawing !== 2 && drawing !== 3) return previous;
+  return previous === undefined || drawing > previous ? drawing : previous;
 }
