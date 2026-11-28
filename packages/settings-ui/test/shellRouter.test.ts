@@ -24,6 +24,7 @@ const settingsTabLit = () => (
 describe('shell routes', () => {
   it.each([
     ['?page=budget', 'budget'],
+    ['?page=deadlines%2Fhistory', 'deadlines-history'],
     ['?page=settings/limits', 'limits'],
     ['?page=settings/web-app', 'web-app'],
     ['?page=settings/schedules', 'schedules'],

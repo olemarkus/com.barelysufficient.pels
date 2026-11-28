@@ -77,7 +77,11 @@ const SURFACES: { name: string; prepare?: (page: Page) => Promise<void>; open: (
         };
       }, seedSmartTasks(FIXED_NOW_MS));
     },
-    open: async (page) => { await tab('Smart tasks')(page); await page.locator('.deadlines-history__heading').waitFor(); await page.waitForTimeout(400); },
+    open: async (page) => {
+      await tab('Smart tasks')(page);
+      await page.getByRole('button', { name: 'Past tasks', exact: true }).waitFor();
+      await page.waitForTimeout(400);
+    },
   },
   { name: 'settings', open: async (page) => { await tab('Settings')(page); await page.waitForTimeout(500); } },
   // Detail surfaces (element captures of the device panel). Dense with native

@@ -272,13 +272,14 @@ const stubHistory = (entriesByDeviceId: Record<string, ResolvedDeferredObjective
   };
 };
 
-// Past plans are surfaced on the Smart tasks tab (Past tasks section). The
-// per-device deadline-plan view no longer carries an in-page History tab —
-// duplicating that list inside an individual plan view was confusing and
-// kept showing empty for new devices.
 const openHistory = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('tab', { name: 'Smart tasks' }).click();
+  await expect(page.locator('#deadlines-panel .plan-history-card')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Past tasks', exact: true }).click();
+  await expect(page).toHaveURL(/page=deadlines%2Fhistory/);
+  await expect(page.getByRole('heading', { name: 'Past tasks' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Smart tasks' })).toHaveAttribute('aria-selected', 'true');
 };
 
 test.describe('History axes in a half-hour browser time zone', () => {
@@ -325,7 +326,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     expect(entriesByDeviceId['dev_connected300'][0].startProgressValue).toBe(50);
     expect(entriesByDeviceId['dev_connected300'][0].finalProgressValue).toBe(65);
 
-    // Only stub the entries for this device — the Smart tasks tab renders
+    // Only stub the entries for this device — Past tasks renders
     // history across every device, so leaving sibling devices in the stub
     // would pull in additional cards unrelated to this assertion.
     await page.addInitScript(stubHistory, { dev_connected300: entriesByDeviceId['dev_connected300'] });
@@ -336,6 +337,29 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     const cards = list.locator('.plan-history-card');
     await expect(cards).toHaveCount(1);
     await expect(cards.first().locator('.plan-chip--good')).toHaveText('Succeeded');
+
+    await cards.first().click();
+    await expect(page.locator('.plan-history-detail')).toBeVisible();
+    await page.goBack();
+    await expect(cards.first()).toBeVisible();
+    await page.goForward();
+    await expect(page.locator('.plan-history-detail')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('.plan-history-detail')).toBeVisible();
+    await page.getByRole('button', { name: 'Back to Past tasks' }).click();
+    await expect(cards.first()).toBeVisible();
+
+    await cards.first().click();
+    await page.locator('[data-deadline-usage-link]').click();
+    await expect(page).toHaveURL(/page=usage$/);
+    await expect(page.locator('#usage-return-link-anchor')).toBeVisible();
+    await page.goBack();
+    await expect(cards.first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Back to Smart tasks' }).click();
+    await expect(page).toHaveURL(/page=deadlines$/);
+    await expect(page.getByRole('button', { name: 'Past tasks', exact: true })).toBeVisible();
   });
 
   test('runs through a missed deadline and renders the Missed card', async ({ page }) => {

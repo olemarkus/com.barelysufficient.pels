@@ -119,7 +119,7 @@ const startRefresh = (historyDeferred: Deferred): Promise<void> => {
 };
 
 // Drain the microtask queue so the fire-and-forget history `.then` chain
-// (`void fetchPlanHistoryOrNull().then(...)`, which `refreshDeadlinesList`
+// (`void readDeferredObjectiveHistory(...).then(...)`, which `refreshDeadlinesList`
 // does not await) settles. A `setTimeout(0)` macrotask resolves only after the
 // pending microtasks have run, so a single turn is enough — no busy loop.
 const flush = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });

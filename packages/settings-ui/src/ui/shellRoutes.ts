@@ -7,6 +7,8 @@
 import type { SetupJourneyStep } from './setupJourneyState.ts';
 
 const TOP_LEVEL_PANELS = ['overview', 'budget', 'usage', 'deadlines', 'settings'] as const;
+export const DEADLINES_HISTORY_PANEL = 'deadlines-history';
+const DEADLINES_HISTORY_PAGE = 'deadlines/history';
 
 // Views on the Budget panel that are pages of their own: the Daily budget
 // editor opened from Settings (`settings/budget-adjust`) and the Weather
@@ -61,6 +63,7 @@ export const panelFromSearch = (search: string): string | null => {
   const page = new URLSearchParams(search).get(PAGE_PARAM);
   if (!page) return null;
   if (isTopLevel(page)) return page;
+  if (page === DEADLINES_HISTORY_PAGE) return DEADLINES_HISTORY_PANEL;
   const budgetView = budgetViewRouteFor(page);
   if (budgetView) return budgetView;
   if (page.startsWith(SETTINGS_PREFIX)) {
@@ -71,7 +74,7 @@ export const panelFromSearch = (search: string): string | null => {
 };
 
 export const isShellPanel = (panelId: string): boolean => (
-  isTopLevel(panelId) || isSettingsSub(panelId) || isBudgetViewRoute(panelId)
+  isTopLevel(panelId) || isSettingsSub(panelId) || isBudgetViewRoute(panelId) || panelId === DEADLINES_HISTORY_PANEL
 );
 
 // The URL for a shell page, keeping the current path, fragment and any
@@ -84,6 +87,7 @@ export const shellRouteUrl = (
   let page: string = panelId;
   if (isSettingsSub(panelId)) page = `${SETTINGS_PREFIX}${panelId}`;
   else if (isBudgetViewRoute(panelId)) page = BUDGET_VIEW_ROUTES[panelId];
+  else if (panelId === DEADLINES_HISTORY_PANEL) page = DEADLINES_HISTORY_PAGE;
   params.set(PAGE_PARAM, page);
   if (setup) params.set('setup', setup);
   return `${location.pathname}?${params.toString()}${location.hash}`;

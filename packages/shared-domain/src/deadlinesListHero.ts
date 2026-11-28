@@ -142,7 +142,7 @@ export const DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE: Record<
   // Between runs: the user has finished tasks in the archive but none are
   // scheduled right now. "No smart tasks scheduled" states the present
   // calmly without the "first" / "yet" framing that would erase their
-  // history. The body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to
+  // history. The body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points to
   // Past tasks.
   empty_between_runs: 'No smart tasks scheduled',
 };
@@ -154,7 +154,7 @@ export const DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE: Record<
 // runtime log breadcrumbs and the UI render the same sentence (Rule 4 — UI
 // text shared with logs).
 export const DEADLINES_LIST_BETWEEN_RUNS_BODY
-  = 'Nothing is scheduled right now. Your finished tasks are in Past tasks below.';
+  = 'Your finished tasks are in Past tasks.';
 
 // Six-bucket classification of list card status. Each `SmartTaskListStatusId`
 // is assigned to exactly one bucket; the `Record` constraint forces the keys

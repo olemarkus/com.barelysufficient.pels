@@ -19,6 +19,7 @@ import {
 } from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { PlanHistoryCard } from './DeadlinePlanHistory.tsx';
+import { MdTextButton } from './materialWebJSX.tsx';
 
 export type DeadlinesHistoryListState =
   | { status: 'loading' }
@@ -27,6 +28,7 @@ export type DeadlinesHistoryListState =
   // — same heading shape as `ready`, but a copy line instead of cards.
   | { status: 'hidden' }
   | { status: 'empty' }
+  | { status: 'error'; onRetry: () => void }
   | {
       status: 'ready';
       entries: ResolvedDeferredObjectivePlanHistoryEntry[];
@@ -114,37 +116,10 @@ const DeviceFilterChipRow = ({
   );
 };
 
-export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState }) => {
-  if (state.status === 'hidden') return null;
-  if (state.status === 'loading') {
-    return (
-      <section
-        class="deadlines-history"
-        aria-labelledby="deadlines-history-title"
-        aria-busy="true"
-      >
-        <h3 id="deadlines-history-title" class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>
-        <div class="pels-skeleton-stack" aria-hidden="true">
-          <span class="pels-skeleton pels-skeleton--card"></span>
-          <span class="pels-skeleton pels-skeleton--card"></span>
-        </div>
-        <span class="visually-hidden">{SMART_TASK_PAST_LOADING_LABEL}</span>
-      </section>
-    );
-  }
-  if (state.status === 'empty') {
-    return (
-      <section class="deadlines-history" aria-labelledby="deadlines-history-title">
-        <h3 id="deadlines-history-title" class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>
-        {/* Supporting (secondary) tier, not the dimmest `.muted` metadata tier:
-            on the first-run screen this is the only Past-tasks copy, so the spec
-            (invariant 6) requires it stay legible — at least
-            `--pels-text-secondary` — while remaining subordinate to the active
-            list's "Add your first smart task" primary CTA. */}
-        <p class="deadlines-history__empty">{SMART_TASK_PAST_EMPTY_COPY}</p>
-      </section>
-    );
-  }
+const HistoryRuns = ({ state, WeekHeading }: {
+  state: Extract<DeadlinesHistoryListState, { status: 'ready' }>;
+  WeekHeading: 'h3' | 'h4';
+}) => {
   // 7-day hit-rate strip — first-impression aggregate for the recovering-
   // from-mistake persona ("how have my deadlines been doing this week?").
   // Threaded with the same `nowMs` anchor as the week dividers so the strip
@@ -181,8 +156,7 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
     state.nowMs ?? Date.now(),
   );
   return (
-    <section class="deadlines-history" aria-labelledby="deadlines-history-title">
-      <h3 id="deadlines-history-title" class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>
+    <>
       {/* The 7-day hit-rate strip leads: it's the aggregate "how have my
           deadlines been doing this week?" answer the recovering-from-mistake
           persona lands for. The per-device miss-streak badges are the
@@ -223,7 +197,7 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
       />
       {weekGroups.map((group) => (
         <div key={group.weekKey} class="deadlines-history__week-group">
-          <h4 class="deadlines-history__week">{group.heading}</h4>
+          <WeekHeading class="deadlines-history__week">{group.heading}</WeekHeading>
           <div class="plan-history-list">
             {group.entries.map((entry) => (
               <PlanHistoryCard
@@ -235,7 +209,42 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
           </div>
         </div>
       ))}
-    </section>
+    </>
+  );
+};
+
+export const DeadlinesHistoryListRoot = ({ state, standalone = false }: {
+  state: DeadlinesHistoryListState;
+  standalone?: boolean;
+}) => {
+  if (state.status === 'hidden') return null;
+  const Container = standalone ? 'div' : 'section';
+  const headingId = standalone ? undefined : 'deadlines-history-title';
+  return (
+    <Container
+      class="deadlines-history"
+      aria-labelledby={headingId}
+      aria-busy={state.status === 'loading' ? true : undefined}
+    >
+      {!standalone && <h3 id={headingId} class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>}
+      {state.status === 'loading' && (
+        <>
+          <div class="pels-skeleton-stack" aria-hidden="true">
+            <span class="pels-skeleton pels-skeleton--card"></span>
+            <span class="pels-skeleton pels-skeleton--card"></span>
+          </div>
+          <span class="visually-hidden">{SMART_TASK_PAST_LOADING_LABEL}</span>
+        </>
+      )}
+      {state.status === 'empty' && <p class="deadlines-history__empty">{SMART_TASK_PAST_EMPTY_COPY}</p>}
+      {state.status === 'error' && (
+        <>
+          <p class="deadlines-history__empty">Past tasks couldn’t be loaded.</p>
+          <div><MdTextButton onClick={state.onRetry}>Try again</MdTextButton></div>
+        </>
+      )}
+      {state.status === 'ready' && <HistoryRuns state={state} WeekHeading={standalone ? 'h3' : 'h4'} />}
+    </Container>
   );
 };
 
@@ -243,5 +252,5 @@ export const renderDeadlinesHistoryList = (
   surface: HTMLElement,
   state: DeadlinesHistoryListState,
 ): void => {
-  render(<DeadlinesHistoryListRoot state={state} />, surface);
+  render(<DeadlinesHistoryListRoot state={state} standalone />, surface);
 };

@@ -4,7 +4,7 @@ import type {
 import { SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { callApi } from './homey.ts';
 
-type HistoryReader = 'overview' | 'recommendations';
+type HistoryReader = 'overview' | 'recommendations' | 'deadlines' | 'deadlines-history';
 let historyRead: {
   read: Promise<SettingsUiDeferredObjectivePlanHistoryPayload>;
   readers: Set<HistoryReader>;

@@ -7614,11 +7614,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-3);
 }
 
-/* "Past tasks" archive entry point. PR2 spec §10: the archive needs a clear
- * entry point, so the heading reads as a real section header — primary text
- * tone at the section-headline role, not the previous muted title that blended
- * into the cards below. The top divider sits on the outline-variant role so the
- * separator reads as structure, not a hairline lost on the canvas. */
+#deadlines-history-root .deadlines-history {
+  margin-top: 0;
+}
+
+/* The device history list keeps its own heading inside the task detail. */
 .deadlines-history__heading {
   margin: 0;
   font-size: var(--pels-text-section-headline-font-size);
@@ -7629,12 +7629,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding-top: var(--spacing-4);
 }
 
-/* First-run empty-state copy ("No completed tasks yet …"). Body type size with
- * the secondary text colour — deliberately NOT the dimmest `.muted` metadata
- * tone, because on a true first run this is the only Past-tasks copy on screen
- * and the spec (smart-tasks-surface-spec.md invariant 6) requires it stay
- * legible. It sits a step below the active list's "Add your first smart task"
- * primary CTA. */
+/* Keep archive status copy at the supporting text tier. */
 .deadlines-history__empty {
   margin: 0;
   font-size: var(--pels-text-body-font-size);

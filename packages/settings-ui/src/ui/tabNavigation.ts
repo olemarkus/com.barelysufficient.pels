@@ -22,7 +22,7 @@ import {
 } from './budgetRedesign.ts';
 import { showToast } from './toast.ts';
 import { state } from './state.ts';
-import { refreshDeadlinesList } from './deadlinesList.ts';
+import { refreshDeadlinesHistory, refreshDeadlinesList } from './deadlinesList.ts';
 import { paintOverviewIfOwed, resetPlanSurfaceIfScopeChanged } from './plan.ts';
 import { refreshHomesOnHomesPanel } from './homesSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
@@ -43,6 +43,7 @@ import { refreshSchedules } from './schedules.ts';
 import { refreshWebAppLink } from './webAppLink.ts';
 import { isDeadlinePlanRoute } from './deadlineUrls.ts';
 import {
+  DEADLINES_HISTORY_PANEL,
   SETTINGS_SUB_PANELS,
   isBudgetViewRoute,
   isShellPanel,
@@ -98,6 +99,7 @@ const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; fail
   'report-problem': { refresh: refreshSupportReport, failure: 'Failed to load report form' },
   'device-support': { refresh: refreshDeviceSupportPicker, failure: 'Failed to load Homey devices' },
   deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
+  [DEADLINES_HISTORY_PANEL]: { refresh: refreshDeadlinesHistory, failure: 'Failed to load past tasks' },
   schedules: { refresh: refreshSchedules, failure: 'Failed to load schedules' },
   weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },
   'web-app': { refresh: refreshWebAppLink, failure: 'Failed to prepare the web app link' },
@@ -207,7 +209,9 @@ const discardBudgetAdjustOnLeave = (nextTabId: string) => {
 // of `#deadlines-panel`). Calling the full `showTab('deadlines')` here would
 // hide the deadline-plan panel.
 export const setActiveTabIndicator = (tabId: string): void => {
-  const activeTopLevelTab = REDESIGN_SETTINGS_SECTIONS.has(tabId) ? 'settings' : tabId;
+  let activeTopLevelTab = tabId;
+  if (REDESIGN_SETTINGS_SECTIONS.has(tabId)) activeTopLevelTab = 'settings';
+  if (tabId === DEADLINES_HISTORY_PANEL) activeTopLevelTab = 'deadlines';
   for (const tab of tabs) {
     const isActive = tab.dataset.tab === activeTopLevelTab;
     tab.classList.toggle('active', isActive);

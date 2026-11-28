@@ -55,7 +55,7 @@ test('shows mode preparation beside Smart tasks without delaying the task list',
   const plan = page.getByRole('region', { name: 'Getting ready for Home' });
   await expect(pageHeading).toBeVisible();
   await expect(page.locator('#deadlines-list-root [data-state="loading"]')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Past tasks' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Past tasks' })).toBeVisible();
   await expect(plan).toHaveCount(0);
   await page.waitForFunction(() => 'finishModePreparationRead' in window);
   await page.evaluate(() => (window as unknown as { finishModePreparationRead(): void }).finishModePreparationRead());
