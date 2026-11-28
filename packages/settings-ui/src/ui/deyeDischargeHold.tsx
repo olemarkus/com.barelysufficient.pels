@@ -15,11 +15,13 @@ const isDeyeRegion = (value: unknown): value is DeyeDischargeHoldSetup['region']
 
 const readStatus = async (response: Promise<unknown>): Promise<DeyeDischargeHoldStatus> => {
   const raw = await response;
-  if (!isUnknownRecord(raw) || typeof raw.enabled !== 'boolean' || !isDeyeStatusState(raw.state)) {
+  if (!isUnknownRecord(raw) || typeof raw.enabled !== 'boolean' || typeof raw.offered !== 'boolean'
+    || !isDeyeStatusState(raw.state)) {
     throw new Error('Deye status unavailable');
   }
   return {
     enabled: raw.enabled,
+    offered: raw.offered,
     state: raw.state,
     ...(isDeyeRegion(raw.region) ? { region: raw.region } : {}),
     ...(typeof raw.deviceSn === 'string' ? { deviceSn: raw.deviceSn } : {}),
@@ -57,6 +59,8 @@ function DeyeDischargeHoldPanel() {
 
   const refresh = () => run(fetchStatus, 'Could not load Deye battery status. Try again.');
   useEffect(() => { void refresh(); }, []);
+  // Only a saved connection or the hidden offer switch shows the card; the status read is local.
+  if (!status?.offered) return null;
   return <DeyeDischargeHoldView status={status} busy={busy} error={error}
     onRefresh={() => { void refresh(); }}
     onSave={(input) => run(() => saveConnection(input),

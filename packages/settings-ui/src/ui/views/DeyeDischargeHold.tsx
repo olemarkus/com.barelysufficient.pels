@@ -9,7 +9,8 @@ const STATUS_TEXT: Record<DeyeDischargeHoldStatus['state'], string> = {
   ready: 'Connected. PELS can hold Deye battery discharge during EV Smart tasks in Main.',
   pending: 'Waiting for Deye Cloud to confirm the discharge limit.',
   held: 'PELS has set the Deye discharge limit to 0 A.',
-  unavailable: 'PELS could not check the connection. Check Deye Cloud and refresh the status.',
+  hold_failed: 'Deye Cloud did not apply the 0 A limit. PELS will try again at the next EV Smart task.',
+  unavailable: 'PELS could not reach Deye Cloud. It tries again every minute.',
   recovery_required: 'Check the inverter’s discharge limit in Deye Cloud before continuing.',
 };
 

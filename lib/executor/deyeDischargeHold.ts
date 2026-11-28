@@ -12,6 +12,10 @@ import {
 
 const POLL_MS = 60_000;
 const RECOVERY_NOTICE_MS = 15 * POLL_MS;
+const MAX_RESTORE_RETRY_MS = 15 * POLL_MS;
+const READBACK_LAG_MS = 2 * POLL_MS;
+/** A hidden switch, written only with `homey api`, that offers the Deye card to a new user. */
+export const DEYE_DISCHARGE_HOLD_OFFERED_KEY = 'deye_discharge_hold_offered';
 const log = getLogger('deyeDischargeHold');
 
 function parseSetup(input: unknown): DeyeCloudCredentials {
@@ -38,7 +42,8 @@ type DeyeDischargeActuator = Pick<DeyeCloudClient, 'readLimit' | 'prepareLimitWr
 
 /**
  * Owns the original inverter limit and the single cloud order in flight.
- * A submitting record can survive a lost response. Only the owner can resolve it manually.
+ * A submitting record can survive a lost response. A hold still wanted then needs the owner;
+ * once a release is owed, PELS writes the saved limit again until a readback confirms it.
  */
 export class DeyeDischargeHold implements EvDischargeHoldLane {
   private enabled = false;
@@ -53,6 +58,8 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
   private holdFailed = false;
   private unavailable = false;
   private retryAfterMs = 0;
+  private restoreRetryAtMs = 0;
+  private restoreRetryDelayMs = 0;
   private record: DeyeHoldRecord | null | undefined;
 
   constructor(private readonly settings: DeyeHoldSettings, private readonly cloud: DeyeDischargeActuator) {}
@@ -92,12 +99,14 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
 
   status(): DeyeDischargeHoldStatus {
     const record = this.read();
-    if (record === undefined) return { enabled: false, state: 'recovery_required' };
-    if (!record) return { enabled: false, state: 'disabled' };
+    // An unreadable record may hold a claim, so the card stays visible.
+    if (record === undefined) return { enabled: false, offered: true, state: 'unavailable' };
+    if (!record) return { enabled: false, offered: this.isOffered(), state: 'disabled' };
     const { enabled, claim } = record;
     const step = claim?.step;
     return {
-      enabled, state: this.holdState(record), deviceSn: record.credentials.deviceSn, region: record.credentials.region,
+      enabled, offered: true, state: this.holdState(record),
+      deviceSn: record.credentials.deviceSn, region: record.credentials.region,
       ...(claim ? { originalLimitA: claim.originalLimitA } : {}),
       ...(step?.kind === 'order' || step?.kind === 'readback' ? { orderId: step.orderId } : {}),
     };
@@ -105,9 +114,11 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
 
   private holdState({ claim, enabled }: DeyeHoldRecord): DeyeDischargeHoldStatus['state'] {
     if (this.needsManualRecovery(claim)) return 'recovery_required';
-    if (this.unavailable || this.holdFailed) return 'unavailable';
-    if (claim?.step.kind === 'held' && claim.releaseRequestedAtMs === undefined) return 'held';
+    // While a claim is open the limit may be 0 A, so it reads as pending, never as a connection fault.
+    if (claim?.step.kind === 'held' && claim.releaseRequestedAtMs === undefined && !this.unavailable) return 'held';
     if (claim) return 'pending';
+    if (this.holdFailed) return 'hold_failed';
+    if (this.unavailable) return 'unavailable';
     return enabled ? 'ready' : 'disabled';
   }
 
@@ -183,6 +194,14 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
     });
   }
 
+  private isOffered(): boolean {
+    try {
+      return this.settings.get(DEYE_DISCHARGE_HOLD_OFFERED_KEY) === true;
+    } catch {
+      return false;
+    }
+  }
+
   private read(): DeyeHoldRecord | null | undefined {
     // Retry an unavailable SDK read from the API or the recovery clock.
     if (this.record === undefined) this.record = readDeyeHoldRecord(this.settings);
@@ -215,9 +234,20 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
     const step = claim?.step;
     const overdue = (since: number | undefined) => since !== undefined && Date.now() - since >= RECOVERY_NOTICE_MS;
     return step?.kind === 'unreadable_order' || step?.kind === 'unexpected_limit'
-      || (step?.kind === 'submitting' && !this.submitting)
+      || this.isAmbiguousWantedHold(claim)
       || overdue(claim?.releaseRequestedAtMs)
       || ((step?.kind === 'order' || step?.kind === 'readback') && overdue(step.sinceMs));
+  }
+
+  /** A lost hold submission that is still wanted: only the owner can tell whether it applied. */
+  private isAmbiguousWantedHold(claim?: DeyeClaim): boolean {
+    return claim?.step.kind === 'submitting' && !this.submitting && !this.owesRestore(claim);
+  }
+
+  /** A restore is owed: writing the saved limit again is safe and lands after any earlier order. */
+  private owesRestore(claim?: DeyeClaim): boolean {
+    return claim?.releaseRequestedAtMs !== undefined
+      || (claim?.step.kind === 'submitting' && claim.step.direction === 'restore');
   }
 
   private wantsHold(): boolean {
@@ -284,7 +314,10 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
 
   private async advanceClaim(record: DeyeHoldRecord, claim: DeyeClaim): Promise<void> {
     const { step } = claim;
-    if (step.kind === 'submitting') return;
+    if (step.kind === 'submitting') {
+      await this.resolveLostSubmission(record, claim, step.direction);
+      return;
+    }
     if (step.kind === 'order') {
       const result = await this.cloud.readOrder(record.credentials, step.orderId);
       if (result === 'pending') return;
@@ -299,7 +332,7 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
     if (step.kind === 'held' && claim.releaseRequestedAtMs === undefined && this.wantsHold()) return;
     const current = await this.cloud.readLimit(record.credentials);
     if (step.kind === 'readback') {
-      this.confirmOrder(record, claim, step.direction, current);
+      await this.confirmOrder(record, claim, step, current);
       return;
     }
     if (current === claim.originalLimitA) this.complete(record);
@@ -308,16 +341,50 @@ export class DeyeDischargeHold implements EvDischargeHoldLane {
     else this.persist({ ...record, claim: { ...claim, step: { kind: 'unexpected_limit' } } });
   }
 
-  private confirmOrder(record: DeyeHoldRecord, claim: DeyeClaim, direction: 'hold' | 'restore', current: number): void {
-    if (direction === 'hold' && current === 0) {
-      this.persist({ ...record, claim: { ...claim, step: { kind: 'held' } } });
-    }
+  /** An ambiguous hold that is still wanted waits for the owner. A lost restore is retried. */
+  private async resolveLostSubmission(
+    record: DeyeHoldRecord, claim: DeyeClaim, direction: 'hold' | 'restore',
+  ): Promise<void> {
+    if (!this.owesRestore(claim)) return;
+    const current = await this.cloud.readLimit(record.credentials);
     if (direction === 'restore' && current === claim.originalLimitA) this.complete(record);
-    // Config readback can lag the terminal order. Keep the obligation if the value differs.
+    else await this.restoreAgain(record, claim, current);
+  }
+
+  private async confirmOrder(
+    record: DeyeHoldRecord,
+    claim: DeyeClaim,
+    step: Extract<DeyeClaim['step'], { orderId: string }>,
+    current: number,
+  ): Promise<void> {
+    // Config readback can lag the terminal order, so a differing value is first given two polls.
+    const settled = Date.now() - step.sinceMs >= READBACK_LAG_MS;
+    if (step.direction === 'hold') {
+      if (current === 0) this.persist({ ...record, claim: { ...claim, step: { kind: 'held' } } });
+      // A hold the inverter has not applied is not waited on once its release is owed.
+      else if (settled && claim.releaseRequestedAtMs !== undefined) await this.restoreAgain(record, claim, current);
+      return;
+    }
+    if (current === claim.originalLimitA) this.complete(record);
+    else if (settled) await this.restoreAgain(record, claim, current);
+  }
+
+  /** Writes the saved limit again, with backoff. A different nonzero value may be an external change. */
+  private async restoreAgain(record: DeyeHoldRecord, claim: DeyeClaim, current: number): Promise<void> {
+    if (current !== 0 && current !== claim.originalLimitA) {
+      this.persist({ ...record, claim: { ...claim, step: { kind: 'unexpected_limit' } } });
+      return;
+    }
+    if (Date.now() < this.restoreRetryAtMs) return;
+    this.restoreRetryDelayMs = Math.min(MAX_RESTORE_RETRY_MS, this.restoreRetryDelayMs * 2 || POLL_MS);
+    this.restoreRetryAtMs = Date.now() + this.restoreRetryDelayMs;
+    await this.submit(record, this.requestRelease(claim), 'restore');
   }
 
   private complete(record: DeyeHoldRecord): void {
     this.recoverOnStart = false;
+    this.restoreRetryAtMs = 0;
+    this.restoreRetryDelayMs = 0;
     if (record.enabled) this.persist({ enabled: true, credentials: record.credentials });
     else this.persist(null);
   }

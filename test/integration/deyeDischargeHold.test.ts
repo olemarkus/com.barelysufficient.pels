@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DeyeDischargeHold } from '../../lib/executor/deyeDischargeHold';
+import { bindMainDischargeHold, DEYE_DISCHARGE_HOLD_OFFERED_KEY, DeyeDischargeHold } from '../../lib/executor/deyeDischargeHold';
 import { DEYE_DISCHARGE_HOLD_KEY } from '../../lib/executor/deyeDischargeHoldRecord';
 
 const SETUP = {
@@ -87,11 +87,13 @@ describe('Deye EV discharge hold recovery', () => {
     expect(owner.status()).toMatchObject({ state: 'pending', orderId: '12' });
     cloud.readLimit.mockResolvedValue(60);
     await poll();
-    expect(owner.status()).toEqual({ enabled: true, state: 'ready', deviceSn: SETUP.deviceSn, region: 'eu' });
+    expect(owner.status()).toEqual({
+      enabled: true, offered: true, state: 'ready', deviceSn: SETUP.deviceSn, region: 'eu',
+    });
     owner.stop();
   });
 
-  it('keeps an interrupted write across restarts and requires a matching limit and explicit recovery', async () => {
+  it('restores an interrupted hold write after a restart without waiting for the owner', async () => {
     const { cloud, owner, settings } = harness();
     await owner.save(SETUP);
     cloud.submitLimit.mockRejectedValueOnce(new Error('connection lost'));
@@ -102,21 +104,38 @@ describe('Deye EV discharge hold recovery', () => {
     const recovered = new DeyeDischargeHold(settings, cloud);
     recovered.start();
     await settle();
-    expect(recovered.status()).toEqual({
-      enabled: true, state: 'recovery_required', deviceSn: SETUP.deviceSn, originalLimitA: 60, region: 'eu',
-    });
-    await expect(recovered.save({ ...SETUP, deviceSn: 'different-device' })).rejects.toThrow('same inverter');
-    await recovered.save({ ...SETUP, password: 'replacement-password' });
-    await expect(recovered.acknowledge({})).rejects.toThrow('Confirm');
-    cloud.readLimit.mockResolvedValue(0);
-    await expect(recovered.acknowledge({ confirmedOrderSettled: true })).rejects.toThrow('different discharge limit');
+    expect(cloud.submitLimit.mock.calls.map(([, amps]) => amps)).toEqual([0, 60]);
+    expect(recovered.status()).toMatchObject({ state: 'pending', originalLimitA: 60 });
     await poll();
-    expect(cloud.submitLimit).toHaveBeenCalledTimes(1);
-    cloud.readLimit.mockResolvedValue(60);
-    await expect(recovered.acknowledge({ confirmedOrderSettled: true })).resolves.toEqual({
-      enabled: false, state: 'disabled',
+    await poll();
+    expect(recovered.status()).toEqual({
+      enabled: true, offered: true, state: 'ready', deviceSn: SETUP.deviceSn, region: 'eu',
     });
     recovered.stop();
+  });
+
+  it('asks the owner about an interrupted hold that is still wanted, then restores once it is not', async () => {
+    const { cloud, owner } = harness();
+    await owner.save(SETUP);
+    cloud.submitLimit.mockRejectedValueOnce(new Error('connection lost'));
+    owner.start();
+    owner.apply(true, () => true);
+    await settle();
+    await poll();
+    expect(owner.status()).toEqual({
+      enabled: true, offered: true, state: 'recovery_required', deviceSn: SETUP.deviceSn, originalLimitA: 60,
+      region: 'eu',
+    });
+    expect(cloud.submitLimit).toHaveBeenCalledTimes(1);
+    await expect(owner.save({ ...SETUP, deviceSn: 'different-device' })).rejects.toThrow('same inverter');
+    await expect(owner.acknowledge({})).rejects.toThrow('Confirm');
+    cloud.readLimit.mockResolvedValue(0);
+    await expect(owner.acknowledge({ confirmedOrderSettled: true })).rejects.toThrow('different discharge limit');
+
+    owner.apply(false, () => false);
+    await settle();
+    expect(cloud.submitLimit.mock.calls.map(([, amps]) => amps)).toEqual([0, 60]);
+    owner.stop();
   });
 
   it('restores a confirmed hold on startup even if a new booking is already driving', async () => {
@@ -171,5 +190,139 @@ describe('Deye EV discharge hold recovery', () => {
     expect(cloud.submitLimit).not.toHaveBeenCalled();
     expect(owner.status().state).toBe('ready');
     owner.stop();
+  });
+});
+
+async function confirmedHold() {
+  const parts = harness();
+  const { cloud, owner } = parts;
+  await owner.save(SETUP);
+  owner.start();
+  owner.apply(true, () => true);
+  await settle();
+  cloud.readLimit.mockResolvedValue(0);
+  await poll();
+  await poll();
+  expect(owner.status().state).toBe('held');
+  return parts;
+}
+
+const writes = (cloud: ReturnType<typeof harness>['cloud']) => cloud.submitLimit.mock.calls.map(([, amps]) => amps);
+
+async function expectRestored(parts: ReturnType<typeof harness>, enabled = true) {
+  parts.cloud.readLimit.mockResolvedValue(60);
+  await poll();
+  await poll();
+  expect(parts.owner.status()).toMatchObject({ state: enabled ? 'ready' : 'disabled', enabled });
+}
+
+describe('Deye EV discharge hold release', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('restores the saved limit when the EV task ends', async () => {
+    const parts = await confirmedHold();
+    parts.owner.apply(false, () => false);
+    await settle();
+    expect(writes(parts.cloud)).toEqual([0, 60]);
+    await expectRestored(parts);
+    parts.owner.stop();
+  });
+
+  it('restores the saved limit and forgets the connection when the owner disables a held limit', async () => {
+    const parts = await confirmedHold();
+    await expect(parts.owner.disable()).resolves.toMatchObject({ enabled: false });
+    await settle();
+    expect(writes(parts.cloud)).toEqual([0, 60]);
+    await expectRestored(parts, false);
+    expect(parts.stored.has(DEYE_DISCHARGE_HOLD_KEY)).toBe(false);
+    parts.owner.stop();
+  });
+
+  it('retries a restore whose request failed, with a growing delay', async () => {
+    const parts = await confirmedHold();
+    const { cloud, owner } = parts;
+    cloud.submitLimit.mockRejectedValueOnce(new Error('dongle offline'))
+      .mockRejectedValueOnce(new Error('dongle offline'))
+      .mockRejectedValueOnce(new Error('dongle offline'));
+    owner.apply(false, () => false);
+    await settle();
+    expect(owner.status()).toMatchObject({ state: 'pending', originalLimitA: 60 });
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60, 60]);
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60, 60, 60]);
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60, 60, 60]);
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60, 60, 60, 60]);
+    await expectRestored(parts);
+    owner.stop();
+  });
+
+  it('releases a held limit from the timer once the meter is stale', async () => {
+    const parts = harness();
+    const { cloud, owner } = parts;
+    let liveMeter = true;
+    const lane = bindMainDischargeHold(owner, () => false, () => liveMeter);
+    await owner.save(SETUP);
+    owner.start();
+    lane?.apply(true, () => true);
+    await settle();
+    cloud.readLimit.mockResolvedValue(0);
+    await poll();
+    await poll();
+    expect(owner.status().state).toBe('held');
+    liveMeter = false;
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60]);
+    await expectRestored(parts);
+    owner.stop();
+  });
+
+  it('writes the saved limit again when Deye reports the restore order failed', async () => {
+    const parts = await confirmedHold();
+    const { cloud, owner } = parts;
+    owner.apply(false, () => false);
+    await settle();
+    cloud.readOrder.mockResolvedValueOnce('failed');
+    await poll();
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60, 60]);
+    await expectRestored(parts);
+    owner.stop();
+  });
+
+  it('stops waiting for a hold the inverter never applied once its release is owed', async () => {
+    const { cloud, owner } = harness();
+    await owner.save(SETUP);
+    owner.start();
+    owner.apply(true, () => true);
+    await settle();
+    await poll();
+    await poll();
+    expect(owner.status().state).toBe('pending');
+    owner.apply(false, () => false);
+    await settle();
+    expect(writes(cloud)).toEqual([0]);
+    await poll();
+    expect(writes(cloud)).toEqual([0, 60]);
+    await poll();
+    await poll();
+    expect(owner.status()).toMatchObject({ state: 'ready', enabled: true });
+    owner.stop();
+  });
+
+  it('reports an unreadable record as unavailable, not as a recovery', () => {
+    const { owner, settings } = harness();
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('settings unavailable'); });
+    expect(owner.status()).toEqual({ enabled: false, offered: true, state: 'unavailable' });
+  });
+
+  it('offers the card only behind the hidden switch until a connection is saved', () => {
+    const { owner, stored } = harness();
+    expect(owner.status()).toEqual({ enabled: false, offered: false, state: 'disabled' });
+    stored.set(DEYE_DISCHARGE_HOLD_OFFERED_KEY, true);
+    expect(owner.status()).toEqual({ enabled: false, offered: true, state: 'disabled' });
   });
 });

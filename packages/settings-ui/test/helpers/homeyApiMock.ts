@@ -433,7 +433,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   },
   [buildRouteKey('GET', CHARGING_ACCESS_PATH)]: () => async ({ uri }) => {
     const provider = new URLSearchParams(uri.split('?')[1]).get('provider');
-    return provider === 'deye' ? { enabled: false, state: 'disabled' } : { configured: false, state: 'not_configured' };
+    return provider === 'deye' ? { enabled: false, offered: false, state: 'disabled' } : { configured: false, state: 'not_configured' };
   },
   [buildRouteKey('POST', CHARGING_ACCESS_CHECK_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
   [buildRouteKey('DELETE', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
