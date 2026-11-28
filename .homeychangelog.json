@@ -913,5 +913,8 @@
   },
   "3.53.2": {
     "en": "Setup now shows the hard cap PELS uses for your grid import, with one step to keep it or change it. When the price area set in Homey Energy and the one from your Homey's location disagree, Electricity prices shows both so you can pick the right one. Turning on Managed by PELS for a device during setup now waits until PELS has taken it over.\n\nSupport reports keep the most recent log lines instead of only the earliest ones, and PELS reads your Homey's device list using less memory."
+  },
+  "3.53.3": {
+    "en": "Smart tasks can plan with the prices already available and schedule the remaining work on available power. The task details show that work and explain when the target becomes harder to reach. A charging task with a percentage target pauses while PELS waits for the battery level, and the charger card shows what to check.\n\nGuided setup can tailor the next steps to your goal and shows which home batteries PELS can control. Price-level Flows can fire even while the meter is quiet. If a Flow rejects a request to lower a device's level, PELS can try again when the next plan still needs to limit it."
   }
 }
