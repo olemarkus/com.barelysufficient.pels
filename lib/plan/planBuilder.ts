@@ -89,8 +89,9 @@ import { requireLatchedMeterReading } from '../power/lastTotalPower';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
-import { ChargingInstallationPlan, attachDeferredReleaseIntents, holdScheduledDischargeDuringEvTasks }
-  from './planBuilderDecoration';
+import {
+  ChargingInstallationPlan, attachDeferredReleaseIntents, holdScheduledDischargeDuringEvCharging,
+} from './planBuilderDecoration';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 
@@ -350,7 +351,7 @@ export class PlanBuilder {
     const { context, run } = trackPlanStage('plan_context_ms', () => {
       const timedRun = this.resolveCapacityTimedRun(capacity, settings, reading, decoration, nowTs);
       const cycleContext = buildPlanContext(
-        holdScheduledDischargeDuringEvTasks(decoration),
+        holdScheduledDischargeDuringEvCharging(decoration, reading, devices, this.state, nowTs),
         settings,
         this.getPacingTracker(),
         // Every stage reads the capacity axis with the timed-run allowance.

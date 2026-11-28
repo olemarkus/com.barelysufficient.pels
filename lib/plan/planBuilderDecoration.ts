@@ -6,6 +6,8 @@
  */
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { hasStorageInput } from './battery/storageLadder';
+import type { PowerCycleReading } from '../power/powerCycleReading';
+import type { PlanEngineState } from './planState';
 import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
@@ -95,16 +97,25 @@ function resolveShedReleasePosture(device: DevicePlanDevice, behavior: ShedBehav
   return undefined;
 }
 
-/**
- * A booked EV can start in this plan, so remove economic discharge before
- * computing surplus and admission. Keep the hold through the booking even
- * if power limits temporarily stop the charger.
- */
-export const holdScheduledDischargeDuringEvTasks = (
+const hasObservedEvCharging = (devices: readonly PlanInputDevice[]): boolean => (
+  devices.some((device) => hasStorageInput(device)
+    && device.storage.reading === 'observed' && device.storage.evChargingObserved)
+);
+
+/** Suppress economic discharge before computing surplus and admission. A booked
+ * EV keeps its hold even when power limits temporarily stop the charger. */
+export const holdScheduledDischargeDuringEvCharging = (
   decoration: DeferredDecorationBundle,
+  reading: PowerCycleReading,
+  devices: readonly PlanInputDevice[],
+  state: Pick<PlanEngineState, 'holdDischargeForObservedEvCharging'>,
+  nowTs: number,
 ): PlanInputDevice[] => {
+  const observedEvChargingHold = reading.isMeasured
+    && state.holdDischargeForObservedEvCharging(hasObservedEvCharging(devices), nowTs);
   const { admittedDevices, drivingDeviceIds } = decoration;
-  if (!admittedDevices.some(device => drivingDeviceIds.has(device.id) && isEvDevice(device))) return admittedDevices;
+  if (!observedEvChargingHold
+    && !admittedDevices.some(device => drivingDeviceIds.has(device.id) && isEvDevice(device))) return admittedDevices;
   return admittedDevices.map(device => {
     if (!hasStorageInput(device) || device.storage.reading !== 'observed') return device;
     const { storage } = device;

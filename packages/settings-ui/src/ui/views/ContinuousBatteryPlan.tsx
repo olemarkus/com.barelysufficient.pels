@@ -318,10 +318,10 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     {draft.enabled && props.otherEnabledPlans > 0 && <p class="field__hint">{BATTERY_PLAN_ORDER_LINE}</p>}
     {draft.enabled && <label class="md-switch-row">
       <span class="md-switch-row__content">
-        <span class="md-switch-row__label pels-text-settings-label">Pause scheduled discharge for EV Smart tasks</span>
-        <small class="field__hint">Applies during scheduled EV charging and leaves the preview as planned. The battery can still discharge to hold your home’s power limits.</small>
+        <span class="md-switch-row__label pels-text-settings-label">Pause scheduled discharge for EV charging</span>
+        <small class="field__hint">Applies during EV Smart tasks and while a managed charger reports charging power. The battery can still charge and help hold your home’s power limits.</small>
       </span>
-      <MdSwitch aria-label="Pause scheduled discharge for EV Smart tasks" selected={draft.holdDischargeDuringEvCharging === true}
+      <MdSwitch aria-label="Pause scheduled discharge for EV charging" selected={draft.holdDischargeDuringEvCharging === true}
         disabled={props.busy} onChange={(event: Event) => update('holdDischargeDuringEvCharging', readSwitchSelected(event))} />
     </label>}
     {showExportSettings && <BatteryExportFields sell={draft.sell} exportCeiling={draft.exportCeiling}

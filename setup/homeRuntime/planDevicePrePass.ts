@@ -14,6 +14,7 @@
 import { createPlanInputProjectionSource } from '../appInit/planInputDeviceProjection';
 import { projectPlanInputDevice } from '../../lib/planInput/projectPlanInputDevice';
 import { foldChargingInstallations } from '../../lib/planInput/chargingInstallationFold';
+import { withObservedEvCharging } from '../../lib/planInput/evChargingObservation';
 import { pruneMissingLearnedPowerPeaks } from '../appInit/devicePowerPeakPrePass';
 import {
   isAffirmativelyOn,
@@ -125,5 +126,6 @@ export const buildHomePlanDevices = (
   const deviceIds = devices.map((device) => device.id);
   const lastResortIds = new Set(devices.filter((device) => device.lastResort).map(({ id }) => id));
   const priorities = options.getPrioritiesForDevices(deviceIds, (id) => lastResortIds.has(id));
-  return devices.map((device) => ({ ...device, priority: priorities.getPriority(device.id) }));
+  return withObservedEvCharging(devices, homeDevices)
+    .map((device) => ({ ...device, priority: priorities.getPriority(device.id) }));
 };

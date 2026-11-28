@@ -42,6 +42,7 @@ async function startHome(
   batteryIds: readonly string[] = [BATTERY],
   /** A battery that delivers no more than this, W, whatever it is asked. */
   dischargeCapW: Readonly<Record<string, number>> = {},
+  externalCharger?: MockDevice,
 ): Promise<Home> {
   const batteries = batteryIds.map((id) => {
     const device = buildSetpointBatteryDevice({ id, claimValue: 'anti_feed', stepW: 5 });
@@ -53,7 +54,8 @@ async function startHome(
   const heater = new MockDevice('heater', 'Heater', ['onoff', 'measure_power'], 'socket');
   await heater.setCapabilityValue('onoff', true);
   await heater.setCapabilityValue('measure_power', 1000);
-  setMockDrivers({ home: new MockDriver('home', [...batteries, heater, ...(solar ? [solar] : [])]) });
+  const extraDevices = [solar, externalCharger].filter((device) => device !== undefined);
+  setMockDrivers({ home: new MockDriver('home', [...batteries, heater, ...extraDevices]) });
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -61,7 +63,10 @@ async function startHome(
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
-  mockHomeyInstance.settings.set('managed_devices', { heater: true });
+  mockHomeyInstance.settings.set('managed_devices', {
+    heater: true,
+    ...(externalCharger ? { [externalCharger.idValue]: true } : {}),
+  });
   mockHomeyInstance.settings.set('controllable_devices', { heater: true });
   mockHomeyInstance.settings.set('capacity_priorities', {
     Home: { heater: 1, ...Object.fromEntries(batteryIds.map((id, index) => [id, index + 2])) },
@@ -298,6 +303,37 @@ describe('continuous battery plan through the Homey SDK', () => {
     // The 1 kW export, less the draw margin, is worth more stored than exported for nothing.
     expect(setpoints(home)).toContain(900);
     expect(setpoints(home).every(watts => watts >= 0)).toBe(true);
+  });
+
+  it('holds scheduled discharge while a watch-only charger draws power and resumes after it stops', async () => {
+    const charger = new MockDevice(
+      'external-ev', 'External charger', ['measure_power', 'evcharger_charging', 'evcharger_charging_state'], 'evcharger',
+    );
+    charger.setActualCapabilityValue('measure_power', 0);
+    charger.setActualCapabilityValue('evcharger_charging', true);
+    charger.setActualCapabilityValue('evcharger_charging_state', 'plugged_in_awaiting_start');
+    const home = await startHome(true, 80, undefined, undefined, undefined, undefined, charger);
+    mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, {
+      [BATTERY]: { ...CONFIG, holdDischargeDuringEvCharging: true },
+    });
+    await home.advance(8);
+    expect(setpoints(home).at(-1)).toBeLessThan(0);
+
+    // The external scheduler starts the session, and the house meter sees the load.
+    charger.setActualCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
+    charger.setActualCapabilityValue('measure_power', 1200);
+    home.setHouseW(3000);
+    await home.advance(12);
+    expect(setpoints(home).at(-1)).toBe(0);
+
+    // A state report can end the session even while the old power value lingers.
+    charger.setActualCapabilityValue('evcharger_charging_state', 'plugged_out');
+    home.setHouseW(1800);
+    await home.advance(2);
+    expect(setpoints(home).at(-1)).toBe(0);
+    await home.advance(8);
+    expect(setpoints(home).at(-1)).toBeLessThan(0);
+    expect(home.put.mock.calls.some(([path]) => path.includes('/device/external-ev/'))).toBe(false);
   });
 
   it('tracks profitable export economics without exposing or executing the export candidate', async () => {

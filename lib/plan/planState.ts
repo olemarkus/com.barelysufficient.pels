@@ -552,6 +552,23 @@ export class PlanEngineState {
   // `StorageLeverState`. In-memory like its siblings.
   storageLeverByDevice: Readonly<Record<string, StorageLeverState>> = {};
 
+  private observedEvChargingHold: 'idle' | 'charging' | { quietUntilMs: number } = 'idle';
+
+  /** Bridge short charging interruptions without extending the hold on every idle reading. */
+  holdDischargeForObservedEvCharging(charging: boolean, nowMs: number): boolean {
+    if (charging) {
+      this.observedEvChargingHold = 'charging';
+      return true;
+    }
+    if (this.observedEvChargingHold === 'charging') {
+      this.observedEvChargingHold = { quietUntilMs: nowMs + 30_000 };
+    }
+    if (this.observedEvChargingHold === 'idle') return false;
+    if (nowMs < this.observedEvChargingHold.quietUntilMs) return true;
+    this.observedEvChargingHold = 'idle';
+    return false;
+  }
+
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;
     lowestNonZeroStepId: string;
