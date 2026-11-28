@@ -1,3 +1,7 @@
+import type {
+  DeferredObjectiveActivePlanRevisionV1, DeferredObjectivePlanInterval,
+} from '../../contracts/src/deferredObjectiveActivePlans';
+
 // The saved intervals of a smart-task plan are its bookings, with `plannedKWh`
 // the energy each booking promises. An interval booked on price, or
 // because the task cannot finish without it, that the forecast left no room for
@@ -12,10 +16,17 @@ export const hoursWithPlannedEnergy = <T extends { plannedKWh: number }>(hours: 
   hours.filter(hasPlannedEnergy)
 );
 
-// When the device is first planned to run: the first interval of `revision` that
-// promises energy, or null with no revision or no such interval.
+/** The displayed schedule includes projected available-power work. */
+export const scheduledTaskIntervals = (
+  revision: Pick<DeferredObjectiveActivePlanRevisionV1, 'hours' | 'partialPriceSchedule'> | null,
+): readonly DeferredObjectivePlanInterval[] => {
+  if (revision === null) return [];
+  const fallback = revision.partialPriceSchedule?.fallbackWindows;
+  if (!fallback?.length) return revision.hours;
+  return [...revision.hours, ...fallback].sort((a, b) => a.startsAtMs - b.startsAtMs);
+};
+
+// When the device is first planned to run, including a projected fallback.
 export const resolveFirstPlannedHourMs = (
-  revision: { hours: readonly { startsAtMs: number; plannedKWh: number }[] } | null,
-): number | null => (
-  revision === null ? null : hoursWithPlannedEnergy(revision.hours)[0]?.startsAtMs ?? null
-);
+  revision: Pick<DeferredObjectiveActivePlanRevisionV1, 'hours' | 'partialPriceSchedule'> | null,
+): number | null => scheduledTaskIntervals(revision).find(hasPlannedEnergy)?.startsAtMs ?? null;

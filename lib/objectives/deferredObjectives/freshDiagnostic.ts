@@ -134,7 +134,7 @@ export const buildFreshDiagnostic = (
   // the bridge and attach it to the plan it produced.
   const planWithPriceWatermark: DeferredObjectiveHorizonPlan = {
     ...horizonPlan,
-    pricesAvailableUpToMs: resolvePriceHorizonAvailableUpToMs(priceHorizon),
+    pricesAvailableUpToMs: horizonPlan.pricesAvailableUpToMs ?? resolvePriceHorizonAvailableUpToMs(priceHorizon),
   };
 
   const evaluation = buildAllocatedTaskEvaluation(deviceId, objective, progress, planWithPriceWatermark);

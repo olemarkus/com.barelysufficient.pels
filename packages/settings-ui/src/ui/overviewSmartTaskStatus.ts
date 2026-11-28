@@ -30,7 +30,7 @@ import { buildDeadlineHref } from './deadlineUrls.ts';
 import { getHomeyTimezone } from './homey.ts';
 import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFormat.ts';
 import { resolveObjectiveTargetValue } from '../../../shared-domain/src/deferredObjectiveValues.ts';
-import { hasPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
+import { hasPlannedEnergy, scheduledTaskIntervals } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import type { OverviewDecisionItem } from './overviewDecision.ts';
 
 export type OverviewSmartTaskStatus = {
@@ -98,7 +98,7 @@ const resolveScheduledTaskStatus = (
   // A current booking with zero planned energy may still run on spare power.
   // Only describe a future interval when no booking is in effect now.
   if (plan.latest?.planStatus !== 'on_track') return null;
-  const next = plan.latest.hours.find((hour) => hour.endsAtMs > nowMs
+  const next = scheduledTaskIntervals(plan.latest).find((hour) => hour.endsAtMs > nowMs
     && ((hour.coversFromMs ?? hour.startsAtMs) <= nowMs || hasPlannedEnergy(hour)));
   if (!next || (next.coversFromMs ?? next.startsAtMs) <= nowMs) return null;
   const startsAt = formatLocalHHMM(next.coversFromMs ?? next.startsAtMs, getHomeyTimezone());

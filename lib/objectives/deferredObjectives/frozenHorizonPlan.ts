@@ -2,9 +2,11 @@ import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectivePartialPriceSchedule,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { resolveCurrentHourBooking, resolveCurrentHourClaim } from './currentHourClaim';
 import { selectMinimumStepForEnergy } from './stepSelection';
+import { servePartialPriceSchedule } from './partialPriceSchedule';
 import type { ScheduledDeferredObjective } from './priorityAllocation';
 import type {
   DeferredObjectiveHorizonPlan,
@@ -51,6 +53,7 @@ export type FrozenReadInputs = {
   // a window over only its own part, so the frozen read promises energy where the
   // fresh allocation did and nowhere else in the hour.
   drawWindows: readonly FrozenDrawWindow[];
+  partialPriceSchedule?: DeferredObjectivePartialPriceSchedule;
 };
 
 export type FrozenDrawWindow = { startMs: number; endMs: number; plannedKWh: number };
@@ -185,7 +188,7 @@ export const buildFrozenHorizonPlan = (
   const plannedUsefulEnergyKWh = futureHours.reduce((sum, hour) => sum + Math.max(0, hour.plannedKWh), 0);
   const unplannedUsefulEnergyKWh = Math.max(0, energyNeededKWh - plannedUsefulEnergyKWh);
 
-  return {
+  const plan: DeferredObjectiveHorizonPlan = {
     objectiveId: `${deviceId}:${objective.kind}`,
     kind: objective.kind,
     enforcement: objective.enforcement,
@@ -225,4 +228,7 @@ export const buildFrozenHorizonPlan = (
     // `DeferredObjectiveHorizonPlan`.
     frozenRead: true,
   };
+  return frozenRead.partialPriceSchedule === undefined
+    ? plan
+    : servePartialPriceSchedule(plan, frozenRead.partialPriceSchedule, frozenRead.floorShortfallCause);
 };

@@ -12,6 +12,7 @@ import {
   NOW_MARKER_WORD,
 } from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import { hasPlannedEnergy, scheduledTaskIntervals } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import {
   normalizeEvChargingSessionSmoothingSettings,
 } from '../../../shared-domain/src/settings/evChargingSessionSmoothing.ts';
@@ -83,8 +84,8 @@ export const buildTimeline = (
   // First planned hour after the current one — the idle "heating starts
   // 08:00" readout names it so the readout never claims the kind verb is
   // active while the hero says it starts later.
-  const nextPlanned = horizon.find((hour) => (
-    hour.startsAtMs > nowMs && (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
+  const nextPlanned = scheduledTaskIntervals(ctx.activePlan.latest).find((hour) => (
+    hour.startsAtMs > nowMs && hasPlannedEnergy(hour)
   ));
   const nextStartLabel = nextPlanned ? formatHourLabel(nextPlanned.startsAtMs) : null;
   // A saved commitment can retain this marker after the charger opts out.

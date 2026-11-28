@@ -1,11 +1,8 @@
 // SDK-boundary e2e for a smart task created before the next day's prices exist.
 //
-// WHAT THIS PROBES: a task due the next morning, created at 10:00, cannot be
-// allocated until the next day's prices are published (13:00 here), because a
-// task plans only when prices reach its deadline. While it waits the task must
-// hold its device, not hand it back to normal control, and it must start the
-// device at the latest moment the remaining energy still fits if the prices
-// never arrive.
+// An evening task books today's priced intervals and schedules the rest on
+// available power. Later prices replace that fallback without erasing elapsed
+// priced work. If prices never arrive, the saved fallback still runs.
 //
 // HOW IT IS SIMULATED: only the device temperature, the published prices and
 // the clock. The real evaluation, recorder and admission run every cycle. A
@@ -15,10 +12,12 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
 import { objectiveRosterFor } from '../utils/objectiveRoster';
-import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
+import { buildFixtureDiagnosticsForLane } from '../helpers/taskEvaluationFixture';
 import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import { TaskPlanningTurns } from '../../lib/objectives/deferredObjectives/taskPlanningTurns';
+import type { DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -36,12 +35,12 @@ const START_C = 53;
 const RATE = 0.8; // kWh per degree, the learned mean below
 const FLOOR_KW = 1.25;
 const ELEMENT_KW = 5;
-const START_MS = DAY + 10 * HOUR_MS; // 10:00, task created
-const PUBLISH_MS = DAY + 13 * HOUR_MS; // 13:00, next day's prices published
+const START_MS = DAY + 21 * HOUR_MS;
+const PUBLISH_MS = DAY + 22 * HOUR_MS + 10 * MIN_MS;
 const DEADLINE_MS = DAY + 31 * HOUR_MS; // 07:00 next day
-// 10 degrees at 0.8 kWh per degree is 8 kWh, 6.4 h at the 1.25 kW rung. With
-// the one-hour deadline reserve the latest start is 07:00 - 1 h - 6.4 h = 23:36.
-const LATEST_START_MS = DEADLINE_MS - HOUR_MS - (((TARGET_C - START_C) * RATE) / FLOOR_KW) * HOUR_MS;
+// Three priced hours can deliver 3 kWh. The other 5 kWh take four hours
+// at the lowest rung, so the fallback starts at 02:00 and leaves the reserve.
+const FALLBACK_START_MS = DAY + 26 * HOUR_MS;
 const TODAY_PRICE = 100;
 const NIGHT_PRICE = 50;
 
@@ -153,7 +152,13 @@ const buildCombinedPrices = (
   priceUnit: 'øre/kWh',
 });
 
-type Cycle = { nowMs: number; decision: string; holdCause: string | undefined; kWh: number };
+type Cycle = {
+  nowMs: number;
+  decision: string;
+  usesAvailablePower: boolean;
+  kWh: number;
+  plan: DeferredObjectiveActivePlanRevisionV1 | null;
+};
 
 const runScenario = (
   publishAtMs: number | null, todayPublished = true,
@@ -165,12 +170,18 @@ const runScenario = (
       },
     },
   });
-  const recorder = new DeferredObjectiveActivePlanRecorder({ load: () => null, save: () => true });
+  let recorder = new DeferredObjectiveActivePlanRecorder({ load: () => null, save: () => true });
+  let turns = new TaskPlanningTurns();
   const cycles: Cycle[] = [];
   let tempC = START_C;
   for (let nowMs = START_MS; nowMs < DEADLINE_MS; nowMs += STEP_MS) {
+    if (publishAtMs === null && nowMs === DAY + 25 * HOUR_MS) {
+      const saved = recorder.getActivePlansSnapshot();
+      recorder = new DeferredObjectiveActivePlanRecorder({ load: () => saved, save: () => true });
+      turns = new TaskPlanningTurns();
+    }
     const device = buildDevice(tempC, nowMs);
-    const [diag] = buildFixtureDiagnostics({
+    const [diag] = buildFixtureDiagnosticsForLane({
       hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -190,20 +201,23 @@ const runScenario = (
       ),
       priceOptimizationEnabled: true,
       activePlans: recorder.getActivePlansSnapshot(),
-    });
+    }, { kind: 'scheduled', turns });
     recorder.observe(diag ? [diag] : [], nowMs);
     const decision = diag ? applyDeferredObjectiveAdmission([diag.evaluation], [device]).get(DEVICE_ID) : undefined;
     // `inactive` hands the device to normal control, where a heater below its
     // setpoint runs; `idle` is the task holding it off.
     const runs = decision?.kind !== 'idle';
+    const usesAvailablePower = decision?.usesAvailablePower === true;
     const dtH = STEP_MS / HOUR_MS;
-    const kWh = runs && tempC < TARGET_C ? Math.min(ELEMENT_KW * dtH, (TARGET_C - tempC) * RATE) : 0;
+    const powerKw = usesAvailablePower ? FLOOR_KW : 1;
+    const kWh = runs && tempC < TARGET_C ? Math.min(powerKw * dtH, (TARGET_C - tempC) * RATE) : 0;
     tempC += kWh / RATE;
     cycles.push({
       nowMs,
       decision: decision?.kind ?? 'none',
-      holdCause: decision?.kind === 'idle' ? decision.holdCause : undefined,
+      usesAvailablePower,
       kWh,
+      plan: recorder.getActivePlan(DEVICE_ID)?.latest ?? null,
     });
   }
   return { cycles, finalTempC: tempC };
@@ -212,25 +226,32 @@ const runScenario = (
 const sumKWh = (cycles: Cycle[]): number => cycles.reduce((sum, cycle) => sum + cycle.kWh, 0);
 
 describe('smart task created before the next day\'s prices (SDK-boundary e2e)', () => {
-  it('holds the device until prices arrive, then runs it in the cheap hours', () => {
+  it('books priced work immediately and revises the remaining schedule when prices arrive', () => {
     const { cycles, finalTempC } = runScenario(PUBLISH_MS);
-    const waiting = cycles.filter((cycle) => cycle.nowMs < PUBLISH_MS);
-    expect(waiting.length).toBeGreaterThan(0);
-    expect(waiting.every((cycle) => cycle.decision === 'idle' && cycle.holdCause === 'cheaper_hours')).toBe(true);
-    expect(sumKWh(waiting)).toBe(0);
-    // With prices the task puts most of its energy in the half-price night.
-    const today = sumKWh(cycles.filter((cycle) => cycle.nowMs < DAY + 24 * HOUR_MS));
-    expect(sumKWh(cycles) - today).toBeGreaterThan(today);
+    const first = cycles[0];
+    expect(first?.decision).toBe('planned');
+    expect(first?.plan?.hours.filter((hour) => hour.plannedKWh > 0)).toHaveLength(3);
+    expect(first?.plan?.partialPriceSchedule?.fallbackWindows[0]?.startsAtMs).toBe(FALLBACK_START_MS);
+    expect(sumKWh(cycles.filter((cycle) => cycle.nowMs < PUBLISH_MS))).toBeGreaterThan(1);
+
+    const revised = cycles.find((cycle) => cycle.nowMs === PUBLISH_MS)?.plan;
+    expect(revised?.reason).toBe('prices_revised');
+    expect(revised?.partialPriceSchedule).toBeUndefined();
+    expect(revised?.hours).toEqual(expect.arrayContaining([
+      expect.objectContaining({ startsAtMs: START_MS, endsAtMs: START_MS + HOUR_MS, plannedKWh: 1 }),
+    ]));
+    expect(revised?.hours.some((hour) => hour.startsAtMs >= DAY + 24 * HOUR_MS && hour.plannedKWh > 0)).toBe(true);
     expect(finalTempC).toBeGreaterThanOrEqual(TARGET_C - 1);
   });
 
-  it('starts the device at the latest start when prices never arrive', () => {
+  it('runs the saved fallback on available power after the last priced interval and a restart', () => {
     const { cycles, finalTempC } = runScenario(null);
-    const held = cycles.filter((cycle) => cycle.nowMs < LATEST_START_MS);
-    const started = cycles.filter((cycle) => cycle.nowMs >= LATEST_START_MS);
+    const held = cycles.filter((cycle) => cycle.nowMs >= DAY + 24 * HOUR_MS && cycle.nowMs < FALLBACK_START_MS);
+    const started = cycles.find((cycle) => cycle.nowMs === FALLBACK_START_MS);
     expect(held.every((cycle) => cycle.decision === 'idle')).toBe(true);
     expect(sumKWh(held)).toBe(0);
-    expect(started[0]?.decision).toBe('planned');
+    expect(started).toMatchObject({ decision: 'planned', usesAvailablePower: true, kWh: expect.any(Number) });
+    expect(started?.kWh).toBeGreaterThan(0);
     expect(finalTempC).toBeGreaterThanOrEqual(TARGET_C - 1);
   });
 

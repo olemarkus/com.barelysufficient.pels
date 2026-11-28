@@ -48,8 +48,13 @@ const isPlanStatus = (value: unknown): boolean => (
 const isOverviewLatest = (latest: unknown): boolean => {
   if (latest === null) return true;
   if (!isUnknownRecord(latest)) return false;
-  const { hours, planStatus } = latest;
-  return isPlanStatus(planStatus) && Array.isArray(hours) && hours.every(isOverviewHour);
+  const { hours, partialPriceSchedule, planStatus } = latest;
+  const validFallback = partialPriceSchedule === undefined || (isUnknownRecord(partialPriceSchedule)
+    && Array.isArray(partialPriceSchedule.fallbackWindows)
+    && partialPriceSchedule.fallbackWindows.every(isOverviewHour)
+    && (partialPriceSchedule.fallbackStartsAtMs === undefined
+      || isFiniteNumber(partialPriceSchedule.fallbackStartsAtMs)));
+  return isPlanStatus(planStatus) && Array.isArray(hours) && hours.every(isOverviewHour) && validFallback;
 };
 
 const isOverviewPlanShaped = (plan: unknown): plan is OverviewDeferredObjectiveActivePlan => (

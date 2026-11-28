@@ -32,7 +32,7 @@ describe('policy horizon availability without allocation buckets', () => {
     { name: 'empty', enabled: true, prices: [], reason: 'objective_missing_price_horizon' },
     { name: 'gap at now', enabled: true, prices: [period(0.25, 2)], reason: 'objective_missing_price_horizon' },
     { name: 'internal gap', enabled: true, prices: [period(0, 0.5), period(1, 2)], reason: 'objective_missing_price_horizon' },
-    { name: 'short of deadline', enabled: true, prices: [period(0, 1.75)], reason: 'objective_missing_price_horizon' },
+    { name: 'continuous prices short of deadline', enabled: true, prices: [period(0, 1.75)], reason: null },
     { name: 'overlap', enabled: true, prices: [period(-1, 1.5), period(1, 3)], reason: null },
     { name: 'only elapsed or future', enabled: true, prices: [period(-1, 0), period(2, 3)], reason: 'objective_missing_price_horizon' },
     { name: 'zero duration', enabled: true, prices: [period(0, 1), period(1.5, 1.5), period(1, 2)], reason: null },

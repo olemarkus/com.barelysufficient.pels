@@ -209,22 +209,17 @@ status instead; create/clear Flow cards
 remain the user-facing surface for managing deadlines. For soft temperature objectives, the
 planner uses the evaluation to decide planned/idle participation and deadline target overrides.
 
-Price gating is deliberate. The bridge only plans when price optimization is enabled and the
-native price horizon covers the whole interval from now through the objective deadline. If the
-deadline is far enough in the future that tomorrow's prices are required, planning may remain
-`unknown` with `objective_missing_price_horizon` until those prices are available. It must not
-fall back to neutral or whole-range planning when the price horizon is incomplete.
+When price optimization is enabled, the bridge can allocate from a continuous native price
+window starting now even if it ends before the deadline. It projects the remaining work at the
+slowest usable rung, using the ordinary one-hour deadline reserve and excluding times already
+covered by positive-priced bookings. The saved fallback lets the task run on available power
+from its calculated start. Its projected intervals do not create energy floors, priority
+reservations, or rescue permissions. New price coverage queues a planning turn on the existing
+lifecycle clock and preserves elapsed delivery and compatible priced commitments. A transient
+gap or a shorter read keeps the existing compatible plan.
 
-A task waiting for prices still governs its device (owner ruling 2026-11-16). Before the next
-day's prices are published this is the normal state of a task due the next day, not a read
-gap. The task holds the device as it holds an interval it released for cheaper hours, until its
-latest start: the deadline, less the one-hour reserve, less the remaining energy at the device's
-slowest useful rung. From the latest start the device runs toward the target on free capacity
-with no rescue permission, so prices that never arrive cannot make the task miss. A task whose
-progress, remaining energy or speed is unknown has no latest start and stays `inactive`
-(`withAwaitingPricesPlanning`). Waiting means prices exist for the current interval and stop short of the
-deadline; with no price for now there is nothing cheaper to wait for, and the task stays
-`inactive`.
+A new task with no current price has no priced window and keeps normal device control. A gap
+between two published periods retains the separate missing-horizon behavior.
 
 That gate applies only while the objective still needs future energy. When fresh EV SoC or
 temperature progress has reached the target in its progress direction, the bridge emits `satisfied` before price or

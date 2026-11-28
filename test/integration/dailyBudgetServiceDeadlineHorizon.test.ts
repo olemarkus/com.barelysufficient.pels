@@ -130,9 +130,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
     };
     const { service, setCombinedPrices } = buildService(settings);
 
-    // Today-only price layer: the deferred-objective policy horizon cannot cover
-    // a next-day deadline regardless of the daily-budget snapshot (the horizon's
-    // price source is now the price layer, not the snapshot).
+    // Today's price layer can supply a partial horizon through local midnight.
     const todayOnlyPrices = buildCombinedPricesV2(
       { '2026-05-10': { startMs: TODAY_START_UTC_MS, count: 24 } },
       '2026-05-10T05:00:00Z',
@@ -156,7 +154,8 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
-    expect(horizon.reasonCode).toBe('objective_missing_price_horizon');
+    expect(horizon.reasonCode).toBeNull();
+    expect(horizon.buckets.at(-1)?.endMs).toBe(TOMORROW_START_UTC_MS);
 
     // User reloads prices: tomorrow's day-ahead lands. lastFetched changes too,
     // matching how the price service rewrites the COMBINED_PRICES setting.

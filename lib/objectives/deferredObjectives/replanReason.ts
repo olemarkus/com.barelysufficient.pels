@@ -68,6 +68,11 @@ export const hasPriceHorizonAdvanced = (
   return next > previous;
 };
 
+export const hasPartialPriceHorizonAdvanced = (
+  latest: DeferredObjectiveActivePlanRevisionV1 | null,
+  evaluation: TaskEvaluation,
+): boolean => latest?.partialPriceSchedule !== undefined && hasPriceHorizonAdvanced(latest, evaluation);
+
 // Pick the recorder-emitted reason from the causes the caller has
 // already detected. `flow_permission_changed` wins over generic
 // `objective_changed` when the signature differs only in the rescue segment

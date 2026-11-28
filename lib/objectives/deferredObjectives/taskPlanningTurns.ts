@@ -156,7 +156,11 @@ export class TaskPlanningTurns {
     }
   }
 
-  begin(ordered: readonly ContextualDeferredObjective[], snapshot: TaskEvaluationSnapshot): ReadonlySet<string> {
+  begin(
+    ordered: readonly ContextualDeferredObjective[],
+    snapshot: TaskEvaluationSnapshot,
+    hasNewPrices: (task: ContextualDeferredObjective) => boolean,
+  ): ReadonlySet<string> {
     const generation = Math.floor((snapshot.nowMs - SCHEDULE_SETTLE_OFFSET_MS) / HOUR_MS);
     const eligible = ordered.filter((task) => task.device && task.objective.deadlineAtMs > snapshot.nowMs);
     const liveIds = new Set(eligible.map((task) => task.deviceId));
@@ -164,14 +168,7 @@ export class TaskPlanningTurns {
     for (const deviceId of this.attempted.keys()) if (!liveIds.has(deviceId)) this.attempted.delete(deviceId);
     if (!snapshot.priceOptimizationEnabled) return new Set();
     for (const task of eligible) {
-      const previous = this.attempted.get(task.deviceId);
-      const context = task.planningContextSignature;
-      if (!previous && hasSettledPlanningContext(task, snapshot, context, generation)) {
-        this.attempted.set(task.deviceId, { context, generation, completed: true });
-        continue;
-      }
-      if (!previous?.completed || previous.generation !== generation || previous.context !== context
-        || !hasPlanningCommitment(task, snapshot)) this.waiting.add(task.deviceId);
+      this.enqueueIfNeeded(task, snapshot, generation, hasNewPrices(task));
     }
     const nextDeviceId = this.waiting.values().next().value;
     const selected = eligible.find((task) => task.deviceId === nextDeviceId);
@@ -183,5 +180,18 @@ export class TaskPlanningTurns {
       generation, completed: false,
     });
     return new Set([deviceId]);
+  }
+
+  private enqueueIfNeeded(
+    task: ContextualDeferredObjective, snapshot: TaskEvaluationSnapshot, generation: number, newPrices: boolean,
+  ): void {
+    const { deviceId, planningContextSignature: context } = task;
+    const previous = this.attempted.get(deviceId);
+    if (!previous && !newPrices && hasSettledPlanningContext(task, snapshot, context, generation)) {
+      this.attempted.set(deviceId, { context, generation, completed: true });
+      return;
+    }
+    if (newPrices || !previous?.completed || previous.generation !== generation || previous.context !== context
+      || !hasPlanningCommitment(task, snapshot)) this.waiting.add(deviceId);
   }
 }

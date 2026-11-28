@@ -231,7 +231,9 @@ const prepareObjectivePayload = (
   const hours = splitHorizonAtBookings(
     collectHorizonHours(ctx.deadlineAtMs, windowStartMs, params.prices), ctx.activePlan,
   );
-  if (hours.length === 0) return { kind: 'awaiting_prices' };
+  if (hours.length === 0 && !ctx.activePlan.latest.partialPriceSchedule?.fallbackWindows.length) {
+    return { kind: 'awaiting_prices' };
+  }
 
   const costDisplay = resolveCostDisplayFromCombinedPrices(params.prices.combinedPrices);
   return {

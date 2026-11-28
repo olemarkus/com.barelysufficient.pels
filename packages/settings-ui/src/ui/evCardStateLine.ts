@@ -4,7 +4,7 @@ import {
 } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import { state } from './state.ts';
-import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
+import { hoursWithPlannedEnergy, scheduledTaskIntervals } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 
 const formatEvCardTime = (ms: number): string => (
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -29,7 +29,7 @@ export const resolveEvCardStateLines = (nowMs: number): ReadonlyMap<string, stri
     const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
     if (activePlan && isSmartTaskPricePaused(activePlan)) continue;
     const stateLine = resolveEvCardStateLine(
-      hoursWithPlannedEnergy(activePlan?.latest?.hours ?? []),
+      hoursWithPlannedEnergy(scheduledTaskIntervals(activePlan?.latest ?? null)),
       nowMs,
       activePlan?.diagnosticReasonCode === 'objective_invalid_session',
       formatEvCardTime,

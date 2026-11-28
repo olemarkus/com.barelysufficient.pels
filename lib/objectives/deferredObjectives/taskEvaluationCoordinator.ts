@@ -38,7 +38,6 @@ import {
 } from './diagnosticProgress';
 import {
   countDeferredObjectivePolicyHorizonBuckets,
-  resolveDeadlineAwarePolicyHorizonReason,
   type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePriorityReservation,
 } from './policyHorizon';
@@ -87,9 +86,10 @@ import {
 import {
   hasPlanningCommitment, isFreshTaskEvaluation, isReviewedTurn, isSelectedFreshTurn, readAllocationContext,
   resolveReportedContext,
-  resolveTaskAllocationMode, shouldWaitForPlanningTurn, taskReplanRequested,
+  resolveTaskAllocationMode, shouldWaitForPlanningTurn,
   type TaskAllocationMode, type TaskPlanningTurns,
 } from './taskPlanningTurns';
+import { buildTaskPolicyHorizonInputs, hasNewTaskPrices, resolveTaskPricePlanning } from './taskPricePlanning';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 
 export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
@@ -284,7 +284,9 @@ export const buildDeferredObjectiveTaskResults = (
     readers.getPrioritiesForDevices,
   ), activePlans);
   const bounded = lane.kind === 'scheduled' || lane.kind === 'serving';
-  const selected = lane.kind === 'scheduled' ? lane.turns.begin(ordered, snapshot) : new Set<string>();
+  const selected = lane.kind === 'scheduled'
+    ? lane.turns.begin(ordered, snapshot, (task) => hasNewTaskPrices(task, snapshot, readers.buildPriceHorizon))
+    : new Set<string>();
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;
   const knownLoadHigherDeviceIds = new Set<string>();
@@ -456,20 +458,9 @@ const buildDeferredObjectiveDiagnostic = (
   if (shouldWaitForPlanningTurn(allocation, frozenFallback !== null, snapshot, progress)) {
     return buildWaitingForPlanDiagnostic(buildTaskDiagnosticBase(snapshot, task), objective, progress, 'replanning');
   }
-  const horizonInputs: DeferredObjectivePolicyHorizonInputs = {
-    nowMs,
-    deadlineAtMs: objective.deadlineAtMs,
-    priceOptimizationEnabled: snapshot.priceOptimizationEnabled,
-    // Allocation-horizon price source, resolved by the wiring-injected producer.
-    priceHorizon: (allocation === 'serve' || allocation === 'serve_idle') && frozenFallback ? []
-      : readers.buildPriceHorizon(nowMs, objective.deadlineAtMs),
-    dailyBudgetSnapshot: snapshot.dailyBudgetSnapshot,
-    powerLimits: snapshot.powerLimits,
-    hasSolarProduction: snapshot.hasSolarProduction,
-    exemptFromBudget: false,
-    higherPriorityReservations,
-    higherPriorityUnbookedPowerKw: task.higherPriorityUnbookedPowerKw,
-  };
+  const horizonInputs = buildTaskPolicyHorizonInputs(
+    snapshot, readers, task, higherPriorityReservations, allocation, frozenFallback,
+  );
   const scheduledTask = { ...task,
     prefersContinuousCharging: isEvDevice(task.device) && readers.prefersContinuousCharging(deviceId) };
   if (isObjectiveProgressSatisfied(progress)) {
@@ -494,18 +485,9 @@ const buildDeferredObjectiveDiagnostic = (
     readers.hasObservedTask(deviceId, objective),
   );
 
-  // Per-cycle (mid-hour) frozen read: between hour settles the committed set,
-  // per-hour kWh and unit milestones are immutable, so the mid-hour path skips the
-  // bucket ALLOCATOR and assembles the plan from the persisted commitment + live
-  // measured. Re-planning (running the allocator) happens only when it is DUE and
-  // POSSIBLE: at bootstrap (no committed fallback ⇒ `resolveCommittedHours`
-  // undefined / empty / all-elapsed — also covers an objective edit via the
-  // signature check), or at the `:58` settle when the price horizon is available.
-  // Otherwise we serve the frozen commitment — a committed device is NEVER dropped
-  // to inactive for want of a live horizon (transient price/budget-snapshot gap, or
-  // a gap that coincides with the settle window). See
-  // notes/deferred-load-objectives/execution-adaptation.md.
-  const horizonReason = resolveDeadlineAwarePolicyHorizonReason(horizonInputs);
+  const { horizonReason, replan } = resolveTaskPricePlanning(
+    horizonInputs, allocation, frozenFallback, activePlans.plansByDeviceId[deviceId]?.latest,
+  );
   // Price optimization turned OFF is a deliberate config state, not a transient data
   // gap: the deferred objective is price-dependent, so it goes inactive (the device
   // returns to normal control) — exactly as before C. We must NOT keep serving the
@@ -517,8 +499,6 @@ const buildDeferredObjectiveDiagnostic = (
       { buckets: [], horizonBucketCount: 0, reasonCode: horizonReason }, task, powerTracker,
     );
   }
-  const horizonAvailable = horizonReason === null;
-  const replan = taskReplanRequested(allocation, frozenFallback !== null, nowMs) && horizonAvailable;
   if (!frozenFallback && horizonReason !== null) {
     // Bootstrap (or empty/all-elapsed commitment) with no usable horizon
     // (`objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
@@ -618,7 +598,6 @@ const buildDiagnosticWithPolicyHorizon = (
     progress.progressDirection,
     snapshot.activePlans,
   );
-  const commitment = activeCommittedPlan?.commitmentHours;
   const milestoneHours = effectiveFrozenRead ? effectiveFrozenRead.hours : (activeCommittedPlan?.latest.hours ?? []);
   // Trajectory gate for mid-execution price deferral. Resolved here (not in the
   // planner) because it compares the buffered energy still needed
@@ -664,7 +643,7 @@ const buildDiagnosticWithPolicyHorizon = (
   // gap on a planning turn) and unknown diagnostics need no reservation mapping.
   const policyHorizon = buildTaskAllocationPolicyHorizon(progress, horizonInputs);
   const horizonPlan = resolveHorizonPlanWithRescue(
-    task, profileEnergy, steps, commitment, aheadOfHourMilestone, policyHorizon, horizonInputs,
+    task, profileEnergy, steps, activeCommittedPlan, aheadOfHourMilestone, policyHorizon, horizonInputs,
   );
   return buildFreshDiagnostic(
     task, base, progress, profileEnergy, policyHorizon, horizonPlan, horizonInputs.priceHorizon,

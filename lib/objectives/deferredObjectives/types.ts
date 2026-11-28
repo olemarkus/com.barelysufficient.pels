@@ -1,4 +1,6 @@
-import type { DeferredObjectivePlanInterval } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  DeferredObjectivePartialPriceSchedule, DeferredObjectivePlanInterval,
+} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 
 export type DeferredObjectiveEnforcement = 'soft' | 'hard';
 
@@ -343,6 +345,8 @@ export type DeferredObjectiveHorizonPlan = {
   // (falling back to the legacy bucket-end value only when there is none) rather
   // than resetting it. Optional/back-compat: legacy diagnostics omit it.
   pricesAvailableUpToMs?: number | null;
+  partialPriceSchedule?: DeferredObjectivePartialPriceSchedule;
+  runsOnAvailablePower?: true;
   // What was true about the current hour this cycle; the release rules read it.
   // See `DeferredObjectiveCurrentHourFacts`.
   currentHourFacts: DeferredObjectiveCurrentHourFacts;

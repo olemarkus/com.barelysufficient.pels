@@ -18,6 +18,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV2,
+  DeferredObjectivePartialPriceSchedule,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   formatEstimatedDuration,
@@ -27,6 +28,7 @@ import {
 } from './activePlanDiagnosticReason';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
+  hasPartialPriceHorizonAdvanced,
   resolveHorizonPriceWatermark,
   resolvePersistedPricesUpTo,
 } from './replanReason';
@@ -42,7 +44,7 @@ import {
   resolveProjectedFinishAtMs,
 } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
-import { buildObjectiveSignature } from './activePlanSignature';
+import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isTaskSatisfied } from './taskCompletion';
 
@@ -315,6 +317,25 @@ const resolveSpeedMode = (
   source: NonNullable<DeferredObjectiveDiagnostic['kwhPerUnitSource']>,
 ): 'auto' | 'learning' => (source === 'bootstrap' ? 'learning' : 'auto');
 
+export const hasImmediateRevisionTrigger = (
+  current: DeferredObjectiveActivePlanV1,
+  diag: DeferredObjectiveDiagnostic,
+  signature: string,
+): boolean => compareObjectiveSignatures(current.objectiveSignature, signature).changed
+  || current.latest?.allocationContextSignature !== diag.allocationContextSignature
+  || hasPartialPriceHorizonAdvanced(current.latest, diag.evaluation);
+
+const revisionPriceFields = (
+  diag: DeferredObjectiveDiagnostic,
+  partialPriceSchedule: DeferredObjectivePartialPriceSchedule | undefined,
+  previousPricesUpTo: number | null | undefined,
+): Pick<DeferredObjectiveActivePlanRevisionV1, 'computedFromPricesUpTo' | 'partialPriceSchedule'> => {
+  const priceWatermark = resolveHorizonPriceWatermark(diag.evaluation);
+  return partialPriceSchedule === undefined
+    ? { computedFromPricesUpTo: resolvePersistedPricesUpTo(priceWatermark, previousPricesUpTo) }
+    : { computedFromPricesUpTo: priceWatermark, partialPriceSchedule };
+};
+
 export const buildRevision = (
   diag: DeferredObjectiveDiagnostic,
   hours: DeferredObjectivePlanInterval[],
@@ -363,10 +384,7 @@ export const buildRevision = (
   return {
     revision,
     revisedAtMs: nowMs,
-    computedFromPricesUpTo: resolvePersistedPricesUpTo(
-      resolveHorizonPriceWatermark(diag.evaluation),
-      previousPricesUpTo,
-    ),
+    ...revisionPriceFields(diag, horizonPlan.partialPriceSchedule, previousPricesUpTo),
     reason,
     progressDirection: diag.progressDirection,
     hours,
@@ -460,6 +478,20 @@ const isProvenanceConfidence = (
 // don't thrash on the first cycle after upgrade. Per-cycle drift in
 // `plannedKWh` / `energyNeededKWh` is intentionally NOT a persist trigger —
 // an actively charging EV shrinks `energyNeededKWh` monotonically every cycle.
+const hasFallbackTimingChanged = (
+  previous: DeferredObjectivePartialPriceSchedule | undefined,
+  next: DeferredObjectivePartialPriceSchedule | undefined,
+): boolean => {
+  const previousFallback = previous?.fallbackWindows;
+  const currentFallback = next?.fallbackWindows;
+  return previous?.fallbackStartsAtMs !== next?.fallbackStartsAtMs
+    || previousFallback?.length !== currentFallback?.length
+    || previousFallback?.some((interval, index) => {
+      const current = currentFallback?.[index];
+      return current?.startsAtMs !== interval.startsAtMs || current.endsAtMs !== interval.endsAtMs;
+    }) === true;
+};
+
 export const hasMetadataDriftedWithinSchedule = (
   latest: DeferredObjectiveActivePlanRevisionV1,
   horizonPlan: DeferredObjectiveHorizonPlan,
@@ -467,6 +499,7 @@ export const hasMetadataDriftedWithinSchedule = (
 ): boolean => {
   const floorShortfallCause = resolveFloorShortfallCause(horizonPlan.statusDetail);
   return latest.planStatus !== reportedPlanStatus(diag, horizonPlan)
+    || hasFallbackTimingChanged(latest.partialPriceSchedule, horizonPlan.partialPriceSchedule)
     || (latest.floorShortfallCause ?? 'none') !== floorShortfallCause
     // Compared as it would be PERSISTED, not as the plan carries it: the recorder
     // suppresses the flag on the `sole` case (the cause already says it), so

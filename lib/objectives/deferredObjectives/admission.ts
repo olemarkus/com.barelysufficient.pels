@@ -114,6 +114,13 @@ const resolveAllocatedDecision = (
 ): DeferredAdmissionDecision => {
   const releasesViaBinary = usesBinaryReleaseControl(device);
   const floor = resolveTaskTargetFloor(evaluation);
+  if (horizonPlan.runsOnAvailablePower === true && !isTaskSatisfied(evaluation.completion)) {
+    return {
+      kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: false,
+      usesAvailablePower: true, ...floor,
+      ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
+    };
+  }
   // The producer resolved the claim this hour carries (`resolveCurrentHourClaim`);
   // admission maps it 1:1 and adds only the release ROUTING, which is a
   // device-modality question the producer cannot answer.

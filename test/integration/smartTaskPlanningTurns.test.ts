@@ -413,14 +413,42 @@ describe('bounded smart-task planning turns', () => {
     expect(home.recorder.getActivePlan('load-1')?.latest?.revision).toBeGreaterThan(committed?.revision ?? 0);
   });
 
-  it('keeps the awaiting-prices hold on the serving lane before any planning turn', () => {
+  it('allocates partial prices only on the task’s planning turn', () => {
     const home = createHarness(1);
     home.setPriceRead(() => prices().slice(0, 2));
 
     const report = home.evaluate(START_MS, SERVING_LANE)[0];
 
-    expect(report?.evaluation.planning).toEqual({ kind: 'awaiting_prices', device: 'held' });
-    expect(freshIds(home.tick(START_MS))).toEqual([]);
+    expect(report?.evaluation.planning).toEqual({ kind: 'awaiting_plan', device: 'unchanged' });
+    expect(freshIds(home.tick(START_MS))).toEqual(['load-1']);
+  });
+
+  it('serves a priced commitment during a shorter read and revises when partial coverage extends', () => {
+    const home = createHarness(1);
+    home.settings.objectivesByDeviceId['load-1'] = {
+      enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4, deadlineAtMs: DEADLINE_MS,
+    };
+    const initialCoverage = prices().slice(0, 3);
+    home.setPriceRead(() => initialCoverage);
+    home.tick(START_MS);
+    const initial = home.recorder.getActivePlan('load-1')?.latest;
+    expect(initial?.computedFromPricesUpTo).toBe(initialCoverage.at(-1)?.endMs);
+    expect(initial?.hours.at(-1)?.plannedKWh).toBeGreaterThan(0);
+
+    home.setPriceRead(() => initialCoverage.slice(0, 2));
+    const nextTurn = START_MS + HOUR_MS;
+    expect(home.tick(nextTurn)[0]?.evaluation.planning).toMatchObject({
+      kind: 'allocated', plan: { frozenRead: true },
+    });
+    expect(home.recorder.getActivePlan('load-1')?.latest).toEqual(initial);
+
+    const extendedCoverage = prices().slice(0, 4);
+    home.setPriceRead(() => extendedCoverage);
+    expect(freshIds(home.tick(nextTurn + 30_000))).toEqual(['load-1']);
+    const revised = home.recorder.getActivePlan('load-1')?.latest;
+    expect(revised?.computedFromPricesUpTo).toBe(extendedCoverage.at(-1)?.endMs);
+    expect(revised?.partialPriceSchedule?.fallbackWindows).toBeDefined();
+    expect(revised?.reason).toBe('prices_revised');
   });
 
   it('keeps an uncalibrated thermal task learning while it awaits its turn', () => {

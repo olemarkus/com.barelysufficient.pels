@@ -27,6 +27,20 @@ const evaluation = (
 const reservations = [partialDouble<DeferredObjectivePriorityReservation>({})];
 
 describe('operational task contention', () => {
+  it('keeps an idle interval released when the partial price fallback already covers the remainder', () => {
+    const partial = evaluation(1, false, {
+      horizonStartMs: 0,
+      status: 'on_track',
+      statusDetail: 'planned_with_margin',
+      partialPriceSchedule: {
+        fallbackWindows: [{ startsAtMs: 1_800_000, endsAtMs: 3_600_000, plannedKWh: 1 }],
+      },
+    });
+    const buildWithoutReservations = vi.fn(() => evaluation(0));
+    expect(resolveHigherPriorityContentionEvaluation(partial, reservations, 0, buildWithoutReservations)).toBe(partial);
+    expect(buildWithoutReservations).not.toHaveBeenCalled();
+  });
+
   it('attributes competing claims only after the unconstrained control allocation fits', () => {
     const constrained = evaluation(1);
     const result = resolveHigherPriorityContentionEvaluation(constrained, reservations, 0, () => evaluation(0));

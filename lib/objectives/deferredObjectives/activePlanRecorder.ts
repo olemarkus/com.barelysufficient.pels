@@ -53,6 +53,7 @@ import type {
   DeferredObjectiveReportedStatus,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
+  hasPartialPriceHorizonAdvanced,
   hasPriceHorizonAdvanced,
   resolveReplanReason,
 } from './replanReason';
@@ -77,6 +78,7 @@ import {
   buildSignatureFromDiagnostic,
   createPlanFromDiagnostic,
   createPlanFromSeed,
+  hasImmediateRevisionTrigger,
   hasLearnedRateDeviated,
   hasMetadataDriftedWithinSchedule,
   isFrozenServedDiagnostic,
@@ -273,10 +275,8 @@ export class DeferredObjectiveActivePlanRecorder {
     // outcome. The hour's settle slot is consumed only when a revision is actually
     // written (`markReplanSettled` after a truthy write), so a no-op `:58` cycle
     // doesn't starve a real change later in the same `:58` window.
-    const objectiveChanged = compareObjectiveSignatures(backfilled.objectiveSignature, signature).changed;
-    const allocationContextChanged = backfilled.latest?.allocationContextSignature !== diag.allocationContextSignature;
     if (!this.isReplanDueThisCycle(
-      diag, [objectiveChanged, allocationContextChanged].includes(true), nowMs,
+      diag, hasImmediateRevisionTrigger(backfilled, diag, signature), nowMs,
     )) {
       publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
       return;
@@ -583,7 +583,7 @@ export class DeferredObjectiveActivePlanRecorder {
     if (!shouldWriteReplanRevision(
       objectiveChanged,
       scheduleChanged,
-      metadataDriftedWithinSchedule,
+      metadataDriftedWithinSchedule || hasPartialPriceHorizonAdvanced(latest, diag.evaluation),
       sourceChanged,
       measuredDeviation,
     )) {
