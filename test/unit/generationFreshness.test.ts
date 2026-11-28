@@ -1,4 +1,6 @@
-import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
+import {
+  resolveFreshGenerationReading, resolveFreshGenerationW, resolveGenerationSegments,
+} from '../../lib/observer/generationFreshness';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 
@@ -156,5 +158,28 @@ describe('ObservedHomePower reading history', () => {
     holder.setGenerationW(2000, NOW - 59 * 60_000);
     holder.setGenerationW(3000, NOW);
     expect(holder.getGenerationReadings().map((held) => held.watts)).toEqual([2000, 3000]);
+  });
+});
+
+describe('resolveFreshGenerationReading', () => {
+  const read = (generationW: number | null, observedAtMs: number | null) => (
+    resolveFreshGenerationReading({
+      getGenerationW: () => generationW, getGenerationObservedAtMs: () => observedAtMs,
+    }, NOW)
+  );
+
+  it('keeps a fresh "nothing generates" as its own observation', () => {
+    expect(read(null, NOW - 5_000)).toEqual({ state: 'none' });
+  });
+
+  it('carries fresh watts', () => {
+    expect(read(4200, NOW - 5_000)).toEqual({ state: 'measured', watts: 4200 });
+  });
+
+  it('has no reading when nothing was pushed, it is stale or future-dated, or it is malformed', () => {
+    expect(read(null, null)).toEqual({ state: 'unavailable' });
+    expect(read(null, NOW - POWER_SAMPLE_STALE_THRESHOLD_MS)).toEqual({ state: 'unavailable' });
+    expect(read(4200, NOW + 1_000)).toEqual({ state: 'unavailable' });
+    expect(read(-5, NOW - 5_000)).toEqual({ state: 'unavailable' });
   });
 });

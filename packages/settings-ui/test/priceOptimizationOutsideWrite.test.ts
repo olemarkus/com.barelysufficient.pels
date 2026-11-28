@@ -23,6 +23,7 @@ const entry = (cheapDelta: number) => ({
   priceConfigured: true,
   surplusWilling: false,
   surplusDelta: 2,
+  gridWhenPanelsStop: false,
 });
 
 const storedMap = (homey: MockHomeyClient) => (

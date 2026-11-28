@@ -126,6 +126,7 @@ const openPanel = async (params: OpenPanelParams) => {
         priceConfigured: false,
         surplusWilling: true,
         surplusDelta: 0,
+        gridWhenPanelsStop: false,
       },
     }
     : {};
@@ -405,6 +406,7 @@ describe('device detail "Run on solar surplus" blob round-trip', () => {
       priceConfigured: false,
       surplusWilling: true,
       surplusDelta: 0,
+      gridWhenPanelsStop: false,
     });
     expect(savePriceOptimizationSettings).toHaveBeenCalled();
   });
@@ -423,6 +425,7 @@ describe('device detail "Run on solar surplus" blob round-trip', () => {
       priceConfigured: false,
       surplusWilling: false,
       surplusDelta: 0,
+      gridWhenPanelsStop: false,
     });
   });
 

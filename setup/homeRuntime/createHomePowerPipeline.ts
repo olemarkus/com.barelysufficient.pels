@@ -21,7 +21,9 @@
 import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import type { AppContext } from '../../lib/app/appContext';
 import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
-import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
+import {
+  resolveFreshGenerationReading, resolveFreshGenerationW, resolveGenerationSegments, type FreshGenerationReading,
+} from '../../lib/observer/generationFreshness';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { PowerSamplePipeline, type PowerSamplePipelineDeps } from '../powerSamplePipeline';
 import { MeterSilenceMonitor, type MeterSilenceMonitorDeps } from '../../lib/power/meterSilence';
@@ -53,6 +55,8 @@ export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
    * Sub-homes are capacity-only and must never adopt the main home's production.
    */
   observedHomePower: ObservedHomePower;
+  /** Main only: the solar production phase, handed this home's held production reading per sample. */
+  observeSolarGeneration?: (reading: FreshGenerationReading, nowMs: number) => void;
 };
 
 /**
@@ -103,6 +107,9 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     recordPvGenerationSample: deps.recordPvGenerationSample,
     recordCurtailmentSample: deps.recordCurtailmentSample,
     recordBatteryDemandSample: deps.recordBatteryDemandSample,
+    observeSolarGeneration: (nowMs) => (
+      deps.observeSolarGeneration?.(resolveFreshGenerationReading(observedHomePower, nowMs), nowMs)
+    ),
     recordHeatingObservations: deps.recordHeatingObservations,
     recordMeterResponseSample: deps.recordMeterResponseSample,
     noteResolvedHomeMeter: deps.noteResolvedHomeMeter,

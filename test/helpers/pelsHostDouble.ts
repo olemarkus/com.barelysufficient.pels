@@ -76,7 +76,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     getTrackerStore: notWired('getTrackerStore'),
     getUserdataDatabase: notWired('getUserdataDatabase'),
     observer: observedDeviceReadsDouble(),
-    isSurplusPoolReachable: () => false,
+    surplusPool: { isReachable: () => false, havePanelsStopped: () => false },
     getLatestPlanSnapshotForUi: () => null,
     getPowerCalibrationSnapshot: () => createEmptyPowerCalibrationSnapshot(),
     refreshTargetDevicesSnapshot: async () => undefined,

@@ -50,7 +50,7 @@ import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import type { BatteryManagedSettings } from '../battery/batteryControlSettings';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
-import type { PriceOptimizationSettings } from '../price/priceOptimizer';
+import type { PriceOptimizationConfig } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import type {
   DecoratedDeviceSnapshot,
@@ -81,6 +81,7 @@ import type {
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
 import type { EnergyTaskDeliveryTracker } from '../objectives/deferredObjectives/energyDelivery';
+import type { SurplusPoolRead } from '../power/surplusPoolReachable';
 
 
 /**
@@ -247,7 +248,7 @@ export type AppContext = {
   /** Runtime configuration source, separate from inventory reads and observations. */
   readonly deviceConfiguration: DeviceConfiguration;
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
-  get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
+  get priceOptimizationSettings(): Record<string, PriceOptimizationConfig>;
   capacityGuard: CapacityGuard;
   /**
    * Every home's live status, published by its plan service after a rebuild
@@ -343,7 +344,10 @@ export type AppContext = {
   // posture and the "Use solar surplus" toggle read, so they cannot disagree.
   // Composed once, from the feed's persisted export latch and the curtailment
   // estimator above; resetting or pruning usage history cannot unmake it.
-  isSurplusPoolReachable: () => boolean;
+  // The same owner answers whether the panels have stopped producing
+  // (`havePanelsStopped`), the fact "Charge from the grid when the panels
+  // stop" asks of each planner-input projection.
+  surplusPool: SurplusPoolRead;
   // PV-forecast source provenance for the settings UI, REPLACED by
   // `startPostStartupBackgroundTasks` (the wiring-assigns-ctx-members house
   // pattern) with a read of the live selector — never recomputed elsewhere.

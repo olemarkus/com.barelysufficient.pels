@@ -46,6 +46,7 @@ import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
+import type { PriceOptimizationConfig } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { observedDeviceReadsDouble } from './observedDeviceReadsDouble';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -89,7 +90,8 @@ type MockHomey = FlowHomeyLike & {
 type AppContextMockOptions = Omit<Partial<AppContext>, 'priceOptimizationSettings'> & {
   latestTargetSnapshot?: TransportDeviceSnapshot[];
   priceOptimizationEnabled?: boolean;
-  priceOptimizationSettings?: Record<string, PriceOptimizationSettings>;
+  /** Entries as tests write them; the fields the shared reader resolves default as it would. */
+  priceOptimizationSettings?: Record<string, PriceOptimizationSettings & Partial<PriceOptimizationConfig>>;
   modeCatalog?: Partial<HomeModeCatalogSnapshot>;
 };
 
@@ -199,7 +201,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const planRebuildThrottle = createInertPlanRebuildThrottle();
   let latestTargetSnapshot = latestTargetSnapshotOverride ?? [];
   const priceOptimizationEnabled = priceOptimizationEnabledOverride ?? false;
-  const priceOptimizationSettings = priceOptimizationSettingsOverride ?? {};
+  // Filled in place, not copied: tests keep a handle on the map they pass and
+  // edit it after the context is built.
+  const priceOptimizationSettings = (priceOptimizationSettingsOverride ?? {}) as Record<string, PriceOptimizationConfig>;
+  for (const entry of Object.values(priceOptimizationSettings)) {
+    entry.priceConfigured ??= entry.enabled;
+    entry.gridWhenPanelsStop ??= false;
+  }
 
   // Partial stand-in for the AppSnapshotHelpers deps: the test only wires the
   // subset of dependencies these helpers exercise. Cast to the constructor's
@@ -314,7 +322,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       ),
       purpose,
     ),
-    isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
+    surplusPool: surplusPoolReachability,
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
       () => false, () => [], () => null, () => null,

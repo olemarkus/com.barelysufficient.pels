@@ -30,6 +30,7 @@ import {
 } from './settingsWrite.ts';
 import { applyManagedOptInControlMode } from './targetPowerConfig.ts';
 import { applyManagedOptInLimit } from './managedOptInLimit.ts';
+import { applyManagedOptInSolarCharging } from './managedOptInSolarCharging.ts';
 import { refreshDeviceSchedules } from './temporaryCard.ts';
 import {
   CONTROLLABLE_DEVICES,
@@ -208,6 +209,11 @@ export function initDeviceDetailManagedControlHandlers(
         refreshSharedDeviceViews();
         refreshCurrentDeviceControlStates();
       }, () => isCurrentManagedControlIntent(deviceId, intentGeneration));
+      await applyManagedOptInSolarCharging(
+        deviceId,
+        refreshOpenDeviceDetail,
+        () => isCurrentManagedControlIntent(deviceId, intentGeneration),
+      );
     }
   });
 }

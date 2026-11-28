@@ -30,6 +30,12 @@ export type PriceOptimizationConfig = {
   priceConfigured: boolean;
   surplusWilling: boolean;
   surplusDelta: number;
+  /**
+   * "Charge from the grid when the panels stop": with `surplusWilling` on, the
+   * device follows the surplus only while the home's panels produce, and runs
+   * as an ordinary managed device once they stop. Absent in storage means off.
+   */
+  gridWhenPanelsStop: boolean;
 };
 
 export type PriceOptimizationConfigMapRead =

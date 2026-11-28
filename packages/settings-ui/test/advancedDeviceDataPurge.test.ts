@@ -29,6 +29,7 @@ const PRICE_CONFIG = {
   priceConfigured: true,
   surplusWilling: false,
   surplusDelta: 2,
+  gridWhenPanelsStop: false,
 };
 
 const SMART_TASK: DeferredObjectiveSettingsEntry = {

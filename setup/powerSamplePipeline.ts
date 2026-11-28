@@ -93,6 +93,14 @@ export type PowerSamplePipelineDeps = {
   /** Main meter tap for the battery owner's demand forecast and efficiency measurement; meter areas omit it. */
   recordBatteryDemandSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /**
+   * Main meter tap for the solar production phase (`SurplusPoolReachability.observeGeneration`),
+   * called with each sample's time before the sample can rebuild the plan. The
+   * home's wiring hands the phase the observer's held reading, which keeps a
+   * reported "nothing generates" that the sample's own value folds away; meter
+   * areas omit it.
+   */
+  observeSolarGeneration?: (nowMs: number) => void;
+  /**
    * Main meter tap for the passive heating observations the daily report carries
    * (`lib/diagnostics/heatingShadowCollector.ts`), handed this home's devices as
    * `getDeviceSurfaces` resolves them; meter areas omit it.
@@ -323,6 +331,7 @@ export class PowerSamplePipeline {
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
+    this.deps.observeSolarGeneration?.(nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

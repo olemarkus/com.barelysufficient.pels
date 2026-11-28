@@ -178,6 +178,7 @@ describe('devices render — redesign shell', () => {
         priceConfigured: true,
         surplusWilling: false,
         surplusDelta: 2,
+        gridWhenPanelsStop: false,
       },
     };
     state.budgetExemptMap = {};

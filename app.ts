@@ -252,11 +252,10 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // cannot unmake the answer. The curtailment half is absent only until the
   // post-startup wiring assigns it — false until then, and the estimator
   // persists its own latch, so this is a boot window.
-  private readonly surplusPoolReachability = AppPowerTracker.createSurplusPoolReachability(
+  public readonly surplusPool = AppPowerTracker.createSurplusPoolReachability(
     this.homey.settings,
     () => this.canContributeCurtailmentSurplus?.() === true,
   );
-  public isSurplusPoolReachable = (): boolean => this.surplusPoolReachability.isReachable();
   public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   public expectedPowerKwOverrides: DeviceExpectedPowerOverrides = {};
   protected overheadToken?: Homey.FlowToken;
@@ -353,6 +352,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
     recordBatteryDemandSample: (netW, genW, nowMs) => this.batteryLearning.recordNetSample(netW, genW, nowMs),
+    observeSolarGeneration: (reading, nowMs) => this.surplusPool.observeGeneration(reading, nowMs),
     recordHeatingObservations: (devices, nowMs) => this.heatingShadow.record(devices, nowMs),
     recordMeterResponseSample: (sample, nowMs, readDevices) => (
       this.flowBacked.meterResponseTimings.recordWholeHomeSample(sample, nowMs, readDevices)
@@ -484,7 +484,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     isTornDown: () => this.shutdown.isStopped(),
     onPersisted: () => this.emitPowerTrackerPersisted(MAIN_HOME_ID),
     // Main's feed is the whole-home feed the surplus pool is measured on.
-    observeExportEvidence: (state) => this.surplusPoolReachability.observeExportEvidence(state),
+    observeExportEvidence: (state) => this.surplusPool.observeExportEvidence(state),
   });
 
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);

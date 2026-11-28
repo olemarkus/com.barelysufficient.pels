@@ -62,6 +62,9 @@ const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {
   if (value.surplusDelta !== undefined && !isFiniteNumber(value.surplusDelta)) {
     return { state: 'unavailable' };
   }
+  if (value.gridWhenPanelsStop !== undefined && typeof value.gridWhenPanelsStop !== 'boolean') {
+    return { state: 'unavailable' };
+  }
   const storedPriceConfigured = typeof value.priceConfigured === 'boolean'
     ? value.priceConfigured
     : true;
@@ -74,6 +77,7 @@ const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {
       priceConfigured: resolvePriceConfigured(value.enabled, storedPriceConfigured),
       surplusWilling: value.surplusWilling === true,
       surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : DEFAULT_SURPLUS_LIFT_C,
+      gridWhenPanelsStop: value.gridWhenPanelsStop === true,
     },
   };
 };

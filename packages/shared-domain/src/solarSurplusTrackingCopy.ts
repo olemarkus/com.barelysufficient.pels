@@ -30,6 +30,20 @@ export const SURPLUS_TRACKING_HINTS: Record<SurplusTrackingCopyKind, string> = {
 };
 
 /**
+ * The charger-only follow-up to "Charge on solar surplus" (`gridWhenPanelsStop`).
+ * Named for what triggers it, the panels' production, not the clock: a cloudy
+ * winter afternoon can stop them long before sunset.
+ */
+export const SURPLUS_GRID_WHEN_PANELS_STOP_LABEL = 'Charge from the grid when the panels stop';
+
+export const SURPLUS_GRID_WHEN_PANELS_STOP_HINT
+  = 'When your solar panels stop producing, PELS charges as usual. While they produce, it waits for surplus.';
+
+/** Shown under it where no solar device in Homey reports production, so PELS cannot see the panels stop. */
+export const SURPLUS_GRID_WHEN_PANELS_STOP_UNREADABLE_HINT
+  = 'Add your solar panels or inverter to Homey so PELS can see when they stop. Until then, it waits for surplus.';
+
+/**
  * Shared by both kinds: a smart task runs the device in the periods it plans,
  * and this setting keeps running it between them (owner ruling 2026-11-17), so
  * an owner who has set both needs to know which decides when.

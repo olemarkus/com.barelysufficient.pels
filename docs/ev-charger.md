@@ -88,6 +88,10 @@ If you have solar and PELS can see your export, you can have the charger follow 
 
 PELS then picks the charging current your export covers and adjusts it as the sun changes. The default minimum is **6 A** — about 1.4 kW on one phase, 4.1 kW on three. If the active car or charger range has a higher minimum, surplus must cover that level. When it cannot, PELS falls back to the same **Power limiting** choice it uses for your hard cap: charging is turned off, or lowered to the step you picked and topped up from the grid.
 
+Turn on **Charge from the grid when the panels stop**, under **Charge on solar surplus**, to charge a car that is plugged in after the sun has gone. While your panels produce, the charger follows the surplus as above. Once they stop producing, PELS charges as it does any managed charger, within your power limits, priorities and smart tasks. When production returns, the charger goes back to following the surplus. PELS waits about ten minutes of near-zero production before it counts the panels as stopped, so a passing cloud at dusk does not switch charging on and off. PELS reads the production from your solar panels or inverter in Homey; a home that shows solar only through its meter's export keeps waiting for surplus.
+
+When you turn on **Managed by PELS** for a new EV charger in a home whose solar panels or inverter are in Homey, PELS turns on both **Charge on solar surplus** and **Charge from the grid when the panels stop**. A charger with saved solar or price settings keeps them.
+
 Your grid import limit, hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
 
 ## Step 4: Configure Boost Mode Battery Reporting

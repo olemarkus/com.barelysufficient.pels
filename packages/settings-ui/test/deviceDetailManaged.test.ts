@@ -717,11 +717,11 @@ describe('device detail managed state saves', () => {
     state.priceOptimizationSettings = {
       'heater-1': {
         enabled: false, cheapDelta: 5, expensiveDelta: -5,
-        priceConfigured: true, surplusWilling: false, surplusDelta: 2,
+        priceConfigured: true, surplusWilling: false, surplusDelta: 2, gridWhenPanelsStop: false,
       },
       'heater-2': {
         enabled: true, cheapDelta: 4, expensiveDelta: -4,
-        priceConfigured: true, surplusWilling: false, surplusDelta: 2,
+        priceConfigured: true, surplusWilling: false, surplusDelta: 2, gridWhenPanelsStop: false,
       },
     };
     state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
@@ -849,11 +849,11 @@ describe('device detail managed state saves', () => {
     state.priceOptimizationSettings = {
       'heater-1': {
         enabled: false, cheapDelta: 5, expensiveDelta: -5,
-        priceConfigured: true, surplusWilling: false, surplusDelta: 2,
+        priceConfigured: true, surplusWilling: false, surplusDelta: 2, gridWhenPanelsStop: false,
       },
       'heater-2': {
         enabled: true, cheapDelta: 4, expensiveDelta: -4,
-        priceConfigured: true, surplusWilling: false, surplusDelta: 2,
+        priceConfigured: true, surplusWilling: false, surplusDelta: 2, gridWhenPanelsStop: false,
       },
     };
     state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
