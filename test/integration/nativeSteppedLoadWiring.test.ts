@@ -81,7 +81,7 @@ type SteppedActionInput = Partial<DevicePlanDevice>
   & SteppedDiscriminantProbe
   & { id: string; name: string; controlModel?: string };
 
-const buildSteppedAction = (loose: SteppedActionInput) => {
+const buildSteppedAction = (loose: SteppedActionInput, liveReportedStepId?: string) => {
   const { controlModel: _controlModel, ...rest } = loose;
   const device = withTemperatureDiscriminant(
     withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
@@ -98,6 +98,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
         }),
     }))),
   ) as DevicePlanDevice;
+  const observationLadder = liveReportedStepId === undefined ? undefined : loose.steppedLoadProfile;
   return buildExecutableSteppedLoadDevice(
     buildExecutableSteppedLoadIntent(device),
     buildExecutableObservedDeviceState({
@@ -114,9 +115,9 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       targets: [],
       controlModel: 'stepped_load',
       selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
-      reportedStepId: device.reportedStepId,
+      reportedStepId: liveReportedStepId ?? device.reportedStepId,
       measuredPowerKw: isMeteredPlanDevice(device) ? device.currentDrawKw : undefined,
-    } as Parameters<typeof buildExecutableObservedDeviceState>[0], undefined),
+    } as Parameters<typeof buildExecutableObservedDeviceState>[0], observationLadder),
     // The plan's step baseline, as dispatch passes it (`PlannedDeviceExecution.stepBaseline`).
     resolveSteppedLoadCurrentFallback(device),
     // The fixture's own step command, in an on-session with a prior command.
@@ -1345,10 +1346,10 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
-  it('records a rejected Flow attempt without recording a command or actuation', async () => {
-    const requestSteppedLoadStep = vi.fn(async () => ({
-      requested: false as const, reason: 'flow_trigger_rejected' as const,
-    }));
+  it('retries a rejected Flow reduction while a raise to the same step stays backed off', async () => {
+    const requestSteppedLoadStep = vi.fn<ActuatorTransport['requestSteppedLoadStep']>()
+      .mockResolvedValueOnce({ requested: false, reason: 'flow_trigger_rejected' })
+      .mockResolvedValue({ requested: true, acknowledged: true, transport: 'flow' });
     const recordFlowAttempt = vi.fn();
     const markSteppedLoadDesiredStepIssued = vi.fn();
     const recordShedActuation = vi.fn();
@@ -1357,7 +1358,7 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation,
     });
-    const action = buildSteppedAction({
+    const plannedShed = {
       id: 'hoiax-1',
       name: 'Connected 300',
       binaryControl: { on: true },
@@ -1369,7 +1370,8 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'medium',
       plannedShedStepId: 'medium',
       reason: { code: 'capacity' },
-    });
+    } satisfies SteppedActionInput;
+    const action = buildSteppedAction(plannedShed);
 
     expect(action).not.toBeNull();
     expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
@@ -1382,8 +1384,21 @@ describe('native stepped-load wiring', () => {
       ...original(deviceId),
       rejectedFlowStepRetry: { stepId: 'medium', retryAtMs: Date.now() + 30_000 },
     }));
-    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
+    // A newer observation can put the device below the planned rung. Asking
+    // for the same rung then raises it, so the rejection still paces the write.
+    const raise = buildSteppedAction(plannedShed, 'low');
+    expect(raise).toMatchObject({ current: { stepId: 'low' }, intent: { desired: { stepId: 'medium' } } });
+    expect(await applySteppedLoadCommand(ctx, raise!)).toBe(false);
+    const unmapped = buildSteppedAction(plannedShed, 'above-ladder');
+    expect(unmapped).toMatchObject({ current: { stepId: 'above-ladder', stepForShed: undefined } });
+    expect(await applySteppedLoadCommand(ctx, unmapped!)).toBe(false);
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
+
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(true);
+    expect(requestSteppedLoadStep).toHaveBeenCalledTimes(2);
+    expect(recordFlowAttempt).toHaveBeenLastCalledWith('requested');
+    expect(markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({ desiredStepId: 'medium' }));
+    expect(recordShedActuation).toHaveBeenCalledWith('hoiax-1', 'Connected 300', expect.any(Number));
   });
 
   it('does not log a superseded unacknowledged stepped write as a definite failure', async () => {
