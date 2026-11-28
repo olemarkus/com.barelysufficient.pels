@@ -13,7 +13,8 @@ import type { NorwayCapacityTariffRead } from '../../packages/contracts/src/norw
  * price payload through `settings` directly here. Module invariants (leaf rule,
  * store boundaries): `lib/price/AGENTS.md`.
  */
-import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
+import type { SettingsPort, ApiPort, FlowPort } from '../ports/homeyRuntime';
+import { PriceLevelFlowPublisher } from './priceLevelFlowPublisher';
 import { PriceLevel } from './priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from './priceLevelUtils';
 import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
@@ -105,6 +106,7 @@ export type PriceCoordinatorDeps = {
   error: (...args: unknown[]) => void;
   structuredLog: PinoLogger;
   onCombinedPricesUpdated?: (reason: string) => void;
+  flow?: Pick<FlowPort, 'getTriggerCard'>;
 };
 
 /**
@@ -127,6 +129,7 @@ export class PriceCoordinator {
   private lastGoodHourPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   private priceService: PriceService;
+  private readonly priceLevelFlow?: PriceLevelFlowPublisher;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
   private midnightRotationTimeout?: ReturnType<typeof setTimeout>;
   private powerhourRecoveryTimeout?: ReturnType<typeof setTimeout>;
@@ -171,9 +174,15 @@ export class PriceCoordinator {
       deps.getPowerTracker,
       deps.homeyWebApiGet,
     );
-    if (deps.onCombinedPricesUpdated) {
-      this.priceService.setOnCombinedPricesUpdated(deps.onCombinedPricesUpdated);
+    if (deps.flow) {
+      this.priceLevelFlow = new PriceLevelFlowPublisher(
+        deps.flow, (nowMs) => this.priceService.getPriceLevelSchedule(nowMs),
+      );
     }
+    this.priceService.setOnCombinedPricesUpdated((result) => {
+      this.priceLevelFlow?.update();
+      if (result === 'changed') deps.onCombinedPricesUpdated?.(result);
+    });
   }
 
   getPriceOptimizationEnabled(): boolean {
@@ -249,6 +258,7 @@ export class PriceCoordinator {
 
   stop(): void {
     this.stopped = true;
+    this.priceLevelFlow?.stop();
     this.spotRefreshCount += 1;
     this.clearPowerhourRecovery();
     if (this.priceRefreshInterval) {
@@ -292,6 +302,7 @@ export class PriceCoordinator {
     // payload keeps yesterday's tier classification all day. Catch up once on boot, but only when
     // the persisted payload is genuinely from an earlier local day (see PriceService).
     this.catchUpCombinedPricesRotation();
+    this.priceLevelFlow?.start();
     // Flow-scheme price slots only rotate when an external trigger (push, settings change,
     // UI fetch) calls updateCombinedPrices. Without a midnight nudge, COMBINED_PRICES keeps
     // yesterday's isCheap/isExpensive classification until the next push, so flow-only users

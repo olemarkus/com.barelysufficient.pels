@@ -1,7 +1,5 @@
-import type { FlowPort } from '../ports/homeyRuntime';
-import type { Logger as PinoLogger } from '../logging/logger';
 import { buildPelsStatus, type PelsStatus } from './pelsStatus';
-import { PriceLevel } from '../price/priceLevels';
+import type { PriceLevel } from '../price/priceLevels';
 import { incPerfCounter } from '../utils/perfCounters';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
@@ -31,7 +29,6 @@ const publishFactsChanged = (current: StatusPublishFacts, written: StatusPublish
 );
 
 type PlanStatusWriterDeps = {
-  homey: { flow: FlowPort };
   /** Publish this home's status into the app's in-memory registry (`lib/plan/planStatusRegistry.ts`). */
   publishPelsStatus: (status: PelsStatus) => void;
   /**
@@ -50,7 +47,6 @@ type PlanStatusWriterDeps = {
    * "the dry-run, for status purposes".
    */
   getCapacityDryRun: () => boolean;
-  structuredLog: PinoLogger;
 };
 
 export class PlanStatusWriter {
@@ -60,25 +56,10 @@ export class PlanStatusWriter {
   private lastPelsStatusWriteMs = 0;
   /** The publish facts of the last write; `null` until the first one. */
   private lastWrittenPublishFacts: StatusPublishFacts | null = null;
-  private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
-
   constructor(private deps: PlanStatusWriterDeps) {}
-
-  getLastNotifiedPriceLevel(): PriceLevel {
-    return this.lastNotifiedPriceLevel;
-  }
 
   update(plan: DevicePlan, changes?: StatusPlanChanges): number {
     const now = Date.now();
-    // Resolved on EVERY call, before the dead-work gate. The `price_level_changed`
-    // trigger is a fact about the hour, not about the status blob: a skipped
-    // compute must not swallow it. Under `power_source = flow` the next rebuild
-    // is not on a clock at all, so "the throttle bounds the latency" would have
-    // been false — a whole cheap hour can begin and end between two rebuilds.
-    const priceLevel = this.deps.getCurrentHourPriceLevel();
-    this.notifyPriceLevelChanged(priceLevel);
-    this.lastNotifiedPriceLevel = priceLevel;
-
     const facts: StatusPublishFacts = {
       dryRunEffective: this.deps.getCapacityDryRun(),
       powerIsMeasured: plan.meta.powerIsMeasured,
@@ -89,7 +70,7 @@ export class PlanStatusWriter {
       incPerfCounter('plan_status_compute_skipped_total');
       return 0;
     }
-    const computation = this.compute(plan, priceLevel, facts, changes);
+    const computation = this.compute(plan, this.deps.getCurrentHourPriceLevel(), facts, changes);
 
     return this.maybeWriteStatus(computation, changes?.actionChanged === true, facts, now);
   }
@@ -109,12 +90,6 @@ export class PlanStatusWriter {
    * change, and a change in the publish facts. Mirror exactly those, so this stays a
    * fast path in front of `resolveWriteReason` rather than a second policy —
    * every case it lets through is still decided there.
-   *
-   * No behaviour changes on this path. In particular `price_level_changed` is
-   * NOT gated by it: `update` resolves the level and fires the trigger before
-   * asking this question, because the level is a fact about the hour rather than
-   * a property of the status blob, and nothing guarantees another rebuild inside
-   * the hour that could carry a deferred one.
    */
   private computationIsDeadWork(actionChanged: boolean, facts: StatusPublishFacts, now: number): boolean {
     const written = this.lastWrittenPublishFacts;
@@ -203,20 +178,5 @@ export class PlanStatusWriter {
     incPerfCounter('plan_status_published');
     incPerfCounter(`plan_status_published_reason.${reason}_total`);
     return Date.now() - publishStart;
-  }
-
-  private notifyPriceLevelChanged(priceLevel: PriceLevel): void {
-    if (priceLevel === this.lastNotifiedPriceLevel) return;
-
-    const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');
-    if (card) {
-      card
-        .trigger({ level: priceLevel }, { priceLevel })
-        .catch((err: Error) => this.deps.structuredLog.error({
-          event: 'price_level_trigger_failed',
-          error: err.message,
-          stack: err.stack,
-        }));
-    }
   }
 }

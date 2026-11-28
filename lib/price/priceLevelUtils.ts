@@ -65,9 +65,31 @@ export const resolveCurrentPricePeriodLevel = (
   band: PriceLevelBand,
   nowMs?: number,
 ): PriceLevel => {
-  const currentPrice = getCurrentPricePeriod(prices, nowMs);
-  if (!currentPrice) return PriceLevel.UNKNOWN;
-  return createPricePeriodClassifier(prices, band)(currentPrice);
+  return classifyCurrentPeriod(prices, band, getCurrentPricePeriod(prices, nowMs));
+};
+
+const classifyCurrentPeriod = (prices: PriceEntry[], band: PriceLevelBand, current: PriceEntry | null): PriceLevel => (
+  current === null ? PriceLevel.UNKNOWN : createPricePeriodClassifier(prices, band)(current)
+);
+
+/** The current level and the next UTC instant at which it could change. */
+export type PriceLevelSchedule = { level: PriceLevel; nextBoundaryMs: number | null };
+
+export const resolvePriceLevelSchedule = (
+  prices: PriceEntry[],
+  band: PriceLevelBand,
+  nowMs: number,
+): PriceLevelSchedule => {
+  const current = getCurrentPricePeriod(prices, nowMs);
+  let nextBoundaryMs = current === null ? Infinity : periodStartMs(current) + current.durationMinutes * MINUTE_MS;
+  for (const period of prices) {
+    const startsAtMs = periodStartMs(period);
+    if (startsAtMs > nowMs) nextBoundaryMs = Math.min(nextBoundaryMs, startsAtMs);
+  }
+  return {
+    level: classifyCurrentPeriod(prices, band, current),
+    nextBoundaryMs: Number.isFinite(nextBoundaryMs) ? nextBoundaryMs : null,
+  };
 };
 
 /**
@@ -189,10 +211,9 @@ const periodStartMs = (period: PriceEntry): number => new Date(period.startsAt).
  * {@link resolveCurrentPricePeriodLevel}, so a level reported here is the
  * current level once that period starts, provided the series holds until then.
  * It does not always hold: tomorrow's prices arriving, or a new day dropping
- * the old one, move the average. That is a promise about the level, not about
- * `price_level_changed`, which fires only when PELS next publishes its status
- * and can miss a period shorter than the gap between two meter readings. Past the last known price nothing is
- * reported, because missing prices are not a level.
+ * the old one, move the average. The price service publishes `price_level_changed`
+ * from the live series at each boundary. Past the last known price the lookahead
+ * reports no period because missing prices have no price classification.
  *
  * A series with no period in force at `nowMs` is `unavailable`: a price source
  * that cannot price this period yields no periods rather than an error (a

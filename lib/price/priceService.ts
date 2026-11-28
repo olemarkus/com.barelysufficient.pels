@@ -64,6 +64,7 @@ import {
   type PriceLevelBand,
   type PriceLevelChangesRead,
   type PriceLevelLookahead,
+  resolvePriceLevelSchedule, type PriceLevelSchedule,
 } from './priceLevelUtils';
 import type { PriceLevel } from './priceLevels';
 import { PriceSchemeResolver, type PriceSourceSwitch } from './priceSchemeResolution';
@@ -107,8 +108,8 @@ export default class PriceService {
 
   private readonly priceSchemeResolver: PriceSchemeResolver;
 
-  private onCombinedPricesUpdated?: (reason: string) => void;
-  setOnCombinedPricesUpdated(listener: ((reason: string) => void) | undefined): void {
+  private onCombinedPricesUpdated?: (result: 'changed' | 'unchanged') => void;
+  setOnCombinedPricesUpdated(listener: NonNullable<PriceService['onCombinedPricesUpdated']>): void {
     this.onCombinedPricesUpdated = listener;
   }
   // Forecast-surplus inputs for the planning price, injected by the wiring layer
@@ -288,9 +289,8 @@ export default class PriceService {
   updateCombinedPrices(previousPrices: 'retain' | 'invalidate' = 'retain'): void {
     const now = new Date();
     const timeZone = this.getTimeZone();
-    const combined = this.getCombinedHourlyPrices();
     const payload = buildCombinedPricePayload({
-      combined,
+      combined: this.getCombinedHourlyPrices(),
       priceScheme: this.getPriceScheme(),
       priceUnit: this.getPriceUnitLabel(),
       thresholdPercent: this.getNumberSetting(PRICE_THRESHOLD_PERCENT, 25),
@@ -313,15 +313,17 @@ export default class PriceService {
       combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)
     ))) {
       this.emitRealtime('prices_updated', existingPayload);
+      this.onCombinedPricesUpdated?.('unchanged');
       return;
     }
     if (toCombinedPayloadFingerprint(existingPayload) === toCombinedPayloadFingerprint(payload)) {
-      const nextLastFetched = getCombinedPayloadLastFetched(payload);
-      const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
-      const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
-      emitPriceDebug({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
-      if (shouldUpdateLastFetched) this.priceDataStore.writeCombined(payload);
+      const lastFetched = getCombinedPayloadLastFetched(payload);
+      const updateStamp = Boolean(lastFetched && lastFetched !== getCombinedPayloadLastFetched(existingPayload));
+      emitPriceDebug({ event: 'combined_prices_unchanged', lastFetchedUpdated: updateStamp });
+      if (updateStamp) this.priceDataStore.writeCombined(payload);
       this.emitRealtime('prices_updated', payload);
+      // Native quarters or the level band can change without changing the hourly fingerprint.
+      this.onCombinedPricesUpdated?.('unchanged');
       return;
     }
     this.priceDataStore.writeCombined(payload);
@@ -544,11 +546,7 @@ export default class PriceService {
     });
   }
 
-  storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
-    dateKey: string;
-    storedCount: number;
-    missingHours: number[];
-  } {
+  storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): ReturnType<typeof storeFlowPriceDataHelper> {
     return storeFlowPriceDataHelper({
       kind,
       raw,
@@ -572,6 +570,10 @@ export default class PriceService {
    */
   getCurrentHourPriceLevel(): PriceLevel {
     return resolveCurrentPricePeriodLevel(this.getCombinedPricePeriods(), this.priceLevelBand);
+  }
+
+  getPriceLevelSchedule(nowMs: number): PriceLevelSchedule {
+    return resolvePriceLevelSchedule(this.getCombinedPricePeriods(), this.priceLevelBand, nowMs);
   }
 
   /**
