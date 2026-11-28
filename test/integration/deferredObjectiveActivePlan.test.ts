@@ -620,7 +620,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         budgetContributedToShortfall: latest.budgetContributedToShortfall === true,
         drawWindows: latest.reservationSegments!,
       },
-      latest.energyNeededKWh,
+      { energyNeededKWh: latest.energyNeededKWh, energyExpectedKWh: latest.energyNeededKWh },
       false,
       [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
     );
@@ -656,7 +656,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         hours: latest.hours, planStatus: latest.planStatus, floorShortfallCause: 'none',
         budgetContributedToShortfall: false, drawWindows: latest.reservationSegments!,
       },
-      1.5,
+      { energyNeededKWh: 1.5, energyExpectedKWh: 1.5 },
       false,
       [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
     );
@@ -703,7 +703,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         budgetContributedToShortfall: false,
         drawWindows: latest.reservationSegments!,
       },
-      0.5,
+      { energyNeededKWh: 0.5, energyExpectedKWh: 0.5 },
       false,
       [{ id: 'low', usefulPowerKw: 1.25, admissionPowerKw: 1.25 }],
     );

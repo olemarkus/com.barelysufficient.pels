@@ -23,6 +23,9 @@ import {
 } from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 import { formatProgressValueForUnit } from '../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import {
+  resolveRemainingPlannedKWh, scheduledTaskIntervals,
+} from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
 import {
   ONE_HOUR_MS,
@@ -110,6 +113,8 @@ const buildPlannedStaircase = (
   const { ctx, progress, energy } = input;
   const { nowMs, deadlineAtMs } = ctx;
   const { currentValue, targetValue, progressDirection, unit } = progress;
+  const { latest } = ctx.activePlan;
+  const fallbackWindows = latest.partialPriceSchedule?.fallbackWindows;
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
   // Actual coverage start (`coversFromMs`) per booked hour, present only for
@@ -117,40 +122,18 @@ const buildPlannedStaircase = (
   const points: Array<[number, number]> = [[nowMs, currentValue]];
   let projected = currentValue;
   let readyAtMs: number | null = null;
-  for (const hour of ctx.activePlan.latest.hours) {
-    if (hour.endsAtMs <= nowMs) continue;
-    const plannedKwh = hour.plannedKWh;
-    if (plannedKwh <= 0) continue;
+  for (const hour of scheduledTaskIntervals(latest)) {
     // The staircase anchors at `currentValue`, which already includes the
-    // progress made so far in the current hour — adding the in-progress
-    // hour's whole `plannedKWh` on top would double-count the elapsed part
-    // and could flip the shortfall verdict optimistic. Credit only the
-    // fraction of the booked energy that is still ahead of `nowMs`,
-    // prorated over the span the energy actually covers (the same
-    // `postAnchorFraction` semantics as the history chart in
-    // `deferredPlanHistoryChartData.ts`):
-    //   • full-hour bucket (no `coversFromMs`, e.g. a committed full-hour
-    //     floor) straddling now → remaining fraction of the hour;
-    //   • bucket already trimmed at a mid-hour revision (`coversFromMs` =
-    //     the revision's nowMs) → fraction over `[coversFromMs, hourEnd]`,
-    //     so a just-revised bucket is added whole (prorating it against the
-    //     full hour would double-trim and understate);
-    //   • hour fully ahead → fraction 1; hour fully elapsed → skipped above.
-    // The span end clamps to the deadline, mirroring how the planner only
-    // books energy up to `deadlineAtMs` within the final hour.
-    const coverStartMs = hour.coversFromMs ?? hour.startsAtMs;
-    const coverEndMs = Math.min(hour.endsAtMs, deadlineAtMs);
-    const coveredSpanMs = coverEndMs - coverStartMs;
-    const remainingFraction = coveredSpanMs > 0
-      ? Math.max(0, Math.min(1, (coverEndMs - Math.max(nowMs, coverStartMs)) / coveredSpanMs))
-      : 0;
-    const remainingKwh = plannedKwh * remainingFraction;
+    // progress so far. A trimmed booking covers only the span after coversFromMs.
+    const remainingKwh = resolveRemainingPlannedKWh(hour, nowMs, deadlineAtMs);
     if (remainingKwh <= 0) continue;
     const step = remainingKwh * progressPerKWh;
     const next = applyDirectionalStep(progressDirection, projected, step, targetValue);
     if (!movedInDirection(progressDirection, projected, next)) continue;
-    const riserX = Math.max(coverStartMs, nowMs);
-    points.push([riserX, projected], [riserX, next]);
+    const startMs = Math.max(hour.coversFromMs ?? hour.startsAtMs, nowMs);
+    // An unpriced window can span hours, so show its progress across the run.
+    const endMs = fallbackWindows?.includes(hour) ? Math.min(hour.endsAtMs, deadlineAtMs) : startMs;
+    points.push([startMs, projected], [endMs, next]);
     projected = next;
     if (readyAtMs === null
       && remainingTowardTarget(progressDirection, targetValue, projected)
@@ -252,8 +235,8 @@ export const buildTrajectory = (
   // exists; with none, `nowMs` is the earliest thing measured.
   const earliestMeasuredMs = measuredPoints[0]?.[0] ?? nowMs;
   const xMinMs = Math.min(earliestMeasuredMs, nowMs - 30 * 60 * 1000);
-  const bookings = deviceIdle
-    ? ctx.activePlan.latest.hours.filter((hour) => hour.endsAtMs <= nowMs) : ctx.activePlan.latest.hours;
+  const intervals = scheduledTaskIntervals(ctx.activePlan.latest);
+  const bookings = deviceIdle ? intervals.filter((hour) => hour.endsAtMs <= nowMs) : intervals;
   const runBands = resolveRunBands(bookings, xMinMs, xMaxMs)
     .map((band, index) => ({ ...band, label: index === 0 ? schedule.labels.deviceSeriesName : null }));
   const observedValues = measuredPoints.map((point) => point[1]);

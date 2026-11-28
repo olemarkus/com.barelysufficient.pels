@@ -28,6 +28,7 @@ import {
   SMART_TASK_LOADING_LABEL,
 } from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
 import {
+  NOW_MARKER_WORD,
   SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_SCHEDULE_CARD_TITLE,
   SMART_TASK_SCHEDULE_CHART_KEY,
@@ -221,10 +222,8 @@ export type DeadlinePlanPayload = {
   timeline: {
     ariaLabel: string;
     hours: DeadlinePlanHour[];
-    // Index of the hour column containing "now" — the default readout
-    // selection and the position of the "Now" axis label + now markLine.
-    // Not necessarily 0: the window opens at the plan's original revision.
-    nowIndex: number;
+    // Default to the priced period covering now, if there is one.
+    nowIndex: number | null;
     // Exact timestamps for the now/deadline marks on the continuous time axis.
     nowAxisX: number;
     deadlineAxisX: number;
@@ -568,8 +567,8 @@ export const buildScheduleChartOption = (
     grid: { left: 8, right: 12, top: 24, bottom: 24, containLabel: true },
     xAxis: {
       type: 'time',
-      min: timeline.hours[0]?.startsAtMs,
-      max: timeline.hours[timeline.hours.length - 1]?.endsAtMs,
+      min: Math.min(timeline.hours[0]?.startsAtMs ?? timeline.nowAxisX, timeline.nowAxisX),
+      max: Math.max(timeline.hours.at(-1)?.endsAtMs ?? timeline.deadlineAxisX, timeline.deadlineAxisX),
       splitNumber: resolveTimeAxisSplitNumber(chartWidth),
       axisTick: { show: false },
       axisLine: { lineStyle: { color: palette.grid } },
@@ -869,7 +868,7 @@ export const buildTrajectoryChartOption = (
 
 const ScheduleChart = ({ payload, selectedIndex, onSelect }: {
   payload: DeadlinePlanPayload;
-  selectedIndex: number;
+  selectedIndex: number | null;
   onSelect: (index: number | null) => void;
 }) => {
   const chartHandle = useRef<EChartsType | null>(null);
@@ -896,7 +895,7 @@ const ScheduleChart = ({ payload, selectedIndex, onSelect }: {
     const chart = chartHandle.current;
     if (!chart || chart.isDisposed()) return;
     chart.dispatchAction({ type: 'downplay', seriesIndex: 0 });
-    chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: selectedIndex });
+    if (selectedIndex !== null) chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: selectedIndex });
   }, [selectedIndex, payload]);
   return <div ref={chartRef} class="deadline-schedule-chart" role="img" aria-label={payload.timeline.ariaLabel} />;
 };
@@ -940,22 +939,20 @@ const TrajectoryChart = ({ payload, selectedHourMs, onSelect }: {
 // The two question cards + the pinned readout row. Selection is shared: a
 // scrub on either chart drives the readout under chart 1, the emphasis
 // border on the selected bar, and the hairline on chart 2. `null` selection
-// = the default (the "Now" hour) — the readout is never empty.
+// = the default readout for the current period.
 const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) => {
   const [selected, setSelected] = useState<number | null>(null);
   const hours = payload.timeline.hours;
   const effectiveIndex = selected !== null && selected >= 0 && selected < hours.length
-    ? selected
-    : payload.timeline.nowIndex;
-  const hour = hours[effectiveIndex];
+    ? selected : payload.timeline.nowIndex;
+  const hour = effectiveIndex === null ? undefined : hours[effectiveIndex];
   // At-rest (no explicit selection yet) the secondary line is always the
   // scrub hint — discoverability of the gesture beats the default Now hour's
   // revision narrative, which reappears as soon as the user actively selects
   // any hour (including re-selecting Now). The branch is on interaction state
   // only; the view never inspects why `readout.secondary` exists.
   const readoutSecondary = selected === null
-    ? SMART_TASK_READOUT_SCRUB_HINT
-    : (hour?.readout.secondary ?? SMART_TASK_READOUT_SCRUB_HINT);
+    ? SMART_TASK_READOUT_SCRUB_HINT : (hour?.readout.secondary ?? SMART_TASK_READOUT_SCRUB_HINT);
   const stateline = payload.trajectory.stateline;
   return (
     <>
@@ -966,15 +963,19 @@ const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) =>
         <div class="budget-card-header">
           <h2 class="plan-card__title" id="deadline-schedule-title">{SMART_TASK_SCHEDULE_CARD_TITLE}</h2>
         </div>
-        <ScheduleChart payload={payload} selectedIndex={effectiveIndex} onSelect={setSelected} />
+        {hours.length > 0 && <ScheduleChart payload={payload} selectedIndex={effectiveIndex} onSelect={setSelected} />}
         <div class="deadline-readout" aria-live="polite">
-          <div class="deadline-readout__primary">{hour?.readout.primary}</div>
-          <div class="deadline-readout__secondary">{readoutSecondary}</div>
+          <div class="deadline-readout__primary">
+            {hour?.readout.primary ?? `${NOW_MARKER_WORD} · Price unavailable`}
+          </div>
+          {hours.length > 0 && <div class="deadline-readout__secondary">{readoutSecondary}</div>}
         </div>
         {payload.timeline.cheapestHoursCaption && (
           <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.cheapestHoursCaption}</p>
         )}
-        <p class="deadline-horizon-caption pels-card-supporting">{SMART_TASK_SCHEDULE_CHART_KEY}</p>
+        {hours.length > 0 && (
+          <p class="deadline-horizon-caption pels-card-supporting">{SMART_TASK_SCHEDULE_CHART_KEY}</p>
+        )}
         {payload.timeline.planningPriceNote && (
           <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.planningPriceNote}</p>
         )}
@@ -988,8 +989,7 @@ const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) =>
         </div>
         <TrajectoryChart
           payload={payload}
-          selectedHourMs={selected !== null && hours[effectiveIndex]
-            ? (hours[effectiveIndex]!.startsAtMs + hours[effectiveIndex]!.endsAtMs) / 2 : null}
+          selectedHourMs={selected !== null && hour ? (hour.startsAtMs + hour.endsAtMs) / 2 : null}
           onSelect={setSelected}
         />
         <p class={stateline.tone === 'danger' ? 'deadline-stateline deadline-stateline--danger' : 'deadline-stateline'}>

@@ -2526,12 +2526,72 @@ describe('deadline plan page payload', () => {
       heaterSchedule(new Map()),
     );
     expect(timeline.hours).toEqual([]);
-    expect(timeline.nowIndex).toBe(0);
+    expect(timeline.nowIndex).toBeNull();
     // Empty data keeps the same timestamp coordinates as a populated chart.
     expect(timeline.nowAxisX).toBe(now.getTime());
     expect(timeline.deadlineAxisX).toBe(plan.deadlineAtMs);
     expect(timeline.deadlineMarkLabel).toMatch(/^deadline /);
     expect(timeline.cheapestHoursCaption).toBeNull();
+  });
+
+  it('shows progress during unpriced fallback without presenting an expired price as current', async () => {
+    const { buildTimeline } = await import('../src/ui/deadlinePlanTimeline.ts');
+    const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
+    const hourMs = 3_600_000;
+    const startMs = new Date(2026, 0, 1, 13).getTime();
+    const nowMs = startMs + 2 * hourMs;
+    const fallbackEndMs = nowMs + 2 * hourMs;
+    const plan = buildHeaterActivePlan({
+      now: new Date(startMs), deadline: new Date(fallbackEndMs + hourMs),
+      plannedHourOffsets: [0], plannedKWhPerHour: 2,
+    });
+    plan.latest.partialPriceSchedule = {
+      fallbackStartsAtMs: nowMs,
+      fallbackWindows: [{ startsAtMs: nowMs, endsAtMs: fallbackEndMs, plannedKWh: 2 }],
+    };
+    const input = readyHeaterPayload(plan, [{
+      startsAtMs: startMs, endMs: startMs + hourMs, price: 100, planningPrice: 100,
+    }], nowMs, heatingProgress(20));
+    const schedule = heaterSchedule(new Map([[startMs, 2]]));
+
+    const timeline = buildTimeline(input, schedule);
+    expect(timeline.nowIndex).toBeNull();
+    expect(timeline.hours[0]?.readout.primary).toMatch(/^\d{2}:\d{2}–\d{2}:\d{2} · 1\.00 kr\/kWh/);
+
+    const trajectory = buildTrajectory(input, schedule);
+    expect(trajectory.shortfall).toBeNull();
+    expect(trajectory.plannedPoints).toContainEqual([fallbackEndMs, 22]);
+    expect(trajectory.runBands).toContainEqual({ fromMs: nowMs, toMs: fallbackEndMs, label: 'Heating' });
+  });
+
+  it('shows available-power work inside a priced period while costing only the priced bookings', () => {
+    const hourMs = 3_600_000;
+    const start = new Date(2026, 0, 1, 13);
+    const nowMs = start.getTime() + hourMs / 2;
+    const deadline = atLocalHour(start, 4);
+    const plan = buildHeaterActivePlan({ now: start, deadline, plannedHourOffsets: [1], plannedKWhPerHour: 2 });
+    plan.latest.partialPriceSchedule = {
+      fallbackStartsAtMs: nowMs,
+      fallbackWindows: [{ startsAtMs: nowMs, endsAtMs: start.getTime() + hourMs, plannedKWh: 1 }],
+    };
+    const payload = expectReady(resolveRenderInput({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), plan),
+      deviceId: 'heater',
+      devices: heaterDevices({ temperature: heaterTemperature(19, 20), planningPowerKw: 2 }),
+      prices: pricesPayload(hourlyPrices(start, [100, 200])),
+      nowMs,
+    }));
+
+    expect(payload.timeline.hours[0]?.planned).toBe(false);
+    expect(payload.timeline.hours[1]).toMatchObject({
+      startsAtMs: nowMs,
+      planned: true,
+      readout: {
+        primary: 'Now · 1.00 kr/kWh · Heating 1.0 kWh planned',
+        secondary: 'Planned on available power',
+      },
+    });
+    expect(payload.timeline.cheapestHoursCaption).toBe('Scheduled 1h · avg 2.00 kr/kWh');
   });
 
   it('buildTimeline shows the planning price for the schedule while cost stays on import', async () => {
@@ -3729,8 +3789,8 @@ describe('schedule + trajectory chart option builders', () => {
 
   // The trajectory scrub maps a time-axis ms position onto the REAL hour
   // list — never a synthetic contiguous grid from the first hour's start —
-  // because the producer tolerates gapped price buckets (`resolveNowIndex`
-  // has the same fallback). A gap must not desynchronise readout + hairline.
+  // because the producer tolerates gapped price buckets. A gap must not
+  // desynchronise readout + hairline.
   it('resolveScrubHourIndex resolves against the actual hour list, including gaps', async () => {
     const { resolveScrubHourIndex } = await import('../src/ui/deadlineChartScrub.ts');
     const HOUR = 3_600_000;

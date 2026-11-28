@@ -37,9 +37,9 @@ export const attachHourScrub = (
 };
 
 // Resolve a trajectory-chart time-axis position (ms) to an index in the REAL
-// hour list. The producer tolerates gapped price buckets (`resolveNowIndex`
-// has the same fallback), so deriving the index arithmetically from the first
-// hour's start would desynchronise the readout + hairline as soon as an hour
+// hour list. The producer tolerates gapped price buckets, so deriving the index
+// from the first hour's start would desynchronise the readout and hairline
+// as soon as an hour
 // is missing. Containing bucket wins; a position in a gap or outside the
 // listed hours snaps to the nearest bucket (clamping to the ends). Exported
 // for unit tests.

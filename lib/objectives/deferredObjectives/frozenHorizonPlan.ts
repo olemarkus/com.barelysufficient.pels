@@ -4,10 +4,14 @@ import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectivePartialPriceSchedule,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import {
+  resolveRemainingPlannedKWh, scheduledTaskIntervals,
+} from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { resolveCurrentHourBooking, resolveCurrentHourClaim } from './currentHourClaim';
 import { selectMinimumStepForEnergy } from './stepSelection';
 import { servePartialPriceSchedule } from './partialPriceSchedule';
 import type { ScheduledDeferredObjective } from './priorityAllocation';
+import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import type {
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveHorizonStatus,
@@ -73,22 +77,41 @@ const FROZEN_STATUS_DETAIL: Record<DeferredObjectiveHorizonStatus, DeferredObjec
   invalid: 'invalid_energy',
 };
 
-// The frozen read is only reached when the device is committed AND
-// `remainingUnits > 0` (genuine `satisfied` already returned via the early
-// `remainingUnits <= 0` branch). So for ADMISSION the device is plannable BY
-// CONSTRUCTION — we never reconstruct feasibility mid-hour. We therefore coerce a
-// non-plannable persisted status to `on_track`: a persisted `satisfied`/`invalid`
-// here is the STALL-reported override (903f9745 — UI/Flows only) or stale, and
-// admission must NOT release on it. The REPORTING path stays correct because the
-// top-level `withStallSatisfiedStatus` re-derives `satisfied` from the live stall
-// classification; `at_risk`/`cannot_meet` pass through unchanged (hour-boundary-
-// paced from the persisted `:58` value, so no mid-hour churn).
+// The frozen read serves committed tasks with remaining work. A persisted
+// `satisfied`/`invalid` verdict can be a stall overlay or stale, so admission
+// starts from the plannable `on_track` posture. The diagnostic still resolves
+// satisfaction from live evidence. Other settled statuses survive the replay.
 const PLANNABLE_PLAN_STATUSES = new Set<DeferredObjectiveActivePlanStatusV1>([
   'on_track', 'at_risk', 'cannot_meet',
 ]);
 const toPlannableStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): DeferredObjectiveHorizonStatus => (
   PLANNABLE_PLAN_STATUSES.has(planStatus) ? planStatus : 'on_track'
 );
+
+const updateFallbackFeasibility = (
+  plan: DeferredObjectiveHorizonPlan,
+  frozenRead: FrozenReadInputs,
+  expectedEnergyKWh: number,
+  steps: readonly DeferredObjectiveStep[],
+): DeferredObjectiveHorizonPlan => {
+  const fallbackStartMs = frozenRead.partialPriceSchedule?.fallbackStartsAtMs;
+  if (fallbackStartMs === undefined || fallbackStartMs > plan.horizonStartMs) return plan;
+  if (plan.status === 'cannot_meet' || plan.budgetContributedToShortfall) return plan;
+  const maximumUsefulPowerKw = Math.max(0, ...steps.map((step) => step.usefulPowerKw));
+  if (maximumUsefulPowerKw <= 0) return plan;
+  // Use the mean-based need so estimation padding alone cannot make it impossible.
+  const remainingHours = (plan.horizonEndMs - plan.horizonStartMs) / ONE_HOUR_MS;
+  if (expectedEnergyKWh > maximumUsefulPowerKw * remainingHours + FROZEN_EPSILON_KWH) {
+    return { ...plan, status: 'cannot_meet', statusDetail: 'target_cannot_be_met' };
+  }
+  if (plan.status !== 'on_track') return plan;
+  let scheduledKWh = 0;
+  for (const interval of scheduledTaskIntervals(frozenRead)) {
+    scheduledKWh += resolveRemainingPlannedKWh(interval, plan.horizonStartMs, plan.horizonEndMs);
+  }
+  return plan.energyNeededKWh > scheduledKWh + FROZEN_EPSILON_KWH
+    ? { ...plan, status: 'at_risk', statusDetail: 'feasible_above_floor' } : plan;
+};
 
 // Replay exact saved coverage and its energy. The requested step comes from
 // the saved draw window's whole duration, never the shrinking time remaining;
@@ -117,9 +140,9 @@ const buildFrozenPlannedBuckets = (
 // inputs, WITHOUT running the bucket allocator. Used on the per-cycle (mid-hour)
 // path: between hour settles the booked set, per-hour kWh, unit milestones and
 // `cheaperHourAhead` are immutable, so the only live inputs are the measured value
-// (already folded into `aheadOfHourMilestone` by the producer) and the persisted
-// status. The allocator runs only at the `:58` settle and at bootstrap (no
-// commitment), where a fresh plan is genuinely needed (the recorder re-commits).
+// (already folded into `aheadOfHourMilestone` by the producer) and energy need.
+// Live progress can update a running fallback's feasibility without changing
+// the settled claim or bookings. The allocator runs on a fresh planning turn.
 //
 // The release decision is `resolveCurrentHourClaim`'s, over the frozen facts:
 //   - `cheaperHourAhead` is this hour's value as the `:58` settle stamped it
@@ -134,12 +157,15 @@ export const buildFrozenHorizonPlan = (
   nowMs: number,
   task: Pick<ScheduledDeferredObjective, 'deviceId' | 'objective' | 'prefersContinuousCharging'>,
   frozenRead: FrozenReadInputs,
-  energyNeededKWh: number,
+  energy: Pick<
+    Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>, 'energyNeededKWh' | 'energyExpectedKWh'
+  >,
   aheadOfHourMilestone: boolean,
   steps: DeferredObjectiveStep[],
 ): DeferredObjectiveHorizonPlan => {
   const { deviceId, objective, prefersContinuousCharging } = task;
   const { deadlineAtMs } = objective;
+  const { energyNeededKWh, energyExpectedKWh } = energy;
   // Every saved hour is a booking; its kWh is what it promises, possibly 0.
   const currentHour = frozenRead.hours.find((hour) => (
     (hour.coversFromMs ?? hour.startsAtMs) <= nowMs && nowMs < hour.endsAtMs
@@ -228,7 +254,7 @@ export const buildFrozenHorizonPlan = (
     // `DeferredObjectiveHorizonPlan`.
     frozenRead: true,
   };
-  return frozenRead.partialPriceSchedule === undefined
-    ? plan
-    : servePartialPriceSchedule(plan, frozenRead.partialPriceSchedule, frozenRead.floorShortfallCause);
+  if (frozenRead.partialPriceSchedule === undefined) return plan;
+  const served = servePartialPriceSchedule(plan, frozenRead.partialPriceSchedule, frozenRead.floorShortfallCause);
+  return updateFallbackFeasibility(served, frozenRead, energyExpectedKWh, steps);
 };

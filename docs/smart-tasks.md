@@ -48,12 +48,12 @@ For each active task, PELS evaluates:
 - the target
 - the current observed progress, when available
 - the ready-by time
-- price periods through the ready-by time
+- published price periods before the ready-by time
 - the device's expected or learned energy delivery
 - the daily budget and enabled house power limits
 - the device priority and normal admission rules
 
-The Smart task plan uses the price source’s periods: whole hours or individual 15-minute periods. If prices are available for the whole window, cheaper periods are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
+The Smart task plan uses the price source’s whole hours or 15-minute periods and prefers cheaper periods. When prices cover the time from now but fall short of the ready-by time, PELS can book the priced work and plan the remainder around available power. The remaining schedule can change as more prices arrive.
 
 On an eligible charger's device page, under **Charging**, **Avoid short charging breaks** is offered with 15-minute pricing. Turn it on to keep new Smart task charging together. PELS can charge through a pricier break of up to 15 minutes when that raises the total planned cost by no more than 5%. It moves energy from a later block rather than adding extra charging, and it does not move charging away from planned solar. The setting is off by default. Existing schedules keep their booked energy; turning the setting off allows ordinary price-based pauses again. Power limits, higher-priority devices and the task's target still apply.
 
@@ -209,7 +209,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 
 | Status | Meaning |
 | --- | --- |
-| **Waiting for a plan** | PELS has stored the task. It is waiting for its planning turn or for prices through the ready-by time; the reason line says which. |
+| **Waiting for a plan** | PELS has stored the task. The reason line says whether it is waiting for its planning turn or for usable prices. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
 | **Paused — not managed** | **Managed by PELS** is off for the device, so PELS is not planning anything for it. The task is kept, not deleted: turn **Managed by PELS** back on and the plan resumes on the next cycle. |
 | **Paused — prices off** | **Respond to prices** is off, so PELS plans no Smart task. The task is kept: turn the switch on under **Settings → Price-aware devices** and it is planned again. |
@@ -299,7 +299,7 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 
 | Problem | What to check |
 | --- | --- |
-| The task stays pending | Check that **Respond to prices** is on under **Price-aware devices** and that prices are available through the ready-by time. |
+| The task stays pending | Check that **Respond to prices** is on under **Price-aware devices** and that your price source has published a price for the current period. |
 | The EV task does not change charger current | Confirm the charger's **Control model** is **Automatic**, EV 1-phase or EV 3-phase. Check the control method selected for the charger: built-in device control, or a current-control Flow using **EV charger current (A)**. See [Configure an EV Charger](/ev-charger). |
 | The device starts in a period outside the plotted task plan | The task keeps that period without planned energy, because it is cheaper than the planned periods or the task cannot finish otherwise, and runs there when power is available. A deferred period is held off. With no active task controlling the device, **Power-limit control** on allows normal run-when-power-is-available behavior. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |

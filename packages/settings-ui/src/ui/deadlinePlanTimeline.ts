@@ -22,6 +22,7 @@ import {
   planningPriceDivergesFromImport,
 } from '../../../shared-domain/src/price/planningPrice.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
+import { buildChargeByStartMs } from './deadlinePlanHourMaps.ts';
 import { withInlinePriceUnit } from './priceUnit.ts';
 import {
   type DeadlinePlanSchedule,
@@ -32,6 +33,7 @@ import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 const formatPrice = (total: number): string => total.toFixed(2);
 const CONTINUOUS_CHARGING_READOUT = 'Part of a run planned to avoid a short charging break';
+const AVAILABLE_POWER_READOUT = 'Planned on available power';
 
 export const resolveActualDeviceKwh = (
   bootstrap: SettingsUiBootstrap,
@@ -43,20 +45,6 @@ export const resolveActualDeviceKwh = (
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : null;
 };
 
-// Resolve the index of the hour column containing `nowMs`. The window can
-// start before now (it opens at the plan's original revision time), so "Now"
-// is not necessarily index 0. Falls back to the last hour that started before
-// now (or 0) when a price gap leaves now unmatched.
-const resolveNowIndex = (hours: HorizonHour[], nowMs: number): number => {
-  const exact = hours.findIndex((hour) => nowMs >= hour.startsAtMs && nowMs < hour.endMs);
-  if (exact >= 0) return exact;
-  for (let i = hours.length - 1; i >= 0; i -= 1) {
-    const hour = hours[i];
-    if (hour !== undefined && hour.startsAtMs <= nowMs) return i;
-  }
-  return 0;
-};
-
 export const buildTimeline = (
   input: ObjectivePayloadReady,
   schedule: DeadlinePlanSchedule,
@@ -64,40 +52,33 @@ export const buildTimeline = (
   const { ctx, hours: horizon, costDisplay, priceUnitLabel } = input;
   const { nowMs, deadlineAtMs } = ctx;
   const { labels, originalChargeByStartMs, currentChargeByStartMs } = schedule;
-  const latestRevisionReason = ctx.activePlan.latest.reason;
+  const { latest } = ctx.activePlan;
+  const deviceIdle = schedule.planStatus === 'device_idle';
   const ariaLabel = `Smart task schedule for ${formatDisplayDeviceName(ctx.device.name)}`;
-  // Direct callers with no price periods keep the same empty view shape,
-  // with exact marker timestamps and no scheduled-duration caption.
-  if (horizon.length === 0) {
-    return {
-      ariaLabel,
-      hours: [],
-      nowIndex: 0,
-      nowAxisX: nowMs,
-      deadlineAxisX: deadlineAtMs,
-      deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(deadlineAtMs)}`,
-      cheapestHoursCaption: null,
-      planningPriceNote: null,
-    };
-  }
-  const nowIndex = resolveNowIndex(horizon, nowMs);
+  const currentIndex = horizon.findIndex((hour) => nowMs >= hour.startsAtMs && nowMs < hour.endMs);
+  const nowIndex = currentIndex >= 0 ? currentIndex : null;
   // First planned hour after the current one — the idle "heating starts
   // 08:00" readout names it so the readout never claims the kind verb is
   // active while the hero says it starts later.
-  const nextPlanned = scheduledTaskIntervals(ctx.activePlan.latest).find((hour) => (
+  const nextPlanned = deviceIdle ? undefined : scheduledTaskIntervals(latest).find((hour) => (
     hour.startsAtMs > nowMs && hasPlannedEnergy(hour)
   ));
   const nextStartLabel = nextPlanned ? formatHourLabel(nextPlanned.startsAtMs) : null;
+  const fallback = latest.partialPriceSchedule;
+  const fallbackByStartMs = fallback && buildChargeByStartMs(
+    { hours: fallback.fallbackWindows }, deviceIdle ? horizon.filter((hour) => hour.endMs <= nowMs) : horizon,
+  );
   // A saved commitment can retain this marker after the charger opts out.
   const smoothing = normalizeEvChargingSessionSmoothingSettings(
     input.bootstrap.settings[EV_CHARGING_SESSION_SMOOTHING],
   );
   const continuousBookings = smoothing[ctx.deviceId] === true
-    ? ctx.activePlan.latest.hours.filter((booking) => booking.keepCharging && booking.plannedKWh > 0)
+    ? latest.hours.filter((booking) => booking.keepCharging && booking.plannedKWh > 0)
     : [];
   const hours = horizon.map((hour, index) => {
     const originalKwh = originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
     const currentKwh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+    const availablePowerKwh = fallbackByStartMs?.get(hour.startsAtMs) ?? 0;
     // The schedule "at what price" is a PLANNING surface — show the planning
     // price (`budgetPrice ?? total`) the scheduler ranked hours on, not the
     // import money price. Equals the import price for a non-prosumer, so this
@@ -105,19 +86,20 @@ export const buildTimeline = (
     // import price (`hour.price`) via `resolveLiveCostAndDelivery`.
     const displayPrice = hour.planningPrice / Math.max(1, costDisplay.divisor);
     const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
-    const planned = currentKwh > 0;
+    const planned = currentKwh + availablePowerKwh > 0;
     // Device energy is tracked hourly. A prorated quarter is an estimate, not
     // a measured observation, so only an exact tracked hour gets that label.
     const measuredKwh = hour.startsAtMs % 3_600_000 === 0
       && hour.endMs - hour.startsAtMs === 3_600_000
       && input.ctx.activePlan.startedAtMs <= hour.startsAtMs
       ? resolveActualPeriodKwh(input, hour) : null;
-    const revisionLine = hourChanged ? (labels.revisionReasonTooltipLine[latestRevisionReason] ?? null) : null;
-    const inContinuousRun = planned && continuousBookings.some((booking) => (
+    const revisionLine = hourChanged ? (labels.revisionReasonTooltipLine[latest.reason] ?? null) : null;
+    const inContinuousRun = currentKwh > 0 && continuousBookings.some((booking) => (
       (booking.coversFromMs ?? booking.startsAtMs) < hour.endMs && booking.endsAtMs > hour.startsAtMs
     ));
     const readoutNotes = [
       inContinuousRun ? CONTINUOUS_CHARGING_READOUT : null,
+      availablePowerKwh > 0 ? AVAILABLE_POWER_READOUT : null,
       revisionLine,
     ].filter(Boolean).join(' · ');
     return {
@@ -132,7 +114,7 @@ export const buildTimeline = (
         primary: formatSmartTaskHourReadoutPrimary(
           index === nowIndex ? NOW_MARKER_WORD : `${formatHourLabel(hour.startsAtMs)}–${formatHourLabel(hour.endMs)}`,
           withInlinePriceUnit(formatPrice(displayPrice), priceUnitLabel),
-          currentKwh,
+          currentKwh + availablePowerKwh,
           labels.deviceSeriesName,
           index === nowIndex,
           nextStartLabel,
@@ -149,12 +131,10 @@ export const buildTimeline = (
     nowAxisX: nowMs,
     deadlineAxisX: deadlineAtMs,
     deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(deadlineAtMs)}`,
-    // The caption sums scheduled duration and weights planning prices by
-    // duration, using the same display periods as the bars. The hero's money
-    // cost remains based on import prices, so the two can differ for a solar
-    // home. Shared-domain owns the duration, average and wording.
+    // Count priced commitments here. Available-power work was planned
+    // independently of the price, even when it overlaps a priced period.
     cheapestHoursCaption: formatCheapestHoursCaption(
-      hours.filter((hour) => hour.planned),
+      hours.filter((hour) => currentChargeByStartMs.has(hour.startsAtMs)),
       hours,
       priceUnitLabel,
     ),

@@ -61,7 +61,7 @@ export type ResolvedObjectiveContext = {
 };
 
 // A smart task the live page can draw: a committed revision, a current reading
-// and prices through the deadline (`prepareObjectivePayload` in `deadlinePlan.ts`).
+// and either priced periods or planned work on available power.
 export type ObjectivePayloadReady = {
   ctx: ResolvedObjectiveContext & {
     activePlan: ResolvedDeferredObjectiveActivePlanV1 & { latest: DeferredObjectiveActivePlanRevisionV1 };
@@ -95,8 +95,11 @@ export const splitHorizonAtBookings = (
   hours: HorizonHour[],
   plan: ResolvedDeferredObjectiveActivePlanV1,
 ): HorizonHour[] => {
-  const boundaries = [...(plan.original?.hours ?? []), ...(plan.latest?.hours ?? [])]
-    .flatMap((booking) => [booking.coversFromMs ?? booking.startsAtMs, booking.endsAtMs]);
+  const boundaries = [
+    ...(plan.original?.hours ?? []),
+    ...(plan.latest?.hours ?? []),
+    ...(plan.latest?.partialPriceSchedule?.fallbackWindows ?? []),
+  ].flatMap((booking) => [booking.coversFromMs ?? booking.startsAtMs, booking.endsAtMs]);
   return hours.flatMap((hour) => {
     const cuts = [...new Set([hour.startsAtMs, hour.endMs,
       ...boundaries.filter((atMs) => atMs > hour.startsAtMs && atMs < hour.endMs)])].sort((a, b) => a - b);

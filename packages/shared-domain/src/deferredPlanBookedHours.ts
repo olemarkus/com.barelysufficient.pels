@@ -1,5 +1,5 @@
 import type {
-  DeferredObjectiveActivePlanRevisionV1, DeferredObjectivePlanInterval,
+  DeferredObjectiveActivePlanRevisionV1, DeferredObjectivePartialPriceSchedule, DeferredObjectivePlanInterval,
 } from '../../contracts/src/deferredObjectiveActivePlans';
 
 // The saved intervals of a smart-task plan are its bookings, with `plannedKWh`
@@ -18,12 +18,25 @@ export const hoursWithPlannedEnergy = <T extends { plannedKWh: number }>(hours: 
 
 /** The displayed schedule includes projected available-power work. */
 export const scheduledTaskIntervals = (
-  revision: Pick<DeferredObjectiveActivePlanRevisionV1, 'hours' | 'partialPriceSchedule'> | null,
+  revision: {
+    hours: readonly DeferredObjectivePlanInterval[];
+    partialPriceSchedule?: DeferredObjectivePartialPriceSchedule;
+  } | null,
 ): readonly DeferredObjectivePlanInterval[] => {
   if (revision === null) return [];
   const fallback = revision.partialPriceSchedule?.fallbackWindows;
   if (!fallback?.length) return revision.hours;
   return [...revision.hours, ...fallback].sort((a, b) => a.startsAtMs - b.startsAtMs);
+};
+
+/** Energy still ahead of a live reading, prorated over the span the booking covers. */
+export const resolveRemainingPlannedKWh = (
+  interval: DeferredObjectivePlanInterval, nowMs: number, deadlineAtMs: number,
+): number => {
+  const startsAtMs = interval.coversFromMs ?? interval.startsAtMs;
+  const endsAtMs = Math.min(interval.endsAtMs, deadlineAtMs);
+  if (endsAtMs <= Math.max(nowMs, startsAtMs)) return 0;
+  return interval.plannedKWh * (endsAtMs - Math.max(nowMs, startsAtMs)) / (endsAtMs - startsAtMs);
 };
 
 // When the device is first planned to run, including a projected fallback.
