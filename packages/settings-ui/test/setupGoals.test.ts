@@ -138,6 +138,24 @@ describe('Choose what PELS does', () => {
     expect(ready(goals.resolveSetupGoalChoices()).map((device) => device.solar?.label)).toEqual(['Run on solar surplus']);
   });
 
+  it('offers solar before any export when a managed battery PELS can drive is soaking the surplus', async () => {
+    const { goals, state } = await load();
+    const homeBattery = {
+      id: 'battery', name: 'Thuisbatterij', deviceType: 'onoff', targets: [], deviceClass: 'battery',
+      isEvCharger: false, isBatteryOrSolar: true, powerCapable: true, batteryControl: 'drivable',
+      capabilities: ['measure_power', 'measure_battery'],
+    } as unknown as Device;
+    manage(state, [socket]);
+    state.latestDevices = [socket, homeBattery];
+    state.hasManagedSolarDevice = true;
+    state.surplusPoolReachable = false;
+    state.batteryControl = { status: 'resolved', devices: { battery: false } };
+    expect(ready(goals.resolveSetupGoalChoices()).find((device) => device.id === 'socket')?.solar).toBeNull();
+    state.batteryControl = { status: 'resolved', devices: { battery: true } };
+    expect(ready(goals.resolveSetupGoalChoices()).find((device) => device.id === 'socket')?.solar?.label)
+      .toBe('Run on solar surplus');
+  });
+
   it('keeps the saved solar choice while directing a car to its missing consent', async () => {
     let carSetup: ChargingCurrentRead = {
       deviceId: 'charger', name: 'Family car', scope: 'vehicle',

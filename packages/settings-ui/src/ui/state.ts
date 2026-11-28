@@ -329,6 +329,13 @@ export const resolveHomeHasDrivableBattery = (): boolean => (
   ))
 );
 
+const resolveHomeHasManagedDrivableBattery = (): boolean => (
+  state.latestDevices.some((device) => (
+    isHomeBatteryClassKey(device.deviceClass) && device.batteryControl === 'drivable'
+    && resolveManagedState(device.id)
+  ))
+);
+
 // The per-device "Use solar surplus" control, which needs a pool the engine can
 // actually allocate from — a strictly narrower question than having solar.
 // Kept separate rather than folded into the flag above because the two diverge
@@ -344,8 +351,14 @@ export const resolveHomeHasDrivableBattery = (): boolean => (
 // first and an honesty gate for the second: do not offer a switch that cannot
 // do anything. Both keep an opted-in escape hatch so a setting stored before
 // the gate existed stays visible and clearable.
+//
+// A solar home with a home battery PELS manages and can drive needs no export
+// history first. The battery's own zero-export mode soaks the surplus, so the
+// meter shows no export until PELS drives the battery; from then its charge is
+// in the surplus pool for the devices ranked above it (`composeSurplusPool`),
+// and its first exported sample arms the runtime latch.
 export const resolveSurplusControlAvailable = (): boolean => (
-  state.surplusPoolReachable
+  state.surplusPoolReachable || (resolveHomeExhibitsSolar() && resolveHomeHasManagedDrivableBattery())
 );
 
 // Whether setup treats the home as one with solar: any evidence of it. The flag
@@ -359,7 +372,7 @@ export const resolveHomeHasSolar = (): boolean => (
 // A home with solar that has not shown its first surplus: solar control is on
 // its way, not broken. An evening or winter install simply has not had one yet.
 export const resolveSolarSurplusPending = (): boolean => (
-  state.devicesLoaded && resolveHomeHasSolar() && !state.surplusPoolReachable
+  state.devicesLoaded && resolveHomeHasSolar() && !resolveSurplusControlAvailable()
 );
 
 // Worded like the solar suggestion, so it holds for a home that curtails instead
