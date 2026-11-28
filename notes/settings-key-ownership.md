@@ -456,6 +456,15 @@ home-battery app actions with it. The settings UI uses their dedicated
 API endpoints and receives resolved setup/access status. The saved key is never
 returned by those endpoints or included in the settings bootstrap or diagnostics.
 
+`deye_discharge_hold` belongs to `lib/executor/deyeDischargeHold.ts`. It holds
+the Deye Cloud credentials (app secret and password hash), the saved original
+discharge limit and the open hold or restore order. The settings UI writes it
+only through `/ui_charging_access?provider=deye` and its `check` action route,
+receives the resolved status, and never reads the key. It is not in the
+settings bootstrap or diagnostics. `deye_discharge_hold_offered` is a hidden
+boolean, written only with `homey api`, that the same owner reads to offer the
+Deye card before a connection is saved.
+
 `device_power_control_modes` belongs to
 `packages/shared-domain/src/settings/devicePowerControlModes.ts`. It is a map of
 device ids to `automatic` or `manual`, written by the settings UI. An unavailable

@@ -4,11 +4,21 @@ const callApi = vi.fn();
 vi.mock('../src/ui/homey.ts', () => ({ callApi: (...args: unknown[]) => callApi(...args) }));
 const { mountDeyeDischargeHold } = await import('../src/ui/deyeDischargeHold.tsx');
 
+test('renders nothing when the Deye hold is not offered', async () => {
+  document.body.innerHTML = '<div id="deye-discharge-hold-root"></div>';
+  callApi.mockResolvedValueOnce({ enabled: false, offered: false, state: 'disabled' });
+  await act(async () => mountDeyeDischargeHold());
+  await vi.waitFor(() => expect(callApi).toHaveBeenCalledTimes(1));
+  await act(async () => {});
+  expect(document.getElementById('deye-discharge-hold-root')?.innerHTML).toBe('');
+});
+
 test('shows the saved limit and requires confirmation to acknowledge manual Deye recovery', async () => {
   document.body.innerHTML = '<div id="deye-discharge-hold-root"></div>';
   callApi.mockResolvedValueOnce({
-    enabled: true, state: 'recovery_required', originalLimitA: 60, orderId: '123', deviceSn: 'example-inverter',
-  }).mockResolvedValueOnce({ enabled: false, state: 'disabled' });
+    enabled: true, offered: true, state: 'recovery_required', originalLimitA: 60, orderId: '123',
+    deviceSn: 'example-inverter',
+  }).mockResolvedValueOnce({ enabled: false, offered: true, state: 'disabled' });
 
   await act(async () => mountDeyeDischargeHold());
   const root = document.getElementById('deye-discharge-hold-root');

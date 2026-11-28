@@ -415,7 +415,9 @@ const smartTaskCreateActions: SmartTaskCreateActions = {
 const setListVisible = (visible: boolean): void => {
   const list = document.getElementById('deadlines-list-root');
   const surface = document.getElementById('smart-task-create-root');
+  const deye = document.getElementById('deye-discharge-hold-root');
   if (list) list.hidden = !visible;
+  if (deye) deye.hidden = !visible;
   const modePreparation = getModePreparationSurface();
   if (modePreparation) modePreparation.hidden = !visible;
   if (surface) surface.hidden = visible;

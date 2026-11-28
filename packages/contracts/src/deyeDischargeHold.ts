@@ -11,7 +11,9 @@ export type DeyeDischargeHoldSetup = {
 
 export type DeyeDischargeHoldStatus = {
   enabled: boolean;
-  state: 'disabled' | 'ready' | 'pending' | 'held' | 'unavailable' | 'recovery_required';
+  /** Whether the settings page shows the Deye card: a saved connection, or the hidden offer switch. */
+  offered: boolean;
+  state: 'disabled' | 'ready' | 'pending' | 'held' | 'hold_failed' | 'unavailable' | 'recovery_required';
   region?: DeyeDischargeHoldSetup['region'];
   deviceSn?: string;
   originalLimitA?: number;
