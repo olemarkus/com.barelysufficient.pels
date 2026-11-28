@@ -100,7 +100,8 @@ by Smart Task and battery planning.
 The month peak it follows includes a meter's own reported peak, which is held in memory
 (`lib/power/meterMonthlyPeak.ts`) and has no settings key.
 The settings UI's switch (Main form and meter-area editor) writes it, and a new install
-in Belgium has it written on once (`lib/power/capacityMarketDefault.ts`).
+in Belgium has it written on once (`lib/power/capacityMarketDefault.ts`), which also
+writes Main's `capacity_period_minutes` to 15 when the owner has not written it.
 `power_history_recovery_request` is the browser's explicit UUID-only command to
 the power-history recovery owner. The owner reads the selected Main meter's
 hourly Insights history, fills only missing hours of completed days through the

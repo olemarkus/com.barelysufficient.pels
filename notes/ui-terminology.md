@@ -2824,9 +2824,13 @@ English-only.
 - Belgian advice stays conditional: `In Flanders? Use the 15-minute average for
   measured peaks.` The action is `Use 15-minute average`. It saves only the
   period, never confirms the built-in hard cap, and preserves completed setup.
-  Reuse the existing recommendation dismissal. Country detection never changes
-  a setting. The 2.5 kW billing minimum belongs in relevant help, never as a
-  recommended control target.
+  Reuse the existing recommendation dismissal. Advice never changes a setting.
+  The one geographic write is the new-install market default
+  (`lib/power/capacityMarketDefault.ts`): a new Belgian install starts on the
+  15-minute period and follows the month's peak (owner ruling 2026-11-28), so
+  the advice only reaches an install that predates that default or a home the
+  owner moved to hourly. The 2.5 kW billing minimum belongs in relevant help,
+  never as a recommended control target.
 - PELS's tracked peak is based on received readings, not the operator's billing
   calculation. Do not promise a bill prediction or reproduce billing rules.
 

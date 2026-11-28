@@ -50,7 +50,7 @@ Review the choices PELS shows for this home:
 - **Grid import limit** is a separate choice for limiting current grid import. Use either limit, both, or neither.
 - **Prices** appears in setup only when an enabled feature uses them.
 
-In Flanders, use **15-minute average** if your bill uses measured quarter-hour peaks. **Use 15-minute average** changes only the period; confirm your hard cap separately. Advice can be dismissed and never changes settings automatically.
+A new install in Belgium starts on the **15-minute average** and follows the month's peak. On an older install, use **15-minute average** in Flanders if your bill uses measured quarter-hour peaks. **Use 15-minute average** changes only the period; confirm your hard cap separately. Advice can be dismissed and never changes settings automatically.
 
 <details>
 <summary>Dutch connection tariffs and Flemish peak billing</summary>
