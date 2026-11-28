@@ -4,6 +4,10 @@ import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from './sampleFreshness';
 import { resolveMeterEvidenceAtMs } from './lastTotalPower';
 import { resolveFrozenSinceMs } from './heldReading';
 import type { PowerTrackerState } from './trackerTypes';
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
+import type { MainFuse, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
+import { hasMeterDependentLimit } from './meterDependentLimit';
 
 export type MeterSilenceLogger = Pick<PinoLogger, 'info' | 'warn'>;
 
@@ -18,6 +22,17 @@ export type MeterSilenceMonitorDeps = {
   getPowerTracker: () => PowerTrackerState;
   nowMs: () => number;
   structuredLog: () => MeterSilenceLogger;
+  /**
+   * The home's limit reads, the same ports its planner reads, live. They answer
+   * whether a limit only the meter can enforce is on (`hasMeterDependentLimit`):
+   * a pass that held the devices is spent only while none is, so a limit turned
+   * on during the silence owes the shed at once (owner ruling 2026-11-28). A
+   * daily budget whose first snapshot is still being computed reads as off
+   * until it lands; this re-reads it on every tick, so the shed follows then.
+   */
+  getCapacitySettings: () => PowerLimitSettings;
+  getMainFuse: () => MainFuse;
+  getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
 };
 
 /**
@@ -35,6 +50,13 @@ export type MeterSilence = {
 
 export const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean => (
   a !== null && a.silentSinceMs === b.silentSinceMs && a.cause === b.cause
+);
+
+/** A silence and what its one pass did with the devices (`SilentMeterDirective`). */
+export type MeterSilencePass = MeterSilence & { directive: SilentMeterDirective };
+
+export const isSamePass = (a: MeterSilencePass | null, b: MeterSilencePass): boolean => (
+  isSameSilence(a, b) && a?.directive === b.directive
 );
 
 /** Whether an already active control mode can wait for the next meter-driven decision. */
@@ -60,6 +82,13 @@ export const hasRecentMeterEvidence = (tracker: PowerTrackerState, nowMs: number
  *   to its silent-meter variant and the planner takes the shed-everything
  *   directive, `lib/plan/planBuilderSilentMeter.ts`), and reports
  *   `noteShedPassCompleted` — after which the block holds until data returns.
+ *
+ * The pass is a shed only where a limit relies on the meter; elsewhere it
+ * holds the devices as they are (`lib/plan/planBuilderSilentMeter.ts`, owner
+ * ruling 2026-11-28). The latch records which it was, and a held silence is
+ * owed the shed again once such a limit is turned on (`isSpentOn`). A shed
+ * stays spent if every limit is turned off: devices stay limited until a
+ * reading returns.
  *
  * "Silent" means no evidence the meter is alive, which is more than no
  * delivery. A whole-home meter that has died behind a live driver can keep
@@ -125,8 +154,8 @@ export const hasRecentMeterEvidence = (tracker: PowerTrackerState, nowMs: number
  * gate owns it ("no plan for a home whose meter never reported").
  */
 export class MeterSilenceMonitor {
-  /** The silence the one shed pass was completed against; `null` = none yet. */
-  private shedPassDoneFor: MeterSilence | null = null;
+  /** The silence the one pass was completed against, and what it did; `null` = none yet. */
+  private passDone: MeterSilencePass | null = null;
 
   private blockLogged = false;
 
@@ -143,7 +172,7 @@ export class MeterSilenceMonitor {
       this.logBlockCleared();
       return false;
     }
-    const blocked = isSameSilence(this.shedPassDoneFor, silence);
+    const blocked = this.isSpentOn(silence);
     if (blocked && !this.blockLogged) {
       this.blockLogged = true;
       this.deps.structuredLog().warn({ event: 'meter_silence_block_engaged', homeId: this.deps.homeId, ...silence });
@@ -158,7 +187,7 @@ export class MeterSilenceMonitor {
    */
   shedPassOwedFor(): MeterSilence | null {
     const silence = this.currentSilence();
-    return silence !== null && !isSameSilence(this.shedPassDoneFor, silence) ? silence : null;
+    return silence !== null && !this.isSpentOn(silence) ? silence : null;
   }
 
   /**
@@ -167,10 +196,10 @@ export class MeterSilenceMonitor {
    * racing in during the pass (which ends that silence) re-arms the protocol
    * for the NEXT silence instead of being swallowed by this one's latch.
    */
-  noteShedPassCompleted(silence: MeterSilence): void {
-    this.shedPassDoneFor = silence;
+  noteShedPassCompleted(silence: MeterSilence, directive: SilentMeterDirective): void {
+    this.passDone = { ...silence, directive };
     this.deps.structuredLog().warn({
-      event: 'meter_silence_shed_pass_completed', homeId: this.deps.homeId, ...silence,
+      event: 'meter_silence_shed_pass_completed', homeId: this.deps.homeId, ...silence, directive,
     });
   }
 
@@ -178,9 +207,21 @@ export class MeterSilenceMonitor {
    * The silence the block holds for right now, or `null` when it is not
    * engaged. A pure read: the gate's `isBlocked` is the one that logs.
    */
-  blockedSilence(): MeterSilence | null {
+  blockedSilence(): MeterSilencePass | null {
     const silence = this.currentSilence();
-    return silence !== null && isSameSilence(this.shedPassDoneFor, silence) ? silence : null;
+    return silence !== null && this.isSpentOn(silence) ? this.passDone : null;
+  }
+
+  /**
+   * Whether this silence has had its pass. A pass that held the devices stops
+   * counting once a limit that relies on the meter is on: the shed is owed.
+   */
+  private isSpentOn(silence: MeterSilence): boolean {
+    const done = this.passDone;
+    if (done === null || !isSameSilence(done, silence)) return false;
+    const { getCapacitySettings, getMainFuse, getDailyBudgetSnapshot } = this.deps;
+    return done.directive === 'shed'
+      || !hasMeterDependentLimit(getCapacitySettings(), getMainFuse(), getDailyBudgetSnapshot());
   }
 
   private logBlockCleared(): void {

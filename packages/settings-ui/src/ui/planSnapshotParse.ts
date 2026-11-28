@@ -152,6 +152,10 @@ const REQUIRED_META_NUMBERS = [
 // and, behind it, the numbers only on the measured variant.
 const MEASURED_META_NUMBERS = ['controlledKw', 'uncontrolledKw'] as const;
 
+// Present exactly when `powerIsMeasured` is false: what the silent-meter pass
+// did, which picks the no-readings banner's consequence line.
+const SILENT_METER_DIRECTIVES: ReadonlySet<unknown> = new Set(['shed', 'hold']);
+
 // Required, but `null` is a real value: no daily-budget axis (the pace pair).
 const REQUIRED_META_NULLABLE_NUMBERS = [
   'budgetPaceKw', 'projectedExemptKw', 'softLimitKw', 'capacitySoftLimitKw',
@@ -173,7 +177,9 @@ const isValidPlanMeta = (value: unknown): boolean => {
     && isCapacityPeriodMinutes(meta.capacityPeriodMinutes)
     && typeof meta.capacityPeriodCoverageComplete === 'boolean'
     && typeof meta.powerIsMeasured === 'boolean'
-    && (!meta.powerIsMeasured || MEASURED_META_NUMBERS.every((key) => isFiniteNumber(meta[key])));
+    && (meta.powerIsMeasured
+      ? MEASURED_META_NUMBERS.every((key) => isFiniteNumber(meta[key]))
+      : SILENT_METER_DIRECTIVES.has(meta.silentMeterDirective));
 };
 
 const isDeviceIdList = (value: unknown): value is string[] => (

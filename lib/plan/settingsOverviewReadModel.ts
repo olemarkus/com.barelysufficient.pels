@@ -104,7 +104,7 @@ function resolveHourBudgetKWh(
 function resolveWireMeasuredFields(
   meta: PlanMeta,
 ): SettingsUiPlanMetaMeasuredFields | SettingsUiPlanMetaUnmeasuredFields {
-  if (!meta.powerIsMeasured) return { powerIsMeasured: false };
+  if (!meta.powerIsMeasured) return { powerIsMeasured: false, silentMeterDirective: meta.silentMeterDirective };
   return {
     powerIsMeasured: true,
     controlledKw: meta.controlledKw,

@@ -148,6 +148,7 @@ async function executePlanRebuild(
   const sharedChargingPausePending = host.deps.planEngine.hasPendingSharedChargingPause(executionPlan);
   Object.assign(outcome, {
     ...(sharedChargingPausePending ? { sharedChargingPausePending: true } : {}),
+    ...(!stampedPlan.meta.powerIsMeasured ? { silentMeterDirective: stampedPlan.meta.silentMeterDirective } : {}),
     buildMs,
     changeMs,
     snapshotMs,

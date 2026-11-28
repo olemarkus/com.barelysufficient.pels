@@ -4,6 +4,7 @@ import { HELD_READING_FREEZE_MS, HELD_READING_SUSPECT_MS } from '../../lib/power
 import { recordPowerSample } from '../../lib/power/tracker';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { meterSilenceLimitReads } from '../helpers/meterSilenceLimitReads';
 
 const T0 = Date.UTC(2026, 3, 18, 10, 0, 0);
 
@@ -11,18 +12,57 @@ const T0 = Date.UTC(2026, 3, 18, 10, 0, 0);
 const noSamplesSince = (silentSinceMs: number): MeterSilence => ({ silentSinceMs, cause: 'no_samples' });
 
 const build = (initialLastSampleAtMs?: number) => {
-  const state = { lastSampleAtMs: initialLastSampleAtMs, nowMs: T0 };
+  const state = { lastSampleAtMs: initialLastSampleAtMs, nowMs: T0, limitOn: true };
   const log = { info: vi.fn(), warn: vi.fn() };
   const monitor = new MeterSilenceMonitor({
     homeId: MAIN_HOME_ID,
     getPowerTracker: () => ({ lastTimestamp: state.lastSampleAtMs }),
     nowMs: () => state.nowMs,
     structuredLog: () => log,
+    ...meterSilenceLimitReads(() => state.limitOn),
   });
   return { monitor, state, log };
 };
 
 describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
+  describe('a pass that held the devices (no limit on, owner ruling 2026-11-28)', () => {
+    it('blocks like a shed while no limit is on', () => {
+      const { monitor, state } = build(T0);
+      state.limitOn = false;
+      state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+      monitor.noteShedPassCompleted(noSamplesSince(T0), 'hold');
+      expect(monitor.isBlocked()).toBe(true);
+      expect(monitor.shedPassOwedFor()).toBeNull();
+      expect(monitor.blockedSilence()).toEqual({ ...noSamplesSince(T0), directive: 'hold' });
+    });
+
+    it('owes the shed at once when a limit is turned on during the silence', () => {
+      const { monitor, state } = build(T0);
+      state.limitOn = false;
+      state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+      monitor.noteShedPassCompleted(noSamplesSince(T0), 'hold');
+
+      state.limitOn = true;
+      expect(monitor.isBlocked()).toBe(false);
+      expect(monitor.shedPassOwedFor()).toEqual(noSamplesSince(T0));
+      expect(monitor.blockedSilence()).toBeNull();
+
+      monitor.noteShedPassCompleted(noSamplesSince(T0), 'shed');
+      expect(monitor.isBlocked()).toBe(true);
+      expect(monitor.blockedSilence()).toEqual({ ...noSamplesSince(T0), directive: 'shed' });
+    });
+
+    it('keeps a shed spent when every limit is turned off during the silence', () => {
+      const { monitor, state } = build(T0);
+      state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+      monitor.noteShedPassCompleted(noSamplesSince(T0), 'shed');
+
+      state.limitOn = false;
+      expect(monitor.isBlocked()).toBe(true);
+      expect(monitor.shedPassOwedFor()).toBeNull();
+    });
+  });
+
   it('never blocks a home that has never sampled — the measurement gate owns that', () => {
     const { monitor } = build(undefined);
     expect(monitor.isBlocked()).toBe(false);
@@ -44,7 +84,7 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     expect(monitor.shedPassOwedFor()).toEqual(noSamplesSince(T0));
     expect(monitor.isBlocked()).toBe(false);
 
-    monitor.noteShedPassCompleted(noSamplesSince(T0));
+    monitor.noteShedPassCompleted(noSamplesSince(T0), 'shed');
     expect(monitor.shedPassOwedFor()).toBeNull();
     expect(monitor.isBlocked()).toBe(true);
 
@@ -63,7 +103,7 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     const { monitor, state } = build(T0);
     state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
     // The escalation latched against the OLD timestamp; a racing sample moved it.
-    monitor.noteShedPassCompleted(noSamplesSince(T0));
+    monitor.noteShedPassCompleted(noSamplesSince(T0), 'shed');
     state.lastSampleAtMs = state.nowMs - 1;
     expect(monitor.isBlocked()).toBe(false);
     state.nowMs += POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
@@ -79,7 +119,7 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     const { monitor } = build(restoredTs);
     expect(monitor.shedPassOwedFor()).toEqual(noSamplesSince(restoredTs));
     expect(monitor.isBlocked()).toBe(false);
-    monitor.noteShedPassCompleted(noSamplesSince(restoredTs));
+    monitor.noteShedPassCompleted(noSamplesSince(restoredTs), 'shed');
     expect(monitor.shedPassOwedFor()).toBeNull();
     expect(monitor.isBlocked()).toBe(true);
   });
@@ -95,14 +135,14 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
     expect(monitor.shedPassOwedFor()).toEqual(noSamplesSince(T0));
     expect(monitor.isBlocked()).toBe(false);
-    monitor.noteShedPassCompleted(noSamplesSince(T0));
+    monitor.noteShedPassCompleted(noSamplesSince(T0), 'shed');
     expect(monitor.isBlocked()).toBe(true);
     expect(monitor.shedPassOwedFor()).toBeNull();
   });
 
   it('logs the block edge once per engagement, and the clear once per recovery', () => {
     const { monitor, state, log } = build(T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
-    monitor.noteShedPassCompleted(noSamplesSince(T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS));
+    monitor.noteShedPassCompleted(noSamplesSince(T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS), 'shed');
     monitor.isBlocked();
     monitor.isBlocked();
     // One warn for the completed pass, one for the block edge — never a second block edge.
@@ -136,7 +176,9 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
   });
 
   const monitorOf = (tracker: () => PowerTrackerState, nowMs: () => number, log: { info: () => void; warn: () => void }) => (
-    new MeterSilenceMonitor({ homeId: MAIN_HOME_ID, getPowerTracker: tracker, nowMs, structuredLog: () => log })
+    new MeterSilenceMonitor({
+      homeId: MAIN_HOME_ID, getPowerTracker: tracker, nowMs, structuredLog: () => log, ...meterSilenceLimitReads(() => true),
+    })
   );
 
   it('treats a frozen reading as silent since it took its value, and says so', () => {
@@ -144,8 +186,8 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     const monitor = monitorOf(() => heldTracker(T0 - HELD_READING_FREEZE_MS), () => T0, log);
     const frozen: MeterSilence = { silentSinceMs: T0 - 2 * POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, cause: 'frozen_reading' };
     expect(monitor.shedPassOwedFor()).toEqual(frozen);
-    monitor.noteShedPassCompleted(frozen);
-    expect(log.warn).toHaveBeenCalledWith({ event: 'meter_silence_shed_pass_completed', homeId: MAIN_HOME_ID, ...frozen });
+    monitor.noteShedPassCompleted(frozen, 'shed');
+    expect(log.warn).toHaveBeenCalledWith({ event: 'meter_silence_shed_pass_completed', homeId: MAIN_HOME_ID, ...frozen, directive: 'shed' });
   });
 
   it('owes nothing for a reading that is only suspect: the owner is warned, control waits', () => {
@@ -175,7 +217,7 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     let nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
     const monitor = monitorOf(() => tracker, () => nowMs, { info: vi.fn(), warn: vi.fn() });
     expect(monitor.shedPassOwedFor()).toEqual(noSamplesSince(T0));
-    monitor.noteShedPassCompleted(noSamplesSince(T0));
+    monitor.noteShedPassCompleted(noSamplesSince(T0), 'shed');
     expect(monitor.isBlocked()).toBe(true);
 
     // Deliveries resume on the same value: evidence again, so the block lifts.

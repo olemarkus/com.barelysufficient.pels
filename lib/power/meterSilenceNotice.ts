@@ -6,7 +6,7 @@ import {
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { NotificationsPort } from '../ports/homeyRuntime';
 import { normalizeError } from '../utils/errorUtils';
-import { isSameSilence, type MeterSilence, type MeterSilenceMonitor } from './meterSilence';
+import { isSamePass, type MeterSilencePass, type MeterSilenceMonitor } from './meterSilence';
 
 export type MeterSilenceNoticeDeps = {
   meterSilence: MeterSilenceMonitor;
@@ -19,15 +19,32 @@ export type MeterSilenceNoticeDeps = {
 
 const LIMITED_LEAD = 'has limited your managed devices to stay within your limits.';
 
-const describeStopped = (silence: MeterSilence, ageMs: number): string => (
-  silence.cause === 'frozen_reading'
+const describeShed = (pass: MeterSilencePass, ageMs: number): string => (
+  pass.cause === 'frozen_reading'
     ? `Your power reading has not changed for ${readingAge(ageMs)} while your devices' own readings did, `
       + `so PELS no longer trusts it and ${LIMITED_LEAD} They resume when the reading changes.`
     : `PELS has had no new power reading for ${readingAge(ageMs)} and ${LIMITED_LEAD} `
       + 'They resume when a new reading arrives.'
 );
 
-const RESUMED_TEXT = 'PELS has new power readings again and is resuming your managed devices.';
+// No limit relies on the meter, so nothing was limited (owner ruling 2026-11-28).
+const HELD_LEAD = 'No limit is on, so PELS leaves your managed devices as they are, apart from solar-surplus loads,';
+
+const describeHold = (pass: MeterSilencePass, ageMs: number): string => (
+  pass.cause === 'frozen_reading'
+    ? `Your power reading has not changed for ${readingAge(ageMs)} while your devices' own readings did, `
+      + `so PELS no longer trusts it. ${HELD_LEAD} until the reading changes.`
+    : `PELS has had no new power reading for ${readingAge(ageMs)}. ${HELD_LEAD} until a new reading arrives.`
+);
+
+const describeStopped = (pass: MeterSilencePass, ageMs: number): string => (
+  pass.directive === 'shed' ? describeShed(pass, ageMs) : describeHold(pass, ageMs)
+);
+
+const RESUMED_TEXT: Record<MeterSilencePass['directive'], string> = {
+  shed: 'PELS has new power readings again and is resuming your managed devices.',
+  hold: 'PELS has new power readings again and is planning your managed devices as usual.',
+};
 
 /**
  * Tells the owner on Homey's timeline when a meter outage has made PELS limit
@@ -43,7 +60,7 @@ const RESUMED_TEXT = 'PELS has new power readings again and is resuming your man
  * restart is announced again once the restarted app's own pass runs.
  */
 export class MeterSilenceNotice {
-  private announced: MeterSilence | null = null;
+  private announced: MeterSilencePass | null = null;
 
   private inFlight = false;
 
@@ -51,17 +68,21 @@ export class MeterSilenceNotice {
 
   async check(): Promise<void> {
     if (this.inFlight) return;
-    const silence = this.deps.meterSilence.blockedSilence();
-    if (silence !== null) {
-      if (isSameSilence(this.announced, silence)) return;
-      await this.send(describeStopped(silence, this.deps.nowMs() - silence.silentSinceMs), silence);
+    const pass = this.deps.meterSilence.blockedSilence();
+    if (pass !== null) {
+      if (isSamePass(this.announced, pass)) return;
+      await this.send(describeStopped(pass, this.deps.nowMs() - pass.silentSinceMs), pass);
       return;
     }
-    if (this.announced === null) return;
-    await this.send(RESUMED_TEXT, null);
+    const announced = this.announced;
+    if (announced === null) return;
+    // Still silent with its pass owed again (a limit turned on during a hold):
+    // the shed's own notice follows, and readings have not returned.
+    if (this.deps.meterSilence.shedPassOwedFor() !== null) return;
+    await this.send(RESUMED_TEXT[announced.directive], null);
   }
 
-  private async send(lead: string, silence: MeterSilence | null): Promise<void> {
+  private async send(lead: string, silence: MeterSilencePass | null): Promise<void> {
     const source = silence === null ? null : this.deps.readPowerSource();
     const excerpt = source === null ? lead : `${lead} ${resolveStoppedReadingsHint(source)}`;
     this.inFlight = true;

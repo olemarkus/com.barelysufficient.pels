@@ -3,6 +3,7 @@ import { normalizeError } from '../utils/errorUtils';
 import type { HomeId } from '../utils/settingsKeys';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { MeterSilenceMonitor } from './meterSilence';
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
 
 const BASE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 5000 : 30 * 1000;
 
@@ -28,6 +29,8 @@ export const freshnessEscalationIntervalMs = (homeId: HomeId): number => {
  */
 export type MeterSilenceShedPassOutcome = {
   sharedChargingPausePending?: true;
+  /** What the pass did, when the rebuild was the silent-meter pass (`SilentMeterDirective`). */
+  silentMeterDirective?: SilentMeterDirective;
   failed: boolean;
   isDryRun: boolean;
   gated: boolean;
@@ -196,7 +199,13 @@ export class MeterSilenceEscalation {
         // the block until data returns. A reading that raced in during the
         // pass has moved the stamp, and the monitor then reads this latch as
         // spent on the old silence rather than the new one.
-        meterSilence.noteShedPassCompleted(passFor);
+        // A rebuild that found a reading again was not the silent-meter pass:
+        // there is nothing to latch, and the silence it was owed for has ended.
+        if (outcome.silentMeterDirective === undefined) {
+          debugEscalation({ event: 'home_freshness_heartbeat_rebuild_measured_skipped', homeId });
+          return;
+        }
+        meterSilence.noteShedPassCompleted(passFor, outcome.silentMeterDirective);
       })
       .catch((error: unknown) => {
         logger().error({ event: 'home_freshness_heartbeat_rebuild_failed', homeId, err: normalizeError(error) });

@@ -3,17 +3,20 @@ import { MeterSilenceNotice } from '../../lib/power/meterSilenceNotice';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
+import { meterSilenceLimitReads } from '../helpers/meterSilenceLimitReads';
 
 const T0 = Date.UTC(2026, 10, 22, 0, 36, 0);
 const MINUTE = 60 * 1000;
 
 const build = (options: { source?: 'homey_energy' | 'flow' | null; tracker?: () => PowerTrackerState } = {}) => {
-  const state = { lastSampleAtMs: T0 as number | undefined, nowMs: T0 };
+  const state = { lastSampleAtMs: T0 as number | undefined, nowMs: T0, limitOn: true };
   const monitor = new MeterSilenceMonitor({
     homeId: MAIN_HOME_ID,
     getPowerTracker: options.tracker ?? (() => ({ lastTimestamp: state.lastSampleAtMs })),
     nowMs: () => state.nowMs,
     structuredLog: () => ({ info: vi.fn(), warn: vi.fn() }),
+    ...meterSilenceLimitReads(() => state.limitOn),
   });
   const createNotification = vi.fn(async (_options: { excerpt: string }) => undefined);
   const notice = new MeterSilenceNotice({
@@ -23,10 +26,10 @@ const build = (options: { source?: 'homey_energy' | 'flow' | null; tracker?: () 
     nowMs: () => state.nowMs,
     logger: () => ({ info: vi.fn(), warn: vi.fn() }),
   });
-  const runPass = () => {
+  const runPass = (directive: SilentMeterDirective = 'shed') => {
     const owed = monitor.shedPassOwedFor();
     if (owed === null) throw new Error('no pass owed');
-    monitor.noteShedPassCompleted(owed);
+    monitor.noteShedPassCompleted(owed, directive);
   };
   const excerpts = () => createNotification.mock.calls.map(([call]) => call.excerpt);
   return { state, monitor, notice, runPass, createNotification, excerpts };
@@ -119,5 +122,43 @@ describe('MeterSilenceNotice', () => {
     expect(excerpts()[0]).toMatch(
       /^Your power reading has not changed for 25 min while your devices' own readings did, so PELS no longer trusts it/,
     );
+  });
+
+  describe('in a home with no limit on (owner ruling 2026-11-28)', () => {
+    it('says the devices were left as they are, and that planning is back to usual afterwards', async () => {
+      const { state, notice, runPass, excerpts } = build();
+      state.limitOn = false;
+      state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+      runPass('hold');
+      await notice.check();
+      expect(excerpts()).toEqual([
+        'PELS has had no new power reading for 10 min. No limit is on, so PELS leaves your managed devices as '
+          + 'they are, apart from solar-surplus loads, until a new reading arrives. Check that the selected whole-home meter is available in '
+          + 'Homey Energy and its reading is changing.',
+      ]);
+
+      state.lastSampleAtMs = state.nowMs + MINUTE;
+      state.nowMs += MINUTE;
+      await notice.check();
+      expect(excerpts()[1]).toBe('PELS has new power readings again and is planning your managed devices as usual.');
+    });
+
+    it('announces the shed when a limit is turned on during the hold, with no false all-clear between', async () => {
+      const { state, notice, runPass, excerpts } = build();
+      state.limitOn = false;
+      state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+      runPass('hold');
+      await notice.check();
+
+      // The limit is on: the hold no longer counts, and the shed is owed.
+      state.limitOn = true;
+      await notice.check();
+      expect(excerpts()).toHaveLength(1);
+
+      runPass('shed');
+      await notice.check();
+      expect(excerpts()).toHaveLength(2);
+      expect(excerpts()[1]).toMatch(/^PELS has had no new power reading for 10 min and has limited your managed devices/);
+    });
   });
 });

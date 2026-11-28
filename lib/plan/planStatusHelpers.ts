@@ -99,7 +99,7 @@ const normalizeMeasuredMetaFields = (
       controlledKw: roundTo(meta.controlledKw, PLAN_META_KW_STEP),
       uncontrolledKw: roundTo(meta.uncontrolledKw, PLAN_META_KW_STEP),
     }
-    : { powerIsMeasured: false }
+    : { powerIsMeasured: false, silentMeterDirective: meta.silentMeterDirective }
 );
 
 export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => {

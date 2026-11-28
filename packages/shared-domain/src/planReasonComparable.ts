@@ -112,6 +112,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.hourlyBudget,
   PLAN_REASON_CODES.endOfHourDrain,
   PLAN_REASON_CODES.meterSilent,
+  PLAN_REASON_CODES.meterSilentHold,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.deferredObjectiveSatisfied,
   PLAN_REASON_CODES.deferredObjectiveBatteryDischarge,
@@ -140,6 +141,7 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
   | { code: typeof PLAN_REASON_CODES.endOfHourDrain }
   | { code: typeof PLAN_REASON_CODES.meterSilent }
+  | { code: typeof PLAN_REASON_CODES.meterSilentHold }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveBatteryDischarge }

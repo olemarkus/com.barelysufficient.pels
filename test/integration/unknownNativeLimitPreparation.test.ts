@@ -48,6 +48,15 @@ describe('preparing an unknown native limit under capacity pressure', () => {
     expect(command?.desired.stepId).not.toBe('low');
   });
 
+  // Owner ruling 2026-11-28: with no limit on, a meter outage leaves the charger
+  // as it is, so the preparation that would lower it must not run.
+  it('leaves a charger the silent-meter hold kept at its level, even with starts held', () => {
+    const device = steppedPlanDevice({ ...unknownDevice('keep'), reason: { code: 'meter_silent_hold' } });
+    const command = buildPlannedSteppedCommand(device, true);
+    expect(command?.transition?.transitionPhase).not.toBe('step_preparation');
+    expect(command?.desired.stepId ?? device.selectedStepId).toBe(device.selectedStepId);
+  });
+
   it.each([0, 0.5, 1.25])('keeps the hold when measured draw is only %s kW', (watts) => {
     expect(buildPlannedSteppedCommand(unknownDevice('keep', watts))).toBeUndefined();
   });

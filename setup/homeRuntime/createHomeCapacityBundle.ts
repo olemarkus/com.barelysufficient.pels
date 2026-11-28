@@ -78,6 +78,10 @@ import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
+import type { MainFuse } from '../../packages/contracts/src/capacitySettings';
+
+/** A meter area's main fuse: protection is Main only. */
+const NO_MAIN_FUSE: MainFuse = { kind: 'off' };
 
 /**
  * Every seam that must be answered by the home that OWNS a device rather than by
@@ -153,6 +157,16 @@ function buildSubHomeScope(
   meterMonthlyPeaks: MeterMonthlyPeaks,
 ): HomeScope {
   const { homeId, isTornDown } = runtime;
+  // The area's limit reads, one set for its planner scope and its silence
+  // monitor: a meter area has no main fuse and no daily budget.
+  const getCapacitySettings = createHomeHeldPowerLimitsRead(
+    ctx,
+    runtime.getCapacityScalars,
+    getPowerTracker,
+    () => meterMonthlyPeaks.current(runtime.getHomeConfig().meterDeviceId),
+  );
+  const getMainFuse = (): MainFuse => NO_MAIN_FUSE;
+  const getDailyBudgetSnapshot = (): null => null;
   // This home's meter-silence policy: shared by the composed plan-build gate
   // (via the scope), the pipeline's admitted-sample push, and the freshness
   // escalation's shed-pass protocol, which read it from the scope.
@@ -161,6 +175,9 @@ function buildSubHomeScope(
     getPowerTracker,
     nowMs: () => Date.now(),
     structuredLog: () => ctx.getStructuredLogger('power'),
+    getCapacitySettings,
+    getMainFuse,
+    getDailyBudgetSnapshot,
   });
   // Same lane the main home wires, with this area's own way of reaching its
   // plan service: a torn-down bundle drops the rebuild rather than driving a
@@ -175,20 +192,15 @@ function buildSubHomeScope(
     // shares — without it an area's alert reads as the Main home's.
     // Live read: a rename lands via `updateHomeConfig` without a teardown.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(runtime.getHomeConfig().name),
-    getMainFuse: () => ({ kind: 'off' }),
-    getCapacitySettings: createHomeHeldPowerLimitsRead(
-      ctx,
-      runtime.getCapacityScalars,
-      getPowerTracker,
-      () => meterMonthlyPeaks.current(runtime.getHomeConfig().meterDeviceId),
-    ),
+    getMainFuse,
+    getCapacitySettings,
     // The canonical no-actuation switch. This is the CONTROL path, so it asks
     // the execution form — the one that also arms source recovery.
     getCapacityDryRun: runtime.isEffectiveDryRunForExecution,
     readSimulationSetting: () => runtime.getCapacityScalars().dryRun,
     getPowerTracker,
     getMeterSilenceMonitor: () => meterSilenceMonitor,
-    getDailyBudgetSnapshot: () => null,
+    getDailyBudgetSnapshot,
     getPlanDevices: () => {
       // Capacity-only overrides: NO surplus posture (a sub-home has no
       // price/surplus signal, so a surplusWilling device would be held OFF

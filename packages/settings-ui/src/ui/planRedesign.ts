@@ -17,7 +17,7 @@ import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.t
 import { getApiReadModel } from './homey.ts';
 import { readDeferredObjectiveHistory } from './deferredObjectiveHistoryRead.ts';
 import { getHomeScope, readHomeMembership } from './homeScope.ts';
-import { setPlanUnmeasured } from './planMeasurementSignal.ts';
+import { setSilentMeterPass } from './planMeasurementSignal.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
 import { readOverviewDevices } from './overviewDevicesRead.ts';
 import type { OverviewDeviceRowsRead, SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
@@ -344,8 +344,9 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
   // Main's plan feeds its no-readings warning the consequence line:
   // an unmeasured cycle draws no hero, so the banner is where the page says
-  // why every managed device below reads `Limited`.
-  setPlanUnmeasured(plan?.meta?.powerIsMeasured === false);
+  // why every managed device below reads `Limited`, or is left as it is.
+  const meta = plan?.meta;
+  setSilentMeterPass(meta && !meta.powerIsMeasured ? meta.silentMeterDirective : null);
   // A committed plan (a `plan_updated` push included) supersedes the plan of
   // any refresh still reading an older one, so that refresh can never paint
   // it, or its rescue gate, back over this one.

@@ -369,9 +369,9 @@ export class PlanBuilder {
     // build — the silent-meter fail-closed pass — takes its directive here and
     // never constructs a `MeasuredPower` (owner ruling 2026-09-02).
     if (!reading.isMeasured) {
-      return {
-        plan: installations.withSwitches(this.silentMeter.build(context, reading, decoration, settings, nowTs)), run,
-      };
+      return { plan: installations.withSwitches(this.silentMeter.build(
+        context, reading, decoration, settings, dailyBudgetSnapshot, nowTs,
+      )), run };
     }
     // The first measured build inside this hour's drain keeps what the house
     // drew as the level the drain falls from (`CapacityDrainStart`). Before

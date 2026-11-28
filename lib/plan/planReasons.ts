@@ -580,6 +580,11 @@ const DEFERRED_HOLD_REASON_CODE = {
   battery_discharging: PLAN_REASON_CODES.deferredObjectiveBatteryDischarge,
 } as const satisfies Record<DeferredHoldCause, string>;
 
+/** The reason a smart task's hold gives its device: why the task holds it. */
+export const deferredHoldReason = (cause: DeferredHoldCause): DeviceReason => (
+  { code: DEFERRED_HOLD_REASON_CODE[cause] }
+);
+
 // The power holds the smart-task framing replaces: capacity, the grid import
 // limit, the daily budget and a spent capacity period. None of them, nor the
 // out-of-levers shortfall, would release a device its own task holds.

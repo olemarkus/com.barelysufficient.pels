@@ -36,6 +36,12 @@ export const PLAN_REASON_CODES = {
   // `awaitingSolarSurplus`, carries NO detail, so it is byte-stable across plan
   // cycles. Distinct from `meterSettling`, a wait for a post-restore reading or a device settling countdown.
   meterSilent: 'meter_silent',
+  // The same outage in a home with no limit that relies on the meter (Capacity
+  // limit, Grid import limit, main fuse protection and daily budget all off):
+  // the silent-meter pass left the device as it is, neither limited nor resumed
+  // (owner ruling 2026-11-28). Rides `keep` (on) and `inactive` (off) devices,
+  // never `shed`; no detail, so it is byte-stable across plan cycles.
+  meterSilentHold: 'meter_silent_hold',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
   deferredObjectiveWaitingForPlan: 'deferred_objective_waiting_for_plan',
   // The device's smart task has reached its target and holds the device in the
@@ -257,6 +263,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.phaseLimit; phase: 'L1' | 'L2' | 'L3' }
   | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.meterSilent }
+  | { code: typeof PLAN_REASON_CODES.meterSilentHold }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveBatteryDischarge }

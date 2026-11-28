@@ -63,7 +63,8 @@ import { bindTemporaryTemperatureRead } from '../appInit/temperatureSetpointsSea
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
-import { createHeldCapacityLimitRead, resolveHeldPowerLimits } from '../../lib/power/heldCapacityLimit';
+import { createHeldCapacityLimitRead } from '../../lib/power/heldCapacityLimit';
+import { readMainDailyBudgetSnapshot, readMainFuse, readMainHeldPowerLimits } from './mainLimitReads';
 import type { MeterMonthlyPeak } from '../../lib/power/meterMonthlyPeak';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
@@ -302,14 +303,9 @@ export function buildMainHomeScope(
   return {
     homeId,
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
-    // Live snapshot reads — NOT re-reads through the settings store. The
-    // snapshot is the in-memory truth kept current by the settings handler.
-    // Main's month peak is the one its readout shows (`getCurrentMonthCapacityPeak`):
-    // its tracker against the peak its selected meter reports.
-    getCapacitySettings: () => resolveHeldPowerLimits(
-      ctx.getCapacityScalars('live'), ctx.getCurrentMonthCapacityPeak(),
-    ),
-    getMainFuse: () => ctx.capacitySettingsStore.mainFuse(),
+    // Shared with Main's meter-silence monitor (`mainLimitReads.ts`).
+    getCapacitySettings: () => readMainHeldPowerLimits(ctx),
+    getMainFuse: () => readMainFuse(ctx),
     // The EFFECTIVE dry-run, the same composition a meter area makes: the
     // owner's persisted intent OR a home-wide fence that holds for the whole
     // cycle (torn down, ownership not yet trustworthy). Main used to publish
@@ -323,7 +319,7 @@ export function buildMainHomeScope(
     readSimulationSetting: () => ctx.capacityDryRun,
     getPowerTracker: () => ctx.powerTracker,
     getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,
-    getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+    getDailyBudgetSnapshot: () => readMainDailyBudgetSnapshot(ctx),
     getPlanDevices: () => {
       // Runtime configuration and accepted Observer records are joined before
       // projection. This also runs the shared external-off release sweep,

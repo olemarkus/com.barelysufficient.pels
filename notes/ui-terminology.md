@@ -618,13 +618,21 @@ The meter-outage hold reads `Waiting for a new power reading` on the card, in
 device detail and in the activity log alike (`PLAN_STATE_METER_SILENT_STATUS`,
 reason code `meterSilent`). The whole-home meter stopped reporting past the
 10-minute shed timeout and the fail-closed pass limited every managed device.
-The line is the same in every mode, Capacity limit on or off and grid import
-limit on or off: without a measurement no ceiling is known to bind, so it names
-none. Like the spent-hour line it carries no kW, because freeing power would not
+The line is the same whichever limit is on (Capacity limit, Grid import limit,
+main fuse protection or a daily budget): without a measurement no ceiling is
+known to bind, so it names none. Like the spent-hour line it carries no kW, because freeing power would not
 resume the device; unlike it, it states what the device needs. It pairs with the
 no-readings banner's explanation of how the meter outage affects the plan.
 Do not substitute `Limited by the hard cap`: with Capacity limit off that named
 a limit that was not even on.
+
+With none of those limits on, the pass leaves every device as it is (reason code
+`meterSilentHold`); only solar-surplus loads pause, with their own line. The
+card keeps the device's own state word (`Running`, `Off`), never `Limited`, and
+reads `Waiting for a new power reading` like the shed: the device waits for a
+reading before PELS plans for it again. The timeline notice reads "No limit is on, so PELS leaves your managed devices as they are, apart from solar-surplus loads, until a
+new reading arrives.", and the no-readings banner's consequence line "No limit is on, so PELS leaves managed devices as they are, apart from solar-surplus loads, until
+a new reading arrives."
 
 A device held while PELS is out of levers (`shortfall`) also reads
 `Waiting to resume — 1.5 kW more needed` on its card. `Manual action needed`
@@ -2621,8 +2629,10 @@ from tracker fields or persisted-blob fallbacks.
   a repeated value. Show elapsed whole minutes, hours or days.
 - A gap before the silent-meter plan says `PELS uses the last reading for its
   power plan.` Only a plan built without a measurement says `PELS plans to keep
-  managed devices limited until a new reading arrives.` This describes what
-  PELS plans even when simulation is on.
+  managed devices limited until a new reading arrives.`, or, in a home with no
+  limit on, where that plan left the devices as they are, `No limit is on, so PELS leaves managed devices as they are, apart from solar-surplus loads, until a new
+  reading arrives.` This
+  describes what PELS plans even when simulation is on.
 - Hints name the remedy: check the selected meter by its Homey Energy name and
   whether its reading changes. If the name is unavailable, refer to the
   selected whole-home meter. A Flow source points to **Report power usage** and

@@ -24,7 +24,8 @@ import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { PowerSamplePipeline, type PowerSamplePipelineDeps } from '../powerSamplePipeline';
-import { MeterSilenceMonitor, type MeterSilenceMonitorDeps } from '../../lib/power/meterSilence';
+import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
+import { readMainDailyBudgetSnapshot, readMainFuse, readMainHeldPowerLimits } from './mainLimitReads';
 
 export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
   | 'getPlanEngine'
@@ -110,11 +111,24 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
 }
 
 /**
- * Construction seam for a home's `MeterSilenceMonitor`, co-located with the
+ * Construction seam for Main's `MeterSilenceMonitor`, co-located with the
  * pipeline factory because the two read the same tracker latch (the ingest
  * that moves it is what clears the block). The composition root holds the
- * instance; this module only constructs.
+ * instance; this module only constructs. Its limit reads are the ones Main's
+ * planner scope reads (`mainLimitReads.ts`).
  */
-export function createMeterSilenceMonitor(deps: MeterSilenceMonitorDeps): MeterSilenceMonitor {
-  return new MeterSilenceMonitor(deps);
+export function createMainMeterSilenceMonitor(
+  ctx: Pick<AppContext,
+    'powerTracker' | 'getStructuredLogger' | 'getCapacityScalars' | 'getCurrentMonthCapacityPeak'
+    | 'capacitySettingsStore' | 'dailyBudgetService'>,
+): MeterSilenceMonitor {
+  return new MeterSilenceMonitor({
+    homeId: MAIN_HOME_ID,
+    getPowerTracker: () => ctx.powerTracker,
+    nowMs: () => Date.now(),
+    structuredLog: () => ctx.getStructuredLogger('power'),
+    getCapacitySettings: () => readMainHeldPowerLimits(ctx),
+    getMainFuse: () => readMainFuse(ctx),
+    getDailyBudgetSnapshot: () => readMainDailyBudgetSnapshot(ctx),
+  });
 }

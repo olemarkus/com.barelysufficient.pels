@@ -40,6 +40,7 @@ export const buildUnmeasuredPlanMeta = (
 ): SettingsUiPlanMetaSnapshot => ({
   ...buildPlanMetaBase(overrides),
   powerIsMeasured: false,
+  silentMeterDirective: 'shed',
 });
 
 const buildPlanMetaBase = (

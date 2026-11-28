@@ -1,4 +1,5 @@
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from './powerFreshness';
+import type { SilentMeterDirective } from '../../contracts/src/meterOutage';
 
 /**
  * The one staleness surface (owner ruling 2026-08-31: banner only). The
@@ -101,12 +102,21 @@ export type PowerReadingsBannerInput = {
   /** Homey Energy only: whether a whole-home meter is chosen yet. */
   meterChosen: boolean;
   /**
-   * The current plan's `powerIsMeasured` is false: the silent-meter
-   * fail-closed pass. Fresh readings still win (the next admitted sample
-   * rebuilds, and the plan catches up a cycle later), so this only sharpens
-   * the lead while the banner is showing anyway.
+   * What the current plan's silent-meter pass did, or `null` while the plan is
+   * measured. Fresh readings still win (the next admitted sample rebuilds, and
+   * the plan catches up a cycle later), so this only sharpens the lead while
+   * the banner is showing anyway.
    */
-  planUnmeasured: boolean;
+  silentMeterPass: SilentMeterDirective | null;
+};
+
+const resolveConsequence = (pass: SilentMeterDirective | null): string => {
+  if (pass === 'shed') return 'PELS plans to keep managed devices limited until a new reading arrives.';
+  if (pass === 'hold') {
+    return 'No limit is on, so PELS leaves managed devices as they are, apart from solar-surplus loads, '
+      + 'until a new reading arrives.';
+  }
+  return 'PELS uses the last reading for its power plan.';
 };
 
 const resolveReadingsLead = (readings: PowerReadingsFact, nowMs: number): string | null => {
@@ -126,9 +136,7 @@ export const resolvePowerReadingsBannerContent = (
     const hint = resolveHint({ source, meterChosen, neverReceived: true });
     return { text: `${lead} ${hint}`, actionLabel: 'Check power source' };
   }
-  const consequence = input.planUnmeasured
-    ? 'PELS plans to keep managed devices limited until a new reading arrives.'
-    : 'PELS uses the last reading for its power plan.';
+  const consequence = resolveConsequence(input.silentMeterPass);
   const hint = source === 'homey_energy' && meterChosen && input.meterName
     ? `Check that ${input.meterName} is available in Homey Energy and its reading is changing.`
     : resolveHint({ source, meterChosen, neverReceived: false });

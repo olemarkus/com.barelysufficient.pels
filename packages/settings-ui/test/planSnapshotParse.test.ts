@@ -157,10 +157,16 @@ describe('parsePlanSnapshot meta guard', () => {
 
   it('accepts the unmeasured variant with no derived figures, and requires them on the measured one', () => {
     // The wire meta is a union on `powerIsMeasured`. Unmeasured carries the
-    // bare signal — the hero draws nothing from it, so there is no headroom or
-    // managed/background split to require. Measured requires all three.
-    const unmeasured = { meta: { ...baseMeta, powerIsMeasured: false }, devices: [], rescuableDeviceIds: [] };
-    expect(parsePlanSnapshot(unmeasured)).toBe(unmeasured);
+    // bare signal and what the silent-meter pass did — the hero draws nothing
+    // from it, so there is no headroom or managed/background split to require.
+    // Measured requires all three.
+    for (const silentMeterDirective of ['shed', 'hold']) {
+      const unmeasured = {
+        meta: { ...baseMeta, powerIsMeasured: false, silentMeterDirective }, devices: [], rescuableDeviceIds: [],
+      };
+      expect(parsePlanSnapshot(unmeasured)).toBe(unmeasured);
+    }
+    expect(parsePlanSnapshot({ meta: { ...baseMeta, powerIsMeasured: false }, devices: [] })).toBeNull();
     expect(parsePlanSnapshot({ meta: { ...baseMeta, powerIsMeasured: true }, devices: [] })).toBeNull();
     expect(parsePlanSnapshot({ meta: { ...validMeta, uncontrolledKw: undefined }, devices: [] })).toBeNull();
   });

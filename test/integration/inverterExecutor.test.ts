@@ -10,6 +10,7 @@ import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { testLogger } from '../utils/testLogger';
+import { meterSilenceLimitReads } from '../helpers/meterSilenceLimitReads';
 
 const NOW = 1_800_000_000_000;
 describe('inverter convergence and durable hand-back', () => {
@@ -336,12 +337,13 @@ describe('inverter convergence and durable hand-back', () => {
     const tracker = { lastTimestamp: NOW, lastPowerW: 1000 };
     const meterSilence = new MeterSilenceMonitor({
       homeId: 'main', getPowerTracker: () => tracker, nowMs: Date.now, structuredLog: () => testLogger,
+      ...meterSilenceLimitReads(() => true),
     });
     const rebuild = vi.fn(async () => {
       const result = await h.executor.apply(h.executor.heldDeviceIds().map((deviceId) => ({ kind: 'release', deviceId })));
       return { failed: false, isDryRun: false, gated: false, deviceApplyFailureCount: result.failureCount,
         pendingInverterReleaseCount: result.pendingInverterReleaseCount,
-        inverterReleaseRecoveryReady: h.executor.releaseRecoveryReady() };
+        inverterReleaseRecoveryReady: h.executor.releaseRecoveryReady(), silentMeterDirective: 'shed' as const };
     });
     const timers = new TimerRegistry();
     new MeterSilenceEscalation({

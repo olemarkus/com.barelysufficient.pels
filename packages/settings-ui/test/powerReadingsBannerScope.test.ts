@@ -15,7 +15,7 @@ vi.mock('../src/ui/homeyEnergyMeter.ts', () => ({
   getChosenWholeHomeMeterName: () => 'Main meter',
   hasChosenWholeHomeMeter: () => true,
 }));
-vi.mock('../src/ui/planMeasurementSignal.ts', () => ({ isPlanUnmeasured: () => false }));
+vi.mock('../src/ui/planMeasurementSignal.ts', () => ({ getSilentMeterPass: () => null }));
 vi.mock('../src/ui/setupPathFacts.ts', () => ({
   isNoReadingsCarriedBySetupPath: () => false,
   publishSetupPower: mocks.publishSetupPower,

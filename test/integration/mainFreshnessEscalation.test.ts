@@ -21,6 +21,7 @@ import type { PlanService } from '../../lib/plan/planService';
 
 const okOutcome = {
   inverterReleaseRecoveryReady: true,
+  silentMeterDirective: 'shed' as const,
   failed: false, isDryRun: false, gated: false, appliedActions: true, deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0,
 };
 
@@ -86,6 +87,26 @@ describe('main silent-meter escalation', () => {
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     await drainPending();
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('latches nothing for a rebuild that was not the silent-meter pass, and keeps the pass owed', async () => {
+    // A rebuild that found a reading again carries no directive: no pass ran, so
+    // recording one would engage a block (and a notice) for a shed nobody did.
+    const { ctx, rebuildPlanFromCache, install } = buildCtx();
+    const { silentMeterDirective: _directive, ...measured } = okOutcome;
+    rebuildPlanFromCache.mockResolvedValueOnce(measured);
+    install();
+
+    // The first tick's rebuild latched nothing, so the next tick runs the pass
+    // again, and that one (a real silent-meter pass) engages the block.
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 30_000);
+    await drainPending();
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+    expect(ctx.meterSilenceMonitor.blockedSilence()).toMatchObject({ directive: 'shed' });
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    await drainPending();
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the pass owed while device writes fail — the block must not engage unshed', async () => {

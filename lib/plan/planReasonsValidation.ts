@@ -29,6 +29,8 @@ type ReasonCodeRule = {
 
 const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.keep },
+  // The silent-meter hold: a device left on as it is (`planBuilderSilentMeter.ts`).
+  { code: PLAN_REASON_CODES.meterSilentHold },
   { code: PLAN_REASON_CODES.restoreNeed },
   { code: PLAN_REASON_CODES.cooldownShedding },
   { code: PLAN_REASON_CODES.cooldownRestore },
@@ -141,6 +143,8 @@ const REASON_REQUIRED_FLAGS = [
 
 const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.inactive },
+  // The silent-meter hold: a device left off as it is.
+  { code: PLAN_REASON_CODES.meterSilentHold },
   { code: PLAN_REASON_CODES.externalOffHold },
   // The start-policy hold is legal in BOTH states, and the pair is the whole
   // lifecycle: `shed` while the device is still running (which is what actuates

@@ -24,12 +24,28 @@
  * a shed is to the FLOOR, not to off — a stepped device lands on its lowest
  * step, a thermostat on its shed setpoint (`feedback_step_only_stepper_valid`).
  *
+ * Which directive the pass takes depends on the home's limits (owner ruling
+ * 2026-11-28, superseding the 2026-08-31 "shed even with both limits off"
+ * clause). With a limit that only the meter can enforce on — Capacity limit,
+ * Grid import limit, main fuse protection or a daily budget
+ * (`hasMeterDependentLimit`) — the house may be over it unseen, so the pass
+ * sheds. With none on there is nothing to breach, and the pass HOLDS: every
+ * device stays as it is (`leaveAsIs`), and only what needs a measurement is
+ * released — surplus-only loads held, batteries handed back, curtailment
+ * lifted. Either pass is the one the silence is owed; a limit turned on during
+ * a hold owes the shed (`lib/power/meterSilence.ts`).
+ *
  * "Every candidate" means every device with a power reading. A temperature
  * device planned without one takes no power logic at all (owner ruling
  * 2026-09-23), this pass included: it keeps following its mode target. It was
  * not planned at all before that ruling, so it was never shed here either.
  */
 import { isMeteredPlanDevice } from './planMeteredDevice';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { deferredHoldReason } from './planReasons';
+import { hasMeterDependentLimit } from '../power/meterDependentLimit';
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
+import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { SilentMeterReading } from '../power/powerCycleReading';
 import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 import type { PlanBuilderDeps } from './planBuilderDeps';
@@ -80,6 +96,29 @@ function holdShortOfDemandSideLimit(
 }
 
 /**
+ * The hold directive for one device: as it is, neither limited nor resumed
+ * (owner ruling 2026-11-28). A device the plan holds for its own reason (a
+ * standing posture, a smart task's hour, the surplus hold) keeps it, and so
+ * does an off device whose off has a cause of its own (`applyOffStateReason`).
+ * A device PELS kept is pinned where it is: an on device keeps its setpoint
+ * and step, an off one stays off with no keep intent to turn it on.
+ */
+function leaveAsIs(dev: DevicePlanDevice): DevicePlanDevice {
+  if (!dev.control.commandAuthority || dev.plannedState !== 'keep') return dev;
+  const reason: DeviceReason = { code: PLAN_REASON_CODES.meterSilentHold };
+  if (dev.currentState === 'off') return { ...dev, plannedState: 'inactive', reason };
+  const stepped = isSteppedLoadDevice(dev) ? { desiredStepId: dev.selectedStepId } : {};
+  const pinned: DevicePlanDevice = { ...dev, ...stepped, reason };
+  if (!isTemperaturePlanDevice(pinned)) return pinned;
+  const held: DevicePlanDevice & TemperatureKind = {
+    ...pinned,
+    plannedTarget: pinned.currentTarget,
+    priceTargetShift: { kind: 'none' },
+  };
+  return held;
+}
+
+/**
  * The shedding module's dependencies, from the builder's. Shared with the
  * ordinary pipeline so the two passes price candidates identically.
  */
@@ -101,19 +140,23 @@ export class SilentMeterPlanBuilder {
   ) { }
 
   /**
-   * `settings` and the context’s capacity axis are the build's own — read and
-   * resolved once by `PlanBuilder` for the whole cycle — never a second read
-   * here that a settings write could have moved.
+   * `settings`, the daily budget snapshot and the context’s capacity axis are
+   * the build's own — read and resolved once by `PlanBuilder` for the whole
+   * cycle — never a second read here that a settings write could have moved.
    */
   build(
     context: PlanContext,
     reading: SilentMeterReading,
     decoration: DeferredDecorationBundle,
     settings: HeldPowerLimitSettings,
+    dailyBudgetSnapshot: DailyBudgetUiPayload | null,
     nowTs: number,
   ): DevicePlan {
     const powerTracker = this.deps.getPowerTracker();
-    const sheddingPlan = this.shedEverything(context, nowTs);
+    const directive: SilentMeterDirective = hasMeterDependentLimit(
+      settings, this.deps.getMainFuse(), dailyBudgetSnapshot,
+    ) ? 'shed' : 'hold';
+    const sheddingPlan = directive === 'shed' ? this.shedEverything(context, nowTs) : this.holdNothing();
     // No measurement means no surplus: every surplus-only load is held, with
     // its own reason, exactly as a collapsed surplus would hold it.
     const surplusHoldReasonById = runSilentMeterSurplusHold(
@@ -122,13 +165,17 @@ export class SilentMeterPlanBuilder {
     for (const [id, reason] of surplusHoldReasonById) sheddingPlan.shedReasons.set(id, reason);
     // A smart task's forced shed rides in through the hold merge with no reason
     // of its own (the measured pipeline's reason normalization, which the pass
-    // does not run, would name it); the directive names it here.
+    // does not run, would name it). The shed directive names it as limited by
+    // the outage; the hold limited nothing, so it names the task's own cause.
     for (const id of sheddingPlan.shedSet) {
-      if (!sheddingPlan.shedReasons.has(id)) sheddingPlan.shedReasons.set(id, this.directiveReason());
+      if (sheddingPlan.shedReasons.has(id)) continue;
+      const holdCause = directive === 'hold' ? decoration.deferredHoldCauseByDeviceId.get(id) : undefined;
+      sheddingPlan.shedReasons.set(id, holdCause ? deferredHoldReason(holdCause) : this.directiveReason());
     }
 
     let planDevices = this.stages.buildPlanDevices(context, sheddingPlan)
       .map((dev) => holdShortOfDemandSideLimit(dev, context.temperatureSetpoints));
+    if (directive === 'hold') planDevices = planDevices.map(leaveAsIs);
     // Smart-task release intents still ride the plan (a release is a negative
     // command, safe without a measurement); a `binary_restore` is the one
     // positive intent and needs a measured cycle, which this is not.
@@ -147,12 +194,17 @@ export class SilentMeterPlanBuilder {
     const decidedDevices = attachStorageDecisions(finalized.planDevices, storageRelief);
     // Recorded like any other shed: the first measured cycle after the meter
     // returns sees every device in shed posture, so each one resumes through
-    // admission rather than everything at once.
-    this.state.shedDecisions.recordPlannedShed(
-      decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
-    );
+    // admission rather than everything at once. The hold limited nothing and
+    // records nothing: a device limited before the outage keeps its record,
+    // so it still resumes through admission once readings return.
+    if (directive === 'shed') {
+      this.state.shedDecisions.recordPlannedShed(
+        decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
+      );
+    }
     this.deps.structuredLog.info({
       event: 'plan_silent_meter_pass',
+      directive,
       shedDeviceCount: sheddingPlan.shedSet.size,
       // Counted as the candidate walk counts: commandable AND with a power reading.
       candidateDeviceCount: context.devices
@@ -165,7 +217,7 @@ export class SilentMeterPlanBuilder {
         context,
         reading,
         planDevices: decidedDevices,
-        dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
+        dailyBudgetSnapshot,
         powerTracker,
         capacityGuard: this.deps.capacityGuard,
         capacityLimitKw: settings.limitKw,
@@ -175,7 +227,10 @@ export class SilentMeterPlanBuilder {
         unrelievedPhase: null,
         exportPhase: null,
         simulatedReliefKw: null,
-      }),
+      }, directive),
+      // Left as it is, a device is turned on or up by nothing: not a keep
+      // intent on a device that switched off after this build, not a step.
+      ...(directive === 'hold' ? { ordinaryStartsHeld: true as const } : {}),
       devices: decidedDevices,
       inverterDecisions: this.deps.inverterCurtailment.releaseAll(),
       chargingPhaseDecisions: this.state.chargingPhaseCycle.decisions()
@@ -197,12 +252,10 @@ export class SilentMeterPlanBuilder {
    * there is none.
    */
   /**
-   * The pass is a METER fail-closed, in every mode. With no measurement the
-   * house may be over whichever limits are on — the hard cap, the grid import
-   * limit — and with both off it still sheds: a meter that dies mid-run sheds
-   * rather than holds (owner ruling 2026-08-31, header above), and the released
-   * Grid import limit changelog keeps that protection whatever is enabled. So
-   * the honest cause is the same in every mode, Capacity limit on included: the
+   * The shed directive is a METER fail-closed, whichever limit it protects.
+   * With no measurement the house may be over whichever limits are on — the
+   * hard cap, the grid import limit, the main fuse, the day's budget — so the
+   * honest cause is the same in every mode, Capacity limit on included: the
    * meter stopped reporting, and the device needs a new reading, not freed
    * power, to resume (`meterSilent`). Naming a ceiling here would be a guess:
    * under `capacity` the device detail and the activity log read "Limited by
@@ -217,6 +270,28 @@ export class SilentMeterPlanBuilder {
    */
   private directiveReason(): DeviceReason {
     return { code: PLAN_REASON_CODES.meterSilent };
+  }
+
+  /**
+   * The hold directive's shedding plan: nothing selected. The standing
+   * postures and the surplus hold still ride in through
+   * `runSilentMeterSurplusHold`, as in the shed directive. Neither the shedding
+   * latch nor the instability clock moves: nothing was limited.
+   */
+  private holdNothing(): SheddingPlan {
+    return {
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      shedStepTargets: new Map(),
+      storageSetpoints: new Map(),
+      sheddingActive: this.state.sheddingActive,
+      guardInShortfall: false,
+      outcome: NO_SHEDDING_OUTCOME,
+      recoveredAtMs: null,
+      unrelievedPhase: null,
+      phaseExportExcessKw: 0,
+      exportPhase: null,
+    };
   }
 
   private shedEverything(context: PlanContext, nowTs: number): SheddingPlan {

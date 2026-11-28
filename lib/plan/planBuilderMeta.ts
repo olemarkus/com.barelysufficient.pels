@@ -7,6 +7,7 @@
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { HardCapSource } from '../../packages/contracts/src/capacitySettings';
+import type { SilentMeterDirective } from '../../packages/contracts/src/meterOutage';
 import type { PowerCycleDisplay } from '../power/powerCycleReading';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type {
@@ -153,8 +154,11 @@ function resolveWithControlOn(facts: PlanMetaCycleFacts): Pick<DevicePlan['meta'
  * derive them from, and publishing a stand-in is what this variant exists to
  * make impossible (`PlanMeasuredMetaFields`).
  */
-export function buildUnmeasuredPlanMeta(facts: PlanMetaCycleFacts): DevicePlan['meta'] {
-  return { ...buildPlanMetaBase(facts), powerIsMeasured: false };
+export function buildUnmeasuredPlanMeta(
+  facts: PlanMetaCycleFacts,
+  silentMeterDirective: SilentMeterDirective,
+): DevicePlan['meta'] {
+  return { ...buildPlanMetaBase(facts), powerIsMeasured: false, silentMeterDirective };
 }
 
 /**
