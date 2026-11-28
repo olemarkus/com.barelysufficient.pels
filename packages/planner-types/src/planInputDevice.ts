@@ -228,6 +228,8 @@ export type ObservedStorageInput = {
    * means the battery's own schedule remains the routine policy. */
   continuousPlan?: ContinuousStoragePlan;
   holdDischargeDuringEvCharging?: true;
+  /** This opted-in battery's home has a charger with observed charging draw. */
+  evChargingObserved?: true;
 };
 
 /**

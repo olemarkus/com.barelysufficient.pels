@@ -166,11 +166,13 @@ PELS makes your home battery part of your priority list. Your sun goes to your d
 
 Turn on **Plan charging with PELS** on the battery's device page to let PELS plan charging and household supply continuously. Enter usable capacity and minimum reserve; under **Losses and battery wear**, set efficiency and a wear allowance in your electricity price unit. PELS measures the battery's round-trip efficiency from its own full charge cycles and shows the result beside the efficiency field, with **Use** to fill it in; the plan keeps using the value you saved. PELS uses published import and export prices, expected household demand, solar forecasts and smart-task commitments to choose how much energy to store. The page shows expected charge levels and charging periods. In a period where the battery supplies the house, it covers what the house actually draws, also when that is more than expected, down to your reserve. PELS retains control between periods, including at zero power, and replans as inputs change. Your reserve, power limits and device priorities still apply. Turning planning off returns to solar charging and power-limit protection. Continuous planning covers the batteries in the Main home.
 
-Turn on **Pause scheduled discharge for EV Smart tasks** on a battery you want
-to preserve while an EV Smart task can charge. This pauses scheduled household
-supply and sales during EV charging periods, including when the car is waiting
-for available power. The battery can still charge and help hold your home's power
-limits. The battery plan preview shows what it would do without this live pause.
+Turn on **Pause scheduled discharge for EV charging** to pause scheduled household
+supply and sales while an EV charges or has a Smart task ready to charge. If
+Tibber, your car app, or a schedule runs the charger, turn on **Managed by PELS**
+so PELS can read its power. Leave **Power-limit control** and **Only PELS starts
+this device** off so your existing scheduler keeps control. The battery resumes
+scheduled discharge shortly after charging ends. It can still charge and help
+hold your home's power limits. The battery plan preview shows the original schedule.
 
 With planning on for several batteries, PELS plans them together in your priority order. The highest-priority battery plans first, and each next one covers what the ones before it leave: household demand they did not supply, charging room they did not use, and demand above your power limit they could not cover. In each planned period the batteries either all charge or all supply, so no battery charges from another, and a battery that keeps its energy for home use never supplies more than the house uses. Each battery keeps its own capacity, reserve, efficiency, wear allowance and selling choice. If a battery delivers less than its plan asks, PELS learns what it can deliver and the next plan gives the rest to your other batteries. A battery PELS cannot control is left out of the plan, and the others plan for the house. To have a different battery go first, change the order in your priority list.
 
