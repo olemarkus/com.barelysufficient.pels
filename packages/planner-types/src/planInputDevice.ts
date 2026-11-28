@@ -1,4 +1,5 @@
 import type {
+  AssociatedCarSnapshot,
   HomeBatterySetpointRange,
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
@@ -330,6 +331,8 @@ export type PlanInputDeviceBase = {
    * charger" everywhere.
    */
   isEvCharger: boolean;
+  /** The car matched to this charger for the current session. */
+  associatedCar?: Pick<AssociatedCarSnapshot, 'carId'>;
   /** Which phases this device loads (`lib/phaseFootprint/`). Required: unknown is its own answer. */
   phaseFootprint: PhaseFootprint;
   /**
