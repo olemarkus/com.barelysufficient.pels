@@ -83,6 +83,8 @@ export type DeferredDecorationBundle = {
   deferredReleaseIntentByDeviceId: Record<string, DeferredReleaseIntent>;
   admittedDeviceIds: ReadonlySet<string>;
   drivingDeviceIds: ReadonlySet<string>;
+  /** An EV Smart Task booked this interval before the charger pause was applied. */
+  bookedEvTask?: true;
   lentAuthorityDeviceIds: ReadonlySet<string>;
   externalOffHoldLiftedDeviceIds: ReadonlySet<string>;
 };

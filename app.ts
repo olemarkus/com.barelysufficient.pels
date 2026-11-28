@@ -87,10 +87,8 @@ import {
 import type { FlowCapabilityWrites } from './lib/flowApi/userFlows';
 import type { LastControlledStore } from './lib/plan/lastControlledStore';
 import {
-  AppServiceWiring,
-  createHomeRuntimeRegistryForApp,
-  createLastControlledStoreForApp,
-  buildHomeRuntimeReadPort,
+  AppServiceWiring, createDeyeDischargeHold, createHomeRuntimeRegistryForApp,
+  createLastControlledStoreForApp, buildHomeRuntimeReadPort,
 } from './setup/appServiceWiring';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
 import {
@@ -607,6 +605,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       smartTaskState: (deviceId) => readSmartTaskOpen(this.homey.settings, deviceId, this.getNow().getTime()),
       leadMs: (device, fromC, targetC) => resolveModePreparationLeadMs(this.powerTracker, device, fromC, targetC),
     });
+  public readonly deyeDischargeHold = createDeyeDischargeHold(this.homey.settings);
+
   // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring: AppServiceWiring = new AppServiceWiring({
     ctx: this.ctx,
@@ -625,6 +625,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     shutdown: this.shutdown,
     teardown: this.backgroundTaskBundle.teardown,
     mainPowerSamplePipeline: this.powerSamplePipeline,
+    evDischargeHold: this.deyeDischargeHold,
     homeyApp: this,
     backgroundTasks: this.backgroundTasks,
     timers: this.timers,

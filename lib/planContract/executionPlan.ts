@@ -146,6 +146,7 @@ export type DroppedSteppedShedIntent = {
 export type ExecutionPlan = {
   /** Evidence stamp that still authorizes the shared fail-closed pauses. */
   meterSilenceStamp?: number;
+  activeEvTask?: true;
   chargingPhaseDecisions: import('./chargingPhaseDecision').ChargingPhaseDecision[];
   devices: PlannedDeviceExecution[];
   hasShedDevices: boolean;

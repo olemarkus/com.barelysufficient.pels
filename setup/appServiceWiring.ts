@@ -27,7 +27,7 @@ import {
   createDeferredObjectiveEnergyDelivery,
   createDeferredObjectivePlanHistoryRecorder,
   flushDeferredObjectiveRecorders,
-  createDailyBudgetService,
+  bindMainDischargeHold, createDeyeDischargeHold, type MainDischargeHold, createDailyBudgetService,
   createDeviceDiagnosticsService,
   createSupportReports,
   BATTERY_CONTROL_TEARDOWN_KEY,
@@ -59,9 +59,7 @@ import {
   flushDailyBudgetStateOnUninit, runStartupSettingsMigrations, runStartupStep, startAppServices,
 } from './appLifecycleHelpers';
 import { wireHomeMembership } from './appInit/wireHomeMembership';
-import {
-  buildAppHomeMembershipOptions,
-} from './appInit/appHomeMembershipOptions';
+import { buildAppHomeMembershipOptions } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import {
   startPostStartupBackgroundTasks, startCapacityMarketDefault,
@@ -111,7 +109,7 @@ export { buildHomeRuntimeReadPort };
 export type { HomeRuntimeRegistry };
 // Re-exported for the same reason: `app.ts` opens the one store every home's
 // plan runtime hydrates from beside the other userdata stores.
-export { createLastControlledStoreForApp };
+export { createDeyeDischargeHold, createLastControlledStoreForApp };
 
 /** Detaches the membership recompute triggers: refresh subscription + zone-tree-commit callback. */
 const MEMBERSHIP_TEARDOWN_KEY = 'homeMembership';
@@ -137,6 +135,7 @@ export type AppServiceWiringDeps = {
   teardown: TeardownRegistry;
   /** Main's sample pipeline: its stable revision and the prepared-reconcile fence over it. */
   mainPowerSamplePipeline: PowerSamplePipeline;
+  evDischargeHold?: MainDischargeHold;
   homeyApp: Homey.App;
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
@@ -476,6 +475,8 @@ export class AppServiceWiring {
     const { planEngine, planService, lifecycleFallbackPort } = createHomePlanRuntime(ctx, this.mainHomeScope, {
       capacityGuard: ctx.capacityGuard, isActuationFenced: () => this.isMainActuationFenced(),
       storageLane: mainStorageLane(ctx), controlContests: this.deps.controlContests,
+      evDischargeHold: bindMainDischargeHold(this.deps.evDischargeHold, () => this.isMainActuationFenced(),
+        () => !this.isMainHomeWideFenced() && this.deps.powerTrackerHelpers.hasRecentMeterEvidence()),
       getPreparedModeTargets: this.deps.getPreparedModeTargets,
       getChargingPhasePauseTarget: (deviceId) => {
         const route = this.deps.handles.homeRuntimeRegistry?.getOwningHomeRouteForDevice(deviceId);
@@ -485,11 +486,7 @@ export class AppServiceWiring {
     ctx.planEngine = planEngine;
     ctx.planService = planService;
     ctx.lifecycleFallback = lifecycleFallbackPort;
-    installMainFreshnessEscalation(
-      ctx,
-      () => this.deps.shutdown.isStopped(),
-      () => this.isMainActuationFenced(),
-    );
+    installMainFreshnessEscalation(ctx, () => this.deps.shutdown.isStopped(), () => this.isMainActuationFenced());
     installMainMeterSilenceNotice(ctx, () => this.deps.shutdown.isStopped());
   }
 
@@ -573,6 +570,7 @@ export class AppServiceWiring {
   initBatteryControl(): void {
     initMainBatteryControl(this.deps.ctx, this.deps.teardown, this.deps.observedStateEmitter,
       () => this.isMainActuationFenced(), () => this.deps.powerTrackerHelpers.hasRecentMeterEvidence());
+    this.deps.evDischargeHold?.start();
   }
 
   /**
@@ -699,6 +697,7 @@ export class AppServiceWiring {
     // flow read, and blocking teardown on that read would stall shutdown.
     // Suppressing its continuation is enough.
     this.deps.shutdown.stop();
+    this.deps.evDischargeHold?.stop();
     this.mainHomeScope.disposeBinaryCommandReachability();
     // Tear down the per-home bundles BEFORE the global timer sweep so each
     // bundle can flush a pending suffixed tracker persist while its debounce

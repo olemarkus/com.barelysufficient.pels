@@ -902,6 +902,8 @@ export type DevicePlan = {
   devices: DevicePlanDevice[];
   /** A last-resort relay has the next turn, including against binary keep intents. */
   ordinaryStartsHeld?: true;
+  /** An admitted Smart Task is asking an EV to run this cycle. */
+  activeEvTask?: true;
   /** Production caps and hand-backs, separate from consumption-device decisions. */
   inverterDecisions: import('../planContract/inverterDecision').InverterDecision[];
   chargingPhaseDecisions: import('../planContract/chargingPhaseDecision').ChargingPhaseDecision[];

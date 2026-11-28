@@ -301,6 +301,7 @@ export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
   const commands = buildExecutablePlan(plan);
   return {
     ...(!plan.meta.powerIsMeasured ? { meterSilenceStamp: plan.meta.lastPowerUpdateMs } : {}),
+    ...(plan.activeEvTask ? { activeEvTask: plan.activeEvTask } : {}),
     devices: plan.devices.map((device, index) => {
       const intent = commands.devices[index]!;
       const stepDownToRetire = device.stepDownToRetire;

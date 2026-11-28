@@ -288,6 +288,7 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
 export function buildPlanSignature(plan: DevicePlan): string {
   return JSON.stringify(
     [
+      ...(plan.activeEvTask ? [{ activeEvTask: true }] : []),
       ...plan.devices.map((device) => buildPlanSignatureDevice(device)),
       ...plan.inverterDecisions.map((decision) => decision.kind === 'limit'
         ? { kind: decision.kind, deviceId: decision.deviceId, limitW: decision.limitW } : decision),

@@ -1,3 +1,4 @@
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { readPelsHost } from '../../lib/app/pelsHost';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { API_STARTING_MESSAGE, defineRoutes, type ApiContext } from './defineRoutes';
@@ -13,6 +14,16 @@ function chargingAccess(homey: ApiContext['homey']) {
   const transport = readPelsHost(homey)?.deviceManager;
   if (!transport) throw new Error(API_STARTING_MESSAGE);
   return transport.chargingAccess;
+}
+
+type AccessContext = ApiContext & { query?: unknown; body?: unknown };
+
+const isDeyeAccess = (query: unknown): boolean => isUnknownRecord(query) && query.provider === 'deye';
+
+function deyeDischargeHold(homey: ApiContext['homey']) {
+  const hold = readPelsHost(homey)?.deyeDischargeHold;
+  if (!hold) throw new Error(API_STARTING_MESSAGE);
+  return hold;
 }
 
 export const chargingControlRoutes = defineRoutes({
@@ -39,12 +50,24 @@ export const chargingControlRoutes = defineRoutes({
       });
     }
   },
-  ui_charging_access: ({ homey }: ApiContext) => chargingAccess(homey).status(),
-  ui_charging_access_check: ({ homey }: ApiContext) => chargingAccess(homey).check(),
-  ui_charging_access_save: ({ homey, body }: ApiContext & { body?: unknown }) => chargingAccess(homey).save(body),
+  ui_charging_access: ({ homey, query }: AccessContext) => (
+    isDeyeAccess(query) ? deyeDischargeHold(homey).status() : chargingAccess(homey).status()
+  ),
+  ui_charging_access_check: ({ homey, body, query }: AccessContext) => {
+    if (!isDeyeAccess(query)) return chargingAccess(homey).check();
+    const hold = deyeDischargeHold(homey);
+    if (!isUnknownRecord(body) || body.provider !== 'deye') return hold.status();
+    if (body.action === 'disable') return hold.disable();
+    if (body.action === 'acknowledge') return hold.acknowledge(body);
+    return hold.status();
+  },
+  ui_charging_access_save: ({ homey, body, query }: AccessContext) => (
+    isDeyeAccess(query) ? deyeDischargeHold(homey).save(body) : chargingAccess(homey).save(body)
+  ),
   // A battery PELS drives through its app's actions is handed back while the
   // key it runs on is still there (`handBackBeforeHomeyApiKeyRemoval`).
-  ui_charging_access_remove: async ({ homey }: ApiContext) => {
+  ui_charging_access_remove: async ({ homey, query }: AccessContext) => {
+    if (isDeyeAccess(query)) return deyeDischargeHold(homey).status();
     const access = chargingAccess(homey);
     const batteryControl = readPelsHost(homey)?.batteryControl;
     if (!batteryControl) throw new Error(API_STARTING_MESSAGE);

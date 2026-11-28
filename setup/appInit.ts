@@ -33,3 +33,7 @@ export { createPlanService } from './appInit/createPlanService';
 export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/priceServices';
 export { registerAppFlowCards } from './appInit/registerAppFlowCards';
 export { toPlanDevice } from './appInit/toPlanDevice';
+
+export {
+  bindMainDischargeHold, createDeyeDischargeHold, type MainDischargeHold,
+} from './appInit/createDeyeDischargeHold';

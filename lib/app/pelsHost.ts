@@ -1,3 +1,4 @@
+import type { DeyeDischargeHold } from '../executor/deyeDischargeHold';
 import type { NorwayMonthlyCapacityRead } from '../../packages/contracts/src/norwayMonthlyCapacity';
 import type { NorwayCapacityChoice } from '../power/norwayCapacityChoice';
 import { API_STARTING_MESSAGE } from '../utils/apiRequestError';
@@ -86,6 +87,8 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;
   /** Which devices keep reporting another value after PELS sets them (`lib/executor/controlContest.ts`). */
   readonly controlContests: ControlContestReading;
+  readonly deyeDischargeHold: Pick<DeyeDischargeHold,
+    'status' | 'save' | 'disable' | 'acknowledge'>;
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
   readGoverningModeTargetC(deviceId: string): number | null;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];

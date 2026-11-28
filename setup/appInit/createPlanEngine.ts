@@ -13,6 +13,7 @@ import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { StorageLaneBinding } from '../../lib/ports/batteryControlOwner';
+import type { EvDischargeHoldLane } from '../../lib/ports/evDischargeHold';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
@@ -49,6 +50,7 @@ export type CreatePlanEngineOptions = {
    * meter area, which plans and commands no battery.
    */
   storageLane: StorageLaneBinding;
+  evDischargeHold?: EvDischargeHoldLane;
   /** The app's one record of drift corrections; this home's commands feed it (`lib/executor/controlContest.ts`). */
   controlContests: ControlContestRecording;
   getChargingPhasePauseTarget: (deviceId: string) => ChargingPhasePauseTarget | undefined;
@@ -208,6 +210,7 @@ export function createPlanEngineComposition(
     deviceDiagnostics,
     pendingBinaryCommandStore,
     storageLane: options.storageLane,
+    evDischargeHold: options.evDischargeHold,
     inverterLane: inverters.executor,
   }, execution, new PlanExecutionFeedback(state, deviceDiagnostics));
   return {

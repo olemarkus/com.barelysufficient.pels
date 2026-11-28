@@ -52,6 +52,7 @@ export type PlanEngineComposition = {
     | 'applyPlanActions'
     | 'hasStablePlanActuation'
     | 'hasExecutionWorkOutstanding'
+    | 'hasDischargeHoldReleaseWork'
     | 'isInverterReleaseRecoveryReady'
     | 'getPendingInverterReleaseCount'
     | 'hasPendingSharedChargingPause'
@@ -212,6 +213,8 @@ export class ComposedPlanEngine implements PlanEngine {
   public hasPendingTargetCommands(): boolean {
     return this.execution.hasPendingTargetCommands();
   }
+
+  public hasDischargeHoldReleaseWork(): boolean { return this.executor.hasDischargeHoldReleaseWork(); }
 
   public isInverterReleaseRecoveryReady(): boolean { return this.executor.isInverterReleaseRecoveryReady(); }
 

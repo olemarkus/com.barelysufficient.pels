@@ -297,6 +297,8 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
     dischargeW = 600;
     const paused = at(startMs + 1);
     expect(paused.admittedDevices[0].deferredHold).toBe('battery_pause');
+    expect(paused.drivingDeviceIds.has('dev')).toBe(false);
+    expect(paused.bookedEvTask).toBe(true);
     expect(paused.deferredReleaseIntentByDeviceId.dev).toBe('binary_release');
     expect(paused.deferredHoldCauseByDeviceId.get('dev')).toBe('battery_discharging');
 

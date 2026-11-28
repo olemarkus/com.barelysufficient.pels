@@ -53,3 +53,30 @@ describe('ui_charging_access_remove', () => {
     expect(access.remove).not.toHaveBeenCalled();
   });
 });
+
+describe('Deye discharge hold access', () => {
+  it('routes Deye changes through explicit provider actions without removing the Homey key', async () => {
+    const { homey: base, access } = buildHomey('removed');
+    const systemStatus = { enabled: false, state: 'disabled' };
+    const deyeDischargeHold = {
+      status: vi.fn(() => systemStatus),
+      save: vi.fn(async () => systemStatus),
+      disable: vi.fn(async () => systemStatus),
+      acknowledge: vi.fn(async () => systemStatus),
+    };
+    const homey = { app: { ...base.app, deyeDischargeHold } } as unknown as ApiContext['homey'];
+    const query = { provider: 'deye' };
+    const setup = { region: 'eu' };
+
+    await expect(chargingControlRoutes.ui_charging_access({ homey, query })).resolves.toEqual(systemStatus);
+    await chargingControlRoutes.ui_charging_access_save({ homey, query, body: setup });
+    await chargingControlRoutes.ui_charging_access_check({ homey, query, body: { provider: 'deye', action: 'disable' } });
+    const recovery = { provider: 'deye', action: 'acknowledge', confirmedOrderSettled: true };
+    await chargingControlRoutes.ui_charging_access_check({ homey, query, body: recovery });
+
+    expect(deyeDischargeHold.save).toHaveBeenCalledWith(setup);
+    expect(deyeDischargeHold.disable).toHaveBeenCalledTimes(1);
+    expect(deyeDischargeHold.acknowledge).toHaveBeenCalledWith(recovery);
+    expect(access.remove).not.toHaveBeenCalled();
+  });
+});

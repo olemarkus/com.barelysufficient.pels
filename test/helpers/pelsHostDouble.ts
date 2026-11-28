@@ -62,6 +62,12 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     planService: undefined,
     priceCoordinator: undefined,
     batteryControl: undefined,
+    deyeDischargeHold: {
+      status: () => ({ enabled: false, state: 'disabled' }),
+      save: notWired('deyeDischargeHold.save'),
+      disable: notWired('deyeDischargeHold.disable'),
+      acknowledge: notWired('deyeDischargeHold.acknowledge'),
+    },
     readContinuousBatteryPlan: notWired('readContinuousBatteryPlan'),
     readBatteryEfficiencyMeasurement: notWired('readBatteryEfficiencyMeasurement'),
     homeMembership: undefined,
